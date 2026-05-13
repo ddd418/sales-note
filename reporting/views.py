@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -7646,6 +7646,15 @@ def _ai_workspace_action_kind_label(kind):
     }.get(kind, 'AI 액션')
 
 
+def _ai_workspace_feedback_status_label(status):
+    return {
+        'answered': '답변 기록',
+        'next_action': '다음 액션',
+        'resolved': '종료',
+        'dismissed': '목록 제외',
+    }.get(status, '답변 기록')
+
+
 def _ai_workspace_score_amount(value):
     from decimal import Decimal, InvalidOperation
 
@@ -7752,6 +7761,7 @@ def _ai_workspace_action_payload(
         'priorityScore': score,
         'priorityLabel': _ai_workspace_priority_label(score),
         'title': _ai_workspace_prompt_excerpt(title, 140),
+        'followupId': followup.id if followup else None,
         'customer': identity['customer'],
         'company': identity['company'],
         'department': identity['department'],
@@ -7761,7 +7771,61 @@ def _ai_workspace_action_payload(
         'recommendedAction': _ai_workspace_prompt_excerpt(recommended_action, 220),
         'draftTypes': [item for item in (draft_types or []) if item in AI_WORKSPACE_DRAFT_TYPES],
         'hrefs': hrefs or {},
+        'feedback': None,
     }
+
+
+def _ai_workspace_action_feedback_payload(feedback):
+    result = feedback.ai_result or {}
+    return {
+        'status': feedback.status,
+        'statusLabel': _ai_workspace_feedback_status_label(feedback.status),
+        'feedback': _ai_workspace_prompt_excerpt(feedback.feedback, 260),
+        'summary': _ai_workspace_prompt_excerpt(result.get('summary'), 240),
+        'nextAction': _ai_workspace_prompt_excerpt(result.get('nextAction'), 240),
+        'nextActionDate': result.get('nextActionDate') or None,
+        'reason': _ai_workspace_prompt_excerpt(result.get('reason'), 220),
+        'decision': result.get('decision') or '',
+        'source': result.get('source') or '',
+        'updatedAt': _datetime_or_none(feedback.updated_at),
+        'historyId': feedback.history_id,
+        'historyHref': reverse('reporting:history_detail', args=[feedback.history_id]) if feedback.history_id else '',
+    }
+
+
+def _ai_workspace_feedback_hides_action(feedback):
+    result = feedback.ai_result or {}
+    return (
+        feedback.status in {'resolved', 'dismissed'}
+        or result.get('shouldHide') is True
+        or result.get('decision') == 'hide'
+    )
+
+
+def _ai_workspace_apply_action_feedback(user, actions):
+    if not actions:
+        return []
+
+    action_ids = [action['id'] for action in actions]
+    feedback_map = {
+        feedback.action_id: feedback
+        for feedback in AIWorkspaceActionFeedback.objects.filter(
+            user=user,
+            action_id__in=action_ids,
+        ).select_related('history')
+    }
+    visible_actions = []
+    for action in actions:
+        feedback = feedback_map.get(action['id'])
+        if feedback and _ai_workspace_feedback_hides_action(feedback):
+            continue
+        if feedback:
+            action = {
+                **action,
+                'feedback': _ai_workspace_action_feedback_payload(feedback),
+            }
+        visible_actions.append(action)
+    return visible_actions
 
 
 def _ai_workspace_related_followup_by_department(user):
@@ -8022,6 +8086,7 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20):
         ))
 
     actions.sort(key=lambda item: (-item['priorityScore'], item['dueDate'] or '9999-12-31', item['title']))
+    actions = _ai_workspace_apply_action_feedback(user, actions)
     return actions[:limit]
 
 
@@ -8192,6 +8257,237 @@ def _ai_workspace_generate_action_draft(action, draft_type):
     except Exception as exc:
         logger.warning('AI workspace action draft fallback used: %s', exc)
         return fallback, 'fallback'
+
+
+def _ai_workspace_feedback_fallback(action, feedback_text):
+    from datetime import timedelta
+
+    normalized = re.sub(r'\s+', '', str(feedback_text or '').lower())
+    title = action.get('title') or 'AI 추천 액션'
+    lost_keywords = [
+        '안산', '안살', '안사', '구매안', '구입안', '필요없', '필요가없', '거절',
+        '취소', '실주', '다른업체', '타사', '예산없', '예산이없', '진행안',
+    ]
+    completed_keywords = [
+        '구매완료', '결제완료', '입금완료', '수주', '판매완료', '납품완료',
+        '이미샀', '이미구매', '샀대', '샀습니다',
+    ]
+    hold_keywords = [
+        '보류', '나중', '추후', '검토중', '검토해본', '다음달', '내년',
+        '대기', '아직결정', '승인대기', '예산확정후',
+    ]
+    request_keywords = [
+        '자료', '메일', '견적다시', '재견적', '문의', '전화', '방문', '샘플',
+        '가격', '납기', '서류',
+    ]
+
+    if any(keyword in normalized for keyword in lost_keywords):
+        return {
+            'decision': 'hide',
+            'recommendedStatus': 'resolved',
+            'shouldHide': True,
+            'summary': '고객이 현재 구매하지 않겠다는 답변으로 기록됐습니다.',
+            'nextAction': '추천 목록에서 종료합니다. 장기 추적이 필요하면 고객 상세에서 별도 후속조치를 등록하세요.',
+            'nextActionDate': None,
+            'reason': '구매 거절 또는 실주 신호가 포함되어 있어 반복 추천하지 않습니다.',
+            'suggestedDraftType': '',
+        }
+    if any(keyword in normalized for keyword in completed_keywords):
+        return {
+            'decision': 'hide',
+            'recommendedStatus': 'resolved',
+            'shouldHide': True,
+            'summary': '이미 구매/수주/납품 완료된 답변으로 기록됐습니다.',
+            'nextAction': '추천 목록에서 종료합니다. 필요하면 완료 일정 또는 납품 기록만 점검하세요.',
+            'nextActionDate': None,
+            'reason': '완료 신호가 포함되어 있어 추가 추천 액션이 필요하지 않습니다.',
+            'suggestedDraftType': '',
+        }
+    if any(keyword in normalized for keyword in hold_keywords):
+        return {
+            'decision': 'next_action',
+            'recommendedStatus': 'next_action',
+            'shouldHide': False,
+            'summary': '고객이 보류 또는 추후 검토 상태로 답했습니다.',
+            'nextAction': f"{title} 건은 검토 일정과 재연락 기준일을 확인하세요.",
+            'nextActionDate': (timezone.localdate() + timedelta(days=14)).isoformat(),
+            'reason': '보류 신호가 있어 액션을 닫기보다 재확인 후속조치로 남깁니다.',
+            'suggestedDraftType': 'email',
+        }
+    if any(keyword in normalized for keyword in request_keywords):
+        return {
+            'decision': 'next_action',
+            'recommendedStatus': 'next_action',
+            'shouldHide': False,
+            'summary': '고객이 추가 자료나 확인이 필요한 상태로 보입니다.',
+            'nextAction': f"{title} 관련 요청 자료를 정리하고 다음 연락에서 의사결정 조건을 확인하세요.",
+            'nextActionDate': (timezone.localdate() + timedelta(days=3)).isoformat(),
+            'reason': '추가 요청 신호가 있어 바로 닫지 않고 실행 가능한 다음 행동으로 전환합니다.',
+            'suggestedDraftType': 'email',
+        }
+
+    return {
+        'decision': 'next_action',
+        'recommendedStatus': 'next_action',
+        'shouldHide': False,
+        'summary': '현장 답변을 기록했습니다. 다음 연락에서 구매 의사, 일정, 장애물을 더 구체화해야 합니다.',
+        'nextAction': action.get('recommendedAction') or '고객 답변을 바탕으로 다음 후속조치를 진행하세요.',
+        'nextActionDate': (timezone.localdate() + timedelta(days=7)).isoformat(),
+        'reason': '종료 신호가 명확하지 않아 다음 액션으로 유지합니다.',
+        'suggestedDraftType': 'questions',
+    }
+
+
+def _ai_workspace_normalize_feedback_result(data, fallback):
+    decision = str(data.get('decision') or fallback.get('decision') or 'next_action').strip().lower()
+    if decision not in {'keep', 'hide', 'next_action'}:
+        decision = fallback.get('decision') or 'next_action'
+
+    status = str(data.get('recommendedStatus') or data.get('status') or '').strip()
+    if status not in {'answered', 'next_action', 'resolved', 'dismissed'}:
+        if decision == 'hide':
+            status = 'resolved'
+        elif decision == 'next_action':
+            status = 'next_action'
+        else:
+            status = 'answered'
+
+    next_action_date = data.get('nextActionDate') or data.get('next_action_date') or None
+    if next_action_date and not _parse_iso_date_or_none(next_action_date):
+        next_action_date = None
+
+    should_hide = bool(data.get('shouldHide')) or decision == 'hide' or status in {'resolved', 'dismissed'}
+    if should_hide and status == 'answered':
+        status = 'resolved'
+
+    return {
+        'decision': decision,
+        'recommendedStatus': status,
+        'shouldHide': should_hide,
+        'summary': _ai_workspace_prompt_excerpt(data.get('summary') or fallback.get('summary'), 260),
+        'nextAction': _ai_workspace_prompt_excerpt(data.get('nextAction') or fallback.get('nextAction'), 260),
+        'nextActionDate': next_action_date,
+        'reason': _ai_workspace_prompt_excerpt(data.get('reason') or fallback.get('reason'), 260),
+        'suggestedDraftType': data.get('suggestedDraftType') or fallback.get('suggestedDraftType') or '',
+    }
+
+
+def _ai_workspace_evaluate_action_feedback(action, feedback_text, force_outcome=''):
+    fallback = _ai_workspace_feedback_fallback(action, feedback_text)
+    if force_outcome in {'dismiss', 'dismissed'}:
+        fallback = {
+            **fallback,
+            'decision': 'hide',
+            'recommendedStatus': 'dismissed',
+            'shouldHide': True,
+            'summary': '사용자가 추천 액션을 목록에서 제외했습니다.',
+            'nextAction': '',
+            'nextActionDate': None,
+            'reason': '사용자 명시 제외 요청입니다.',
+            'suggestedDraftType': '',
+        }
+
+    try:
+        from ai_chat.services import get_openai_client
+
+        client = get_openai_client()
+        model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+        prompt_payload = {
+            'action': {
+                'id': action.get('id'),
+                'kind': action.get('kindLabel'),
+                'title': action.get('title'),
+                'customer': action.get('customer'),
+                'company': action.get('company'),
+                'department': action.get('department'),
+                'dueDate': action.get('dueDate'),
+                'recommendedAction': action.get('recommendedAction'),
+                'evidence': action.get('evidence', []),
+            },
+            'userFeedback': feedback_text,
+            'rules': [
+                '고객이 구매하지 않겠다고 했거나 이미 완료된 건이면 hide/resolved로 판단한다.',
+                '보류, 추가 자료, 일정 확인이 필요하면 next_action으로 판단한다.',
+                '입력 근거와 사용자 답변에 없는 사실은 만들지 않는다.',
+            ],
+        }
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    'role': 'system',
+                    'content': (
+                        '너는 내부 영업 CRM의 추천 실행목록 정리 AI다. '
+                        '사용자 현장 답변을 바탕으로 액션을 유지할지, 다음 행동으로 바꿀지, 목록에서 숨길지 판단한다. '
+                        '반드시 JSON으로 {"decision":"keep|hide|next_action","recommendedStatus":"answered|next_action|resolved|dismissed",'
+                        '"shouldHide": boolean,"summary": string,"nextAction": string,"nextActionDate": string|null,'
+                        '"reason": string,"suggestedDraftType": string}만 반환한다.'
+                    ),
+                },
+                {
+                    'role': 'user',
+                    'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=900,
+            response_format={'type': 'json_object'},
+        )
+        ai_text = response.choices[0].message.content
+        result = _ai_workspace_normalize_feedback_result(json.loads(ai_text), fallback)
+        result['source'] = 'openai'
+        return result, 'openai'
+    except Exception as exc:
+        logger.warning('AI workspace action feedback fallback used: %s', exc)
+        result = _ai_workspace_normalize_feedback_result(fallback, fallback)
+        result['source'] = 'fallback'
+        return result, 'fallback'
+
+
+def _ai_workspace_feedback_status_from_result(result):
+    status = result.get('recommendedStatus') or 'answered'
+    if status not in {'answered', 'next_action', 'resolved', 'dismissed'}:
+        return 'answered'
+    return status
+
+
+def _ai_workspace_feedback_history_content(action, feedback_text, result):
+    status_label = _ai_workspace_feedback_status_label(_ai_workspace_feedback_status_from_result(result))
+    return "\n".join(_ai_prompt_context(
+        f"[AI 추천 실행 답변] {action.get('title') or action.get('kindLabel') or action.get('id')}",
+        f"사용자 답변: {feedback_text}",
+        f"AI 판단: {result.get('summary') or ''}",
+        f"처리 상태: {status_label}",
+        f"다음 액션: {result.get('nextAction') or ''}",
+        f"판단 근거: {result.get('reason') or ''}",
+    ))
+
+
+def _ai_workspace_create_feedback_history(user, user_profile, action, feedback_text, result):
+    followup_id = action.get('followupId')
+    if not followup_id:
+        return None
+
+    followup = FollowUp.objects.filter(
+        id=followup_id,
+        user=user,
+    ).first()
+    if not followup:
+        return None
+
+    status = _ai_workspace_feedback_status_from_result(result)
+    next_action = result.get('nextAction') if status == 'next_action' else ''
+    next_action_date = _parse_iso_date_or_none(result.get('nextActionDate')) if status == 'next_action' else None
+    return History.objects.create(
+        user=user,
+        company=user_profile.company if user_profile else None,
+        followup=followup,
+        action_type='memo',
+        content=_ai_workspace_feedback_history_content(action, feedback_text, result),
+        next_action=next_action or '',
+        next_action_date=next_action_date,
+        created_by=user,
+    )
 
 
 def _ai_workspace_featured_department_payload(
@@ -8721,6 +9017,103 @@ def ai_workspace_action_draft_api(request):
         'draft': draft,
         'evidence': action.get('evidence', []),
         'requiresHumanApproval': True,
+    })
+
+
+@never_cache
+@require_POST
+def ai_workspace_action_feedback_api(request):
+    """Record field feedback for an AI workspace action and decide next handling."""
+    from datetime import timedelta
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_json',
+            'message': '요청 JSON 형식이 올바르지 않습니다.',
+        }, status=400)
+
+    action_id = str(payload.get('actionId') or payload.get('action_id') or '').strip()
+    feedback_text = str(payload.get('feedback') or payload.get('answer') or '').strip()
+    force_outcome = str(payload.get('outcome') or '').strip()
+    if not action_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_action_id',
+            'message': 'actionId가 필요합니다.',
+        }, status=400)
+    if not feedback_text and force_outcome not in {'dismiss', 'dismissed'}:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_feedback',
+            'message': '추천 액션에 대한 답변을 입력하세요.',
+        }, status=400)
+    if not feedback_text:
+        feedback_text = '사용자가 추천 액션을 목록에서 제외했습니다.'
+
+    today = timezone.localdate()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=4)
+    action = _ai_workspace_find_action(request.user, action_id, week_start, week_end)
+    if not action:
+        return JsonResponse({
+            'success': False,
+            'error': 'action_not_found',
+            'message': 'AI 액션을 찾을 수 없거나 이미 정리된 액션입니다.',
+        }, status=404)
+
+    result, source = _ai_workspace_evaluate_action_feedback(action, feedback_text, force_outcome)
+    status = _ai_workspace_feedback_status_from_result(result)
+    resolved_at = timezone.now() if status in {'resolved', 'dismissed'} else None
+
+    with transaction.atomic():
+        history = _ai_workspace_create_feedback_history(request.user, user_profile, action, feedback_text, result)
+        feedback, _created = AIWorkspaceActionFeedback.objects.update_or_create(
+            user=request.user,
+            action_id=action_id,
+            defaults={
+                'followup_id': action.get('followupId'),
+                'history': history,
+                'action_kind': action.get('kind') or '',
+                'status': status,
+                'feedback': feedback_text,
+                'ai_result': result,
+                'action_snapshot': action,
+                'resolved_at': resolved_at,
+            },
+        )
+
+    feedback_payload = _ai_workspace_action_feedback_payload(feedback)
+    return JsonResponse({
+        'success': True,
+        'source': source,
+        'generatedAt': timezone.now().isoformat(),
+        'actionId': action_id,
+        'action': {
+            **action,
+            'feedback': feedback_payload,
+        },
+        'feedback': feedback_payload,
+        'history': {
+            'id': history.id if history else None,
+            'href': reverse('reporting:history_detail', args=[history.id]) if history else '',
+        },
+        'hidden': _ai_workspace_feedback_hides_action(feedback),
+        'message': '답변을 기록하고 추천 실행 목록을 갱신했습니다.',
     })
 
 # ============ 일정(Schedule) 관련 뷰들 ============

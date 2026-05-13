@@ -4029,3 +4029,38 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web` 배포 및 운영 `/reporting/api/ai-workspace/` 비로그인 401 smoke check
+
+---
+
+## AI Workspace Action Feedback Loop — 추천실행목록 현장 답변 기록
+
+**목표**: React `/ai-workspace/`의 `AI 추천 실행 목록`에서 사용자가 현장 답변을 직접 남기면, CRM 이력에 기록하고 AI가 다음 액션 유지/정리 여부를 판단해 추천 목록을 갱신한다.
+
+**작업 범위**:
+
+- 추천 액션별 사용자 답변, AI 판단 결과, 액션 스냅샷, 연결 영업노트 이력을 저장하는 `AIWorkspaceActionFeedback` 모델과 migration을 추가한다.
+- 기존 action queue 생성 payload에 `followupId`와 저장된 feedback 요약을 포함한다.
+- 저장된 feedback이 `resolved` 또는 `dismissed`로 판단된 액션은 다음 `/reporting/api/ai-workspace/` 조회에서 추천 목록에서 제외한다.
+- 신규 `POST /reporting/api/ai-workspace/actions/feedback/` API를 추가한다.
+- feedback API는 기존 `can_use_ai` 권한을 유지하고, action id가 현재 사용자 큐에 있는지 확인한 뒤 처리한다.
+- API는 사용자가 입력한 답변을 `History(action_type='memo')`로 남기고, AI 판단 결과를 feedback 모델에 저장한다.
+- OpenAI 호출 실패 또는 키 미설정 시에도 로컬 규칙으로 `종료/다음 액션`을 판단한다.
+- React 액션 카드에 `현장 답변 기록` 입력창과 `기록하고 AI 판단` 버튼을 추가하고, 기존 `질문/메일/노트/고객/AI` 같은 짧은 버튼명은 `질문 초안`, `고객 보기`, `AI 분석`처럼 의미가 드러나게 바꾼다.
+- 기존 초안 생성 API는 유지하되, 답변 저장 흐름이 기본 동작이 되도록 배치를 조정한다.
+- 기존 `/reporting/*`, AI 허브, PainPoint 검증, 초안 생성, 로그인/권한 정책은 유지한다.
+
+**DB 변경 필요 여부**: 있음. 추천 액션 응답을 운영 이력으로 재사용하기 위해 `AIWorkspaceActionFeedback` 신규 모델과 migration을 추가한다. 기존 `History` 모델에는 필드를 추가하지 않는다.
+
+**검증 계획**:
+
+- `python manage.py makemigrations reporting`
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 로컬 브라우저 smoke check 후 커밋/푸시
+- Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/`, feedback API login 보호 smoke check

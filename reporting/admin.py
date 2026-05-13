@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
+    AIWorkspaceActionFeedback, FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage,
     Company, Department, DocumentTemplate, EmailLog, BusinessCard, CustomerCategory
 )
@@ -143,6 +143,17 @@ class HistoryFileAdmin(admin.ModelAdmin):
     def file_size_display(self, obj):
         return obj.get_file_size_display()
     file_size_display.short_description = '파일 크기'
+
+
+@admin.register(AIWorkspaceActionFeedback)
+class AIWorkspaceActionFeedbackAdmin(admin.ModelAdmin):
+    list_display = ('action_id', 'user', 'followup', 'action_kind', 'status', 'updated_at')
+    list_filter = ('status', 'action_kind', 'updated_at')
+    search_fields = ('action_id', 'feedback', 'user__username', 'followup__customer_name')
+    autocomplete_fields = ['user', 'followup', 'history']
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'updated_at'
+    list_per_page = 20
 
 
 # ScheduleFile 모델 관리자 설정

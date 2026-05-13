@@ -6523,6 +6523,18 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()['error'], 'permission_denied')
 
+    def test_ai_workspace_action_feedback_api_requires_ai_permission(self):
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': 'painpoint:1', 'feedback': '고객이 아직 안산대요'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_draft_api_returns_fallback_without_saving(self, _mock_client):
         from reporting.models import History, WeeklyReport
@@ -6546,6 +6558,128 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(payload['draft']['bullets'])
         self.assertEqual(History.objects.filter(user=self.user).count(), 0)
         self.assertEqual(WeeklyReport.objects.filter(user=self.user).count(), 0)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_records_answer_and_hides_resolved_action(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import AIWorkspaceActionFeedback, History, Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '답변고객')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('1300000'),
+        )
+        quote = Quote.objects.create(
+            quote_number='AI-FEEDBACK-Q-001',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=7),
+            stage='sent',
+            subtotal=Decimal('1300000'),
+            probability=70,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': f'quote:{quote.id}', 'feedback': '아 이거 고객이 아직 안산대요'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['hidden'])
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['feedback']['status'], 'resolved')
+
+        feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'quote:{quote.id}')
+        self.assertEqual(feedback.status, 'resolved')
+        self.assertEqual(feedback.followup, followup)
+        self.assertIsNotNone(feedback.history_id)
+        self.assertTrue(
+            History.objects.filter(
+                id=feedback.history_id,
+                user=self.user,
+                followup=followup,
+                action_type='memo',
+                content__contains='아 이거 고객이 아직 안산대요',
+            ).exists()
+        )
+
+        summary_response = self.client.get(self.url)
+        self.assertEqual(summary_response.status_code, 200)
+        action_ids = {item['id'] for item in summary_response.json()['actionQueue']}
+        self.assertNotIn(f'quote:{quote.id}', action_ids)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_keeps_next_action_feedback_visible(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import AIWorkspaceActionFeedback, History, Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '자료요청')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(11, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('2300000'),
+        )
+        quote = Quote.objects.create(
+            quote_number='AI-FEEDBACK-Q-002',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=5),
+            stage='sent',
+            subtotal=Decimal('2300000'),
+            probability=80,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': f'quote:{quote.id}', 'feedback': '고객이 추가 자료를 메일로 보내달래요'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['hidden'])
+        self.assertEqual(payload['feedback']['status'], 'next_action')
+
+        feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'quote:{quote.id}')
+        self.assertEqual(feedback.status, 'next_action')
+        self.assertTrue(
+            History.objects.filter(
+                id=feedback.history_id,
+                next_action__contains='요청 자료',
+            ).exists()
+        )
+
+        summary_response = self.client.get(self.url)
+        self.assertEqual(summary_response.status_code, 200)
+        action_payload = next(
+            item for item in summary_response.json()['actionQueue']
+            if item['id'] == f'quote:{quote.id}'
+        )
+        self.assertEqual(action_payload['feedback']['status'], 'next_action')
+        self.assertIn('추가 자료', action_payload['feedback']['feedback'])
 
 
 class PipelineApiTests(TestCase):

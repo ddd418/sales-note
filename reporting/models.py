@@ -748,6 +748,58 @@ class History(models.Model):
             models.Index(fields=['schedule', '-created_at'], name='hist_sched_created_idx'),
         ]
 
+
+class AIWorkspaceActionFeedback(models.Model):
+    """AI 추천 실행 목록에 대한 사용자의 현장 답변과 AI 판단 기록."""
+
+    STATUS_CHOICES = [
+        ('answered', '답변 기록'),
+        ('next_action', '다음 액션'),
+        ('resolved', '종료'),
+        ('dismissed', '목록 제외'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_workspace_action_feedbacks', verbose_name="사용자")
+    followup = models.ForeignKey(
+        FollowUp,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ai_workspace_action_feedbacks',
+        verbose_name="관련 고객",
+    )
+    history = models.ForeignKey(
+        History,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ai_workspace_action_feedbacks',
+        verbose_name="생성된 영업노트",
+    )
+    action_id = models.CharField(max_length=160, verbose_name="AI 액션 ID")
+    action_kind = models.CharField(max_length=50, blank=True, default='', verbose_name="AI 액션 유형")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='answered', verbose_name="처리 상태")
+    feedback = models.TextField(verbose_name="현장 답변")
+    ai_result = models.JSONField(default=dict, blank=True, verbose_name="AI 판단 결과")
+    action_snapshot = models.JSONField(default=dict, blank=True, verbose_name="액션 스냅샷")
+    resolved_at = models.DateTimeField(blank=True, null=True, verbose_name="종료 시각")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.action_id} ({self.get_status_display()})"
+
+    class Meta:
+        verbose_name = "AI 추천 실행 답변"
+        verbose_name_plural = "AI 추천 실행 답변 목록"
+        ordering = ['-updated_at']
+        unique_together = ('user', 'action_id')
+        indexes = [
+            models.Index(fields=['user', 'action_id'], name='ai_fb_user_action_idx'),
+            models.Index(fields=['user', 'status', '-updated_at'], name='ai_fb_user_status_idx'),
+            models.Index(fields=['followup', 'status'], name='ai_fb_follow_status_idx'),
+        ]
+
 # 히스토리 첨부파일 (HistoryFile) 모델
 class HistoryFile(models.Model):
     history = models.ForeignKey(History, on_delete=models.CASCADE, related_name='files', verbose_name="관련 히스토리")

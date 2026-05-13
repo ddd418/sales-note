@@ -2432,6 +2432,21 @@ export type AIWorkspaceActionEvidence = {
   href?: string;
 };
 
+export type AIWorkspaceActionFeedback = {
+  status: 'answered' | 'next_action' | 'resolved' | 'dismissed';
+  statusLabel: string;
+  feedback: string;
+  summary: string;
+  nextAction: string;
+  nextActionDate: string | null;
+  reason: string;
+  decision: string;
+  source: 'openai' | 'fallback' | '';
+  updatedAt: string | null;
+  historyId: number | null;
+  historyHref: string;
+};
+
 export type AIWorkspaceAction = {
   id: string;
   kind: AIWorkspaceActionKind;
@@ -2439,6 +2454,7 @@ export type AIWorkspaceAction = {
   priorityScore: number;
   priorityLabel: string;
   title: string;
+  followupId: number | null;
   customer: string;
   company: string;
   department: string;
@@ -2447,6 +2463,7 @@ export type AIWorkspaceAction = {
   evidence: AIWorkspaceActionEvidence[];
   recommendedAction: string;
   draftTypes: AIWorkspaceDraftType[];
+  feedback: AIWorkspaceActionFeedback | null;
   hrefs: {
     customer?: string;
     schedule?: string;
@@ -2501,6 +2518,22 @@ export type AIWorkspaceActionDraftResponse = {
   };
   evidence: AIWorkspaceActionEvidence[];
   requiresHumanApproval: boolean;
+  error?: string;
+  message?: string;
+};
+
+export type AIWorkspaceActionFeedbackResponse = {
+  success?: boolean;
+  source: 'openai' | 'fallback';
+  generatedAt: string;
+  actionId: string;
+  action: AIWorkspaceAction;
+  feedback: AIWorkspaceActionFeedback;
+  history: {
+    id: number | null;
+    href: string;
+  };
+  hidden: boolean;
   error?: string;
   message?: string;
 };
@@ -6366,6 +6399,34 @@ export async function generateAIWorkspaceActionDraft(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI action draft failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function submitAIWorkspaceActionFeedback(
+  actionId: string,
+  feedback: string,
+): Promise<AIWorkspaceActionFeedbackResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/api/ai-workspace/actions/feedback/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ actionId, feedback }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI action feedback API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceActionFeedbackResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI action feedback failed: ${response.status}`);
   }
   return data;
 }

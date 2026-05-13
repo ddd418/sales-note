@@ -180,6 +180,7 @@ import {
   runMailboxAction,
   runMailboxSync,
   sendMailboxEmail,
+  submitAIWorkspaceActionFeedback,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateCustomer as updateCustomerRecord,
@@ -11992,6 +11993,13 @@ const aiDraftTypeLabels: Record<AIWorkspaceDraftType, string> = {
   weekly_report: '보고',
 };
 
+const aiDraftButtonLabels: Record<AIWorkspaceDraftType, string> = {
+  email: '메일 초안',
+  note: '노트 초안',
+  questions: '질문 초안',
+  weekly_report: '보고 초안',
+};
+
 function formatAIActionDate(value: string | null) {
   if (!value) {
     return '';
@@ -12067,10 +12075,18 @@ function AIWorkspaceDailyBriefPanel({ data }: { data: AIWorkspaceData }) {
 function AIWorkspaceActionQueue({
   actions,
   draftLoadingKey,
+  feedbackDrafts,
+  feedbackSavingId,
+  onFeedbackChange,
+  onSubmitFeedback,
   onGenerateDraft,
 }: {
   actions: AIWorkspaceAction[];
   draftLoadingKey: string;
+  feedbackDrafts: Record<string, string>;
+  feedbackSavingId: string;
+  onFeedbackChange: (actionId: string, value: string) => void;
+  onSubmitFeedback: (action: AIWorkspaceAction) => void;
   onGenerateDraft: (action: AIWorkspaceAction, draftType: AIWorkspaceDraftType) => void;
 }) {
   if (actions.length === 0) {
@@ -12079,57 +12095,94 @@ function AIWorkspaceActionQueue({
 
   return (
     <div className="ai-action-list">
-      {actions.slice(0, 8).map((action) => (
-        <article className={`ai-action-card ${action.kind}`} key={action.id}>
-          <div className="ai-action-card-head">
-            <div>
-              <span>{action.kindLabel}</span>
-              <strong>{action.title}</strong>
-              <small>{[action.company, action.department, action.customer].filter(Boolean).join(' · ')}</small>
+      {actions.slice(0, 8).map((action) => {
+        const feedbackText = feedbackDrafts[action.id] ?? '';
+        const feedbackInputId = `ai-feedback-${action.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+        const isSavingFeedback = feedbackSavingId === action.id;
+        return (
+          <article className={`ai-action-card ${action.kind}`} key={action.id}>
+            <div className="ai-action-card-head">
+              <div>
+                <span>{action.kindLabel}</span>
+                <strong>{action.title}</strong>
+                <small>{[action.company, action.department, action.customer].filter(Boolean).join(' · ')}</small>
+              </div>
+              <div className="ai-action-score">
+                <span>{action.priorityLabel}</span>
+                <strong>{formatNumber(action.priorityScore)}</strong>
+              </div>
             </div>
-            <div className="ai-action-score">
-              <span>{action.priorityLabel}</span>
-              <strong>{formatNumber(action.priorityScore)}</strong>
+            <p>{action.recommendedAction}</p>
+            <div className="ai-action-meta">
+              {action.moneyImpact ? <span>{formatWon(action.moneyImpact)}</span> : null}
+              {action.dueDate ? <span>기한 {formatAIActionDate(action.dueDate)}</span> : null}
             </div>
-          </div>
-          <p>{action.recommendedAction}</p>
-          <div className="ai-action-meta">
-            {action.moneyImpact ? <span>{formatWon(action.moneyImpact)}</span> : null}
-            {action.dueDate ? <span>기한 {formatAIActionDate(action.dueDate)}</span> : null}
-          </div>
-          {action.evidence.length > 0 ? (
-            <div className="ai-evidence-list">
-              {action.evidence.slice(0, 4).map((item) => (
-                <span key={`${action.id}-${item.label}-${item.value}`}>
-                  <b>{item.label}</b>
-                  {item.value}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          <div className="ai-action-buttons">
-            {action.draftTypes.map((draftType) => {
-              const loadingKey = `${action.id}:${draftType}`;
-              return (
+            {action.evidence.length > 0 ? (
+              <div className="ai-evidence-list">
+                {action.evidence.slice(0, 4).map((item) => (
+                  <span key={`${action.id}-${item.label}-${item.value}`}>
+                    <b>{item.label}</b>
+                    {item.value}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {action.feedback ? (
+              <div className="ai-action-feedback-status">
+                <CheckCircle2 size={16} />
+                <div>
+                  <strong>{action.feedback.statusLabel}</strong>
+                  <span>{action.feedback.feedback}</span>
+                  {action.feedback.nextAction ? <small>{action.feedback.nextAction}</small> : null}
+                </div>
+              </div>
+            ) : null}
+            <div className="ai-action-feedback-form">
+              <label htmlFor={feedbackInputId}>현장 답변 기록</label>
+              <textarea
+                id={feedbackInputId}
+                maxLength={1200}
+                onChange={(event) => onFeedbackChange(action.id, event.target.value)}
+                placeholder="예: 고객이 아직 안산대요 / 다음달 예산 확정 후 다시 연락 / 추가 자료를 메일로 요청"
+                rows={3}
+                value={feedbackText}
+              />
+              <div className="ai-action-feedback-footer">
                 <button
-                  disabled={draftLoadingKey === loadingKey}
-                  key={draftType}
-                  onClick={() => onGenerateDraft(action, draftType)}
+                  className="ai-action-feedback-submit"
+                  disabled={isSavingFeedback || !feedbackText.trim()}
+                  onClick={() => onSubmitFeedback(action)}
                   type="button"
                 >
-                  {draftLoadingKey === loadingKey ? <Loader2 className="spin-icon" size={14} /> : <Sparkles size={14} />}
-                  {aiDraftTypeLabels[draftType]}
+                  {isSavingFeedback ? <Loader2 className="spin-icon" size={14} /> : <Send size={14} />}
+                  {isSavingFeedback ? '기록 중' : '기록하고 AI 판단'}
                 </button>
-              );
-            })}
-            {action.hrefs.customer ? <a href={action.hrefs.customer}>고객</a> : null}
-            {action.hrefs.schedule ? <a href={action.hrefs.schedule}>일정</a> : null}
-            {action.hrefs.note ? <a href={action.hrefs.note}>노트</a> : null}
-            {action.hrefs.report ? <a href={action.hrefs.report}>보고</a> : null}
-            {action.hrefs.ai ? <a href={action.hrefs.ai}>AI</a> : null}
-          </div>
-        </article>
-      ))}
+              </div>
+            </div>
+            <div className="ai-action-buttons">
+              {action.draftTypes.map((draftType) => {
+                const loadingKey = `${action.id}:${draftType}`;
+                return (
+                  <button
+                    disabled={draftLoadingKey === loadingKey}
+                    key={draftType}
+                    onClick={() => onGenerateDraft(action, draftType)}
+                    type="button"
+                  >
+                    {draftLoadingKey === loadingKey ? <Loader2 className="spin-icon" size={14} /> : <Sparkles size={14} />}
+                    {aiDraftButtonLabels[draftType]}
+                  </button>
+                );
+              })}
+              {action.hrefs.customer ? <a href={action.hrefs.customer}>고객 보기</a> : null}
+              {action.hrefs.schedule ? <a href={action.hrefs.schedule}>일정 보기</a> : null}
+              {action.hrefs.note ? <a href={action.hrefs.note}>노트 보기</a> : null}
+              {action.hrefs.report ? <a href={action.hrefs.report}>보고 작성</a> : null}
+              {action.hrefs.ai ? <a href={action.hrefs.ai}>AI 분석</a> : null}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -12195,6 +12248,10 @@ function AIWorkspacePage({
   const [draftResult, setDraftResult] = useState<AIWorkspaceActionDraftResponse | null>(null);
   const [draftError, setDraftError] = useState('');
   const [copiedDraft, setCopiedDraft] = useState(false);
+  const [actionFeedbackDrafts, setActionFeedbackDrafts] = useState<Record<string, string>>({});
+  const [actionFeedbackSavingId, setActionFeedbackSavingId] = useState('');
+  const [actionFeedbackMessage, setActionFeedbackMessage] = useState('');
+  const [actionFeedbackError, setActionFeedbackError] = useState('');
   const [featuredVerificationNotes, setFeaturedVerificationNotes] = useState<Record<number, string>>({});
   const [featuredVerifyingId, setFeaturedVerifyingId] = useState<number | null>(null);
   const [featuredRunningId, setFeaturedRunningId] = useState<number | null>(null);
@@ -12223,6 +12280,44 @@ function AIWorkspacePage({
       setDraftError(error instanceof Error ? error.message : 'AI 초안 생성에 실패했습니다.');
     } finally {
       setDraftLoadingKey('');
+    }
+  };
+
+  const handleActionFeedbackChange = (actionId: string, value: string) => {
+    setActionFeedbackDrafts((previous) => ({
+      ...previous,
+      [actionId]: value,
+    }));
+  };
+
+  const handleSubmitActionFeedback = async (action: AIWorkspaceAction) => {
+    const feedback = (actionFeedbackDrafts[action.id] || '').trim();
+    if (!feedback || actionFeedbackSavingId) {
+      return;
+    }
+
+    setActionFeedbackSavingId(action.id);
+    setActionFeedbackError('');
+    setActionFeedbackMessage('');
+    try {
+      const result = await submitAIWorkspaceActionFeedback(action.id, feedback);
+      setActionFeedbackDrafts((previous) => {
+        const next = { ...previous };
+        delete next[action.id];
+        return next;
+      });
+      await onRefresh({ departmentId: data?.featuredDepartment?.departmentId ?? selectedDepartmentId });
+      if (result.hidden) {
+        setActionFeedbackMessage('답변을 기록했고 추천 실행 목록에서 정리했습니다.');
+      } else if (result.feedback.nextAction) {
+        setActionFeedbackMessage(`답변을 기록했습니다. 다음 액션: ${result.feedback.nextAction}`);
+      } else {
+        setActionFeedbackMessage(result.message || '답변을 기록했습니다.');
+      }
+    } catch (error) {
+      setActionFeedbackError(error instanceof Error ? error.message : '답변 기록에 실패했습니다.');
+    } finally {
+      setActionFeedbackSavingId('');
     }
   };
 
@@ -12395,9 +12490,15 @@ function AIWorkspacePage({
                 <Target size={18} />
               </div>
               {draftError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{draftError}</span></div> : null}
+              {actionFeedbackError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{actionFeedbackError}</span></div> : null}
+              {actionFeedbackMessage ? <div className="dashboard-api-alert compact success"><Check size={16} /><span>{actionFeedbackMessage}</span></div> : null}
               <AIWorkspaceActionQueue
                 actions={data.actionQueue || []}
                 draftLoadingKey={draftLoadingKey}
+                feedbackDrafts={actionFeedbackDrafts}
+                feedbackSavingId={actionFeedbackSavingId}
+                onFeedbackChange={handleActionFeedbackChange}
+                onSubmitFeedback={handleSubmitActionFeedback}
                 onGenerateDraft={handleGenerateActionDraft}
               />
             </section>
