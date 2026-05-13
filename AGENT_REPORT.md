@@ -15153,12 +15153,14 @@ M2: 견적 불러오기/부분 납품 방어 강화. The next step should make d
 ### 11. 다음 작업자 인수인계
 
 - 현재 작업은 M1 `일정 상세 정합성 패널`까지 완료, 커밋, 푸시, Railway 배포, 운영 비로그인 스모크 확인까지 끝난 상태입니다.
-- 최신 GitHub `main` 기준 커밋은 `f106e60 docs: record commercial checks deployment`입니다. 실제 기능 구현 커밋은 바로 이전 `815a6a0 feat: add schedule commercial checks`입니다.
+- 기능 구현 커밋은 `815a6a0 feat: add schedule commercial checks`이고, 배포 결과 기록 커밋은 `f106e60 docs: record commercial checks deployment`입니다.
+- 이 인수인계 섹션은 이후 문서 전용 커밋으로 추가됐습니다. 다음 작업자는 시작 시 `git log --oneline -3`와 `git status --short`로 최신 `main`과 깨끗한 작업 트리를 먼저 확인하세요.
 - 최신 Railway 상태 확인 결과:
   - `web`: `be399cd7-f238-45cb-851f-58c47357bf61` SUCCESS, commit `f106e60`
   - `sales-note-frontend`: `5930b24d-a28a-40ed-82a4-7bcfa0211ee3` SUCCESS, 배포 메시지 `Deploy commercial checks frontend 815a6a0`
   - 운영 프론트 `/schedules/`는 `/assets/index-DNlZxWfV.js`를 서빙하고, 해당 번들에 `견적/납품 정합성` 및 `commercialChecks`가 포함되어 있습니다.
   - 운영 일정 상세 API는 비로그인 접근 시 `401`을 반환해 인증 보호가 유지됩니다.
+- 인수인계 문서 커밋을 푸시한 직후 Railway CLI OAuth 토큰이 만료되어 추가 자동 배포 상태 조회는 실패했습니다. 문서 전용 변경이라 런타임 영향은 없지만, 다음 작업자는 필요 시 `railway login` 후 `railway deployment list --service web --json`으로 최신 문서 전용 자동 배포 상태를 확인하세요.
 - 사용자에게 운영 수동검수가 아직 완료됐다는 확인을 받지 못했습니다. 다음 작업자는 사용자가 “수동검수 완료” 또는 “M2 진행”을 명시하기 전까지 M2 구현을 시작하지 마세요.
 - 사용자가 수동검수 완료를 알리면 다음 권장 작업은 M2 `견적 불러오기/부분 납품 방어 강화`입니다.
 - M2 시작 전에는 `AGENT_PLAN.md`에 M2 범위와 DB 변경 필요 여부를 먼저 기록하고, 기존 `/reporting/*` 예비 화면과 인증/권한 정책을 유지해야 합니다.
