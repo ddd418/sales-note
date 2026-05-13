@@ -4288,3 +4288,45 @@ python pre_deployment_check.py
 - `python -m py_compile reporting\gmail_views.py reporting\tests.py`
 - `git diff --check`
 - React 코드 변경 시 `cd frontend && npx tsc --noEmit --pretty false && npm run build`
+
+## 2026-05-14 AI 보고 기반 고객 긴급도 세분화 계획
+
+**배경**:
+
+- 사용자가 AI 추천 실행 목록에 현장 상황을 보고하면 `FollowUp.priority`가 대시보드, 고객 목록, 파이프라인의 공통 고객 긴급도 기준이 된다.
+- 이전 동기화는 intent 단위로 일부 긴급도를 조정하지만, 사용자가 직접 “긴급”, “오늘 처리”, “급하지 않음”, “장기”, “보류”처럼 말한 긴급도 신호를 별도 구조로 저장하지 않는다.
+- 특히 기존 고객이 `urgent`인 상태에서 “나중에/장기/급하지 않음”으로 보고하면 후속조치 내용은 바뀌어도 고객 긴급도가 계속 높게 남을 수 있다.
+
+**DB 변경 필요 여부**: 없음.
+
+- 기존 `AIWorkspaceActionFeedback.ai_result` JSON에 `prioritySignal`을 저장한다.
+- 기존 `FollowUp.priority` 필드만 갱신한다.
+
+**구현 범위**:
+
+- AI feedback fallback/OpenAI 판단 결과에 `prioritySignal`을 추가한다.
+  - 지원 값: `urgent`, `followup`, `scheduled`, `long_term`, 없음.
+- fallback 키워드로 명시적 긴급도 신호를 감지한다.
+  - 긴급/오늘/즉시/빨리 → `urgent`
+  - 후속/다음주/재연락/확인 필요 → `followup`
+  - 예정/일정 확정 → `scheduled`
+  - 장기/보류/나중/급하지 않음/다음달/내년 → `long_term`
+- `_ai_workspace_update_followup_for_sync()`가 intent 기본값보다 명시적 `prioritySignal`을 우선 반영하게 한다.
+- `crmSync.changes`에 고객 우선순위 변경 내역을 남겨 프론트의 AI feedback 응답과 감사 메모에서 확인 가능하게 한다.
+- `needs_human_review`는 이전처럼 CRM 상태를 자동 변경하지 않는다.
+- `/ai-workspace/?department_id=<id>`처럼 부서 상세 컨텍스트가 있는 경우 `AI 추천 실행 목록`은 해당 부서의 고객/견적/일정/메일/후속/PainPoint 액션만 반환한다.
+- `/ai-workspace/`처럼 부서 파라미터가 없는 일반 화면은 기존 전체 action queue를 유지한다.
+
+**검증 계획**:
+
+- AI 보고에 “긴급/오늘 처리”가 들어오면 `follow_up_needed`라도 고객 `FollowUp.priority`가 `urgent`로 올라가는 테스트 추가.
+- AI 보고에 “장기/보류/급하지 않음”이 들어오면 기존 `urgent` 고객도 `long_term`으로 내려가고 대시보드 우선 고객 목록에서 빠지는 테스트 추가.
+- 부서 상세 `department_id` 요청에서는 다른 부서 action이 `actionQueue`에 섞이지 않고, 일반 요청에서는 기존처럼 전체 action이 유지되는 테스트 추가.
+- 기존 positive/resolved/email_waiting 테스트가 깨지지 않는지 `AIWorkspaceSummaryApiTests` 전체 실행.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 프론트 타입/빌드는 API shape 후방 호환이면 변경 없음. 필요 시 `cd frontend && npx tsc --noEmit --pretty false && npm run build`.

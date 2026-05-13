@@ -6487,6 +6487,97 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn(other_department.name, prompt_text)
         self.assertEqual({target['department'] for target in payload['followupTargets']}, {selected_department.name})
 
+    def test_ai_workspace_detail_scopes_action_queue_to_requested_department(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import History, Quote, Schedule
+
+        selected_followup, selected_department = self._create_customer(self.user, '상세액션')
+        other_followup, other_department = self._create_customer(self.user, '전체액션')
+        self._create_department_analysis(self.user, selected_department)
+        self._create_department_analysis(self.user, other_department)
+        today = timezone.localdate()
+
+        selected_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=selected_followup,
+            visit_date=today,
+            visit_time=time(9, 30),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('1200000'),
+        )
+        selected_quote = Quote.objects.create(
+            quote_number='AI-DETAIL-Q-SELECTED',
+            schedule=selected_schedule,
+            followup=selected_followup,
+            user=self.user,
+            valid_until=today + timedelta(days=2),
+            stage='sent',
+            subtotal=Decimal('1200000'),
+            probability=70,
+        )
+        selected_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=selected_followup,
+            action_type='customer_meeting',
+            content='상세액션 후속 확인',
+            next_action='상세액션 고객만 확인',
+            next_action_date=today,
+        )
+        other_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=other_followup,
+            visit_date=today,
+            visit_time=time(10, 30),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('2200000'),
+        )
+        other_quote = Quote.objects.create(
+            quote_number='AI-DETAIL-Q-OTHER',
+            schedule=other_schedule,
+            followup=other_followup,
+            user=self.user,
+            valid_until=today + timedelta(days=1),
+            stage='sent',
+            subtotal=Decimal('2200000'),
+            probability=75,
+        )
+        other_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=other_followup,
+            action_type='customer_meeting',
+            content='전체액션 후속 확인',
+            next_action='전체액션 고객 확인',
+            next_action_date=today,
+        )
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(self.url, {'department_id': selected_department.id})
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        detail_action_ids = {item['id'] for item in detail_payload['actionQueue']}
+        self.assertIn(f'quote:{selected_quote.id}', detail_action_ids)
+        self.assertIn(f'followup:{selected_history.id}', detail_action_ids)
+        self.assertNotIn(f'quote:{other_quote.id}', detail_action_ids)
+        self.assertNotIn(f'followup:{other_history.id}', detail_action_ids)
+        self.assertTrue(all(
+            item.get('department') == selected_department.name or item['kind'] == 'painpoint_validation'
+            for item in detail_payload['actionQueue']
+        ))
+        self.assertNotIn('weekly_report', {item['kind'] for item in detail_payload['actionQueue']})
+
+        general_response = self.client.get(self.url)
+        self.assertEqual(general_response.status_code, 200)
+        general_action_ids = {item['id'] for item in general_response.json()['actionQueue']}
+        self.assertIn(f'quote:{selected_quote.id}', general_action_ids)
+        self.assertIn(f'quote:{other_quote.id}', general_action_ids)
+
     def test_ai_workspace_summary_api_ignores_inaccessible_requested_department(self):
         _own_followup, own_department = self._create_customer(self.user, '내부서')
         _coworker_followup, coworker_department = self._create_customer(self.coworker, '동료부서')
@@ -6936,7 +7027,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             for change in feedback.ai_result['crmSync']['changes']
         ))
 
-    def test_backfill_ai_feedback_crm_sync_positive_legacy_raises_customer_priority(self):
+    def test_backfill_ai_feedback_crm_sync_positive_legacy_uses_explicit_followup_priority(self):
         from datetime import timedelta
         from io import StringIO
 
@@ -6994,7 +7085,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(feedback.ai_result['intent'], 'positive_buying_signal')
         self.assertEqual(feedback.ai_result['crmSync']['taskHistoryId'], history.id)
         self.assertIn('다음주 재연락', history.next_action)
-        self.assertEqual(followup.priority, 'urgent')
+        self.assertEqual(followup.priority, 'followup')
+        self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'followup')
         self.assertEqual(followup.pipeline_stage, 'negotiation')
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
@@ -7068,6 +7160,138 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('추가 자료', action_payload['feedback']['feedback'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_applies_explicit_urgent_priority_systemwide(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import AIWorkspaceActionFeedback, Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '긴급보고')
+        followup.priority = 'scheduled'
+        followup.customer_grade = 'C'
+        followup.ai_score = 30
+        followup.pipeline_stage = 'quote'
+        followup.save(update_fields=['priority', 'customer_grade', 'ai_score', 'pipeline_stage', 'updated_at'])
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(13, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('1800000'),
+        )
+        quote = Quote.objects.create(
+            quote_number='AI-FEEDBACK-Q-URGENT',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=5),
+            stage='sent',
+            subtotal=Decimal('1800000'),
+            probability=70,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({
+                'actionId': f'quote:{quote.id}',
+                'feedback': '고객이 자료를 요청했고 오늘 중 바로 처리해야 하는 긴급 건입니다',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
+        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertTrue(any(
+            change['label'] == 'AI 보고 우선순위 긴급 반영'
+            for change in payload['crmSync']['changes']
+        ))
+
+        followup.refresh_from_db()
+        self.assertEqual(followup.priority, 'urgent')
+        feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'quote:{quote.id}')
+        self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'urgent')
+
+        dashboard_response = self.client.get(reverse('reporting:dashboard_summary_api'))
+        self.assertEqual(dashboard_response.status_code, 200)
+        priority_customers = dashboard_response.json()['priorityCustomers']
+        dashboard_customer = next(item for item in priority_customers if item['id'] == followup.id)
+        self.assertEqual(dashboard_customer['priority'], 'urgent')
+        self.assertEqual(dashboard_customer['priorityLabel'], '긴급')
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_downgrades_long_term_priority_systemwide(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '장기보고')
+        followup.priority = 'urgent'
+        followup.customer_grade = 'C'
+        followup.ai_score = 25
+        followup.pipeline_stage = 'quote'
+        followup.save(update_fields=['priority', 'customer_grade', 'ai_score', 'pipeline_stage', 'updated_at'])
+        other_priority_customer, _other_department = self._create_customer(self.user, '다른긴급')
+        other_priority_customer.customer_grade = 'C'
+        other_priority_customer.save(update_fields=['customer_grade', 'updated_at'])
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(14, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('1600000'),
+        )
+        quote = Quote.objects.create(
+            quote_number='AI-FEEDBACK-Q-LONG',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=10),
+            stage='sent',
+            subtotal=Decimal('1600000'),
+            probability=60,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({
+                'actionId': f'quote:{quote.id}',
+                'feedback': '고객이 나중에 다음달쯤 다시 보자고 했고 급하지 않음. 장기 보류로 두세요',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
+        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'long_term')
+        self.assertTrue(any(
+            change['label'] == 'AI 보고 우선순위 장기 반영'
+            for change in payload['crmSync']['changes']
+        ))
+
+        followup.refresh_from_db()
+        self.assertEqual(followup.priority, 'long_term')
+
+        dashboard_response = self.client.get(reverse('reporting:dashboard_summary_api'))
+        self.assertEqual(dashboard_response.status_code, 200)
+        priority_ids = {item['id'] for item in dashboard_response.json()['priorityCustomers']}
+        self.assertIn(other_priority_customer.id, priority_ids)
+        self.assertNotIn(followup.id, priority_ids)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_updates_existing_followup_history_for_positive_signal(self, _mock_client):
         from reporting.models import AIWorkspaceActionFeedback, History
 
@@ -7100,10 +7324,11 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('구매 절차', history.next_action)
         self.assertIsNotNone(history.next_action_date)
         followup.refresh_from_db()
-        self.assertEqual(followup.priority, 'urgent')
+        self.assertEqual(followup.priority, 'followup')
         self.assertEqual(followup.pipeline_stage, 'negotiation')
         feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'followup:{history.id}')
         self.assertEqual(feedback.history.action_type, 'memo')
+        self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'followup')
         self.assertIn('기존 후속조치 갱신', feedback.ai_result['crmSync']['changes'][0]['label'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
