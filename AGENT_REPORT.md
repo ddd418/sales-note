@@ -15132,8 +15132,9 @@ M2: 견적 불러오기/부분 납품 방어 강화. The next step should make d
 
 - Implementation commit: `815a6a0 feat: add schedule commercial checks`
 - GitHub push: `main` updated to `815a6a0`
-- Railway `web`: `b9f470b7-44bb-40f4-940b-8b0bf9d9b785` SUCCESS, commit `815a6a0`
-- Railway `sales-note-frontend`: `5930b24d-a28a-40ed-82a4-7bcfa0211ee3` SUCCESS, message `Deploy commercial checks frontend 815a6a0`
+- Railway `web`: 기능 배포 `b9f470b7-44bb-40f4-940b-8b0bf9d9b785` SUCCESS, commit `815a6a0`
+- Railway `web`: 최신 문서 전용 배포 `be399cd7-f238-45cb-851f-58c47357bf61` SUCCESS, commit `f106e60`
+- Railway `sales-note-frontend`: `5930b24d-a28a-40ed-82a4-7bcfa0211ee3` SUCCESS, 배포 메시지 `Deploy commercial checks frontend 815a6a0`
 - Production frontend smoke: `GET https://sales-note-frontend-production.up.railway.app/schedules/` returned 200 and served `/assets/index-DNlZxWfV.js`; the bundle contains `견적/납품 정합성` and `commercialChecks`.
 - Production API auth smoke:
   - `GET https://web-production-5096.up.railway.app/reporting/api/schedules/1/` returned 401 for anonymous access.
@@ -15148,3 +15149,18 @@ M2: 견적 불러오기/부분 납품 방어 강화. The next step should make d
 3. 견적서 구분별 품목 수, 견적 금액, 납품 반영, 미납 잔액, 등록 견적서 수가 실제 일정 품목과 맞는지 확인합니다.
 4. 납품 일정 상세를 열고 납품 금액, 원본 견적 연결, 자동첨부 후보, 납품 노트 금액 경고가 표시되는지 확인합니다.
 5. 기존 `견적 불러오기`, `편집`, `서류 다운로드`, `메일 발송`, `보고 작성` 링크가 계속 동작하는지 확인합니다.
+
+### 11. 다음 작업자 인수인계
+
+- 현재 작업은 M1 `일정 상세 정합성 패널`까지 완료, 커밋, 푸시, Railway 배포, 운영 비로그인 스모크 확인까지 끝난 상태입니다.
+- 최신 GitHub `main` 기준 커밋은 `f106e60 docs: record commercial checks deployment`입니다. 실제 기능 구현 커밋은 바로 이전 `815a6a0 feat: add schedule commercial checks`입니다.
+- 최신 Railway 상태 확인 결과:
+  - `web`: `be399cd7-f238-45cb-851f-58c47357bf61` SUCCESS, commit `f106e60`
+  - `sales-note-frontend`: `5930b24d-a28a-40ed-82a4-7bcfa0211ee3` SUCCESS, 배포 메시지 `Deploy commercial checks frontend 815a6a0`
+  - 운영 프론트 `/schedules/`는 `/assets/index-DNlZxWfV.js`를 서빙하고, 해당 번들에 `견적/납품 정합성` 및 `commercialChecks`가 포함되어 있습니다.
+  - 운영 일정 상세 API는 비로그인 접근 시 `401`을 반환해 인증 보호가 유지됩니다.
+- 사용자에게 운영 수동검수가 아직 완료됐다는 확인을 받지 못했습니다. 다음 작업자는 사용자가 “수동검수 완료” 또는 “M2 진행”을 명시하기 전까지 M2 구현을 시작하지 마세요.
+- 사용자가 수동검수 완료를 알리면 다음 권장 작업은 M2 `견적 불러오기/부분 납품 방어 강화`입니다.
+- M2 시작 전에는 `AGENT_PLAN.md`에 M2 범위와 DB 변경 필요 여부를 먼저 기록하고, 기존 `/reporting/*` 예비 화면과 인증/권한 정책을 유지해야 합니다.
+- M1 관련 주요 파일은 `reporting/views.py`, `reporting/tests.py`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`입니다.
+- M1은 새 DB 필드나 migration을 추가하지 않았습니다.
