@@ -15880,3 +15880,117 @@ git log --oneline -3
 - 문서 인수인계만 완료했습니다.
 - 코드 구현은 시작하지 않았습니다.
 - 배포는 필요 없는 문서 변경입니다.
+
+---
+
+## AI Situation Sync / CRM State Reconciliation (2026-05-14)
+
+### 1. Summary
+
+- `AI 추천 실행 목록`의 현장 답변 저장을 CRM 상태 동기화 흐름으로 확장했습니다.
+- 자연어 답변을 `구매 보류/종료`, `후속조치 필요`, `긍정 신호`, `메일 답장 대기`, `검토 필요` intent로 정규화합니다.
+- 구매 의사 없음 답변은 관련 열린 후속 History를 종료 처리하고, 견적/견적 일정/고객 상태를 보류 또는 실주 상태로 정리합니다.
+- 후속 필요/긍정/메일 대기 답변은 기존 후속 History를 갱신하거나 새 후속 History를 생성합니다.
+- 기존 `EmailLog`를 읽어 발신 후 회신이 없는 메일을 AI action queue의 `메일 답장 대기` 후보로 표시합니다.
+
+### 2. Files Changed
+
+- `reporting/views.py`: AI feedback intent 정규화, CRM 상태 동기화 helper, 메일 답장 대기 action 후보, reviewed 후속조치 필터 보강.
+- `reporting/tests.py`: 구매 보류/종료, 긍정 신호, 메일 답장 대기, 검토 필요, 미회신 메일 action 회귀 테스트 추가.
+- `frontend/src/api.ts`: feedback `intent`, `crmSync`, `email_waiting` action 타입 추가.
+- `frontend/src/App.tsx`: feedback 카드와 성공 메시지에 CRM 반영 결과 표시.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### 3. CRM Improvements
+
+- “아직 안산대요” 같은 답변이 메모만 남기고 끝나지 않고 열린 후속조치 종료, 견적 거절/일정 취소, 고객 보류/실주 상태로 이어집니다.
+- “관심 있다고 하고 다음주에 다시 연락달래요” 같은 답변은 기존 후속조치 갱신 또는 새 후속조치 생성으로 반영됩니다.
+- “메일 보냈는데 답장이 안왔어요”는 메일 답장 대기 후속조치로 저장됩니다.
+- 실제 저장된 `EmailLog`에 발신 후 수신 회신이 없는 스레드가 있으면 AI 지휘석에서 답장 대기 action으로 보입니다.
+- `reviewed_at`으로 종료된 후속조치는 대시보드/고객 상세/AI action queue의 열린 할 일에서 제외됩니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/*`, AI 지휘석, 초안 생성 API, feedback 이력 패널, 로그인/CSRF 보호는 유지했습니다.
+- `can_use_ai=False` 사용자는 기존처럼 feedback API가 차단됩니다.
+- 외부 Gmail/Microsoft 365 자동 조회를 새로 추가하지 않았고, 기존 `EmailLog` 저장 데이터만 읽습니다.
+
+### 5. Commands Run and Results
+
+```text
+git status --short
+→ clean at start
+
+git log --oneline -3
+→ 057edfa docs: hand off AI situation sync plan
+→ 9192b0f docs: record AI feedback performance deployment
+→ 42592ae feat: add AI feedback performance view
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 20 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-gjBpo90j.js / dist/assets/index-Dztpo0tz.css generated
+→ Vite chunk-size warning only
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 21 tests, OK
+
+python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 19 tests, OK
+```
+
+### 6. Local Smoke
+
+- Browser plugin의 Node 실행 도구가 노출되지 않아 Playwright CLI로 대체했습니다.
+- 로컬 Django `127.0.0.1:8000`, Vite `127.0.0.1:5173`를 실행했습니다.
+- `http://127.0.0.1:5173/ai-workspace/` 접근 시 비로그인 상태에서 `/reporting/login/?next=%2Fai-workspace%2F`로 이동하는 것을 확인했습니다.
+- 로컬 콘솔에는 expected `favicon.ico` 404와 비로그인 AI workspace API 401만 관찰됐습니다.
+
+### 7. Production Deployment Status
+
+- 대기 중: 런타임 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 smoke 예정.
+
+### 8. Known Limitations
+
+- 이번 작업은 사용자가 입력한 상황과 기존 `EmailLog`를 기반으로 동기화합니다. 외부 메일함을 자동으로 주기 조회하는 새 연동은 추가하지 않았습니다.
+- 자연어 intent 판단은 OpenAI 실패 시 키워드 fallback입니다. 실제 표현이 쌓이면 키워드와 프롬프트를 더 세분화할 수 있습니다.
+- 구매 완료 신호는 견적/일정 완료 쪽으로 정리하지만, 실제 납품 품목 생성이나 매출 확정은 사용자가 기존 납품/서류 흐름에서 처리해야 합니다.
+
+### 9. Recommended Next Task
+
+운영 수동검수 후 `M2 Quote Import and Partial Delivery Guards`로 넘어가 견적 불러오기/부분 납품 중복 방어를 강화하는 것이 적절합니다.
+
+### 10. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/ai-workspace/`
+2. 로그인 후 `AI 추천 실행 목록`에서 견적 후속 액션을 고릅니다.
+3. `홍철화 연구원은 견적을 줬지만 아직 안산대요`처럼 구매 의사 없음 답변을 저장합니다.
+4. 성공 메시지에 후속조치 종료/보류 반영이 표시되고, 해당 action이 새로고침 후 반복 노출되지 않는지 확인합니다.
+5. 고객 상세 또는 영업노트에서 `[AI 추천 실행 답변]` 메모와 CRM 적용 내역을 확인합니다.
+6. 다른 action에 `관심 있다고 하고 다음주에 다시 연락달래요`를 저장하고 후속조치가 생성/갱신되는지 확인합니다.
+7. `메일 보냈는데 아직 답장이 안왔어요`를 저장하고 답장 대기 후속조치가 생기는지 확인합니다.
+8. 실제 메일 발송 로그가 있는 고객은 발신 후 회신 없는 메일이 `메일 답장 대기` action으로 보이는지 확인합니다.
+9. 애매한 답변을 입력했을 때 `검토 필요`로 기록되고 고객/견적 상태가 자동 변경되지 않는지 확인합니다.

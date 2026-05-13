@@ -2421,6 +2421,7 @@ export type AIWorkspaceDraftType = 'email' | 'note' | 'questions' | 'weekly_repo
 export type AIWorkspaceActionKind =
   | 'quote_followup'
   | 'delivery_risk'
+  | 'email_waiting'
   | 'painpoint_validation'
   | 'customer_followup'
   | 'weekly_report'
@@ -2435,6 +2436,14 @@ export type AIWorkspaceActionEvidence = {
 export type AIWorkspaceActionFeedback = {
   status: 'answered' | 'next_action' | 'resolved' | 'dismissed';
   statusLabel: string;
+  intent:
+    | 'resolved_no_purchase'
+    | 'follow_up_needed'
+    | 'positive_buying_signal'
+    | 'email_waiting'
+    | 'needs_human_review'
+    | string;
+  intentLabel: string;
   feedback: string;
   summary: string;
   nextAction: string;
@@ -2442,6 +2451,21 @@ export type AIWorkspaceActionFeedback = {
   reason: string;
   decision: string;
   source: 'openai' | 'fallback' | '';
+  crmSync: {
+    intent: string;
+    intentLabel: string;
+    applied: boolean;
+    message: string;
+    changes: Array<{
+      label: string;
+      objectType: string;
+      objectId: number | string | null;
+      href: string;
+      detail: string;
+    }>;
+    taskHistoryId: number | null;
+    taskHistoryHref: string;
+  };
   updatedAt: string | null;
   historyId: number | null;
   historyHref: string;
@@ -2471,10 +2495,12 @@ export type AIWorkspaceAction = {
     report?: string;
     ai?: string;
     aiHub?: string;
+    mailboxThread?: string;
     weeklyAiDraft?: string;
     djangoCustomer?: string;
     djangoSchedule?: string;
     djangoNote?: string;
+    djangoMailboxThread?: string;
   };
 };
 
@@ -2488,6 +2514,7 @@ export type AIWorkspaceDailyBrief = {
     urgentActions: number;
     quoteFollowups: number;
     deliveryRisks: number;
+    emailWaiting: number;
     painpointValidations: number;
     customerFollowups: number;
     weeklyReports: number;
@@ -2533,6 +2560,7 @@ export type AIWorkspaceActionFeedbackResponse = {
     id: number | null;
     href: string;
   };
+  crmSync: AIWorkspaceActionFeedback['crmSync'];
   hidden: boolean;
   error?: string;
   message?: string;
@@ -3754,6 +3782,7 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
       urgentActions: 0,
       quoteFollowups: 0,
       deliveryRisks: 0,
+      emailWaiting: 0,
       painpointValidations: 0,
       customerFollowups: 0,
       weeklyReports: 0,

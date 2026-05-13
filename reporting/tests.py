@@ -6699,6 +6699,15 @@ class AIWorkspaceSummaryApiTests(TestCase):
             subtotal=Decimal('1300000'),
             probability=70,
         )
+        open_followup_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='견적 후속 확인 예정',
+            next_action='견적 검토 여부 확인',
+            next_action_date=today - timedelta(days=1),
+        )
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -6712,6 +6721,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(payload['hidden'])
         self.assertEqual(payload['source'], 'fallback')
         self.assertEqual(payload['feedback']['status'], 'resolved')
+        self.assertEqual(payload['feedback']['intent'], 'resolved_no_purchase')
+        self.assertTrue(payload['crmSync']['applied'])
+        self.assertTrue(any(change['label'] == '열린 후속조치 종료' for change in payload['crmSync']['changes']))
 
         feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'quote:{quote.id}')
         self.assertEqual(feedback.status, 'resolved')
@@ -6726,6 +6738,15 @@ class AIWorkspaceSummaryApiTests(TestCase):
                 content__contains='아 이거 고객이 아직 안산대요',
             ).exists()
         )
+        open_followup_history.refresh_from_db()
+        self.assertIsNotNone(open_followup_history.reviewed_at)
+        quote.refresh_from_db()
+        quote_schedule.refresh_from_db()
+        followup.refresh_from_db()
+        self.assertEqual(quote.stage, 'rejected')
+        self.assertEqual(quote_schedule.status, 'cancelled')
+        self.assertEqual(followup.status, 'paused')
+        self.assertEqual(followup.pipeline_stage, 'lost')
 
         summary_response = self.client.get(self.url)
         self.assertEqual(summary_response.status_code, 200)
@@ -6773,13 +6794,23 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertFalse(payload['hidden'])
         self.assertEqual(payload['feedback']['status'], 'next_action')
+        self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
+        self.assertTrue(payload['crmSync']['applied'])
+        self.assertIsNotNone(payload['crmSync']['taskHistoryId'])
 
         feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'quote:{quote.id}')
         self.assertEqual(feedback.status, 'next_action')
         self.assertTrue(
             History.objects.filter(
-                id=feedback.history_id,
+                id=payload['crmSync']['taskHistoryId'],
                 next_action__contains='요청 자료',
+            ).exists()
+        )
+        self.assertTrue(
+            History.objects.filter(
+                id=feedback.history_id,
+                content__contains='CRM 반영',
+                next_action='',
             ).exists()
         )
 
@@ -6791,6 +6822,207 @@ class AIWorkspaceSummaryApiTests(TestCase):
         )
         self.assertEqual(action_payload['feedback']['status'], 'next_action')
         self.assertIn('추가 자료', action_payload['feedback']['feedback'])
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_updates_existing_followup_history_for_positive_signal(self, _mock_client):
+        from reporting.models import AIWorkspaceActionFeedback, History
+
+        followup, department = self._create_customer(self.user, '긍정후속')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='초기 후속',
+            next_action='견적 검토 여부 확인',
+            next_action_date=today,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': f'followup:{history.id}', 'feedback': '관심 있다고 하고 다음주에 다시 연락달래요'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['feedback']['intent'], 'positive_buying_signal')
+        self.assertEqual(payload['crmSync']['taskHistoryId'], history.id)
+        history.refresh_from_db()
+        self.assertIsNone(history.reviewed_at)
+        self.assertIn('구매 절차', history.next_action)
+        self.assertIsNotNone(history.next_action_date)
+        followup.refresh_from_db()
+        self.assertEqual(followup.priority, 'urgent')
+        self.assertEqual(followup.pipeline_stage, 'negotiation')
+        feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'followup:{history.id}')
+        self.assertEqual(feedback.history.action_type, 'memo')
+        self.assertIn('기존 후속조치 갱신', feedback.ai_result['crmSync']['changes'][0]['label'])
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_creates_email_waiting_followup(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import History, Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '메일대기')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(15, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('900000'),
+        )
+        quote = Quote.objects.create(
+            quote_number='AI-FEEDBACK-Q-EMAIL',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=4),
+            stage='sent',
+            subtotal=Decimal('900000'),
+            probability=65,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': f'quote:{quote.id}', 'feedback': '메일 보냈는데 아직 답장이 안왔어요'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['feedback']['intent'], 'email_waiting')
+        self.assertEqual(payload['feedback']['status'], 'next_action')
+        task_id = payload['crmSync']['taskHistoryId']
+        self.assertIsNotNone(task_id)
+        task = History.objects.get(id=task_id)
+        self.assertEqual(task.followup, followup)
+        self.assertIn('메일 회신', task.next_action)
+        self.assertIsNotNone(task.next_action_date)
+
+    def test_ai_workspace_action_queue_includes_sent_email_without_received_reply(self):
+        from datetime import timedelta
+        from reporting.models import EmailLog
+
+        followup, department = self._create_customer(self.user, '메일액션')
+        self._create_department_analysis(self.user, department)
+        sent_at = timezone.now() - timedelta(days=3)
+        waiting_email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='customer@example.com',
+            recipient_email='customer@example.com',
+            subject='견적 확인 요청',
+            body='견적 확인 부탁드립니다.',
+            followup=followup,
+            gmail_message_id='gmail-msg-waiting',
+            gmail_thread_id='gmail-thread-waiting',
+            sent_at=sent_at,
+        )
+        EmailLog.objects.create(
+            user=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='other@example.com',
+            recipient_email='other@example.com',
+            subject='회신 있는 메일',
+            body='회신 있는 메일',
+            followup=followup,
+            gmail_message_id='gmail-msg-replied',
+            gmail_thread_id='gmail-thread-replied',
+            sent_at=sent_at,
+        )
+        EmailLog.objects.create(
+            user=self.user,
+            provider='gmail',
+            email_type='received',
+            is_sent=False,
+            status='received',
+            from_email='other@example.com',
+            to_email='sales@example.com',
+            subject='Re: 회신 있는 메일',
+            body='확인했습니다.',
+            followup=followup,
+            gmail_message_id='gmail-msg-reply',
+            gmail_thread_id='gmail-thread-replied',
+            received_at=timezone.now() - timedelta(days=1),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        action_ids = {item['id'] for item in payload['actionQueue']}
+        self.assertIn(f'email_waiting:{waiting_email.id}', action_ids)
+        self.assertTrue(any(item['kind'] == 'email_waiting' for item in payload['actionQueue']))
+        self.assertEqual(payload['dailyBrief']['counts']['emailWaiting'], 1)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_needs_review_does_not_change_crm_state(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '검토필요')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(16, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('500000'),
+        )
+        quote = Quote.objects.create(
+            quote_number='AI-FEEDBACK-Q-REVIEW',
+            schedule=quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=6),
+            stage='sent',
+            subtotal=Decimal('500000'),
+            probability=55,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': f'quote:{quote.id}', 'feedback': '상황을 다시 확인해봐야 할 것 같습니다'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['feedback']['intent'], 'needs_human_review')
+        self.assertFalse(payload['crmSync']['applied'])
+        quote.refresh_from_db()
+        quote_schedule.refresh_from_db()
+        followup.refresh_from_db()
+        self.assertEqual(quote.stage, 'sent')
+        self.assertEqual(quote_schedule.status, 'scheduled')
+        self.assertEqual(followup.status, 'active')
 
 
 class PipelineApiTests(TestCase):

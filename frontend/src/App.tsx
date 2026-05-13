@@ -12133,7 +12133,14 @@ function AIWorkspaceActionQueue({
                 <div>
                   <strong>{action.feedback.statusLabel}</strong>
                   <span>{action.feedback.feedback}</span>
+                  {action.feedback.intentLabel ? <small>{action.feedback.intentLabel}</small> : null}
                   {action.feedback.nextAction ? <small>{action.feedback.nextAction}</small> : null}
+                  {action.feedback.crmSync?.message ? <small>{action.feedback.crmSync.message}</small> : null}
+                  {action.feedback.crmSync?.changes?.length ? (
+                    <small>
+                      {action.feedback.crmSync.changes.slice(0, 2).map((change) => change.label).join(' · ')}
+                    </small>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -12177,6 +12184,7 @@ function AIWorkspaceActionQueue({
               {action.hrefs.customer ? <a href={action.hrefs.customer}>고객 보기</a> : null}
               {action.hrefs.schedule ? <a href={action.hrefs.schedule}>일정 보기</a> : null}
               {action.hrefs.note ? <a href={action.hrefs.note}>노트 보기</a> : null}
+              {action.hrefs.mailboxThread ? <a href={action.hrefs.mailboxThread}>메일 보기</a> : null}
               {action.hrefs.report ? <a href={action.hrefs.report}>보고 작성</a> : null}
               {action.hrefs.ai ? <a href={action.hrefs.ai}>AI 분석</a> : null}
             </div>
@@ -12398,7 +12406,9 @@ function AIWorkspacePage({
         return next;
       });
       await onRefresh({ departmentId: data?.featuredDepartment?.departmentId ?? selectedDepartmentId });
-      if (result.hidden) {
+      if (result.crmSync?.message) {
+        setActionFeedbackMessage(result.crmSync.message);
+      } else if (result.hidden) {
         setActionFeedbackMessage('답변을 기록했고 추천 실행 목록에서 정리했습니다.');
       } else if (result.feedback.nextAction) {
         setActionFeedbackMessage(`답변을 기록했습니다. 다음 액션: ${result.feedback.nextAction}`);

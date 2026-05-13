@@ -4176,3 +4176,38 @@ python pre_deployment_check.py
 7. `메일 보냈는데 아직 답장이 안왔어요`라고 저장합니다.
 8. 답장 대기 FollowUp/History가 생성되고, 이후 AI 추천에서 미응답 follow-up으로 이어질 수 있는지 확인합니다.
 9. AI 확신이 낮은 표현은 자동 변경 없이 `검토 필요`로 남는지 확인합니다.
+
+### 2026-05-14 구현 계획 갱신
+
+**확인 결과**:
+
+- `FollowUp`은 고객/거래처 레코드이고, 실제 후속 할 일은 `History.next_action`, `History.next_action_date`, `History.reviewed_at` 조합으로 관리된다.
+- `AIWorkspaceActionFeedback`에는 `ai_result` JSON 필드가 있어 intent, CRM 동기화 결과, audit 정보를 migration 없이 저장할 수 있다.
+- 메일 런타임에는 `EmailLog`가 있으며 Gmail/IMAP 발송·수신 동기화 모델과 API가 존재한다. 단, 외부 메일 자동 조회를 새로 붙이지 않고 기존 저장 로그를 읽는 범위로 제한한다.
+- 기존 AI feedback API는 메모 `History`를 만들고 추천 숨김만 처리하며, 원래 후속 History/Quote/Schedule/FollowUp 상태는 정리하지 않는다.
+
+**DB 변경 필요 여부**: 없음. 기존 `History.reviewed_at/reviewer`, `History.next_action/next_action_date`, `FollowUp.status/priority/pipeline_stage`, `Schedule.status`, `Quote.stage`, `AIWorkspaceActionFeedback.ai_result`만 사용한다.
+
+**구현 범위**:
+
+- feedback 판단 결과를 `intent`로 정규화한다.
+  - `resolved_no_purchase`, `follow_up_needed`, `positive_buying_signal`, `email_waiting`, `needs_human_review`.
+- `resolved_no_purchase`는 관련 열린 `History` 후속조치를 검토 완료 처리하고, 견적/견적 일정은 거절 또는 취소 상태로 정리하며, 고객은 보류/장기 또는 lost 단계로 낮춘다.
+- `follow_up_needed`, `positive_buying_signal`, `email_waiting`은 기존 열린 후속 History를 갱신하거나 새 후속 History를 생성한다.
+- `needs_human_review`는 audit 메모만 남기고 상태 자동 변경을 하지 않는다.
+- 적용된 변경사항을 `ai_result.crmSync`와 생성 메모 내용, React feedback 응답에 포함한다.
+- 기존 `EmailLog`의 발신 후 미수신 스레드를 읽어 `email_waiting` AI action 후보를 추가한다.
+- dashboard/API/AI action queue에서 `reviewed_at`으로 종료된 후속조치가 열린 할 일처럼 다시 뜨지 않도록 관련 필터를 보강한다.
+
+**검증 계획**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- 필요 시 dashboard/mailbox 관련 회귀 테스트 일부 실행
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 로컬 smoke 후 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 및 운영 smoke
