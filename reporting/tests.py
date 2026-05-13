@@ -6753,6 +6753,160 @@ class AIWorkspaceSummaryApiTests(TestCase):
         action_ids = {item['id'] for item in summary_response.json()['actionQueue']}
         self.assertNotIn(f'quote:{quote.id}', action_ids)
 
+    def test_backfill_ai_feedback_crm_sync_resolved_legacy_updates_customer_priority(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from io import StringIO
+
+        from django.core.management import call_command
+        from reporting.models import AIWorkspaceActionFeedback, History, Schedule
+
+        followup, department = self._create_customer(self.user, '레거시종료')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(10, 30),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('1500000'),
+        )
+        open_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            schedule=quote_schedule,
+            action_type='customer_meeting',
+            content='견적 제출 후 확인 예정',
+            next_action='견적서 및 비교표 제출',
+            next_action_date=today - timedelta(days=1),
+        )
+        feedback = AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=followup,
+            action_id=f'quote_schedule:{quote_schedule.id}',
+            action_kind='quote_followup',
+            status='resolved',
+            feedback='고객이 아직 안사겠다고 하고 견적은 참고만 한다고 함',
+            ai_result={
+                'decision': 'hide',
+                'summary': '고객이 현재 구매하지 않겠다고 답했습니다.',
+                'nextAction': '추천 목록에서 종료합니다.',
+                'reason': '구매 의사가 없습니다.',
+                'source': 'openai',
+            },
+            action_snapshot={
+                'id': f'quote_schedule:{quote_schedule.id}',
+                'kind': 'quote_followup',
+                'title': '레거시종료 견적 일정 후속',
+                'followupId': followup.id,
+            },
+        )
+
+        dry_run_out = StringIO()
+        call_command(
+            'backfill_ai_feedback_crm_sync',
+            '--feedback-id',
+            str(feedback.id),
+            '--json',
+            stdout=dry_run_out,
+        )
+        open_history.refresh_from_db()
+        quote_schedule.refresh_from_db()
+        followup.refresh_from_db()
+        self.assertIsNone(open_history.reviewed_at)
+        self.assertEqual(quote_schedule.status, 'scheduled')
+        self.assertEqual(followup.priority, 'urgent')
+
+        apply_out = StringIO()
+        call_command(
+            'backfill_ai_feedback_crm_sync',
+            '--feedback-id',
+            str(feedback.id),
+            '--apply',
+            stdout=apply_out,
+        )
+
+        open_history.refresh_from_db()
+        quote_schedule.refresh_from_db()
+        followup.refresh_from_db()
+        feedback.refresh_from_db()
+        self.assertIsNotNone(open_history.reviewed_at)
+        self.assertEqual(quote_schedule.status, 'cancelled')
+        self.assertEqual(followup.status, 'paused')
+        self.assertEqual(followup.priority, 'long_term')
+        self.assertEqual(followup.pipeline_stage, 'lost')
+        self.assertEqual(feedback.ai_result['intent'], 'resolved_no_purchase')
+        self.assertTrue(feedback.ai_result['crmSync']['applied'])
+        self.assertTrue(any(
+            change['label'] == '우선순위 장기 전환'
+            for change in feedback.ai_result['crmSync']['changes']
+        ))
+
+    def test_backfill_ai_feedback_crm_sync_positive_legacy_raises_customer_priority(self):
+        from datetime import timedelta
+        from io import StringIO
+
+        from django.core.management import call_command
+        from reporting.models import AIWorkspaceActionFeedback, History
+
+        followup, department = self._create_customer(self.user, '레거시긍정')
+        followup.priority = 'scheduled'
+        followup.pipeline_stage = 'quote'
+        followup.save(update_fields=['priority', 'pipeline_stage', 'updated_at'])
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='견적 검토 중',
+            next_action='검토 여부 확인',
+            next_action_date=today + timedelta(days=1),
+        )
+        feedback = AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=followup,
+            action_id=f'followup:{history.id}',
+            action_kind='overdue_followup',
+            status='next_action',
+            feedback='고객이 관심 있다고 하고 다음주에 다시 연락달래요',
+            ai_result={
+                'decision': 'next_action',
+                'summary': '고객이 긍정적인 관심을 보였습니다.',
+                'nextAction': '다음주 재연락',
+                'reason': '구매 관심 표현이 있습니다.',
+                'source': 'openai',
+            },
+            action_snapshot={
+                'id': f'followup:{history.id}',
+                'kind': 'overdue_followup',
+                'title': '레거시긍정 후속 확인',
+                'followupId': followup.id,
+            },
+        )
+
+        call_command(
+            'backfill_ai_feedback_crm_sync',
+            '--feedback-id',
+            str(feedback.id),
+            '--apply',
+            stdout=StringIO(),
+        )
+
+        history.refresh_from_db()
+        followup.refresh_from_db()
+        feedback.refresh_from_db()
+        self.assertEqual(feedback.ai_result['intent'], 'positive_buying_signal')
+        self.assertEqual(feedback.ai_result['crmSync']['taskHistoryId'], history.id)
+        self.assertIn('다음주 재연락', history.next_action)
+        self.assertEqual(followup.priority, 'urgent')
+        self.assertEqual(followup.pipeline_stage, 'negotiation')
+
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_keeps_next_action_feedback_visible(self, _mock_client):
         from datetime import time, timedelta

@@ -4225,3 +4225,37 @@ python pre_deployment_check.py
   - anonymous `/reporting/api/ai-workspace/` 401 login-required JSON on frontend proxy and backend
   - anonymous feedback POST 403 CSRF
 - 다음 행동: 사용자가 운영에서 AI 상황 입력 기반 CRM 상태 동기화를 수동 검수한다.
+
+## 2026-05-14 레거시 AI 피드백 소급 동기화 계획
+
+**배경**:
+
+- 운영에서 홍철화 고객의 `quote_schedule:870` AI 피드백은 `resolved`로 저장되어 있었지만, 이번 CRM 동기화 배포 전에 생성된 기록이라 `ai_result.intent`와 `ai_result.crmSync`가 없다.
+- 대시보드 지연 후속조치는 같은 고객의 과거 `History.reviewed_at IS NULL` 행에서 나오므로, 기존 레거시 피드백을 새 동기화 규칙으로 소급 적용해야 한다.
+- 사용자가 AI에 상황을 보고하면 시스템 전체의 고객 긴급도도 함께 조정되어야 한다. 소급 처리도 현재 AI CRM 동기화 함수의 `FollowUp.priority/status/pipeline_stage` 갱신 경로를 그대로 사용한다.
+
+**DB 변경 필요 여부**: 없음.
+
+- 기존 `AIWorkspaceActionFeedback.ai_result` JSON에 `intent`/`crmSync`를 보강한다.
+- 기존 `History.reviewed_at/reviewer`, `FollowUp.status/priority/pipeline_stage`, `Schedule.status`, `Quote.stage`만 갱신한다.
+
+**구현 범위**:
+
+- `reporting` 관리 명령을 추가해 `ai_result.crmSync`가 없는 기존 `AIWorkspaceActionFeedback`을 탐색한다.
+- 기본 실행은 dry-run으로 하며, `--apply`가 있을 때만 실제 CRM 상태와 feedback JSON을 갱신한다.
+- action snapshot 또는 저장된 followup/action id를 기반으로 동기화 action payload를 재구성한다.
+- 기존 `ai_result`가 intent를 갖고 있지 않으면 현재 정규화 규칙으로 intent/status를 보강한다.
+- 소급 대상은 기본적으로 `status`가 `resolved`, `next_action`, `answered`인 레거시 기록이며, `dismissed`는 CRM 자동 변경 없이 필요한 경우 JSON 보강만 검토한다.
+- 운영 실행 전 dry-run 결과를 확인하고, 실제 적용 후 홍철화 고객의 지연 후속조치가 사라지는지 확인한다.
+
+**검증 계획**:
+
+- 레거시 resolved feedback이 열린 후속조치를 닫고 고객 긴급도를 `long_term`으로 낮추는 테스트 추가.
+- 레거시 positive/next_action feedback이 고객 긴급도를 `urgent` 또는 `followup`으로 조정하는 테스트 추가.
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python -m py_compile reporting\views.py reporting\management\commands\backfill_ai_feedback_crm_sync.py reporting\tests.py`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포.
+- 운영에서 `backfill_ai_feedback_crm_sync --dry-run --feedback-id 1`로 홍철화 대상 변경 내역 확인 후 `--apply --feedback-id 1` 적용, 필요 시 전체 레거시 건 dry-run 검토.
