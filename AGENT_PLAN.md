@@ -4095,3 +4095,84 @@ python pre_deployment_check.py
 - `git diff --check`
 - 로컬 browser/Playwright smoke check 후 커밋/푸시
 - Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` bundle/API smoke check
+
+---
+
+## AI Situation Sync / CRM State Reconciliation — AI 상황 입력 기반 CRM 상태 동기화
+
+**인수인계 우선순위**: 사용자가 다음 작업으로 명시했습니다. 기존 권장 작업인 `M2 Quote Import and Partial Delivery Guards`보다 먼저 검토/구현합니다. 단, 새 구현을 시작하기 전에는 기존 규칙대로 `git status --short`, `git log --oneline -3` 확인 후 진행합니다.
+
+**사용자 의도**:
+
+- 사용자가 AI에게 “이런 상황입니다”라고 말하면, AI는 단순히 메모만 남기는 것이 아니라 CRM의 실제 상태를 같이 정리해야 합니다.
+- 예: “홍철화 연구원은 견적을 줬지만 아직 안산대요”라고 입력하면 해당 견적/고객 관련 후속조치가 계속 `팔로우업`이나 `AI 추천 실행 목록`에 떠 있으면 안 됩니다.
+- 예: “관심 있다고 하고 다음주에 다시 연락달래요”라면 기존 후속조치를 종료하지 말고 다음주 후속조치를 만들거나 갱신해야 합니다.
+- 예: “메일 보냈는데 아직 답장이 안왔어요”라면 고객/견적/메일 대기 상태를 기록하고, 일정 기간 후 미응답 follow-up 추천으로 이어져야 합니다.
+
+**목표**: `AI 추천 실행 목록`의 현장 답변 저장 흐름을 `CRM 상태 동기화`로 확장해, 사용자의 자연어 상황 입력이 `History`, `FollowUp`, AI 추천 숨김/유지, 알림/대시보드 노출 상태에 일관되게 반영되게 한다.
+
+**작업 범위 1단계 — 수동 상황 입력 기반 동기화**:
+
+- 기존 `POST /reporting/api/ai-workspace/actions/feedback/` 저장 후 AI 판단 결과를 실제 CRM 객체에 적용한다.
+- AI 판단 결과를 표준 intent/status로 정규화한다.
+  - `resolved_no_purchase`: 구매 의사 없음/당분간 안 삼/실패/보류. 기존 관련 FollowUp 종료 또는 보류, 추천실행목록 숨김.
+  - `follow_up_needed`: 다음 연락/자료 요청/다음달 검토. 기존 FollowUp 갱신 또는 신규 FollowUp 생성.
+  - `positive_buying_signal`: 긍정/구매 의향/승인 예정. FollowUp 우선순위 유지 또는 높은 우선순위 다음 액션 생성.
+  - `email_waiting`: 메일 발송 후 답장 대기. 답장 대기 FollowUp 생성 또는 갱신.
+  - `needs_human_review`: AI 확신 부족. CRM 메모만 남기고 자동 상태 변경은 하지 않음.
+- 같은 고객/견적/action에 이미 열린 FollowUp이 있으면 새로 만들지 않고 갱신한다.
+- 관련 FollowUp을 종료/보류/갱신할 때는 삭제하지 말고 audit 가능한 기록을 남긴다.
+- `History(action_type='memo')`에는 사용자의 원문, AI 요약, 적용된 CRM 변경사항을 남긴다.
+- AI가 적용한 변경 결과를 feedback 응답 payload에 포함해 React에서 “무엇이 바뀌었는지” 보여준다.
+- React 액션 카드 저장 성공 메시지에 `후속조치 종료됨`, `다음 후속조치 생성됨`, `메일 답장 대기 등록됨`, `검토 필요` 같은 적용 결과를 표시한다.
+- 기존 추천실행목록 생성 로직은 동기화 결과를 반영해 종료/보류된 항목을 다시 띄우지 않는다.
+- 기존 `/reporting/*`, 인증/권한, CSRF, 영업노트, AI 초안 생성, feedback 이력 패널은 유지한다.
+
+**작업 범위 2단계 — 메일 미응답 자동 감지 준비**:
+
+- 현재는 Gmail/Microsoft 365 실메일 자동 조회가 제품 런타임에 붙어 있다는 전제가 없습니다. 1단계에서는 사용자가 “메일 보냈는데 답장 없음”이라고 입력한 상황을 기반으로 `email_waiting` 상태를 만든다.
+- 코드베이스에 기존 메일 발송 로그, 수신 메일 모델, Gmail/Microsoft 365 연동 흔적이 있는지 먼저 확인한다.
+- 기존 메일 데이터가 있으면 고객/이메일/견적 기준으로 “발송 후 N일 무응답” 후보를 AI action queue에 추가한다.
+- 기존 메일 데이터가 없으면 이번 단계에서 외부 메일 연동을 새로 만들지 말고, `email_waiting` FollowUp/History 구조만 안정화한다.
+
+**DB 변경 필요 여부**:
+
+- 시작 전 반드시 `FollowUp`, `History`, `AIWorkspaceActionFeedback`, 알림/대시보드 관련 모델을 확인합니다.
+- 1단계는 가능한 한 기존 `FollowUp` 상태/날짜/메모 필드와 `AIWorkspaceActionFeedback.ai_result` 또는 유사 JSON 저장 구조를 사용합니다.
+- 기존 모델에 “AI가 어떤 FollowUp을 닫거나 만들었는지”를 충분히 추적할 필드가 없으면 migration을 검토합니다. 단, 필드를 추가하기 전 AGENT_PLAN에 구체 사유를 갱신하고 테스트 범위를 확정합니다.
+
+**구현 시작 전 확인할 파일/로직**:
+
+- `reporting/models.py`: `FollowUp`, `History`, `AIWorkspaceActionFeedback`, 고객/일정/견적 연결 구조
+- `reporting/views.py`: `_build_ai_workspace_action_queue`, feedback 저장 API, followup 생성/수정 view, dashboard/alarm API
+- `reporting/tests.py`: `AIWorkspaceSummaryApiTests`, followup/schedule 관련 테스트
+- `frontend/src/api.ts`: feedback API 응답 타입
+- `frontend/src/App.tsx`: AI action card 저장 UI, feedback performance panel
+- `frontend/src/styles.css`: action card 상태 표시 스타일
+
+**검증 계획**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- 필요 시 FollowUp 관련 테스트 클래스 추가 실행
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- migration 추가 시 `python manage.py makemigrations reporting` 후 migration 파일 검토
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 로컬 browser/Playwright smoke check 후 커밋/푸시
+- Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/`, feedback API, followup 반영 smoke check
+
+**수동검수 시나리오**:
+
+1. `AI 추천 실행 목록`에서 견적 후속 액션을 고릅니다.
+2. `홍철화 연구원은 견적을 줬지만 아직 안산대요`처럼 구매 의사 없음 답변을 저장합니다.
+3. 해당 추천 액션이 사라지고, 관련 열린 FollowUp이 종료/보류 처리되며, 고객 영업노트에 적용 내용이 남는지 확인합니다.
+4. 같은 고객/견적이 새로고침 후 다시 후속조치로 뜨지 않는지 확인합니다.
+5. 다른 액션에 `관심 있다고 하고 다음주에 다시 연락달래요`라고 저장합니다.
+6. 기존 FollowUp이 갱신되거나 다음주 FollowUp이 생성되는지 확인합니다.
+7. `메일 보냈는데 아직 답장이 안왔어요`라고 저장합니다.
+8. 답장 대기 FollowUp/History가 생성되고, 이후 AI 추천에서 미응답 follow-up으로 이어질 수 있는지 확인합니다.
+9. AI 확신이 낮은 표현은 자동 변경 없이 `검토 필요`로 남는지 확인합니다.
