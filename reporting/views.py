@@ -3436,12 +3436,124 @@ def _history_effective_delivery_summary(history):
         history.action_type == 'delivery_schedule'
         and history.schedule_id
         and history.schedule
-        and history.schedule.activity_type == 'delivery'
     ):
-        delivery_items = list(history.schedule.delivery_items_set.all().order_by('id'))
-        if delivery_items:
-            return _product_delivery_items_summary(delivery_items)
+        if history.schedule.activity_type == 'delivery':
+            delivery_items = list(history.schedule.delivery_items_set.all().order_by('id'))
+            if delivery_items:
+                return _product_delivery_items_summary(delivery_items)
+        if history.schedule.activity_type == 'quote':
+            quote_delivery_text, quote_delivery_amount = _quote_schedule_actual_delivery_summary(history.schedule)
+            if quote_delivery_text or quote_delivery_amount:
+                return quote_delivery_text, quote_delivery_amount
+            return '', 0
     return history.delivery_items or '', _money_int(history.delivery_amount)
+
+
+def _quantity_label_value(quantity):
+    from decimal import Decimal
+
+    parsed = Decimal(str(quantity or 0))
+    if parsed == parsed.to_integral_value():
+        return str(int(parsed))
+    return format(parsed.normalize(), 'f')
+
+
+def _delivery_item_entries_summary(item_entries):
+    from decimal import Decimal
+
+    delivery_lines = []
+    total_amount = Decimal('0')
+    for item, quantity in item_entries:
+        item_total = item.total_price
+        if Decimal(str(quantity or 0)) != Decimal(str(item.quantity or 0)):
+            item_total = _schedules_quote_item_total_for_quantity(item, quantity)
+        elif item_total is None and item.unit_price is not None:
+            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
+        if item_total is not None:
+            total_amount += item_total
+
+        quantity_label = f"{_quantity_label_value(quantity)}{item.unit or 'EA'}"
+        if item_total is not None:
+            delivery_lines.append(f"{item.item_name}: {quantity_label} ({int(item_total):,}원)")
+        else:
+            delivery_lines.append(f"{item.item_name}: {quantity_label}")
+
+    return '\n'.join(delivery_lines), int(total_amount) if total_amount > 0 else 0
+
+
+def _quote_schedule_actual_delivery_summary(quote_schedule):
+    from decimal import Decimal
+
+    quote_items = list(quote_schedule.delivery_items_set.all().order_by('id'))
+    if not quote_items:
+        return '', 0
+
+    remaining_by_identity = {}
+    for quote_item in quote_items:
+        key = _schedules_quote_item_identity(quote_item)
+        remaining_by_identity[key] = remaining_by_identity.get(key, Decimal('0')) + Decimal(str(quote_item.quantity or 0))
+
+    delivered_entries = []
+    delivered_item_ids = set()
+
+    def add_delivered_item(item, quantity=None, identity_key=None, cap_to_quote=False):
+        if item.id in delivered_item_ids:
+            return
+
+        key = identity_key or _schedules_quote_item_identity(item)
+        parsed_quantity = Decimal(str(quantity if quantity is not None else item.quantity or 0))
+        if cap_to_quote:
+            remaining_quantity = remaining_by_identity.get(key, Decimal('0'))
+            if remaining_quantity <= 0:
+                return
+            parsed_quantity = min(parsed_quantity, remaining_quantity)
+        if parsed_quantity <= 0:
+            return
+
+        delivered_entries.append((item, parsed_quantity))
+        delivered_item_ids.add(item.id)
+        if key in remaining_by_identity:
+            remaining_by_identity[key] = max(Decimal('0'), remaining_by_identity[key] - parsed_quantity)
+
+    linked_items = DeliveryItem.objects.filter(
+        schedule__activity_type='delivery',
+    ).exclude(
+        schedule__status='cancelled',
+    ).filter(
+        Q(source_quote_schedule=quote_schedule) | Q(source_quote_item__in=quote_items),
+    ).select_related(
+        'schedule',
+        'source_quote_item',
+    ).order_by('schedule__visit_date', 'schedule__visit_time', 'id')
+
+    for item in linked_items:
+        source_item = item.source_quote_item if item.source_quote_item_id else None
+        source_key = _schedules_quote_item_identity(source_item) if source_item else _schedules_quote_item_identity(item)
+        add_delivered_item(item, identity_key=source_key)
+
+    legacy_delivery_schedules = Schedule.objects.filter(
+        user_id=quote_schedule.user_id,
+        activity_type='delivery',
+    ).exclude(status='cancelled')
+    if quote_schedule.followup_id:
+        legacy_delivery_schedules = legacy_delivery_schedules.filter(followup_id=quote_schedule.followup_id)
+    if quote_schedule.visit_date:
+        legacy_delivery_schedules = legacy_delivery_schedules.filter(visit_date__gte=quote_schedule.visit_date)
+
+    legacy_items = DeliveryItem.objects.filter(
+        schedule__in=legacy_delivery_schedules,
+        source_quote_schedule__isnull=True,
+        source_quote_item__isnull=True,
+    ).select_related('schedule').order_by('schedule__visit_date', 'schedule__visit_time', 'id')
+
+    for item in legacy_items:
+        key = _schedules_quote_item_identity(item)
+        if key in remaining_by_identity:
+            add_delivered_item(item, identity_key=key, cap_to_quote=True)
+
+    if not delivered_entries:
+        return '', 0
+    return _delivery_item_entries_summary(delivered_entries)
 
 
 def _can_review_notes(user_profile):
@@ -6388,6 +6500,9 @@ def _schedules_document_actions(schedule, user):
 
 
 def _schedules_sync_delivery_histories(schedule, actor, created_count):
+    if schedule.activity_type != 'delivery':
+        return
+
     delivery_text, total_delivery_amount = _schedules_delivery_items_summary(schedule)
     related_histories = schedule.histories.filter(action_type='delivery_schedule')
     delivery_amount = total_delivery_amount if total_delivery_amount > 0 else None
@@ -8296,9 +8411,6 @@ def schedule_update_delivery_items(request, pk):
                 messages.warning(request, '저장된 품목이 없습니다. 품목명과 수량을 모두 입력했는지 확인해주세요.')
                 return redirect('reporting:schedule_detail', pk=pk)
             
-            # 관련된 History들의 delivery_items 텍스트도 업데이트
-            related_histories = schedule.histories.filter(action_type='delivery_schedule')
-            
             # 새로 저장된 DeliveryItem들을 텍스트로 변환
             delivery_items = schedule.delivery_items_set.all()
             
@@ -8339,25 +8451,27 @@ def schedule_update_delivery_items(request, pk):
                 
                 delivery_text = '\n'.join(delivery_lines)
                 
-                # 관련 History가 있으면 업데이트, 없으면 새로 생성
-                if related_histories.exists():
-                    # 기존 History 업데이트
-                    for history in related_histories:
-                        history.delivery_items = delivery_text
-                        if total_delivery_amount > 0:
-                            history.delivery_amount = total_delivery_amount
-                        history.save(update_fields=['delivery_items', 'delivery_amount'])
-                else:
-                    # 새로운 History 생성
-                    from .models import History
-                    history = History.objects.create(
-                        schedule=schedule,
-                        user=request.user,
-                        action_type='delivery_schedule',
-                        delivery_items=delivery_text,
-                        delivery_amount=total_delivery_amount if total_delivery_amount > 0 else None,
-                        content=f'납품 품목 {created_count}개 추가'
-                    )
+                if schedule.activity_type == 'delivery':
+                    # 관련 History가 있으면 업데이트, 없으면 새로 생성
+                    related_histories = schedule.histories.filter(action_type='delivery_schedule')
+                    if related_histories.exists():
+                        # 기존 History 업데이트
+                        for history in related_histories:
+                            history.delivery_items = delivery_text
+                            if total_delivery_amount > 0:
+                                history.delivery_amount = total_delivery_amount
+                            history.save(update_fields=['delivery_items', 'delivery_amount'])
+                    else:
+                        # 새로운 History 생성
+                        from .models import History
+                        history = History.objects.create(
+                            schedule=schedule,
+                            user=request.user,
+                            action_type='delivery_schedule',
+                            delivery_items=delivery_text,
+                            delivery_amount=total_delivery_amount if total_delivery_amount > 0 else None,
+                            content=f'납품 품목 {created_count}개 추가'
+                        )
             
             # AJAX 요청인 경우 JSON 응답 반환
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':

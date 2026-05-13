@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-13 — Quote-Linked Delivery Note Amount Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+운영 `/notes/741/`에서 `delivery_schedule` 노트가 실제 납품 일정이 아니라 견적 일정에 연결되어, 견적 품목 2개 합계 402,600원이 납품 금액으로 표시되던 문제를 수정했습니다. 이제 quote 일정에 잘못 연결된 납품 노트는 같은 고객의 실제 납품 일정 품목만 역추적해 표시하고, 실제 납품이 없으면 견적 품목을 납품으로 세지 않습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: quote 일정 연결 납품 노트의 실제 납품 품목 역추적 요약 추가. quote 일정 품목 저장 시 `delivery_schedule` History 생성/갱신 방지.
+- `reporting/tests.py`: 운영 `notes/741` 형태 회귀 테스트, 실제 납품 없음 방지 테스트, React/legacy quote 품목 저장의 납품 노트 생성 방지 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 견적서 구분 2개 중 1개만 납품된 경우 노트 상세의 납품 금액이 실제 납품 품목만 기준으로 표시됩니다.
+- 견적 일정의 품목 저장이 납품 매출 노트를 새로 만들지 않아 견적 합계가 판매로 오인되는 경로를 차단했습니다.
+- 운영 데이터 `History 741`을 새 로직으로 읽기 전용 계산했을 때 `56722: 1EA (33,000원)`만 표시되는 것을 확인했습니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/*` 기존 일정/노트 route는 유지했습니다.
+- 실제 납품 일정(`activity_type=delivery`)의 납품 품목 저장과 History 동기화는 유지했습니다.
+- React 프론트 파일은 변경하지 않았고, 기존 번들 빌드만 확인했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_notes_detail_uses_actual_delivery_schedule_items_over_stale_history_text reporting.tests.SchedulesSummaryApiTests.test_notes_detail_uses_actual_delivery_items_when_delivery_note_is_linked_to_quote_schedule reporting.tests.SchedulesSummaryApiTests.test_notes_detail_does_not_count_quote_items_as_delivery_without_actual_delivery reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_does_not_create_delivery_history_for_quote_schedule reporting.tests.SchedulesSummaryApiTests.test_schedule_update_delivery_items_legacy_does_not_create_delivery_history_for_quote_schedule --verbosity=2
+→ Ran 5 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 46 tests, OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-DzX0o0Sd.js / assets/index-DAwMfLZL.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Production DB read-only calculation with patched code
+→ History 741 effective delivery amount: 33,000
+→ Items: 56722: 1EA (33,000원)
+```
+
+### 알려진 제한
+
+- 기존에 잘못 생성된 `History 741` 행 자체를 삭제하거나 링크 변경하지는 않았습니다. 표시/API 계산에서 실제 납품 일정 기준으로 보정합니다.
+- quote 일정에 연결된 납품 노트의 실제 납품 추적은 원본 견적 연결 필드가 있으면 그것을 우선하고, 과거 데이터는 같은 고객/같은 품목 정체성으로 보정합니다.
+
+### 운영 배포 상태
+
+- 배포 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/notes/741/`를 엽니다.
+2. 납품 금액이 `33,000원`으로 표시되는지 확인합니다.
+3. 납품 품목에 `56722: 1EA (33,000원)`만 보이고 `SO447.100E`가 납품 품목으로 보이지 않는지 확인합니다.
+4. 같은 고객의 실제 납품 일정 `883` 상세도 기존처럼 `56722` 1개/33,000원으로 보이는지 확인합니다.
+5. 견적 일정에서 견적 품목을 수정 저장해도 새 `납품 일정` 영업노트가 생기지 않는지 확인합니다.
+
+### 권장 다음 작업
+
+- 운영 수동 검수 완료 후 React 일정 상세의 견적/납품 노트 생성 경계 문구를 더 명확히 하는 작은 UX 보강을 검토합니다.
+
+---
+
 ## 2026-05-13 — Delivery Quote Import Auto Completion Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기

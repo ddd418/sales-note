@@ -4755,6 +4755,149 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIn('Actually Sold Kit', payload['note']['deliveryItems'])
         self.assertNotIn('Unsold Kit', payload['note']['deliveryItems'])
 
+    def test_notes_detail_uses_actual_delivery_items_when_delivery_note_is_linked_to_quote_schedule(self):
+        import datetime
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, History, Schedule
+
+        quote_schedule = self._create_schedule(self.user, '견적연결납품노트', activity_type='quote', status='completed')
+        sold_quote_item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='56722',
+            quantity=1,
+            unit='EA',
+            unit_price=30000,
+            discount_unit_price=30000,
+            quote_group='수리',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='SO447.100E',
+            quantity=1,
+            unit='EA',
+            unit_price=480000,
+            discount_unit_price=336000,
+            quote_group='보상판매',
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=quote_schedule.followup,
+            visit_date=timezone.localdate() + datetime.timedelta(days=1),
+            visit_time=datetime.time(9, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name=sold_quote_item.item_name,
+            quantity=1,
+            unit=sold_quote_item.unit,
+            unit_price=sold_quote_item.unit_price,
+            discount_unit_price=sold_quote_item.discount_unit_price,
+            quote_group=sold_quote_item.quote_group,
+        )
+        stale_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=quote_schedule.followup,
+            schedule=quote_schedule,
+            action_type='delivery_schedule',
+            delivery_items='56722: 1EA (33,000원)\nSO447.100E: 1EA (369,600원)',
+            delivery_amount=402600,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:notes_detail_api', args=[stale_history.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['note']['deliveryAmount'], 33000)
+        self.assertIn('56722', payload['note']['deliveryItems'])
+        self.assertNotIn('SO447.100E', payload['note']['deliveryItems'])
+
+    def test_notes_detail_does_not_count_quote_items_as_delivery_without_actual_delivery(self):
+        from reporting.models import DeliveryItem, History
+
+        quote_schedule = self._create_schedule(self.user, '견적만있는납품노트', activity_type='quote', status='completed')
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Unsold Quote Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=70000,
+        )
+        stale_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=quote_schedule.followup,
+            schedule=quote_schedule,
+            action_type='delivery_schedule',
+            delivery_items='Unsold Quote Kit: 1EA (77,000원)',
+            delivery_amount=77000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:notes_detail_api', args=[stale_history.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['note']['deliveryAmount'], 0)
+        self.assertEqual(payload['note']['deliveryItems'], '')
+
+    def test_schedule_delivery_items_update_api_does_not_create_delivery_history_for_quote_schedule(self):
+        import json
+        from reporting.models import DeliveryItem, History
+
+        quote_schedule = self._create_schedule(self.user, '견적품목저장노트방지', activity_type='quote')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[quote_schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'itemName': 'Quote Only Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                        'quoteGroup': '수리',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(DeliveryItem.objects.filter(schedule=quote_schedule).count(), 1)
+        self.assertFalse(
+            History.objects.filter(schedule=quote_schedule, action_type='delivery_schedule').exists()
+        )
+
+    def test_schedule_update_delivery_items_legacy_does_not_create_delivery_history_for_quote_schedule(self):
+        from reporting.models import DeliveryItem, History
+
+        quote_schedule = self._create_schedule(self.user, '레거시견적품목저장노트방지', activity_type='quote')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedule_update_delivery_items', args=[quote_schedule.id]),
+            data={
+                'delivery_items[0][name]': 'Legacy Quote Only Kit',
+                'delivery_items[0][quantity]': '1',
+                'delivery_items[0][unit_price]': '50000',
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(DeliveryItem.objects.filter(schedule=quote_schedule).count(), 1)
+        self.assertFalse(
+            History.objects.filter(schedule=quote_schedule, action_type='delivery_schedule').exists()
+        )
+
     def test_schedule_delivery_items_update_api_rejects_coworker_source_quote_completion(self):
         import datetime
         import json

@@ -1,6 +1,44 @@
 # AGENT_PLAN.md
 
-## Current task — 납품 견적 불러오기 후 원 견적 일정 자동 완료 복구
+## Current task — 견적 일정 연결 납품 노트 금액 보정
+
+**목표**: 운영 `/notes/741/`처럼 `delivery_schedule` 노트가 실제 납품 일정이 아니라 견적 일정에 연결된 경우, 견적 일정의 전체 품목 합계가 납품 금액으로 표시되지 않게 한다. 같은 견적의 실제 납품 일정이 있으면 납품 일정 품목만 표시하고, 앞으로 견적 품목 저장 시 납품 노트가 생성/갱신되지 않게 한다.
+
+### 확인된 상태
+
+- 운영 `History 741`은 `action_type=delivery_schedule`이지만 연결된 `Schedule 880`은 `activity_type=quote`이다.
+- `Schedule 880`에는 견적 품목 2개가 있고, `History 741.delivery_amount`에는 두 품목 합계 402,600원이 저장되어 있다.
+- 같은 고객의 실제 납품 일정 `Schedule 883`에는 `56722` 1개, 33,000원만 저장되어 있고 `History 743`도 33,000원이다.
+- 현재 `_history_effective_delivery_summary()`는 연결 일정이 `delivery`일 때만 실제 일정 품목을 우선하므로, quote 일정에 잘못 연결된 납품 노트는 stale `History.delivery_amount`를 그대로 표시한다.
+- 모델/마이그레이션 변경은 필요 없다.
+
+### 구현 계획
+
+- `delivery_schedule` 노트가 quote 일정에 연결된 경우, 같은 고객의 실제 납품 일정 중 견적 품목과 연결되었거나 품목 정체성이 일치하는 납품 품목만 요약에 사용한다.
+- 실제 납품 품목을 찾지 못하면 quote 일정의 전체 견적 품목을 납품으로 표시하지 않고 0원/빈 품목으로 처리한다.
+- React 일정 품목 저장 API와 legacy 일정 품목 저장 view가 quote 일정 저장 시 `delivery_schedule` History를 생성/갱신하지 않도록 제한한다.
+- 기존 납품 일정(`activity_type=delivery`)의 History 동기화와 `/reporting/*` route는 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- 관련 회귀 테스트 추가 후 `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build` (프론트 변경이 없더라도 배포 smoke 기준 확인)
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포, 운영 `/notes/741/` 및 로그인 보호 smoke 확인
+
+### 현재 상태
+
+- 구현 및 로컬 검증 완료.
+- 운영 DB 읽기 전용 계산 확인: `History 741` 보정 결과 `56722: 1EA (33,000원)`.
+- DB 모델 변경 없음.
+- 다음 행동: `AGENT_REPORT.md` 갱신 후 커밋/푸시, Railway `web` 배포 및 운영 smoke 확인.
+
+---
+
+## Previous task — 납품 견적 불러오기 후 원 견적 일정 자동 완료 복구
 
 **목표**: 납품 일정에서 `견적 불러오기`로 품목을 가져와 저장하면, 불러온 원본 견적 일정이 자동으로 `완료됨` 상태가 되도록 React 일정 상세 화면과 Django 레거시 일정 등록/수정 화면을 함께 보강한다.
 
