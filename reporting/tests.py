@@ -6458,6 +6458,59 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(all(item['evidence'] for item in payload['actionQueue']))
         self.assertTrue(any('email' in item['draftTypes'] for item in payload['actionQueue']))
 
+    def test_ai_workspace_action_queue_excludes_completed_sold_quotes(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import Quote, Schedule
+
+        followup, department = self._create_customer(self.user, '완료판매')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+
+        completed_quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today - timedelta(days=3),
+            visit_time=time(10, 0),
+            status='completed',
+            activity_type='quote',
+            expected_revenue=Decimal('1500000'),
+        )
+        Quote.objects.create(
+            quote_number='AI-SOLD-Q-001',
+            schedule=completed_quote_schedule,
+            followup=followup,
+            user=self.user,
+            valid_until=today + timedelta(days=14),
+            stage='sent',
+            subtotal=Decimal('1500000'),
+            probability=80,
+        )
+        completed_quote_without_quote = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today - timedelta(days=2),
+            visit_time=time(11, 0),
+            status='completed',
+            activity_type='quote',
+            expected_revenue=Decimal('900000'),
+            notes='판매 완료된 견적 일정',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        action_ids = {item['id'] for item in payload['actionQueue']}
+        self.assertNotIn(f'quote:{completed_quote_schedule.quotes.first().id}', action_ids)
+        self.assertNotIn(f'quote_schedule:{completed_quote_without_quote.id}', action_ids)
+        prompt_text = '\n'.join(item['prompt'] for item in payload['promptTargets'])
+        self.assertNotIn('AI-SOLD-Q-001', prompt_text)
+        self.assertNotIn('판매 완료된 견적 일정', prompt_text)
+
     def test_ai_workspace_action_draft_api_requires_ai_permission(self):
         self.client.force_login(self.no_ai_user)
 

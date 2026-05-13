@@ -7477,7 +7477,7 @@ def _ai_workspace_sales_amount_context(user, followup_ids):
     quote_qs = Quote.objects.filter(user=user, followup_id__in=followup_ids)
     open_quote_qs = quote_qs.filter(converted_to_delivery=False).exclude(
         stage__in=['rejected', 'expired', 'converted']
-    )
+    ).exclude(schedule__status='completed')
     open_quote_amount = open_quote_qs.aggregate(total=Sum('total_amount'))['total'] or Decimal('0')
     open_quote_count = open_quote_qs.count()
 
@@ -7486,7 +7486,8 @@ def _ai_workspace_sales_amount_context(user, followup_ids):
         followup_id__in=followup_ids,
         activity_type='quote',
         expected_revenue__gt=0,
-    ).exclude(status='cancelled').filter(quotes__isnull=True).distinct()
+        status='scheduled',
+    ).filter(quotes__isnull=True).distinct()
     open_quote_amount += quote_schedule_qs.aggregate(total=Sum('expected_revenue'))['total'] or Decimal('0')
     open_quote_count += quote_schedule_qs.count()
 
@@ -7787,6 +7788,8 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20):
         converted_to_delivery=False,
     ).exclude(
         stage__in=['draft', 'rejected', 'expired', 'converted'],
+    ).exclude(
+        schedule__status='completed',
     ).select_related(
         'followup',
         'followup__company',
@@ -7831,7 +7834,7 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20):
     quote_schedule_qs = Schedule.objects.filter(
         user=user,
         activity_type='quote',
-        status__in=['scheduled', 'completed'],
+        status='scheduled',
         expected_revenue__gt=0,
         quotes__isnull=True,
     ).select_related(

@@ -4005,3 +4005,27 @@ python pre_deployment_check.py
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/`, `/reporting/api/ai-workspace/`, `/reporting/api/ai-workspace/actions/draft/` smoke check
+
+---
+
+## AI Workspace Sold Quote Exclusion Hotfix — 완료/판매 견적 지휘석 제외
+
+**목표**: 이미 완료/판매 처리된 견적 일정이 AI 지휘석의 `견적 후속` 액션으로 다시 표시되지 않게 한다.
+
+**작업 범위**:
+
+- `Quote.converted_to_delivery=False`가 남아 있어도 연결 견적 일정 `Schedule.status='completed'`이면 AI action queue의 견적 후속 후보에서 제외한다.
+- Quote 객체가 없는 fallback 견적 일정 후보도 `status='scheduled'`인 경우만 AI action queue에 포함한다.
+- AI 프롬프트용 열린 견적 금액 계산에서도 완료된 견적 일정과 완료 일정에 연결된 Quote를 제외한다.
+- schedule `415`처럼 이미 판매 완료된 견적이 다시 후속 대상으로 뜨는 회귀 케이스를 테스트로 고정한다.
+
+**DB 변경 필요 여부**: 없음. 기존 상태 필터만 보정한다.
+
+**검증 계획**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 `/reporting/api/ai-workspace/` 비로그인 401 smoke check
