@@ -1,5 +1,87 @@
 # AGENT_REPORT.md
 
+## 2026-05-13 — Quote Document Text Wrap + Mail Internal CC Selection
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 전
+
+### 요약
+
+견적서 생성 시 엑셀 템플릿의 변수 치환 텍스트가 셀 폭보다 길어 잘리는 문제를 줄이기 위해, 품목 적요뿐 아니라 전체 텍스트 변수에 대해 줄바꿈과 행 높이 보정을 적용했습니다. React 메일 작성/답장 화면의 내부직원 참조는 긴 이메일 목록을 그대로 노출하지 않고, 이름/이메일 검색으로 개별 선택하거나 전체 참조를 선택할 수 있게 변경했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 서류 생성 XLSX 텍스트 셀 자동 줄바꿈/행 높이 보정 helper 추가 및 생성 흐름 연결.
+- `reporting/gmail_views.py`: 내부직원 참조 연락처 payload 추가, 전체/선택 내부 참조 발송 처리.
+- `frontend/src/api.ts`: 내부직원 참조 연락처 타입과 선택 참조 payload 추가.
+- `frontend/src/App.tsx`: 메일 작성/답장 내부직원 참조 검색/선택/전체 선택 UI 추가.
+- `frontend/src/styles.css`: 내부직원 참조 선택 UI 반응형 스타일 추가.
+- `reporting/tests.py`: 서류 텍스트 줄바꿈과 내부직원 선택 참조 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 긴 업체명, 부서명, 품목명, 규격, 설명, 메모, 기타사항이 좁은 템플릿 셀에서 그대로 잘릴 가능성을 줄였습니다.
+- 내부직원 참조가 회사 인원이 늘어나도 긴 이메일 나열 UI가 되지 않고 검색 기반으로 확장됩니다.
+- 발송 시 `전체 참조`와 `선택 참조`를 백엔드에서 모두 검증해 같은 회사의 활성 사용자 이메일만 참조에 포함합니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/*` 기존 서류 생성, 메일 발송, 메일함 route는 유지했습니다.
+- 기존 `include_internal_cc=1` 전체 내부 참조 동작은 유지했습니다.
+- 기존 품목 적요/비고 행 높이 보정 helper는 호환 wrapper로 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_includes_internal_cc_only_when_requested reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_allows_selected_internal_cc_contacts reporting.tests.DocumentTemplatesReactApiTests.test_document_item_note_layout_helper_wraps_and_expands_note_rows reporting.tests.DocumentTemplatesReactApiTests.test_document_template_text_layout_helper_wraps_long_replaced_text --verbosity=2
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 36 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, assets/index-D_tgmwFo.js / assets/index-Eek9rS8p.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 엑셀 템플릿의 행 높이 잠금이나 매우 복잡한 병합/인쇄 설정까지 강제로 재설계하지는 않습니다. 생성 전 치환 대상 셀에 줄바꿈과 필요한 행 높이를 추가하는 방식입니다.
+- 선택 참조는 백엔드가 같은 회사 활성 사용자 이메일만 허용합니다. 이메일이 없는 내부 사용자는 선택 후보에 나오지 않습니다.
+
+### 운영 배포 상태
+
+- 진행 전.
+
+### 운영 수동 검수 절차
+
+1. 운영에서 로그인 후 제공된 메일 작성 URL을 엽니다.
+2. 내부직원 참조 영역에서 이름 또는 이메일로 검색해 1명을 선택합니다.
+3. 선택된 직원이 칩으로 표시되고 전체 이메일 목록이 길게 펼쳐지지 않는지 확인합니다.
+4. `전체 참조`를 눌렀을 때 전체 참조 상태로 전환되고 다시 해제할 수 있는지 확인합니다.
+5. 견적 일정 상세에서 견적서 PDF 또는 Excel을 생성해 긴 업체명/품목명/기타사항이 줄바꿈되어 잘리지 않는지 확인합니다.
+
+### 권장 다음 작업
+
+- 운영 수동 검수 후 실제 템플릿 샘플 중 여전히 줄이 부족한 특정 셀이 있으면 해당 템플릿 위치를 기준으로 추가 보정합니다.
+
+---
+
 ## 2026-05-13 — Quote-Linked Delivery Note Amount Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크/운영 수동검수 완료

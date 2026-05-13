@@ -514,7 +514,11 @@ def _internal_cc_requested(request):
     return str(value).lower() in {'1', 'true', 'yes', 'y', 'on'}
 
 
-def _internal_cc_emails_for_user(user, exclude_emails=None):
+def _display_name_for_internal_user(user):
+    return user.get_full_name() or user.username or user.email
+
+
+def _internal_cc_contacts_for_user(user, exclude_emails=None):
     from django.contrib.auth import get_user_model
 
     try:
@@ -529,7 +533,7 @@ def _internal_cc_emails_for_user(user, exclude_emails=None):
     excluded = {email.lower() for email in excluded if email}
 
     User = get_user_model()
-    emails = []
+    contacts = []
     seen = set()
     users = User.objects.filter(
         is_active=True,
@@ -549,12 +553,63 @@ def _internal_cc_emails_for_user(user, exclude_emails=None):
                 if key in excluded or key in seen:
                     continue
                 seen.add(key)
-                emails.append(address)
+                contacts.append({
+                    'id': teammate.id,
+                    'name': _display_name_for_internal_user(teammate),
+                    'email': address,
+                    'label': f"{_display_name_for_internal_user(teammate)} <{address}>",
+                })
                 added_for_user = True
                 break
             if added_for_user:
                 break
-    return emails
+    return contacts
+
+
+def _internal_cc_emails_for_user(user, exclude_emails=None):
+    return [
+        contact['email']
+        for contact in _internal_cc_contacts_for_user(user, exclude_emails=exclude_emails)
+    ]
+
+
+def _requested_internal_cc_emails(request, exclude_emails=None):
+    raw_value = (
+        request.POST.get('internal_cc_emails')
+        or request.POST.get('internalCcEmails')
+        or request.POST.get('selected_internal_cc_emails')
+        or request.POST.get('selectedInternalCcEmails')
+        or ''
+    )
+    if not raw_value:
+        if _internal_cc_requested(request):
+            return _internal_cc_emails_for_user(request.user, exclude_emails=exclude_emails)
+        return []
+
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        parsed = raw_value
+
+    if isinstance(parsed, list):
+        requested = _email_address_list(parsed)
+    else:
+        requested = _email_address_list(str(parsed))
+
+    allowed = {
+        contact['email'].lower(): contact['email']
+        for contact in _internal_cc_contacts_for_user(request.user)
+    }
+    excluded = {email.lower() for email in _email_address_list(exclude_emails or [])}
+    selected = []
+    seen = set()
+    for address in requested:
+        key = address.lower()
+        if key not in allowed or key in excluded or key in seen:
+            continue
+        selected.append(allowed[key])
+        seen.add(key)
+    return selected
 
 
 def _strip_html_style_blocks(value):
@@ -1119,9 +1174,12 @@ def _handle_email_send(
 
         cc_list = _email_address_list(cc_emails)
         bcc_list = _email_address_list(bcc_emails)
-        if _internal_cc_requested(request):
-            exclude_emails = [to_email, *cc_list, *bcc_list]
-            cc_list = [*cc_list, *_internal_cc_emails_for_user(request.user, exclude_emails=exclude_emails)]
+        internal_cc_list = _requested_internal_cc_emails(
+            request,
+            exclude_emails=[to_email, *cc_list, *bcc_list],
+        )
+        if internal_cc_list:
+            cc_list = [*cc_list, *internal_cc_list]
         cc_emails = _email_address_text(cc_list)
         bcc_emails = _email_address_text(bcc_list)
 
@@ -1616,6 +1674,7 @@ def _mailbox_create_payload(user, schedule=None):
             'activityType': schedule.activity_type,
         } if schedule else None,
         'internalCcEmails': _internal_cc_emails_for_user(user),
+        'internalCcContacts': _internal_cc_contacts_for_user(user),
         'customers': [
             {
                 'id': followup.id,

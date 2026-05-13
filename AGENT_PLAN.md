@@ -1,5 +1,49 @@
 # AGENT_PLAN.md
 
+## Current task — 견적서 생성 텍스트 잘림 방지 + 내부직원 참조 선택 UX
+
+**목표**: 견적서/거래명세서/납품서 생성 시 엑셀 템플릿의 치환 텍스트가 셀 폭보다 길어 PDF 또는 XLSX에서 잘려 보이지 않도록 한다. React 메일 작성 화면의 내부직원 참조는 긴 전체 이메일 목록 노출 대신 검색해서 한 명씩 선택하거나 전체 선택할 수 있게 한다.
+
+### 확인된 상태
+
+- 서류 생성 경로는 `reporting:generate_document_pdf_format`이며 실제 구현은 `reporting.views.generate_document_pdf`이다.
+- 기존 `_expand_xlsx_item_note_rows()`는 `품목N_적요/비고` 변수만 줄바꿈과 행 높이를 보정한다.
+- `업체명`, `부서명`, `품목명`, `규격`, `설명`, `메모`, `기타사항`처럼 다른 텍스트 변수가 좁은 셀에 들어가면 잘릴 수 있다.
+- React 메일 작성 화면은 `create.internalCcEmails` 전체 이메일 목록을 체크박스 설명으로 그대로 노출한다.
+- 현재 내부직원 참조는 전체 포함 여부만 있고, 특정 직원만 검색/선택하는 흐름이 없다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- XLSX ZIP XML을 직접 수정하는 기존 방식을 유지해 이미지/서식을 최대한 보존한다.
+- 치환 대상 변수 전체를 분석하는 일반 헬퍼를 추가하고, 셀 폭보다 긴 텍스트 또는 줄바꿈 포함 텍스트는 `wrapText`와 `vertical=top` 스타일을 적용한다.
+- 병합 셀은 병합 범위의 합산 폭을 기준으로 행 높이를 계산한다.
+- 기존 `품목N_적요/비고` 전용 헬퍼는 호환 wrapper로 유지한다.
+- 견적서 생성 흐름에서 새 일반 헬퍼를 호출한다.
+- 메일 API는 내부직원 참조 후보를 `{id, name, email}` 연락처 목록으로 내려준다.
+- 메일 발송 API는 `include_internal_cc` 전체 참조와 `internal_cc_emails` 선택 참조를 모두 지원한다.
+- React 메일 작성/답장 패널은 내부직원 검색, 선택 칩, 전체 참조 버튼을 제공하고 긴 목록은 최대 8개만 표시한다.
+
+### 검증 계획
+
+- 텍스트 잘림 방지 헬퍼 회귀 테스트 추가.
+- 내부직원 전체 참조 기존 동작과 선택 참조 회귀 테스트 추가.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- 관련 테스트 클래스 또는 개별 테스트 실행.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+### 현재 상태
+
+- 백엔드/React 구현 및 로컬 검증 완료.
+- DB 모델 변경 없음.
+- 다음 행동: 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke 확인.
+
+---
+
 ## Completed task — 견적 일정 연결 납품 노트 금액 보정
 
 **목표**: 운영 `/notes/741/`처럼 `delivery_schedule` 노트가 실제 납품 일정이 아니라 견적 일정에 연결된 경우, 견적 일정의 전체 품목 합계가 납품 금액으로 표시되지 않게 한다. 같은 견적의 실제 납품 일정이 있으면 납품 일정 품목만 표시하고, 앞으로 견적 품목 저장 시 납품 노트가 생성/갱신되지 않게 한다.

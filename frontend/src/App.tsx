@@ -68,6 +68,7 @@ import {
   FollowupQuoteItemsData,
   FollowupQuoteOption,
   MailAutoAttachment,
+  MailInternalCcContact,
   MailboxData,
   MailboxEmailItem,
   MailboxSendPayload,
@@ -318,12 +319,13 @@ type MailComposeFormState = {
   excludedAutoAttachmentKeys: string[];
   followupId: string;
   includeInternalCc: boolean;
+  internalCcEmails: string[];
   scheduleId: string;
   subject: string;
   toEmail: string;
 };
 
-type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoAttachments' | 'autoAttachmentSeed' | 'excludedAutoAttachmentKeys' | 'includeInternalCc'>;
+type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoAttachments' | 'autoAttachmentSeed' | 'excludedAutoAttachmentKeys' | 'includeInternalCc' | 'internalCcEmails'>;
 
 type DocumentTemplateFormState = {
   companyId: string;
@@ -764,6 +766,7 @@ const makeEmptyMailComposeForm = (): MailComposeFormState => ({
   excludedAutoAttachmentKeys: [],
   followupId: '',
   includeInternalCc: false,
+  internalCcEmails: [],
   scheduleId: '',
   subject: '',
   toEmail: '',
@@ -9432,6 +9435,149 @@ function MailRichTextEditor({
   );
 }
 
+function MailInternalCcPicker({
+  contacts,
+  disabled,
+  includeAll,
+  selectedEmails,
+  onIncludeAllChange,
+  onSelectedEmailsChange,
+}: {
+  contacts: MailInternalCcContact[];
+  disabled?: boolean;
+  includeAll: boolean;
+  selectedEmails: string[];
+  onIncludeAllChange: (checked: boolean) => void;
+  onSelectedEmailsChange: (emails: string[]) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const normalizedSelected = useMemo(
+    () => new Set(selectedEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    [selectedEmails],
+  );
+  const uniqueContacts = useMemo(() => {
+    const seen = new Set<string>();
+    return contacts.filter((contact) => {
+      const key = contact.email.trim().toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [contacts]);
+  const selectedContacts = uniqueContacts.filter((contact) => normalizedSelected.has(contact.email.trim().toLowerCase()));
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredContacts = uniqueContacts.filter((contact) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+    return [contact.name, contact.email, contact.label ?? ''].join(' ').toLowerCase().includes(normalizedQuery);
+  });
+  const visibleContacts = filteredContacts.slice(0, 8);
+  const selectedCount = includeAll ? uniqueContacts.length : selectedContacts.length;
+
+  const toggleContact = (email: string) => {
+    if (disabled || includeAll) {
+      return;
+    }
+    const key = email.trim().toLowerCase();
+    const next = normalizedSelected.has(key)
+      ? selectedEmails.filter((item) => item.trim().toLowerCase() !== key)
+      : [...selectedEmails, email];
+    onSelectedEmailsChange(next);
+  };
+
+  return (
+    <div className="mail-internal-cc-picker">
+      <div className="mail-internal-cc-head">
+        <div>
+          <span>내부 직원 참조</span>
+          <small>{includeAll ? `전체 ${formatNumber(uniqueContacts.length)}명` : `선택 ${formatNumber(selectedCount)}명 / 전체 ${formatNumber(uniqueContacts.length)}명`}</small>
+        </div>
+        <div className="mail-internal-cc-actions">
+          <button
+            className={includeAll ? 'active' : ''}
+            disabled={disabled || uniqueContacts.length === 0}
+            onClick={() => onIncludeAllChange(!includeAll)}
+            type="button"
+          >
+            <Users size={13} />
+            {includeAll ? '전체 해제' : '전체 참조'}
+          </button>
+          <button
+            disabled={disabled || includeAll || selectedEmails.length === 0}
+            onClick={() => onSelectedEmailsChange([])}
+            type="button"
+          >
+            <X size={13} />
+            선택 해제
+          </button>
+        </div>
+      </div>
+
+      {includeAll ? (
+        <div className="mail-internal-cc-all">
+          <CheckCircle2 size={15} />
+          <span>발송 시 회사 내부 직원 전체가 참조에 포함됩니다.</span>
+        </div>
+      ) : (
+        <>
+          <label className="mail-internal-cc-search">
+            <Search size={14} />
+            <input
+              disabled={disabled}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="이름 또는 이메일 검색"
+              value={query}
+            />
+          </label>
+          {selectedContacts.length > 0 ? (
+            <div className="mail-internal-cc-selected" aria-label="선택된 내부 직원 참조">
+              {selectedContacts.map((contact) => (
+                <button key={contact.email} onClick={() => toggleContact(contact.email)} type="button">
+                  <span>{contact.name}</span>
+                  <small>{contact.email}</small>
+                  <X size={12} />
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="mail-internal-cc-results">
+            {visibleContacts.length === 0 ? (
+              <span className="mail-internal-cc-empty">검색 결과가 없습니다</span>
+            ) : (
+              visibleContacts.map((contact) => {
+                const selected = normalizedSelected.has(contact.email.trim().toLowerCase());
+                return (
+                  <button
+                    className={selected ? 'selected' : ''}
+                    disabled={disabled}
+                    key={contact.email}
+                    onClick={() => toggleContact(contact.email)}
+                    type="button"
+                  >
+                    <div>
+                      <strong>{contact.name || contact.email}</strong>
+                      <span>{contact.email}</span>
+                    </div>
+                    {selected ? <Check size={14} /> : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {filteredContacts.length > visibleContacts.length ? (
+            <p className="mail-internal-cc-hint">
+              {formatNumber(filteredContacts.length - visibleContacts.length)}명이 더 있습니다. 검색어를 더 구체적으로 입력하세요.
+            </p>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 function MailComposePanel({
   create,
   form,
@@ -9447,6 +9593,7 @@ function MailComposePanel({
   onChange,
   onCustomerChange,
   onInternalCcChange,
+  onInternalCcEmailsChange,
   onOpenChange,
   onSubmit,
 }: {
@@ -9464,6 +9611,7 @@ function MailComposePanel({
   onChange: (field: MailComposeTextField, value: string) => void;
   onCustomerChange: (customerId: string) => void;
   onInternalCcChange: (checked: boolean) => void;
+  onInternalCcEmailsChange: (emails: string[]) => void;
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -9512,18 +9660,15 @@ function MailComposePanel({
             <input value={form.bccEmails} onChange={(event) => onChange('bccEmails', event.target.value)} placeholder="쉼표로 구분" />
           </label>
         </div>
-        {create.internalCcEmails.length > 0 ? (
-          <label className="mail-compose-check">
-            <input
-              checked={form.includeInternalCc}
-              onChange={(event) => onInternalCcChange(event.target.checked)}
-              type="checkbox"
-            />
-            <span>
-              내부 직원 참조 포함
-              <small>{create.internalCcEmails.join(', ')}</small>
-            </span>
-          </label>
+        {create.internalCcContacts.length > 0 ? (
+          <MailInternalCcPicker
+            contacts={create.internalCcContacts}
+            disabled={saving}
+            includeAll={form.includeInternalCc}
+            onIncludeAllChange={onInternalCcChange}
+            onSelectedEmailsChange={onInternalCcEmailsChange}
+            selectedEmails={form.internalCcEmails}
+          />
         ) : null}
         <label>
           <span>제목</span>
@@ -9636,6 +9781,7 @@ function MailboxPage({
   onComposeCustomerChange,
   onComposeFormChange,
   onComposeInternalCcChange,
+  onComposeInternalCcEmailsChange,
   onComposeOpenChange,
   onComposeSubmit,
   onQueryChange,
@@ -9661,6 +9807,7 @@ function MailboxPage({
   onComposeCustomerChange: (customerId: string) => void;
   onComposeFormChange: (field: MailComposeTextField, value: string) => void;
   onComposeInternalCcChange: (checked: boolean) => void;
+  onComposeInternalCcEmailsChange: (emails: string[]) => void;
   onComposeOpenChange: (open: boolean) => void;
   onComposeSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onQueryChange: (value: string) => void;
@@ -9719,6 +9866,7 @@ function MailboxPage({
           autoAttachLabel: '',
           schedule: null,
           internalCcEmails: [],
+          internalCcContacts: [],
           customers: [],
           businessCards: [],
         }}
@@ -9735,6 +9883,7 @@ function MailboxPage({
         onChange={onComposeFormChange}
         onCustomerChange={onComposeCustomerChange}
         onInternalCcChange={onComposeInternalCcChange}
+        onInternalCcEmailsChange={onComposeInternalCcEmailsChange}
         onOpenChange={onComposeOpenChange}
         onSubmit={onComposeSubmit}
       />
@@ -9842,6 +9991,7 @@ function MailboxThreadPage({
   onReplyBodyChange,
   onReplyFormChange,
   onReplyInternalCcChange,
+  onReplyInternalCcEmailsChange,
   onReplyOpenChange,
   onReplySubmit,
 }: {
@@ -9859,6 +10009,7 @@ function MailboxThreadPage({
   onReplyBodyChange: (bodyText: string, bodyHtml: string) => void;
   onReplyFormChange: (field: MailComposeTextField, value: string) => void;
   onReplyInternalCcChange: (checked: boolean) => void;
+  onReplyInternalCcEmailsChange: (emails: string[]) => void;
   onReplyOpenChange: (open: boolean) => void;
   onReplySubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -9888,6 +10039,7 @@ function MailboxThreadPage({
       autoAttachLabel: '',
       schedule: null,
       internalCcEmails: [],
+      internalCcContacts: [],
       customers: [],
       businessCards: [],
     },
@@ -9952,6 +10104,7 @@ function MailboxThreadPage({
             onChange={onReplyFormChange}
             onCustomerChange={(customerId) => onReplyFormChange('followupId', customerId)}
             onInternalCcChange={onReplyInternalCcChange}
+            onInternalCcEmailsChange={onReplyInternalCcEmailsChange}
             onOpenChange={onReplyOpenChange}
             onSubmit={onReplySubmit}
           />
@@ -14228,6 +14381,15 @@ export function App() {
     setMailComposeForm((previous) => ({
       ...previous,
       includeInternalCc: checked,
+      internalCcEmails: checked ? [] : previous.internalCcEmails,
+    }));
+    setMailComposeError('');
+  };
+  const handleMailComposeInternalCcEmailsChange = (emails: string[]) => {
+    setMailComposeForm((previous) => ({
+      ...previous,
+      includeInternalCc: false,
+      internalCcEmails: emails,
     }));
     setMailComposeError('');
   };
@@ -14281,6 +14443,7 @@ export function App() {
     scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
     businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
     includeInternalCc: form.includeInternalCc,
+    internalCcEmails: form.includeInternalCc ? [] : form.internalCcEmails,
     attachments: form.attachments,
     excludedAutoAttachmentKeys: form.excludedAutoAttachmentKeys,
   });
@@ -14403,6 +14566,15 @@ export function App() {
     setMailReplyForm((previous) => ({
       ...previous,
       includeInternalCc: checked,
+      internalCcEmails: checked ? [] : previous.internalCcEmails,
+    }));
+    setMailReplyError('');
+  };
+  const handleMailReplyInternalCcEmailsChange = (emails: string[]) => {
+    setMailReplyForm((previous) => ({
+      ...previous,
+      includeInternalCc: false,
+      internalCcEmails: emails,
     }));
     setMailReplyError('');
   };
@@ -14639,6 +14811,7 @@ export function App() {
             onReplyBodyChange={handleMailReplyBodyChange}
             onReplyFormChange={handleMailReplyFormChange}
             onReplyInternalCcChange={handleMailReplyInternalCcChange}
+            onReplyInternalCcEmailsChange={handleMailReplyInternalCcEmailsChange}
             onReplyOpenChange={handleMailReplyOpenChange}
             onReplySubmit={handleMailReplySubmit}
           />
@@ -14670,6 +14843,7 @@ export function App() {
           onComposeCustomerChange={handleMailComposeCustomerChange}
           onComposeFormChange={handleMailComposeFormChange}
           onComposeInternalCcChange={handleMailComposeInternalCcChange}
+          onComposeInternalCcEmailsChange={handleMailComposeInternalCcEmailsChange}
           onComposeOpenChange={handleMailComposeOpenChange}
           onComposeSubmit={handleMailComposeSubmit}
           onQueryChange={setMailboxQuery}

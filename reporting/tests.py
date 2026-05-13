@@ -509,6 +509,9 @@ class ReactMailboxApiTests(TestCase):
         list_response = self.client.get(reverse('reporting:mailbox_api_list'), {'box': 'inbox'})
         self.assertEqual(list_response.status_code, 200)
         self.assertIn('inside@example.com', list_response.json()['create']['internalCcEmails'])
+        internal_contacts = list_response.json()['create']['internalCcContacts']
+        self.assertEqual(internal_contacts[0]['email'], 'inside@example.com')
+        self.assertEqual(internal_contacts[0]['name'], 'mail-api-other')
 
         with patch('reporting.gmail_views.GmailService') as gmail_service_class:
             gmail_service = gmail_service_class.return_value
@@ -534,6 +537,61 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(sent_cc, ['manager@example.com', 'inside@example.com'])
         email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-internal-cc')
         self.assertEqual(email_log.cc_emails, 'manager@example.com, inside@example.com')
+
+    def test_mailbox_send_api_allows_selected_internal_cc_contacts(self):
+        self.user.email = 'sales@example.com'
+        self.user.save(update_fields=['email'])
+        self.other_user.email = 'inside-selected@example.com'
+        self.other_user.save(update_fields=['email'])
+        third_user = make_user('mail-api-third', company=self.company)
+        third_user.email = 'inside-not-selected@example.com'
+        third_user.save(update_fields=['email'])
+        outside_company = UserCompany.objects.create(name='외부회사')
+        outside_user = make_user('mail-api-outside', company=outside_company)
+        outside_user.email = 'outside@example.com'
+        outside_user.save(update_fields=['email'])
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-sent-selected-internal-cc',
+                'thread_id': 'gmail-thread-selected-internal-cc',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'cc_emails': 'manager@example.com',
+                    'internal_cc_emails': json.dumps([
+                        'inside-selected@example.com',
+                        'inside-not-selected@example.com',
+                        'outside@example.com',
+                    ]),
+                    'subject': '선택 참조 테스트',
+                    'body_text': '선택한 내부 직원만 참조합니다.',
+                    'selected_followup_id': str(self.followup.id),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sent_cc = gmail_service.send_email.call_args.kwargs['cc']
+        self.assertEqual(sent_cc, [
+            'manager@example.com',
+            'inside-selected@example.com',
+            'inside-not-selected@example.com',
+        ])
+        self.assertNotIn('outside@example.com', sent_cc)
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-selected-internal-cc')
+        self.assertEqual(
+            email_log.cc_emails,
+            'manager@example.com, inside-selected@example.com, inside-not-selected@example.com',
+        )
 
     def test_mailbox_send_api_auto_attaches_registered_quote_pdfs_for_schedule(self):
         profile = self.user.userprofile
@@ -5586,6 +5644,41 @@ class DocumentTemplatesReactApiTests(TestCase):
         namespace = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
         row = sheet_root.find(".//s:row[@r='5']", namespace)
         cell = sheet_root.find(".//s:c[@r='B5']", namespace)
+        self.assertIsNotNone(row)
+        self.assertIsNotNone(cell)
+        self.assertEqual(row.get('customHeight'), '1')
+        self.assertGreater(float(row.get('ht')), 15.0)
+        self.assertNotEqual(cell.get('s'), '0')
+        self.assertIn('wrapText="1"', styles_xml)
+
+    def test_document_template_text_layout_helper_wraps_long_replaced_text(self):
+        import os
+        import tempfile
+        import zipfile
+        from xml.etree import ElementTree as ET
+        from openpyxl import Workbook
+        from reporting.views import _expand_xlsx_template_text_rows
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.column_dimensions['B'].width = 10
+        sheet['B4'] = '{{업체명}}'
+        long_company_name = '아주 긴 학교명 및 산학협력단 공동연구센터 세포분석실'
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
+        self.addCleanup(lambda: os.path.exists(temp_path) and os.unlink(temp_path))
+        workbook.save(temp_path)
+
+        changed = _expand_xlsx_template_text_rows(temp_path, {'업체명': long_company_name})
+
+        self.assertTrue(changed)
+        with zipfile.ZipFile(temp_path, 'r') as archive:
+            styles_xml = archive.read('xl/styles.xml').decode('utf-8')
+            sheet_root = ET.fromstring(archive.read('xl/worksheets/sheet1.xml'))
+
+        namespace = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        row = sheet_root.find(".//s:row[@r='4']", namespace)
+        cell = sheet_root.find(".//s:c[@r='B4']", namespace)
         self.assertIsNotNone(row)
         self.assertIsNotNone(cell)
         self.assertEqual(row.get('customHeight'), '1')

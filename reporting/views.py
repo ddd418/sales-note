@@ -20576,8 +20576,8 @@ def _strip_xlsx_bold_formatting(xlsx_path):
     return changed
 
 
-def _expand_xlsx_item_note_rows(xlsx_path, data_map):
-    """품목 적요/비고 셀이 PDF에서 잘리지 않도록 줄바꿈과 행 높이를 보정한다."""
+def _expand_xlsx_template_text_rows(xlsx_path, data_map):
+    """치환될 텍스트가 셀 폭보다 길면 줄바꿈과 행 높이를 보정한다."""
     import copy
     import math
     import os
@@ -20587,12 +20587,12 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
     import zipfile
     from xml.etree import ElementTree as ET
 
-    note_values = {
+    variable_values = {
         key: str(value or '')
         for key, value in (data_map or {}).items()
-        if re.fullmatch(r'품목\d+_(적요|비고)', str(key)) and str(value or '').strip()
+        if str(value or '').strip()
     }
-    if not note_values:
+    if not variable_values:
         return False
 
     spreadsheet_ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -20601,17 +20601,33 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
     def qname(name):
         return f'{{{spreadsheet_ns}}}{name}'
 
-    note_token_pattern = re.compile(r'\{\{(품목\d+_(?:적요|비고))\}\}')
+    variable_token_pattern = re.compile(r'\{\{([^{}]+)\}\}')
     cell_ref_pattern = re.compile(r'^([A-Z]+)(\d+)$')
 
     def text_content(node):
         return ''.join(text_node.text or '' for text_node in node.iter(qname('t')))
 
-    def render_note_text(text):
-        matches = note_token_pattern.findall(text or '')
-        if not any(match in note_values for match in matches):
+    def numeric_like(text):
+        cleaned = re.sub(r'[\s,.%+\-원₩()]+', '', str(text or ''))
+        return bool(cleaned) and cleaned.isdigit()
+
+    def render_template_text(text):
+        replaced = False
+
+        def replace_token(match):
+            nonlocal replaced
+            key = match.group(1)
+            if key not in variable_values:
+                return match.group(0)
+            replaced = True
+            return variable_values.get(key, '')
+
+        rendered = variable_token_pattern.sub(replace_token, text or '').strip()
+        if not replaced or not rendered:
             return ''
-        return note_token_pattern.sub(lambda match: note_values.get(match.group(1), ''), text or '').strip()
+        if numeric_like(rendered) and '\n' not in rendered:
+            return ''
+        return rendered
 
     def split_cell_ref(ref):
         normalized = str(ref or '').replace('$', '').upper()
@@ -20637,6 +20653,15 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
         for line in normalized.split('\n') or ['']:
             line_count += max(1, math.ceil(display_width(line) / chars_per_line))
         return min(409.0, max(15.0, line_count * 16.5 + 3.0))
+
+    def should_wrap_text(text, width):
+        normalized = str(text or '').replace('\r\n', '\n').replace('\r', '\n').strip()
+        if not normalized:
+            return False
+        if '\n' in normalized:
+            return True
+        chars_per_line = max(int(width * 1.05), 8)
+        return display_width(normalized) > chars_per_line
 
     def parse_merge_ref(ref):
         parts = str(ref or '').split(':')
@@ -20697,7 +20722,7 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
             if value_node is not None:
                 return shared_string_targets.get(value_node.text or '')
         if cell.get('t') == 'inlineStr':
-            return render_note_text(text_content(cell))
+            return render_template_text(text_content(cell))
         return ''
 
     files = {}
@@ -20713,11 +20738,11 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
         try:
             shared_root = ET.fromstring(shared_strings_data)
             for index, shared_item in enumerate(shared_root.findall(qname('si'))):
-                rendered = render_note_text(text_content(shared_item))
+                rendered = render_template_text(text_content(shared_item))
                 if rendered:
                     shared_string_targets[str(index)] = rendered
         except Exception as shared_error:
-            logger.warning(f"[서류생성] 품목 적요 sharedStrings 분석 실패: {shared_error}")
+            logger.warning(f"[서류생성] 템플릿 텍스트 sharedStrings 분석 실패: {shared_error}")
 
     sheet_targets = {}
     base_style_ids = set()
@@ -20727,10 +20752,12 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
         try:
             root = ET.fromstring(data)
         except Exception as sheet_error:
-            logger.warning(f"[서류생성] 품목 적요 워크시트 분석 실패({filename}): {sheet_error}")
+            logger.warning(f"[서류생성] 템플릿 텍스트 워크시트 분석 실패({filename}): {sheet_error}")
             continue
 
         targets = []
+        width_for_col = sheet_column_widths(root)
+        merge_ranges = sheet_merge_ranges(root)
         for row in root.findall(f'.//{qname("row")}'):
             for cell in row.findall(qname('c')):
                 rendered_text = target_text_for_cell(cell, shared_string_targets)
@@ -20738,6 +20765,9 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
                     continue
                 parsed_ref = split_cell_ref(cell.get('r'))
                 if not parsed_ref:
+                    continue
+                cell_width = effective_cell_width(parsed_ref[0], parsed_ref[1], width_for_col, merge_ranges)
+                if not should_wrap_text(rendered_text, cell_width):
                     continue
                 try:
                     style_id = int(cell.get('s') or 0)
@@ -20782,7 +20812,7 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
                 cell_xfs.set('count', str(len(cell_xfs.findall(qname('xf')))))
                 files['xl/styles.xml'] = ET.tostring(styles_root, encoding='utf-8', xml_declaration=True)
         except Exception as style_error:
-            logger.warning(f"[서류생성] 품목 적요 줄바꿈 스타일 생성 실패: {style_error}")
+            logger.warning(f"[서류생성] 템플릿 텍스트 줄바꿈 스타일 생성 실패: {style_error}")
 
     for filename, targets in sheet_targets.items():
         try:
@@ -20820,7 +20850,7 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
 
             files[filename] = ET.tostring(root, encoding='utf-8', xml_declaration=True)
         except Exception as sheet_error:
-            logger.warning(f"[서류생성] 품목 적요 행 높이 적용 실패({filename}): {sheet_error}")
+            logger.warning(f"[서류생성] 템플릿 텍스트 행 높이 적용 실패({filename}): {sheet_error}")
 
     temp_output = xlsx_path.replace('.xlsx', '_note_rows.xlsx')
     with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
@@ -20830,6 +20860,16 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
     os.unlink(xlsx_path)
     shutil.move(temp_output, xlsx_path)
     return True
+
+
+def _expand_xlsx_item_note_rows(xlsx_path, data_map):
+    """기존 호출 호환용: 품목 적요/비고 행 높이 보정."""
+    note_data_map = {
+        key: value
+        for key, value in (data_map or {}).items()
+        if re.fullmatch(r'품목\d+_(적요|비고)', str(key))
+    }
+    return _expand_xlsx_template_text_rows(xlsx_path, note_data_map)
 
 
 @login_required
@@ -21476,9 +21516,9 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_총액'] = f"{int(_item_total):,}"
 
                 try:
-                    _expand_xlsx_item_note_rows(temp_path, data_map)
-                except Exception as note_layout_error:
-                    logger.warning(f"[서류생성] 품목 적요 행 높이 보정 실패: {note_layout_error}")
+                    _expand_xlsx_template_text_rows(temp_path, data_map)
+                except Exception as text_layout_error:
+                    logger.warning(f"[서류생성] 템플릿 텍스트 행 높이 보정 실패: {text_layout_error}")
                 
                 # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
                 media_files = {}  # {filename: (ZipInfo, data)}

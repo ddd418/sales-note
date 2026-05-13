@@ -204,6 +204,13 @@ export type MailAutoAttachment = {
   description?: string;
 };
 
+export type MailInternalCcContact = {
+  id: number;
+  name: string;
+  email: string;
+  label?: string;
+};
+
 export type MailboxCreateOptions = {
   canSend: boolean;
   message: string;
@@ -216,6 +223,7 @@ export type MailboxCreateOptions = {
     activityType: string;
   } | null;
   internalCcEmails: string[];
+  internalCcContacts: MailInternalCcContact[];
   customers: Array<{
     id: number;
     customer: string;
@@ -304,6 +312,7 @@ export type MailboxSendPayload = {
   ccEmails?: string;
   bccEmails?: string;
   includeInternalCc?: boolean;
+  internalCcEmails?: string[];
   subject: string;
   bodyText: string;
   bodyHtml?: string;
@@ -2623,6 +2632,7 @@ const emptyMailboxCreateOptions: MailboxCreateOptions = {
   autoAttachLabel: '',
   schedule: null,
   internalCcEmails: [],
+  internalCcContacts: [],
   customers: [],
   businessCards: [],
 };
@@ -3684,6 +3694,7 @@ export async function loadMailboxData(params: {
         autoAttachLabel: payload.create?.autoAttachLabel ?? emptyMailboxCreateOptions.autoAttachLabel,
         schedule: payload.create?.schedule ?? emptyMailboxCreateOptions.schedule,
         internalCcEmails: payload.create?.internalCcEmails ?? emptyMailboxCreateOptions.internalCcEmails,
+        internalCcContacts: payload.create?.internalCcContacts ?? emptyMailboxCreateOptions.internalCcContacts,
         customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
         businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
       },
@@ -3744,6 +3755,7 @@ export async function loadMailboxThreadData(threadId: string): Promise<MailboxTh
         autoAttachLabel: payload.create?.autoAttachLabel ?? emptyMailboxCreateOptions.autoAttachLabel,
         schedule: payload.create?.schedule ?? emptyMailboxCreateOptions.schedule,
         internalCcEmails: payload.create?.internalCcEmails ?? emptyMailboxCreateOptions.internalCcEmails,
+        internalCcContacts: payload.create?.internalCcContacts ?? emptyMailboxCreateOptions.internalCcContacts,
         customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
         businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
       },
@@ -3771,6 +3783,7 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
   if (payload.ccEmails) body.set('cc_emails', payload.ccEmails);
   if (payload.bccEmails) body.set('bcc_emails', payload.bccEmails);
   if (payload.includeInternalCc) body.set('include_internal_cc', '1');
+  if (payload.internalCcEmails?.length) body.set('internal_cc_emails', JSON.stringify(payload.internalCcEmails));
   if (payload.followupId) body.set('selected_followup_id', String(payload.followupId));
   if (payload.scheduleId) body.set('schedule_id', String(payload.scheduleId));
   if (payload.businessCardId) body.set('business_card_id', String(payload.businessCardId));
