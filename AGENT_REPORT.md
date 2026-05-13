@@ -14681,7 +14681,30 @@ git diff --check
 
 ### 5. Deployment Status
 
-- Pending: commit, push, Railway `web` migration/deploy and `sales-note-frontend` deploy.
+- Fix commit: `b56a8e2 fix: track quote item imports for delivery sales`
+- GitHub push: `main` updated from `adc97d2` to `b56a8e2`
+- Railway `web`: `d143ae27-d963-4a94-a8f4-1cda6678b073` SUCCESS, commit `b56a8e2`
+- Railway `sales-note-frontend`: `de5f5a66-4ff8-4558-812c-1b74f39c2eab` SUCCESS, message `Deploy quote item import sales fix b56a8e2`
+- Deployed frontend bundle: `assets/index-DzX0o0Sd.js` / `assets/index-DAwMfLZL.css`
+
+### 6. Production Smoke Check
+
+```text
+GET https://sales-note-frontend-production.up.railway.app/notes/741/
+→ 200, bundle assets/index-DzX0o0Sd.js / assets/index-DAwMfLZL.css
+
+GET https://sales-note-frontend-production.up.railway.app/assets/index-DzX0o0Sd.js
+→ 200, JS contains sourceQuoteItemId and sourceQuoteScheduleId
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/api/notes/741/
+→ 401 login_required JSON for anonymous user
+
+GET https://sales-note-frontend-production.up.railway.app/reporting/login/
+→ 200
+
+Railway service status
+→ web SUCCESS, sales-note-frontend SUCCESS
+```
 
 ## Product Replacement Option Loading Hotfix — 대체 제품 목록 로딩 지연 수정 (2026-05-12)
 
