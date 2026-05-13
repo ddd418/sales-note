@@ -32,9 +32,16 @@
 
 ### 현재 상태
 
-- 백엔드/React/레거시 템플릿 수정 및 로컬 검증 완료.
-- DB 모델 변경 예정 없음.
-- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 예정.
+- 백엔드/React/레거시 템플릿 수정, 로컬 검증, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포 완료.
+- DB 모델 변경 없음.
+- Runtime commit: `439fe00 fix: complete imported quote schedules`
+- Railway `web`: `ce21ef49-78ee-47c0-beac-19fad4ca8ff7` SUCCESS
+- Railway `sales-note-frontend`: `2ae20d51-54bf-415b-b6c4-1a094503e8d2` SUCCESS
+- 운영 smoke OK:
+  - `/schedules/calendar/` 200 with `assets/index-5Pldkc-g.js`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/schedules/999999/` 401 login-required JSON
+- 다음 행동: 사용자가 운영에서 테스트 데이터로 견적 불러오기 후 원본 견적 일정 완료 처리를 수동 검수한다.
 
 ---
 

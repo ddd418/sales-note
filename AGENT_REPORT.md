@@ -2,7 +2,7 @@
 
 ## 2026-05-13 — Delivery Quote Import Auto Completion Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -56,6 +56,20 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: complete imported quote schedules" && git push origin main
+→ Commit 439fe00 pushed to origin/main
+
+Railway deployments
+→ web ce21ef49-78ee-47c0-beac-19fad4ca8ff7 SUCCESS
+→ sales-note-frontend 2ae20d51-54bf-415b-b6c4-1a094503e8d2 SUCCESS
+
+Production smoke requests
+→ /schedules/calendar/ 200 with assets/index-5Pldkc-g.js
+→ /reporting/login/ 200
+→ anonymous /reporting/api/schedules/999999/ 401 login_required JSON
+→ web deployment logs: migrations no-op, gunicorn workers booted
+→ frontend deployment logs: node server.mjs listening and proxying /reporting/*
 ```
 
 ### 알려진 제한
@@ -65,7 +79,13 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 예정.
+- Runtime commit: `439fe00 fix: complete imported quote schedules`
+- Railway `web`: `ce21ef49-78ee-47c0-beac-19fad4ca8ff7` SUCCESS
+- Railway `sales-note-frontend`: `2ae20d51-54bf-415b-b6c4-1a094503e8d2` SUCCESS
+- 운영 smoke:
+  - `/schedules/calendar/` 200, `assets/index-5Pldkc-g.js`
+  - `/reporting/login/` 200
+  - anonymous `/reporting/api/schedules/999999/` 401 login-required JSON
 
 ### 운영 수동 검수 절차
 
