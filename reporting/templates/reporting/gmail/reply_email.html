@@ -379,12 +379,8 @@
                         날짜: {{ original_email.sent_at|date:"Y-m-d H:i" }}<br>
                         제목: {{ original_email.subject }}
                     </div>
-                    <div class="original-email-body{% if not original_email.body_html %} text-mode{% endif %}">
-                        {% if original_email.body_html %}
-                            {{ original_email.body_html|safe }}
-                        {% else %}
-                            {{ original_email.body_text }}
-                        {% endif %}
+                    <div class="original-email-body text-mode">
+                        {{ original_email_display_body|default:original_email.body }}
                     </div>
                 </div>
                 

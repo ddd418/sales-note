@@ -640,6 +640,73 @@ def _strip_css_text_artifacts(value):
     return text
 
 
+def _looks_like_email_html(value):
+    import html
+    import re
+
+    text = str(value or '')
+    if not text.strip():
+        return False
+    candidates = [text]
+    unescaped = html.unescape(text)
+    if unescaped != text:
+        candidates.append(unescaped)
+    html_pattern = re.compile(
+        r'(?is)<\s*(?:!doctype|html|head|body|style|script|meta|div|p|br|span|table|tbody|tr|td|blockquote)\b'
+    )
+    return any(html_pattern.search(candidate) for candidate in candidates)
+
+
+def _email_html_to_display_text(value, limit=12000, strip_quotes=True):
+    import html
+    import re
+    from django.utils.html import strip_tags
+    from django.utils.text import Truncator
+
+    raw = html.unescape(str(value or ''))
+    raw = _strip_html_style_blocks(raw)
+    if strip_quotes:
+        raw = _strip_quoted_html_for_display(raw)
+    text = re.sub(r'(?i)<\s*br\s*/?\s*>', '\n', raw)
+    text = re.sub(r'(?i)<\s*/\s*(p|div|li|tr|h[1-6]|blockquote|section|article|table|head|body|html)\s*>', '\n', text)
+    text = re.sub(r'(?i)<\s*li(?:\s[^>]*)?>', '- ', text)
+    text = strip_tags(text)
+    text = html.unescape(text).replace('\xa0', ' ')
+    text = _strip_css_text_artifacts(text)
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    lines = [' '.join(line.split()) for line in text.split('\n')]
+    normalized = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if not previous_blank and normalized:
+                normalized.append('')
+            previous_blank = True
+            continue
+        normalized.append(line)
+        previous_blank = False
+    return Truncator(_strip_quoted_text_for_display('\n'.join(normalized).strip())).chars(limit)
+
+
+def _clean_outgoing_body_text(value):
+    text = _normalize_email_body_text(value)
+    if _looks_like_email_html(text):
+        return _email_html_to_display_text(text, strip_quotes=False)
+    return text
+
+
+def _html_matches_escaped_plain_body(body_html, body_text):
+    import html
+
+    html_value = str(body_html or '')
+    if not html_value:
+        return False
+    if not any(token in html_value.lower() for token in ('&lt;html', '&lt;body', '&lt;div', '&lt;p', '&lt;style')):
+        return False
+    text_value = str(body_text or '')
+    return _looks_like_email_html(html.unescape(html_value)) or _looks_like_email_html(text_value)
+
+
 def _sanitize_received_attachments(attachments, message_id=''):
     rows = []
     for attachment in attachments or []:
@@ -1067,6 +1134,7 @@ def reply_email(request, email_log_id):
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
         'original_email': email_log,
+        'original_email_display_body': _email_body_text(email_log),
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
     }
@@ -1104,8 +1172,10 @@ def _handle_email_send(
         cc_emails = request.POST.get('cc_emails', '')
         bcc_emails = request.POST.get('bcc_emails', '')
         subject = request.POST.get('subject', '')
-        body_text = _normalize_email_body_text(request.POST.get('body_text', ''))
+        body_text = _clean_outgoing_body_text(request.POST.get('body_text', ''))
         body_html = _sanitize_outgoing_email_html(request.POST.get('body_html', ''))
+        if body_text and _html_matches_escaped_plain_body(body_html, request.POST.get('body_text', '')):
+            body_html = _plain_email_body_to_html(body_text)
         if not body_text and body_html:
             from django.utils.html import strip_tags
             body_text = _normalize_email_body_text(strip_tags(body_html))
@@ -1401,30 +1471,26 @@ def _email_text_preview(email, limit=160):
     from django.utils.html import strip_tags
     from django.utils.text import Truncator
 
-    raw = _strip_html_style_blocks(email.body_html or email.body or '')
-    text = strip_tags(raw).replace('\xa0', ' ')
-    text = _strip_css_text_artifacts(text)
+    raw = email.body_html or email.body or ''
+    if email.body_html or _looks_like_email_html(raw):
+        text = _email_html_to_display_text(raw, limit=limit)
+    else:
+        raw = _strip_html_style_blocks(raw)
+        text = strip_tags(raw).replace('\xa0', ' ')
+        text = _strip_css_text_artifacts(text)
     text = ' '.join(text.split())
     return Truncator(text).chars(limit)
 
 
 def _email_body_text(email, limit=12000):
     import html
-    import re
-    from django.utils.html import strip_tags
     from django.utils.text import Truncator
 
     raw = email.body_html or email.body or ''
-    if email.body_html:
-        raw = _strip_html_style_blocks(raw)
-        raw = _strip_quoted_html_for_display(raw)
-        text = re.sub(r'(?i)<\s*br\s*/?\s*>', '\n', raw)
-        text = re.sub(r'(?i)<\s*/\s*(p|div|li|tr|h[1-6]|blockquote|section|article|table)\s*>', '\n', text)
-        text = re.sub(r'(?i)<\s*li(?:\s[^>]*)?>', '- ', text)
-        text = strip_tags(text)
-    else:
-        text = raw
+    if email.body_html or _looks_like_email_html(raw):
+        return _email_html_to_display_text(raw, limit=limit)
 
+    text = raw
     text = html.unescape(text).replace('\xa0', ' ')
     text = _strip_css_text_artifacts(text)
     text = text.replace('\r\n', '\n').replace('\r', '\n')
@@ -2379,13 +2445,18 @@ def mailbox_thread(request, thread_id):
             except:
                 pass  # 실패해도 계속 진행
     
+    email_rows = list(emails)
+    for email in email_rows:
+        email.display_body_text = _email_body_text(email)
+
     # 답장 대상: 가장 최근 수신 메일
     last_received_email = emails.filter(email_type='received').order_by('-sent_at', '-received_at').first()
     
     context = {
         'thread_id': thread_id,
-        'emails': emails,
-        'followup': emails.first().followup,
+        'first_email': email_rows[0],
+        'emails': email_rows,
+        'followup': email_rows[0].followup,
         'last_received_email': last_received_email,
     }
     return render(request, 'reporting/gmail/thread_detail.html', context)

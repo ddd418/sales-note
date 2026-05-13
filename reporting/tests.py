@@ -345,6 +345,53 @@ class ReactMailboxApiTests(TestCase):
         self.assertNotIn('p{margin-top', email_payload['bodyText'])
         self.assertNotIn('p{margin-top', email_payload['preview'])
 
+    def test_mailbox_thread_api_converts_html_document_stored_in_plain_body(self):
+        self.email.body_html = ''
+        self.email.body = (
+            '<html><head><style>p{margin-top:0px;font-size:13px;}</style></head>'
+            '<body>'
+            '<div style="color:#111;font-family:Apple SD Gothic Neo,Malgun Gothic;font-size:10pt;">'
+            '<p>안녕하십니까.</p><p>요청하신 견적서 확인 부탁드립니다.</p>'
+            '</div>'
+            '</body></html>'
+        )
+        self.email.save(update_fields=['body', 'body_html'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        email_payload = response.json()['emails'][0]
+        self.assertIn('안녕하십니까.', email_payload['bodyText'])
+        self.assertIn('견적서 확인', email_payload['bodyText'])
+        self.assertIn('견적서 확인', email_payload['preview'])
+        self.assertNotIn('<html', email_payload['bodyText'])
+        self.assertNotIn('font-family', email_payload['bodyText'])
+        self.assertNotIn('margin-top', email_payload['preview'])
+
+    def test_mailbox_thread_api_converts_escaped_html_document_stored_in_plain_body(self):
+        self.email.body_html = ''
+        self.email.body = (
+            '&lt;html&gt;&lt;head&gt;&lt;style&gt;p{font-size:13px;}&lt;/style&gt;&lt;/head&gt;'
+            '&lt;body&gt;&lt;div style=&quot;color:#111;&quot;&gt;'
+            '&lt;p&gt;이스케이프된 HTML 본문입니다.&lt;/p&gt;'
+            '&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;'
+        )
+        self.email.save(update_fields=['body', 'body_html'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:mailbox_api_thread', args=['gmail-thread-react-1'])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body_text = response.json()['emails'][0]['bodyText']
+        self.assertIn('이스케이프된 HTML 본문입니다.', body_text)
+        self.assertNotIn('&lt;html', body_text)
+        self.assertNotIn('<html', body_text)
+
     def test_mailbox_thread_api_returns_received_attachment_download_links(self):
         import base64
 
@@ -1052,6 +1099,49 @@ class ReactMailboxApiTests(TestCase):
         email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-rich-html')
         self.assertEqual(email_log.body_html, body_html)
         self.assertIn('<strong>굵은 안내</strong>', email_log.body)
+
+    def test_mailbox_reply_api_cleans_html_document_pasted_as_text(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+        pasted_html = (
+            '<html><head><style>p{font-size:13px;margin:0;}</style></head>'
+            '<body><div style="font-family:Malgun Gothic;color:#111;">'
+            '<p>답장 본문입니다.</p><p>견적서 첨부 확인 부탁드립니다.</p>'
+            '</div></body></html>'
+        )
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-reply-clean-html-text',
+                'thread_id': 'gmail-thread-react-1',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_reply', args=[self.email.id]),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': 'Re: React mailbox inbound',
+                    'body_text': pasted_html,
+                    'body_html': pasted_html.replace('<', '&lt;').replace('>', '&gt;'),
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sent_kwargs = gmail_service.send_email.call_args.kwargs
+        self.assertEqual(sent_kwargs['body_text'], '답장 본문입니다.\n견적서 첨부 확인 부탁드립니다.')
+        self.assertIn('답장 본문입니다.<br>', sent_kwargs['body_html'])
+        self.assertNotIn('<html', sent_kwargs['body_html'])
+        self.assertNotIn('&lt;html', sent_kwargs['body_html'])
+        self.assertNotIn('font-family:Malgun', sent_kwargs['body_html'])
+
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-reply-clean-html-text')
+        self.assertEqual(email_log.in_reply_to, self.email)
+        self.assertNotIn('<html', email_log.body_html)
+        self.assertNotIn('&lt;html', email_log.body_html)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

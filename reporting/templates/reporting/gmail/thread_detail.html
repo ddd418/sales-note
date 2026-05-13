@@ -1,7 +1,7 @@
 {% extends 'reporting/base.html' %}
 {% load static %}
 
-{% block title %}{{ emails.first.subject }}{% endblock %}
+{% block title %}{{ first_email.subject }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -268,18 +268,8 @@
             </div>
         </div>
         <div class="email-message-body">
-            {% if email.body_html %}
-                <div class="email-body-content">
-                    {{ email.body_html|safe }}
-                </div>
-            {% elif email.body %}
-                {% if '<html' in email.body or '<div' in email.body or '<p' in email.body %}
-                    <div class="email-body-content">
-                        {{ email.body|safe }}
-                    </div>
-                {% else %}
-                    <div class="email-body-content">{{ email.body }}</div>
-                {% endif %}
+            {% if email.display_body_text %}
+                <div class="email-body-content text-mode">{{ email.display_body_text }}</div>
             {% else %}
                 <p class="text-muted">(내용 없음)</p>
             {% endif %}

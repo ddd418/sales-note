@@ -4259,3 +4259,32 @@ python pre_deployment_check.py
 - `git diff --check`
 - 커밋/푸시 후 Railway `web` 배포.
 - 운영에서 `backfill_ai_feedback_crm_sync --dry-run --feedback-id 1`로 홍철화 대상 변경 내역 확인 후 `--apply --feedback-id 1` 적용, 필요 시 전체 레거시 건 dry-run 검토.
+
+## 2026-05-14 메일 답장 HTML 원문 노출 수정 계획
+
+**배경**:
+
+- React 메일 스레드/답장 화면에서 수신 메일 본문이 `<html><head><style>...</style></head><body>...` 형태로 그대로 표시되는 사례가 남아 있다.
+- 기존 `_email_body_text()`는 `EmailLog.body_html`이 있을 때만 HTML을 제거하고, HTML 문서가 일반 `EmailLog.body`에 저장된 경우에는 plain text로 간주해 그대로 내려보낼 수 있다.
+- 답장 작성 중 HTML 문서 원문이 텍스트로 섞여 발송되는 경우도 같은 증상으로 이어질 수 있다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- 메일 본문 표시 helper에서 일반 `body` 필드에 들어온 실제/escaped HTML 문서를 감지해 스타일/스크립트/태그를 제거한 표시용 텍스트로 변환한다.
+- outgoing 메일 처리에서 `body_text`에 HTML 문서가 들어온 경우 표시용 텍스트로 정리하고, escaped HTML이 `body_html`에 같이 들어온 경우 plain HTML로 다시 생성한다.
+- React 스레드 API와 legacy Django 스레드/답장 화면 모두 정리된 표시용 본문을 사용하도록 한다.
+- 기존 rich HTML 편집 본문은 유지하고, script/style/unsafe attribute 제거 로직은 그대로 보존한다.
+
+**검증 계획**:
+
+- `EmailLog.body`에 HTML 문서가 저장된 케이스에서 React thread API `bodyText`가 태그 없이 본문만 반환하는 테스트 추가.
+- escaped HTML 문서가 `body`에 저장된 케이스도 태그 없이 표시되는 테스트 추가.
+- 답장 API에 HTML 문서가 `body_text`로 들어와도 Gmail 발송 payload와 저장 로그가 정리되는 테스트 추가.
+- `python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python -m py_compile reporting\gmail_views.py reporting\tests.py`
+- `git diff --check`
+- React 코드 변경 시 `cd frontend && npx tsc --noEmit --pretty false && npm run build`
