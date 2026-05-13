@@ -15166,3 +15166,112 @@ M2: 견적 불러오기/부분 납품 방어 강화. The next step should make d
 - M2 시작 전에는 `AGENT_PLAN.md`에 M2 범위와 DB 변경 필요 여부를 먼저 기록하고, 기존 `/reporting/*` 예비 화면과 인증/권한 정책을 유지해야 합니다.
 - M1 관련 주요 파일은 `reporting/views.py`, `reporting/tests.py`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`입니다.
 - M1은 새 DB 필드나 migration을 추가하지 않았습니다.
+
+---
+
+## M2 Quote Import and Partial Delivery Guards — 견적 불러오기/부분 납품 방어 강화 (2026-05-13)
+
+### 1. Summary
+
+- 사용자가 M1 운영 수동검수 완료를 확인했습니다.
+- React 일정 상세의 `견적 불러오기` 카드에 남은 품목 수량, 원 견적 금액, 이미 납품 반영된 금액, 부분 납품 잔여 상태를 표시했습니다.
+- 서버 저장 단계에서 동일 원본 견적 품목 중복 행과 원 견적 수량 초과 납품을 차단했습니다.
+- 기존 납품 일정에서 원본 견적 연결 품목을 제거하거나 수동 품목으로 바꾸면 원본 견적 상태를 재계산해 미납 품목이 남은 완료 견적을 `scheduled`로 되돌리게 했습니다.
+
+### 2. Files Changed
+
+| 파일 | 변경 내용 |
+| ---- | --------- |
+| `AGENT_PLAN.md` | M2 작업 범위, no-migration 판단, 검증 계획 기록 |
+| `reporting/views.py` | 견적 품목 진행 수량 계산, 초과/중복 납품 방어, 원본 견적 상태 재계산 강화 |
+| `reporting/tests.py` | 부분 납품 payload, 초과 수량 차단, 중복 행 차단, 견적 상태 복구 회귀 테스트 추가 |
+| `frontend/src/api.ts` | 견적 불러오기 payload 타입/정규화 확장 |
+| `frontend/src/App.tsx` | 견적 불러오기 카드에 잔여/부분 납품 정보 표시 |
+| `frontend/src/styles.css` | 견적 불러오기 상태 배지 스타일 추가 |
+
+### 3. CRM Improvements
+
+- 납품 일정에서 견적을 불러올 때 `남은 품목` 기준임을 명확히 확인할 수 있습니다.
+- 부분 납품된 견적은 `부분 납품 잔여`, 납품 반영 금액, 원 견적 금액을 함께 표시합니다.
+- 같은 견적 품목을 한 저장 요청에 중복으로 넣는 실수를 서버가 막습니다.
+- 이미 다른 납품 일정에 반영된 수량을 포함해 원 견적 수량을 초과하는 저장 요청을 서버가 막습니다.
+- 납품 편집으로 원본 견적 연결을 제거한 경우 완료 견적이 계속 숨겨지는 상태 불일치를 줄였습니다.
+
+### 4. Existing Functionality Preserved
+
+- 기존 `/reporting/*` URL, React `/schedules/*`, Django fallback, 문서 생성, 메일 발송, 납품 품목 저장 API를 유지했습니다.
+- 인증/권한 정책은 유지했습니다. 비로그인 API 접근은 계속 로그인으로 보호됩니다.
+- 새 DB 필드와 migration은 추가하지 않았습니다.
+- 기존 견적 불러오기 API의 기존 필드는 유지하고 선택 확장 필드만 추가했습니다.
+
+### 5. Commands Run and Results
+
+```text
+git status --short
+→ clean at start
+
+git log --oneline -3
+→ bf669ab docs: clarify commercial checks handoff
+→ e18025a docs: add commercial checks handoff
+→ f106e60 docs: record commercial checks deployment
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 51 tests, OK
+
+python manage.py check
+→ System check identified no issues (0 silenced)
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK, dist/assets/index-DXrVrnz1.js / dist/assets/index-BHN2Drqn.css generated
+→ Vite chunk size warning only
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK (LF→CRLF warning only)
+```
+
+### 6. Local Smoke
+
+- Local Django/React servers opened at `127.0.0.1:8000` and `127.0.0.1:5173`.
+- Browser smoke opened `http://127.0.0.1:5173/schedules/` and confirmed unauthenticated users are sent to `/reporting/login/?next=%2Fschedules%2F`.
+- Anonymous API smoke:
+  - `GET http://127.0.0.1:8000/reporting/api/followups/1/quote-items/`
+  - `→ 302 /reporting/login/?next=/reporting/api/followups/1/quote-items/`
+- Browser console only showed expected local `favicon.ico` 404 and unauthenticated schedule API 401 entries.
+
+### 7. Known Limitations
+
+- Local browser smoke did not inspect an authenticated real CRM schedule because no production login/session was available in the browser environment.
+- The duplicate/over-delivery guard is strongest for React-imported rows that include `sourceQuoteItemId`. Legacy manual rows without source item links are still handled by existing identity-based remaining calculations where possible.
+
+### 8. Recommended Next Task
+
+M3: 견적/납품 상태 정리 액션. M1/M2로 정합성 확인과 저장 방어가 들어갔으므로, 다음 단계는 오래된 완료 견적/문서 누락/메일 자동첨부 누락을 사용자가 명시적으로 정리할 수 있는 운영 액션을 검토하는 것이 적절합니다.
+
+### 9. Production Deployment Status
+
+- Pending at this report point. Commit, push, Railway `web` and `sales-note-frontend` deployment, production smoke check will be recorded after deployment completes.
+
+### 10. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/schedules/<납품일정ID>/`
+2. 납품 일정 상세에서 `견적 불러오기`를 엽니다.
+3. 부분 납품된 견적 카드에 `부분 납품 잔여`, `납품 반영`, `원 견적`, `잔여` 정보가 표시되는지 확인합니다.
+4. 카드의 품목 목록이 전체 견적 수량이 아니라 남은 수량 기준으로 표시되는지 확인합니다.
+5. 남은 수량보다 큰 수량으로 저장을 시도하면 서버 오류 메시지로 저장이 차단되는지 확인합니다.
+6. 동일 견적 품목을 중복 행으로 저장하려 하면 저장이 차단되는지 확인합니다.
+7. 기존 `편집`, `서류 다운로드`, `메일 발송`, `보고 작성`, `/reporting/*` fallback 링크가 계속 동작하는지 확인합니다.

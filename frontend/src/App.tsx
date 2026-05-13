@@ -665,6 +665,17 @@ const quoteImportOptionTitle = (quote: FollowupQuoteOption) => {
   return label.includes('견적') ? label : `${label} 견적`;
 };
 
+const quoteImportItemSummary = (item: FollowupQuoteItem) => {
+  const remaining = item.remainingQuantity || item.quantity || 0;
+  const original = item.originalQuantity || remaining;
+  const unit = item.unit || '';
+  const numberLabel = (value: number) => new Intl.NumberFormat('ko-KR').format(value);
+  const quantityLabel = original > remaining
+    ? `${numberLabel(remaining)}/${numberLabel(original)}${unit}`
+    : `${numberLabel(remaining)}${unit}`;
+  return `${item.itemName || item.productCode || '품목'} ${quantityLabel}`;
+};
+
 const makeScheduleQuoteGroupNotes = (schedule: ScheduleDetailItem | null): ScheduleQuoteGroupNoteState => {
   const notes: ScheduleQuoteGroupNoteState = {};
   schedule?.quoteGroupNotes?.forEach((item) => {
@@ -7283,10 +7294,17 @@ function ScheduleDetailPage({
                           quote.departmentName,
                           quote.quoteDate ? formatDateLabel(quote.quoteDate) : '',
                           `일정 #${quote.scheduleId}`,
-                          `품목 ${formatNumber(quote.items.length)}개`,
-                          quote.expectedRevenue ? formatWon(quote.expectedRevenue) : '',
+                          `남은 품목 ${formatNumber(quote.items.length)}개`,
+                          quote.remainingAmount ? `잔여 ${formatWon(quote.remainingAmount)}` : '',
                         ].filter(Boolean).join(' · ')}</span>
-                        <p>{quote.items.map((item) => item.itemName).filter(Boolean).slice(0, 6).join(', ')}</p>
+                        <div className="schedule-quote-import-badges">
+                          <span className={quote.hasPartialDelivery ? 'partial' : 'pending'}>
+                            {quote.deliveryStatusLabel}
+                          </span>
+                          {quote.deliveredAmount > 0 ? <span>납품 반영 {formatWon(quote.deliveredAmount)}</span> : null}
+                          {quote.quotedAmount > 0 ? <span>원 견적 {formatWon(quote.quotedAmount)}</span> : null}
+                        </div>
+                        <p>{quote.items.map(quoteImportItemSummary).slice(0, 6).join(', ')}</p>
                       </div>
                       <button
                         className="route-secondary-action"

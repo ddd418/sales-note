@@ -3945,3 +3945,32 @@ python pre_deployment_check.py
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
 - 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 API/React 일정 상세 smoke check
+
+---
+
+## M2 Quote Import and Partial Delivery Guards — 견적 불러오기/부분 납품 방어 강화
+
+**목표**: React 일정 상세의 `견적 불러오기`에서 남은 견적 품목과 부분 납품 상태를 더 명확히 보여주고, 서버 저장 단계에서 같은 견적 품목이 중복 또는 초과 납품으로 저장되지 않도록 막는다.
+
+**작업 범위**:
+
+- 기존 `Schedule`, `DeliveryItem`, `History`, `ScheduleQuoteGroupNote` 모델만 사용하고 신규 DB 필드는 추가하지 않는다.
+- `/reporting/api/followups/<id>/quote-items/` 응답에 원 견적 수량, 이미 납품 반영된 수량, 남은 수량, 부분 납품 여부를 품목/견적 구분 단위로 추가한다.
+- React `견적 불러오기` 카드에서 남은 수량 기준임을 표시하고, 부분 납품/남은 품목 상태를 사용자가 저장 전 확인할 수 있게 한다.
+- `/reporting/api/schedules/<id>/delivery-items/update/` 저장 시 `sourceQuoteItemId` 기준으로 이미 다른 납품 일정에 반영된 수량과 현재 저장 요청 수량의 합이 원 견적 수량을 넘으면 400으로 차단한다.
+- 같은 저장 요청 안에서 동일 `sourceQuoteItemId`가 중복 행으로 들어오면 400으로 차단하고, 부분 납품은 한 행의 수량 조정으로 처리하게 안내한다.
+- 기존 납품 일정의 견적 연결 품목을 제거하거나 수동 품목으로 바꾸는 경우에도 기존 원본 견적 일정 상태를 재계산해 미납 품목이 남으면 `scheduled`로 되돌린다.
+- 기존 `/reporting/*` legacy fallback, 인증/권한 정책, 문서 생성/메일 발송 흐름은 유지한다.
+
+**DB 변경 필요 여부**: 없음. 기존 `DeliveryItem.source_quote_schedule`, `DeliveryItem.source_quote_item`, `quantity`, `status` 필드와 계산 로직만 사용한다.
+
+**검증 계획**:
+
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 API/React 일정 상세 smoke check

@@ -6110,7 +6110,12 @@ def _schedules_quote_item_total_for_quantity(item, quantity):
     return unit_price * Decimal(str(quantity)) * Decimal('1.1')
 
 
-def _schedules_quote_item_imported_quantities(quote_schedule, quote_items, include_legacy_matches=False):
+def _schedules_quote_item_imported_quantities(
+    quote_schedule,
+    quote_items,
+    include_legacy_matches=False,
+    exclude_delivery_schedule_id=None,
+):
     from decimal import Decimal
 
     quote_item_ids = [item.id for item in quote_items if item.id]
@@ -6118,10 +6123,15 @@ def _schedules_quote_item_imported_quantities(quote_schedule, quote_items, inclu
     has_import_activity = False
 
     if quote_item_ids:
-        linked_rows = DeliveryItem.objects.filter(
+        linked_queryset = DeliveryItem.objects.filter(
             source_quote_item_id__in=quote_item_ids,
             schedule__activity_type='delivery',
-        ).values('source_quote_item_id').annotate(total=Sum('quantity'))
+        ).exclude(
+            schedule__status='cancelled',
+        )
+        if exclude_delivery_schedule_id:
+            linked_queryset = linked_queryset.exclude(schedule_id=exclude_delivery_schedule_id)
+        linked_rows = linked_queryset.values('source_quote_item_id').annotate(total=Sum('quantity'))
         for row in linked_rows:
             source_item_id = row['source_quote_item_id']
             if source_item_id in imported_quantities:
@@ -6133,7 +6143,11 @@ def _schedules_quote_item_imported_quantities(quote_schedule, quote_items, inclu
         source_quote_schedule=quote_schedule,
         source_quote_item__isnull=True,
         schedule__activity_type='delivery',
+    ).exclude(
+        schedule__status='cancelled',
     ).select_related('schedule')
+    if exclude_delivery_schedule_id:
+        schedule_linked_items = schedule_linked_items.exclude(schedule_id=exclude_delivery_schedule_id)
     if schedule_linked_items.exists():
         has_import_activity = True
         items_by_identity = {}
@@ -6150,6 +6164,8 @@ def _schedules_quote_item_imported_quantities(quote_schedule, quote_items, inclu
             user_id=quote_schedule.user_id,
             activity_type='delivery',
         ).exclude(status='cancelled')
+        if exclude_delivery_schedule_id:
+            legacy_delivery_schedules = legacy_delivery_schedules.exclude(id=exclude_delivery_schedule_id)
         if quote_schedule.followup_id:
             legacy_delivery_schedules = legacy_delivery_schedules.filter(followup_id=quote_schedule.followup_id)
         legacy_delivery_items = DeliveryItem.objects.filter(
@@ -6177,19 +6193,25 @@ def _schedules_quote_item_imported_quantities(quote_schedule, quote_items, inclu
     return imported_quantities, has_import_activity
 
 
-def _schedules_remaining_quote_item_entries(quote_schedule, include_legacy_matches=False):
+def _schedules_quote_item_progress_entries(
+    quote_schedule,
+    include_legacy_matches=False,
+    exclude_delivery_schedule_id=None,
+):
     from decimal import Decimal
 
     quote_items = list(quote_schedule.delivery_items_set.all().order_by('id'))
     if not quote_items:
-        return [], False, False
+        return [], False, False, {}
 
     imported_quantities, has_import_activity = _schedules_quote_item_imported_quantities(
         quote_schedule,
         quote_items,
         include_legacy_matches=include_legacy_matches,
+        exclude_delivery_schedule_id=exclude_delivery_schedule_id,
     )
     remaining_entries = []
+    progress_by_item_id = {}
     has_sold_items = False
     for item in quote_items:
         quantity = Decimal(str(item.quantity or 0))
@@ -6201,8 +6223,91 @@ def _schedules_remaining_quote_item_entries(quote_schedule, include_legacy_match
             if remaining_quantity == int(remaining_quantity):
                 remaining_quantity = int(remaining_quantity)
             remaining_entries.append((item, remaining_quantity))
+        progress_by_item_id[item.id] = {
+            'quotedQuantity': quantity,
+            'deliveredQuantity': imported_quantity,
+            'remainingQuantity': max(quantity - imported_quantity, Decimal('0')),
+        }
 
+    return remaining_entries, has_import_activity, has_sold_items, progress_by_item_id
+
+
+def _schedules_remaining_quote_item_entries(quote_schedule, include_legacy_matches=False):
+    remaining_entries, has_import_activity, has_sold_items, _progress = _schedules_quote_item_progress_entries(
+        quote_schedule,
+        include_legacy_matches=include_legacy_matches,
+    )
     return remaining_entries, has_import_activity, has_sold_items
+
+
+def _schedules_quantity_label(value):
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        quantity = Decimal(str(value or 0))
+    except (InvalidOperation, ValueError):
+        return str(value)
+    if quantity == quantity.to_integral_value():
+        return str(int(quantity))
+    return format(quantity.normalize(), 'f')
+
+
+def _schedules_validate_source_quote_item_quantities(delivery_items, target_schedule):
+    from decimal import Decimal
+
+    requested_by_item_id = {}
+    row_count_by_item_id = {}
+    source_items_by_id = {}
+    for item_data in delivery_items:
+        source_item = item_data.get('source_quote_item')
+        if not source_item or not source_item.id:
+            continue
+        source_item_id = source_item.id
+        requested_by_item_id[source_item_id] = (
+            requested_by_item_id.get(source_item_id, Decimal('0')) +
+            Decimal(str(item_data.get('quantity') or 0))
+        )
+        row_count_by_item_id[source_item_id] = row_count_by_item_id.get(source_item_id, 0) + 1
+        source_items_by_id[source_item_id] = source_item
+
+    for source_item_id, row_count in row_count_by_item_id.items():
+        if row_count > 1:
+            item = source_items_by_id[source_item_id]
+            raise ValueError(
+                f'{item.item_name} 견적 품목이 중복되었습니다. 부분 납품은 한 행의 수량을 조정해 저장하세요.'
+            )
+
+    if not source_items_by_id:
+        return
+
+    quote_items_by_schedule_id = {}
+    quote_schedule_by_id = {}
+    for source_item in source_items_by_id.values():
+        if not source_item.schedule_id:
+            continue
+        quote_items_by_schedule_id.setdefault(source_item.schedule_id, []).append(source_item)
+        quote_schedule_by_id[source_item.schedule_id] = source_item.schedule
+
+    for quote_schedule_id, quote_items in quote_items_by_schedule_id.items():
+        quote_schedule = quote_schedule_by_id[quote_schedule_id]
+        imported_quantities, _has_import_activity = _schedules_quote_item_imported_quantities(
+            quote_schedule,
+            quote_items,
+            include_legacy_matches=True,
+            exclude_delivery_schedule_id=target_schedule.id,
+        )
+        for source_item in quote_items:
+            quoted_quantity = Decimal(str(source_item.quantity or 0))
+            already_delivered = imported_quantities.get(source_item.id, Decimal('0'))
+            requested_quantity = requested_by_item_id.get(source_item.id, Decimal('0'))
+            if already_delivered + requested_quantity > quoted_quantity:
+                remaining_quantity = max(quoted_quantity - already_delivered, Decimal('0'))
+                unit_label = source_item.unit or ''
+                raise ValueError(
+                    f'{source_item.item_name} 남은 견적 수량은 '
+                    f'{_schedules_quantity_label(remaining_quantity)}{unit_label}입니다. '
+                    '요청 수량을 줄이세요.'
+                )
 
 
 def _schedules_mark_source_quote_schedules_completed(delivery_schedule, actor, source_quote_schedule_ids):
@@ -6228,12 +6333,12 @@ def _schedules_mark_source_quote_schedules_completed(delivery_schedule, actor, s
             raise PermissionError('본인이 작성한 견적 일정만 납품 완료 처리할 수 있습니다.')
         if not _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
             raise PermissionError('납품 일정과 다른 고객/부서의 견적은 완료 처리할 수 없습니다.')
-        remaining_entries, has_import_activity, _has_sold_items = _schedules_remaining_quote_item_entries(
+        remaining_entries, _has_import_activity, _has_sold_items = _schedules_remaining_quote_item_entries(
             quote_schedule,
             include_legacy_matches=True,
         )
         if remaining_entries:
-            if quote_schedule.status == 'completed' and has_import_activity:
+            if quote_schedule.status == 'completed':
                 quote_schedule.status = 'scheduled'
                 quote_schedule.save(update_fields=['status', 'updated_at'])
             continue
@@ -7240,6 +7345,16 @@ def schedules_delivery_items_update_api(request, schedule_id):
     try:
         completed_quote_schedule_ids = []
         with transaction.atomic():
+            existing_source_quote_schedule_ids = list(
+                DeliveryItem.objects.select_for_update()
+                .filter(schedule=schedule, source_quote_schedule_id__isnull=False)
+                .values_list('source_quote_schedule_id', flat=True)
+                .distinct()
+            )
+            for source_id in existing_source_quote_schedule_ids:
+                if source_id not in source_quote_schedule_ids:
+                    source_quote_schedule_ids.append(source_id)
+            _schedules_validate_source_quote_item_quantities(delivery_items, schedule)
             schedule.delivery_items_set.all().delete()
             for item_data in delivery_items:
                 DeliveryItem.objects.create(schedule=schedule, **item_data)
@@ -16511,7 +16626,7 @@ def followup_quote_items_api(request, followup_id):
         for quote_schedule in quote_schedules:
             logger.info(f"[QUOTE_ITEMS_API] Schedule ID: {quote_schedule.id}, visit_date: {quote_schedule.visit_date}")
 
-            remaining_entries, has_import_activity, has_sold_items = _schedules_remaining_quote_item_entries(
+            remaining_entries, has_import_activity, has_sold_items, progress_by_item_id = _schedules_quote_item_progress_entries(
                 quote_schedule,
                 include_legacy_matches=quote_schedule.status == 'completed',
             )
@@ -16522,6 +16637,10 @@ def followup_quote_items_api(request, followup_id):
                 grouped_quote_items = {}
                 quote_total = Decimal('0')
                 for item, remaining_quantity in remaining_entries:
+                    progress = progress_by_item_id.get(item.id, {})
+                    quoted_quantity = progress.get('quotedQuantity', Decimal(str(item.quantity or 0)))
+                    delivered_quantity = progress.get('deliveredQuantity', Decimal('0'))
+                    remaining_quantity_decimal = progress.get('remainingQuantity', Decimal(str(remaining_quantity or 0)))
                     product = item.product if item.product_id else None
                     unit_price = float(item.unit_price) if item.unit_price is not None else 0
                     discount_unit_price = (
@@ -16538,6 +16657,12 @@ def followup_quote_items_api(request, followup_id):
                         'sourceQuoteItemId': item.id,
                         'item_name': item.item_name,
                         'itemName': item.item_name,
+                        'original_quantity': float(quoted_quantity),
+                        'originalQuantity': float(quoted_quantity),
+                        'delivered_quantity': float(delivered_quantity),
+                        'deliveredQuantity': float(delivered_quantity),
+                        'remaining_quantity': float(remaining_quantity_decimal),
+                        'remainingQuantity': float(remaining_quantity_decimal),
                         'quantity': remaining_quantity,
                         'unit': unit,
                         'unit_price': unit_price,
@@ -16569,10 +16694,16 @@ def followup_quote_items_api(request, followup_id):
                             'label': _quote_group_label(quote_group),
                             'items': [],
                             'total': Decimal('0'),
+                            'quoted_total': Decimal('0'),
+                            'delivered_total': Decimal('0'),
                         }
                     grouped_quote_items[quote_group]['items'].append(item_data)
                     item_total = _schedules_quote_item_total_for_quantity(item, remaining_quantity)
+                    item_quoted_total = _schedules_quote_item_total_for_quantity(item, quoted_quantity)
+                    item_delivered_total = _schedules_quote_item_total_for_quantity(item, delivered_quantity)
                     grouped_quote_items[quote_group]['total'] += item_total
+                    grouped_quote_items[quote_group]['quoted_total'] += item_quoted_total
+                    grouped_quote_items[quote_group]['delivered_total'] += item_delivered_total
                     quote_total += item_total
                 quote_groups = [
                     {
@@ -16580,6 +16711,8 @@ def followup_quote_items_api(request, followup_id):
                         'label': group_data['label'],
                         'items': group_data['items'],
                         'total': group_data['total'],
+                        'quoted_total': group_data['quoted_total'],
+                        'delivered_total': group_data['delivered_total'],
                     }
                     for group_key, group_data in grouped_quote_items.items()
                 ]
@@ -16592,6 +16725,8 @@ def followup_quote_items_api(request, followup_id):
                     'label': _quote_group_label(''),
                     'items': [],
                     'total': quote_total,
+                    'quoted_total': quote_total,
+                    'delivered_total': Decimal('0'),
                 }]
 
             if remaining_entries or quote_total > 0:
@@ -16601,6 +16736,12 @@ def followup_quote_items_api(request, followup_id):
                     group_key = group_data['key']
                     group_label = group_data['label']
                     option_id = f"{quote_schedule.id}:{group_key or 'default'}"
+                    delivered_amount = group_data.get('delivered_total', Decimal('0'))
+                    remaining_amount = group_data.get('total', Decimal('0'))
+                    quoted_amount = group_data.get('quoted_total', remaining_amount + delivered_amount)
+                    has_partial_delivery = delivered_amount > 0 and remaining_amount > 0
+                    delivery_status = 'partial' if has_partial_delivery else 'pending'
+                    delivery_status_label = '부분 납품 잔여' if has_partial_delivery else '미납 견적'
                     quote_data = {
                         'id': quote_schedule.id,
                         'option_id': option_id,
@@ -16615,6 +16756,18 @@ def followup_quote_items_api(request, followup_id):
                         'quoteDate': quote_schedule.visit_date.strftime('%Y-%m-%d'),
                         'expected_revenue': float(group_data['total']),
                         'expectedRevenue': float(group_data['total']),
+                        'quoted_amount': float(quoted_amount),
+                        'quotedAmount': float(quoted_amount),
+                        'delivered_amount': float(delivered_amount),
+                        'deliveredAmount': float(delivered_amount),
+                        'remaining_amount': float(remaining_amount),
+                        'remainingAmount': float(remaining_amount),
+                        'delivery_status': delivery_status,
+                        'deliveryStatus': delivery_status,
+                        'delivery_status_label': delivery_status_label,
+                        'deliveryStatusLabel': delivery_status_label,
+                        'has_partial_delivery': has_partial_delivery,
+                        'hasPartialDelivery': has_partial_delivery,
                         'customer_name': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
                         'customerName': quote_followup.customer_name or quote_followup.manager or '고객명 미정',
                         'company_name': quote_followup.company.name if quote_followup.company else '',

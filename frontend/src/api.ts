@@ -1105,6 +1105,9 @@ export type FollowupQuoteItem = {
   sourceQuoteScheduleId?: number | null;
   sourceQuoteItemId?: number | null;
   itemName: string;
+  originalQuantity: number;
+  deliveredQuantity: number;
+  remainingQuantity: number;
   quantity: number;
   unit: string;
   unitPrice: number;
@@ -1125,6 +1128,12 @@ export type FollowupQuoteOption = {
   quoteGroupLabel: string;
   quoteDate: string;
   expectedRevenue: number;
+  quotedAmount: number;
+  deliveredAmount: number;
+  remainingAmount: number;
+  deliveryStatus: string;
+  deliveryStatusLabel: string;
+  hasPartialDelivery: boolean;
   customerName: string;
   companyName: string;
   departmentName: string;
@@ -5631,6 +5640,9 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
   const unitPrice = rawNumber(rawValue(item, 'unitPrice', 'unit_price'));
   const quoteGroup = rawString(rawValue(item, 'quoteGroup', 'quote_group')).trim();
   const productId = rawNullableNumber(rawValue(item, 'productId', 'product_id'));
+  const remainingQuantity = Math.max(1, rawNumber(rawValue(item, 'remainingQuantity', 'remaining_quantity') ?? item.quantity, 1));
+  const originalQuantity = Math.max(remainingQuantity, rawNumber(rawValue(item, 'originalQuantity', 'original_quantity'), remainingQuantity));
+  const deliveredQuantity = Math.max(0, rawNumber(rawValue(item, 'deliveredQuantity', 'delivered_quantity')));
   return {
     id: rawNullableNumber(item.id),
     productId,
@@ -5639,7 +5651,10 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
     sourceQuoteScheduleId: rawNullableNumber(rawValue(item, 'sourceQuoteScheduleId', 'source_quote_schedule_id')),
     sourceQuoteItemId: rawNullableNumber(rawValue(item, 'sourceQuoteItemId', 'source_quote_item_id')) ?? rawNullableNumber(item.id),
     itemName: rawString(rawValue(item, 'itemName', 'item_name')),
-    quantity: Math.max(1, rawNumber(item.quantity, 1)),
+    originalQuantity,
+    deliveredQuantity,
+    remainingQuantity,
+    quantity: remainingQuantity,
     unit: rawString(item.unit) || 'EA',
     unitPrice,
     discountRate: rawNumber(rawValue(item, 'discountRate', 'discount_rate')),
@@ -5658,6 +5673,9 @@ const normalizeFollowupQuoteOption = (value: unknown): FollowupQuoteOption => {
   const quoteGroup = rawString(rawValue(quote, 'quoteGroup', 'quote_group')).trim();
   const quoteGroupLabel = rawString(rawValue(quote, 'quoteGroupLabel', 'quote_group_label')) || quoteGroup || '기본 견적서';
   const rawItems = quote.items;
+  const remainingAmount = rawNumber(rawValue(quote, 'remainingAmount', 'remaining_amount') ?? rawValue(quote, 'expectedRevenue', 'expected_revenue'));
+  const deliveredAmount = rawNumber(rawValue(quote, 'deliveredAmount', 'delivered_amount'));
+  const quotedAmount = rawNumber(rawValue(quote, 'quotedAmount', 'quoted_amount'), remainingAmount + deliveredAmount);
   return {
     id: rawNumber(quote.id, scheduleId),
     optionId: rawString(rawValue(quote, 'optionId', 'option_id')) || `${scheduleId}:${quoteGroup || 'default'}`,
@@ -5666,6 +5684,12 @@ const normalizeFollowupQuoteOption = (value: unknown): FollowupQuoteOption => {
     quoteGroupLabel,
     quoteDate: rawString(rawValue(quote, 'quoteDate', 'quote_date')),
     expectedRevenue: rawNumber(rawValue(quote, 'expectedRevenue', 'expected_revenue')),
+    quotedAmount,
+    deliveredAmount,
+    remainingAmount,
+    deliveryStatus: rawString(rawValue(quote, 'deliveryStatus', 'delivery_status')) || (deliveredAmount > 0 ? 'partial' : 'pending'),
+    deliveryStatusLabel: rawString(rawValue(quote, 'deliveryStatusLabel', 'delivery_status_label')) || (deliveredAmount > 0 ? '부분 납품 잔여' : '미납 견적'),
+    hasPartialDelivery: rawBoolean(rawValue(quote, 'hasPartialDelivery', 'has_partial_delivery')) || (deliveredAmount > 0 && remainingAmount > 0),
     customerName: rawString(rawValue(quote, 'customerName', 'customer_name')),
     companyName: rawString(rawValue(quote, 'companyName', 'company_name')),
     departmentName: rawString(rawValue(quote, 'departmentName', 'department_name')),

@@ -2346,6 +2346,68 @@ class QuoteItemsApiTests(TestCase):
         self.assertEqual(quote['items'][0]['id'], remaining_item.id)
         self.assertEqual(quote['items'][0]['sourceQuoteItemId'], remaining_item.id)
 
+    def test_quote_items_api_exposes_partial_delivery_remaining_quantities(self):
+        from datetime import time
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        target = self._create_followup(self.user, '동일 품목 부분 납품 고객')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='completed',
+        )
+        quote_item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='부분 납품 견적 품목',
+            quantity=3,
+            unit='EA',
+            unit_price=10000,
+            quote_group='보상판매',
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate(),
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            source_quote_schedule=quote_schedule,
+            source_quote_item=quote_item,
+            item_name='부분 납품 견적 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=10000,
+            quote_group='보상판매',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        quote = payload['quotes'][0]
+        item = quote['items'][0]
+        self.assertEqual(quote['deliveryStatus'], 'partial')
+        self.assertEqual(quote['deliveryStatusLabel'], '부분 납품 잔여')
+        self.assertTrue(quote['hasPartialDelivery'])
+        self.assertEqual(quote['quotedAmount'], 33000.0)
+        self.assertEqual(quote['deliveredAmount'], 11000.0)
+        self.assertEqual(quote['remainingAmount'], 22000.0)
+        self.assertEqual(item['originalQuantity'], 3.0)
+        self.assertEqual(item['deliveredQuantity'], 1.0)
+        self.assertEqual(item['remainingQuantity'], 2.0)
+        self.assertEqual(item['quantity'], 2)
+
     def test_quote_items_api_excludes_completed_quote_schedules(self):
         target = self._create_followup(self.user, '완료 제외 고객')
         completed = self._create_quote_schedule(target, self.user, '완료된 견적 품목', 1000000)
@@ -4881,6 +4943,182 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIn('Thirty Thousand Kit', history.delivery_items)
         self.assertNotIn('Unsold Kit', history.delivery_items)
         self.assertEqual(int(history.delivery_amount), 33000)
+
+    def test_schedule_delivery_items_update_api_rejects_over_imported_quote_quantity(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = self._create_schedule(self.user, '초과견적불러오기납품', activity_type='delivery')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        quote_item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Limited Quote Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=30000,
+        )
+        previous_delivery = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(11, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=previous_delivery,
+            source_quote_schedule=quote_schedule,
+            source_quote_item=quote_item,
+            item_name='Limited Quote Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=30000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'sourceQuoteScheduleId': quote_schedule.id,
+                        'sourceQuoteItemId': quote_item.id,
+                        'itemName': 'Limited Quote Kit',
+                        'quantity': 2,
+                        'unit': 'EA',
+                        'unitPrice': '30000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('남은 견적 수량은 1EA', response.json()['error'])
+        self.assertFalse(DeliveryItem.objects.filter(schedule=schedule).exists())
+
+    def test_schedule_delivery_items_update_api_rejects_duplicate_source_quote_item_rows(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = self._create_schedule(self.user, '중복견적품목납품', activity_type='delivery')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        quote_item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Duplicate Guard Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=50000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'sourceQuoteScheduleId': quote_schedule.id,
+                        'sourceQuoteItemId': quote_item.id,
+                        'itemName': 'Duplicate Guard Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                    },
+                    {
+                        'sourceQuoteScheduleId': quote_schedule.id,
+                        'sourceQuoteItemId': quote_item.id,
+                        'itemName': 'Duplicate Guard Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('견적 품목이 중복되었습니다', response.json()['error'])
+        self.assertFalse(DeliveryItem.objects.filter(schedule=schedule).exists())
+
+    def test_schedule_delivery_items_update_api_reopens_quote_when_import_link_removed(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = self._create_schedule(self.user, '견적연결해제납품', activity_type='delivery')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='completed',
+        )
+        quote_item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Linked Quote Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=40000,
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            source_quote_schedule=quote_schedule,
+            source_quote_item=quote_item,
+            item_name='Linked Quote Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=40000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'itemName': 'Manual Replacement Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '10000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        quote_schedule.refresh_from_db()
+        self.assertEqual(quote_schedule.status, 'scheduled')
+        delivery_item = DeliveryItem.objects.get(schedule=schedule)
+        self.assertEqual(delivery_item.item_name, 'Manual Replacement Kit')
+        self.assertIsNone(delivery_item.source_quote_schedule_id)
+        self.assertIsNone(delivery_item.source_quote_item_id)
 
     def test_completed_quote_items_do_not_increment_product_sold_count(self):
         from reporting.models import DeliveryItem, Product
