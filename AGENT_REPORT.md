@@ -16152,3 +16152,106 @@ Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/dashb
 ### 9. Recommended Next Task
 
 운영 수동검수 후, 같은 AI 보고 흐름에서 사용자가 명시적으로 “긴급”, “장기”, “보류”, “다음주 연락”처럼 표현한 긴급도 신호를 더 세밀하게 priority에 반영하는 규칙을 추가하는 것이 좋습니다.
+
+## 2026-05-14 메일 답장 HTML 원문 노출 수정
+
+### 1. Summary
+
+- 메일 본문이 `EmailLog.body`에 `<html><head><style>...` 형태 또는 escaped HTML로 저장된 경우에도 표시용 텍스트로 변환하도록 수정했습니다.
+- 답장 전송 시 `body_text`에 HTML 문서 원문이 섞여 들어오면 태그/스타일을 제거한 일반 텍스트로 정리하고, escaped HTML `body_html`은 정리된 plain HTML로 재생성합니다.
+- React 메일 스레드 API와 legacy Django 스레드/답장 화면 모두 원문 HTML 대신 정리된 본문을 사용합니다.
+
+### 2. Files Changed
+
+- `reporting/gmail_views.py`
+- `reporting/templates/reporting/gmail/reply_email.html`
+- `reporting/templates/reporting/gmail/thread_detail.html`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+
+### 3. CRM Improvements
+
+- 메일 답장/스레드 화면에서 고객에게 보낸 답장이나 수신 메일의 HTML 원문이 그대로 노출되는 문제를 줄였습니다.
+- 메일 본문 미리보기와 상세 본문이 같은 정리 로직을 사용해, dashboard/메일함에서 보이는 내용이 더 일관됩니다.
+- 답장 저장 로그에도 `<html>`, `<style>`, `font-family` 같은 편집기/메일 클라이언트 마크업이 남지 않도록 방어했습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 기존 라우트와 React 메일 라우트는 유지했습니다.
+- 인증/CSRF/권한 흐름은 변경하지 않았습니다.
+- 기존 rich HTML 답장 전송은 유지하되, 텍스트 영역에 HTML 문서가 잘못 들어온 경우만 정리합니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1
+→ Ran 24 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK; existing Vite chunk-size warning only
+
+git commit -m "fix: clean mailbox html bodies"
+git push origin main
+→ Commit c94e108 pushed
+
+railway deployment up --service web --detach --message "Deploy mailbox HTML cleanup c94e108"
+railway deployment list --service web --limit 5
+→ a2a824ce-6b9a-4a57-aa24-189997f759da SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/mailbox/ -MaximumRedirection 0
+→ 302 login redirect
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/mailbox/
+→ 200
+```
+
+### 6. Known Limitations
+
+- Legacy Django 메일 스레드/답장 화면의 본문 표시는 안전한 text-only 표시로 정리했습니다. 원본 HTML 레이아웃을 그대로 렌더링하지 않습니다.
+- 운영 데이터의 기존 메일 원문을 DB에서 일괄 수정하지는 않습니다. 표시/답장 처리 시점에 정리합니다.
+- 로그인 세션이 필요한 실제 고객 메일 화면은 사용자의 운영 수동검수가 필요합니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `c94e108 fix: clean mailbox html bodies`
+- GitHub: `main` pushed
+- Railway `web`: `a2a824ce-6b9a-4a57-aa24-189997f759da` SUCCESS
+- Railway `sales-note-frontend`: 코드 변경 없음, 재배포 없음
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend mailbox API unauthenticated access redirects to login.
+  - Frontend `/mailbox/` route returned 200.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/mailbox/`
+2. 문제가 있었던 메일 스레드 또는 답장 화면을 엽니다.
+3. 본문에 `<html>`, `<head>`, `<style>`, `font-family`, `font-size` 같은 원문 HTML/CSS가 그대로 보이지 않는지 확인합니다.
+4. 답장 작성 화면에서 기존 메일 인용 영역도 일반 텍스트로 정리되어 보이는지 확인합니다.
+5. 테스트 답장을 작성해 발송한 뒤, 발송 메일 스레드를 새로고침해 저장된 답장 본문에도 HTML 원문이 보이지 않는지 확인합니다.
+
+### 9. Recommended Next Task
+
+운영 수동검수 후, 중단했던 AI 보고 흐름의 고객 긴급도 세분화 작업을 이어가는 것이 좋습니다.
