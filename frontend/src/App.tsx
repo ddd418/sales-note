@@ -6326,12 +6326,23 @@ function ScheduleDetailPage({
   };
 
   const handleDeliveryPrepaymentToggle = (selected: boolean) => {
+    if (selected && scheduleDeliveryEditRowsTotal(deliveryRows) <= 0) {
+      setDeliveryUsePrepayment(true);
+      setDeliveryError('선결제를 차감하려면 먼저 견적 품목을 불러오거나 납품 품목 금액을 입력하세요.');
+      setDeliveryMessage('');
+      return;
+    }
     setDeliveryUsePrepayment(selected);
     setDeliveryError('');
     setDeliveryMessage('');
   };
 
   const handleDeliveryPrepaymentRowToggle = (id: number, selected: boolean) => {
+    if (selected && scheduleDeliveryEditRowsTotal(deliveryRows) <= 0) {
+      setDeliveryError('선결제를 차감하려면 먼저 견적 품목을 불러오거나 납품 품목 금액을 입력하세요.');
+      setDeliveryMessage('');
+      return;
+    }
     setDeliveryPrepaymentRows((rows) => rows.map((row) => (
       row.id === id
         ? {
@@ -6616,13 +6627,21 @@ function ScheduleDetailPage({
       return;
     }
     setDeliveryEditOpen(true);
-    setDeliveryUsePrepayment(Boolean(currentSchedule.usePrepayment));
+    setDeliveryUsePrepayment((previous) => previous || Boolean(currentSchedule.usePrepayment));
     setDeliveryError('');
     setDeliveryMessage('');
     setQuoteImportOpen(true);
     setSelectedQuoteImportIds([]);
     void ensureProductsLoaded();
     void loadQuoteImports();
+  };
+
+  const handleQuoteImportOpenFromPrepayment = () => {
+    if (quoteImportOpen) {
+      void loadQuoteImports();
+      return;
+    }
+    handleQuoteImportToggle();
   };
 
   const handleQuoteImportSelectionChange = (optionId: string, selected: boolean) => {
@@ -6845,6 +6864,10 @@ function ScheduleDetailPage({
     const deliveryPrepaymentSelections = deliveryPrepaymentRows.filter((row) => row.selected);
     const useDeliveryPrepayment = currentSchedule.activityType === 'delivery' && deliveryUsePrepayment;
     if (useDeliveryPrepayment) {
+      if (deliveryPrepaymentBaseAmount <= 0) {
+        setDeliveryError('선결제를 차감하려면 먼저 견적 품목을 불러오거나 납품 품목 금액을 입력하세요.');
+        return;
+      }
       if (deliveryPrepaymentsLoading) {
         setDeliveryError('선결제 목록을 불러오는 중입니다.');
         return;
@@ -7058,11 +7081,12 @@ function ScheduleDetailPage({
   const payableAfterPrepayment = Math.max(prepaymentBaseAmount - selectedPrepaymentAmount, 0);
   const deliveryEditTotalAmount = scheduleDeliveryEditRowsTotal(deliveryRows);
   const deliveryPrepaymentBaseAmount = deliveryEditOpen
-    ? (deliveryEditTotalAmount > 0 ? deliveryEditTotalAmount : prepaymentBaseAmount)
+    ? deliveryEditTotalAmount
     : prepaymentBaseAmount;
+  const deliveryPrepaymentNeedsItems = deliveryUsePrepayment && deliveryPrepaymentBaseAmount <= 0;
   const selectedDeliveryPrepaymentAmount = deliveryPrepaymentRows.reduce((total, row) => {
     const amount = Number(row.amountInput);
-    return row.selected && Number.isFinite(amount) && amount > 0 ? total + amount : total;
+    return !deliveryPrepaymentNeedsItems && row.selected && Number.isFinite(amount) && amount > 0 ? total + amount : total;
   }, 0);
   const deliveryPayableAfterPrepayment = Math.max(deliveryPrepaymentBaseAmount - selectedDeliveryPrepaymentAmount, 0);
   const metrics = [
@@ -7731,59 +7755,79 @@ function ScheduleDetailPage({
                           <span>선결제 조회 중</span>
                         </div>
                       ) : deliveryPrepaymentRows.length > 0 ? (
-                        <div className="schedule-prepayment-list">
-                          {deliveryPrepaymentRows.map((row) => {
-                            const rowAmount = Number(row.amountInput);
-                            const safeRowAmount = row.selected && Number.isFinite(rowAmount) && rowAmount > 0 ? rowAmount : 0;
-                            const otherSelectedAmount = selectedDeliveryPrepaymentAmount - safeRowAmount;
-                            const itemRemainingBeforeRow = Math.max(deliveryPrepaymentBaseAmount - otherSelectedAmount, 0);
-                            const rowMaxAmount = Math.min(row.availableBalance, itemRemainingBeforeRow);
-                            const itemRemainingAfterRow = Math.max(itemRemainingBeforeRow - safeRowAmount, 0);
-                            const isOverRowMax = row.selected && safeRowAmount > rowMaxAmount;
-                            return (
-                              <div className={row.selected ? 'schedule-prepayment-row selected' : 'schedule-prepayment-row'} key={row.id}>
-                                <label className="schedule-prepayment-check">
-                                  <input
-                                    checked={row.selected}
-                                    onChange={(event) => handleDeliveryPrepaymentRowToggle(row.id, event.target.checked)}
-                                    type="checkbox"
-                                  />
-                                  <span>
-                                    <strong>{[row.paymentDate ? formatDateLabel(row.paymentDate) : '입금일 없음', row.payerName].filter(Boolean).join(' · ')}</strong>
-                                    <small>{[row.customerName, `잔액 ${formatWon(row.balance)}`, `사용 가능 ${formatWon(row.availableBalance)}`].filter(Boolean).join(' · ')}</small>
-                                    {row.selected ? (
-                                      <small className={isOverRowMax ? 'schedule-prepayment-limit over' : 'schedule-prepayment-limit'}>
-                                        품목 상한 {formatWon(itemRemainingBeforeRow)} · 최대 차감 {formatWon(rowMaxAmount)} · 입력 후 남은 납품금액 {formatWon(itemRemainingAfterRow)}
-                                      </small>
-                                    ) : null}
-                                  </span>
-                                </label>
-                                <div className="schedule-prepayment-amount">
-                                  <label>
-                                    <span>차감</span>
+                        <>
+                          {deliveryPrepaymentNeedsItems ? (
+                            <div className="dashboard-api-alert compact schedule-prepayment-item-required">
+                              <AlertTriangle size={16} />
+                              <span>차감할 납품 품목 합계가 없습니다. 먼저 견적 품목을 불러오거나 납품 품목 금액을 입력하세요.</span>
+                              {currentSchedule?.canEdit && data?.links.updateDeliveryItems ? (
+                                <button
+                                  className="customer-row-action"
+                                  disabled={quoteImportLoading}
+                                  onClick={handleQuoteImportOpenFromPrepayment}
+                                  type="button"
+                                >
+                                  {quoteImportLoading ? <Loader2 className="spin-icon" size={14} /> : <FileText size={14} />}
+                                  <span>견적 품목 불러오기</span>
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          <div className="schedule-prepayment-list">
+                            {deliveryPrepaymentRows.map((row) => {
+                              const rowAmount = Number(row.amountInput);
+                              const safeRowAmount = !deliveryPrepaymentNeedsItems && row.selected && Number.isFinite(rowAmount) && rowAmount > 0 ? rowAmount : 0;
+                              const otherSelectedAmount = selectedDeliveryPrepaymentAmount - safeRowAmount;
+                              const itemRemainingBeforeRow = Math.max(deliveryPrepaymentBaseAmount - otherSelectedAmount, 0);
+                              const rowMaxAmount = deliveryPrepaymentNeedsItems ? 0 : Math.min(row.availableBalance, itemRemainingBeforeRow);
+                              const itemRemainingAfterRow = Math.max(itemRemainingBeforeRow - safeRowAmount, 0);
+                              const isOverRowMax = row.selected && safeRowAmount > rowMaxAmount;
+                              return (
+                                <div className={!deliveryPrepaymentNeedsItems && row.selected ? 'schedule-prepayment-row selected' : 'schedule-prepayment-row'} key={row.id}>
+                                  <label className="schedule-prepayment-check">
                                     <input
-                                      disabled={!row.selected}
-                                      inputMode="numeric"
-                                      max={row.selected ? rowMaxAmount : undefined}
-                                      min="0"
-                                      onChange={(event) => handleDeliveryPrepaymentAmountChange(row.id, event.target.value)}
-                                      type="number"
-                                      value={row.amountInput}
+                                      checked={!deliveryPrepaymentNeedsItems && row.selected}
+                                      disabled={deliveryPrepaymentNeedsItems}
+                                      onChange={(event) => handleDeliveryPrepaymentRowToggle(row.id, event.target.checked)}
+                                      type="checkbox"
                                     />
+                                    <span>
+                                      <strong>{[row.paymentDate ? formatDateLabel(row.paymentDate) : '입금일 없음', row.payerName].filter(Boolean).join(' · ')}</strong>
+                                      <small>{[row.customerName, `잔액 ${formatWon(row.balance)}`, `사용 가능 ${formatWon(row.availableBalance)}`].filter(Boolean).join(' · ')}</small>
+                                      {!deliveryPrepaymentNeedsItems && row.selected ? (
+                                        <small className={isOverRowMax ? 'schedule-prepayment-limit over' : 'schedule-prepayment-limit'}>
+                                          품목 상한 {formatWon(itemRemainingBeforeRow)} · 최대 차감 {formatWon(rowMaxAmount)} · 입력 후 남은 납품금액 {formatWon(itemRemainingAfterRow)}
+                                        </small>
+                                      ) : null}
+                                    </span>
                                   </label>
-                                  <button
-                                    className="schedule-prepayment-fill-button"
-                                    disabled={!row.selected || rowMaxAmount <= 0}
-                                    onClick={() => handleDeliveryPrepaymentFillMax(row.id, rowMaxAmount)}
-                                    type="button"
-                                  >
-                                    전체 차감
-                                  </button>
+                                  <div className="schedule-prepayment-amount">
+                                    <label>
+                                      <span>차감</span>
+                                      <input
+                                        disabled={deliveryPrepaymentNeedsItems || !row.selected}
+                                        inputMode="numeric"
+                                        max={row.selected ? rowMaxAmount : undefined}
+                                        min="0"
+                                        onChange={(event) => handleDeliveryPrepaymentAmountChange(row.id, event.target.value)}
+                                        type="number"
+                                        value={deliveryPrepaymentNeedsItems ? '' : row.amountInput}
+                                      />
+                                    </label>
+                                    <button
+                                      className="schedule-prepayment-fill-button"
+                                      disabled={deliveryPrepaymentNeedsItems || !row.selected || rowMaxAmount <= 0}
+                                      onClick={() => handleDeliveryPrepaymentFillMax(row.id, rowMaxAmount)}
+                                      type="button"
+                                    >
+                                      전체 차감
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                              );
+                            })}
+                          </div>
+                        </>
                       ) : (
                         <DashboardEmpty label="사용 가능한 선결제가 없습니다" />
                       )}

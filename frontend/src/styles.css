@@ -2997,6 +2997,21 @@ h2 {
   color: #b91c1c !important;
 }
 
+.schedule-prepayment-item-required {
+  flex-wrap: wrap;
+}
+
+.schedule-prepayment-item-required .customer-row-action {
+  margin-left: auto;
+  background: #991b1b;
+  color: #ffffff;
+  border-color: #991b1b;
+}
+
+.schedule-prepayment-item-required .customer-row-action span {
+  color: #ffffff;
+}
+
 .schedule-prepayment-fill-button {
   min-height: 32px;
   border: 1px solid #bfdbfe;
