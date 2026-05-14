@@ -32,6 +32,9 @@
 - 선결제 영역에 `견적 품목 불러오기` CTA 추가 완료.
 - 저장 전 선결제 차감 합계 0원 차단 구현 완료.
 - frontend 타입체크/빌드/server.mjs 체크/diff 체크 통과.
+- 커밋/푸시 완료: `c6adaea fix: require delivery items before prepayment deduction`.
+- Railway `sales-note-frontend` 배포 완료: `60a43508-8e09-465a-adbf-7e85677b0afd` SUCCESS.
+- 운영 smoke 완료: `/schedules/903/` 최신 JS/CSS 번들 및 새 안내 문구 반영 확인.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## 2026-05-15 — Delivery Prepayment Requires Items UX
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/번들 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -42,6 +42,20 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: require delivery items before prepayment deduction"
+git push origin main
+→ pushed c6adaea to origin/main
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy prepayment item guard c6adaea"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 60a43508-8e09-465a-adbf-7e85677b0afd SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/903/
+→ 200, assets/index-BTb0sU0h.js and assets/index-GdZLLCy-.css loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-BTb0sU0h.js
+→ 200, "차감할 납품 품목 합계가 없습니다" and "견적 품목 불러오기" present
 ```
 
 ### 알려진 제한
@@ -50,7 +64,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 진행 예정.
+- GitHub: `c6adaea fix: require delivery items before prepayment deduction` pushed to `origin/main`.
+- Railway `sales-note-frontend`: `60a43508-8e09-465a-adbf-7e85677b0afd` SUCCESS.
+- 운영 smoke OK:
+  - `/schedules/903/` 200.
+  - latest frontend assets `index-BTb0sU0h.js`, `index-GdZLLCy-.css` loaded.
+  - new guard string and `견적 품목 불러오기` CTA present in deployed JS.
 
 ### 운영 수동 검수 절차
 
