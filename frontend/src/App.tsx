@@ -9083,9 +9083,10 @@ function AIWorkspaceDepartmentList({
 }) {
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim().toLowerCase();
+  const hasSearchQuery = normalizedQuery.length > 0;
   const filteredDepartments = useMemo(() => {
     if (!normalizedQuery) {
-      return departments;
+      return [];
     }
     return departments.filter((department) => {
       const searchableText = [
@@ -9116,11 +9117,15 @@ function AIWorkspaceDepartmentList({
       <div className="ai-department-list-meta">
         <span>
           전체 {formatNumber(departments.length)}개
-          {normalizedQuery ? ` · 검색 ${formatNumber(filteredDepartments.length)}개` : ''}
+          {hasSearchQuery ? ` · 검색 ${formatNumber(filteredDepartments.length)}개` : ''}
         </span>
-        <strong>최대 5개 표시</strong>
+        <strong>{hasSearchQuery ? '최대 5개 표시' : '검색 후 표시'}</strong>
       </div>
-      {visibleDepartments.length === 0 ? (
+      {!hasSearchQuery ? (
+        <p className="ai-department-list-hint">
+          회사, 부서, 고객명, 분석 요약을 검색하면 결과가 표시됩니다.
+        </p>
+      ) : visibleDepartments.length === 0 ? (
         <DashboardEmpty label="검색 결과가 없습니다" />
       ) : (
         <div className="ai-department-list">
@@ -9150,7 +9155,7 @@ function AIWorkspaceDepartmentList({
           })}
         </div>
       )}
-      {filteredDepartments.length > visibleDepartments.length ? (
+      {hasSearchQuery && filteredDepartments.length > visibleDepartments.length ? (
         <p className="ai-department-list-hint">
           {formatNumber(filteredDepartments.length - visibleDepartments.length)}개가 더 있습니다. 검색어를 더 구체적으로 입력하세요.
         </p>
@@ -12582,6 +12587,21 @@ function AIWorkspacePage({
 
         <div className="ai-workspace-layout">
           <div className="ai-workspace-main">
+            <section className="dashboard-panel ai-main-panel">
+              <div className="dashboard-panel-heading">
+                <div>
+                  <span className="eyebrow">Department analysis</span>
+                  <h2>부서 분석 대상</h2>
+                </div>
+                <Sparkles size={18} />
+              </div>
+              <AIWorkspaceDepartmentList
+                departments={data.departments}
+                selectedDepartmentId={activeDepartmentId}
+                onSelect={onDepartmentSelect}
+              />
+            </section>
+
             <section className="dashboard-panel ai-action-panel">
               <div className="dashboard-panel-heading">
                 <div>
@@ -12613,21 +12633,6 @@ function AIWorkspacePage({
             ) : null}
 
             <AIWorkspaceFeedbackPerformance data={data} />
-
-            <section className="dashboard-panel ai-main-panel">
-              <div className="dashboard-panel-heading">
-                <div>
-                  <span className="eyebrow">Department analysis</span>
-                  <h2>부서 분석 대상</h2>
-                </div>
-                <Sparkles size={18} />
-              </div>
-              <AIWorkspaceDepartmentList
-                departments={data.departments}
-                selectedDepartmentId={activeDepartmentId}
-                onSelect={onDepartmentSelect}
-              />
-            </section>
 
             <section className="dashboard-panel ai-followup-panel">
               <div className="dashboard-panel-heading">

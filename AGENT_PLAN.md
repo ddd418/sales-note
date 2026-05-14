@@ -4330,3 +4330,30 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - 프론트 타입/빌드는 API shape 후방 호환이면 변경 없음. 필요 시 `cd frontend && npx tsc --noEmit --pretty false && npm run build`.
+
+## 2026-05-14 AI 워크스페이스 부서 검색 UI 개선 계획
+
+**배경**:
+
+- 운영 `/ai-workspace/` 화면에서 `Department analysis / 부서 분석 대상` 섹션이 `AI 추천 실행 목록` 아래에 있어, 부서 상세 탐색보다 추천 실행 목록이 먼저 보인다.
+- 부서 분석 대상 리스트가 기본으로 전체 부서를 모두 보여줘 화면이 길어지고, 사용자는 검색한 결과만 보고 싶어 한다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- React AI 워크스페이스 화면에서 `부서 분석 대상` 섹션을 `AI 추천 실행 목록`보다 위로 이동한다.
+- `AIWorkspaceDepartmentList`는 검색어가 없으면 전체 부서 리스트를 렌더링하지 않고 검색 안내만 표시한다.
+- 검색어가 있을 때만 필터링된 부서 결과를 보여준다.
+- 검색 결과가 없을 때는 빈 상태 문구를 표시한다.
+- 백엔드 API shape와 `/reporting/*` 경로는 변경하지 않는다.
+
+**검증 계획**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Railway `sales-note-frontend` 배포 후 운영 `/ai-workspace/` smoke 확인.
