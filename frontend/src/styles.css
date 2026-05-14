@@ -5080,13 +5080,14 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .ai-feedback-row-head strong {
-  overflow: hidden;
   color: var(--text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .ai-feedback-owner {
@@ -5111,6 +5112,7 @@ h2 {
   gap: 2px;
   margin: 0;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .ai-feedback-row-body b {

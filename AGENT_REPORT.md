@@ -16707,3 +16707,83 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 2. 문새롬 `메일 답장 확인`의 답변 결과를 확인합니다.
 3. 다음 액션이 “팁에 대한 불만 사항을 해결하기 위한 조치를 취하세요.”가 아니라 `증상`, `사용 제품 규격`, `수량/로트`, `사진 여부`, `처리 예정 시간`, `보상판매 장기 후속`을 포함하는지 확인합니다.
 4. 같은 유형의 새 답변을 저장했을 때도 일반 문장이 아닌 구체 실행문으로 저장되는지 확인합니다.
+
+---
+
+## 2026-05-14 AI 실행 피드백 표시/상세 스코프 수정
+
+### 1. Summary
+
+- React `AI 실행 피드백` 섹션의 답변/판단/다음 액션이 API에서 240~260자 단위로 잘리던 동작을 제거했습니다.
+- 표시용 텍스트는 HTML 태그, 이메일, 연락처만 정제하고 원문 길이를 유지하도록 바꿨습니다.
+- `/ai-workspace/?department_id=<id>` 상세 진입 시 `feedbackHistory`도 해당 부서/고객 범위로 필터링되도록 수정했습니다.
+- 프론트 카드 제목/본문이 한 줄 말줄임 처리되지 않고 줄바꿈되도록 CSS를 보강했습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- 일반 `/ai-workspace/`에서는 기존처럼 사용자/팀 범위의 AI 실행 피드백을 볼 수 있습니다.
+- 상세 `department_id` 화면에서는 해당 부서에 연결된 고객 피드백만 보여, 다른 고객 피드백이 섞이지 않습니다.
+- 장문 현장 답변과 AI 다음 액션을 끝까지 확인할 수 있어, 실행 히스토리 검토가 쉬워졌습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트, 인증, CSRF 보호는 유지했습니다.
+- AI 추천 실행 목록과 답변 저장 API shape는 유지했고, `feedbackHistory.scope`에만 상세 부서 식별 정보를 추가했습니다.
+- 관리자/팀 범위 피드백 조회는 일반 화면에서 기존 동작을 유지합니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 28 tests, OK
+
+cd frontend && npm run build
+→ OK, Vite chunk-size warning only
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+```
+
+### 6. Known Limitations / Risks
+
+- 상세 피드백 필터는 현재 `department_id` 기준입니다. 같은 부서 아래 여러 담당자가 있으면 해당 부서 고객들의 피드백이 함께 보입니다.
+- 운영 로그인 세션이 필요한 실제 화면 육안 확인은 사용자 서버 테스트로 확인해야 합니다.
+
+### 7. Production Deployment Status
+
+- Commit/deploy 전 문서 작성 단계입니다. 커밋 후 `web`과 `sales-note-frontend`를 Railway에 배포하고 이 항목을 후속 갱신합니다.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 일반 화면에 접속합니다: `https://sales-note-frontend-production.up.railway.app/ai-workspace/`
+2. `AI 실행 피드백` 섹션에서 긴 `답변`, `판단`, `다음 액션` 문구가 끝까지 줄바꿈되어 보이는지 확인합니다.
+3. 상세 화면에 접속합니다: `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308`
+4. `AI 실행 피드백` 섹션에 해당 부서/고객의 피드백만 보이고 다른 고객 피드백이 섞이지 않는지 확인합니다.

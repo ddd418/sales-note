@@ -2605,6 +2605,8 @@ export type AIWorkspaceFeedbackHistory = {
     userCount: number;
     canViewAll: boolean;
     selectedUserId: number | null;
+    departmentId?: number | null;
+    departmentName?: string;
   };
   stats: {
     total: number;

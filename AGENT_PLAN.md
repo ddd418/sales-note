@@ -4414,3 +4414,31 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-14 AI 실행 피드백 표시/상세 스코프 수정 계획
+
+**배경**:
+
+- React `/ai-workspace/`의 `AI 실행 피드백` 섹션에서 답변/판단/다음 액션 문구가 API excerpt 기준으로 짧게 잘려 보인다.
+- `department_id`가 있는 상세 진입 화면에서도 피드백 히스토리는 전체 범위 기준으로 내려와, 해당 부서/고객 맥락과 다른 피드백이 함께 보일 수 있다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- `AI 실행 피드백` API payload에서 답변/판단/다음 액션/근거를 240~260자 단위로 자르지 않고 표시용 정제만 적용한다.
+- `/reporting/api/ai-workspace/?department_id=<id>` 요청에서 선택 부서가 유효하면 `feedbackHistory`도 해당 부서에 연결된 고객 피드백만 집계/노출한다.
+- React `AI 실행 피드백` 카드 제목과 본문이 한 줄 말줄임/좁은 영역 때문에 잘리지 않도록 줄바꿈 스타일을 보강한다.
+- 일반 `/ai-workspace/`는 기존처럼 사용자/팀 범위의 피드백 히스토리를 유지한다.
+
+**검증 계획**:
+
+- 상세 `department_id` 요청에서 다른 부서 피드백이 제외되는 테스트 추가.
+- 긴 답변/판단/다음 액션 문구가 API에서 잘리지 않고 내려오는 테스트 추가.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

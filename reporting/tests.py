@@ -6437,6 +6437,79 @@ class AIWorkspaceSummaryApiTests(TestCase):
         recent_ids = {item['actionId'] for item in feedback_history['recent']}
         self.assertEqual(recent_ids, {'quote:team-owner', 'followup:team-coworker'})
 
+    def test_ai_workspace_detail_feedback_history_scopes_to_department_and_keeps_full_text(self):
+        from reporting.models import AIWorkspaceActionFeedback
+
+        selected_followup, selected_department = self._create_customer(self.user, '피드백상세')
+        other_followup, _other_department = self._create_customer(self.user, '다른피드백')
+        long_feedback = (
+            '고객 답변은 장문으로 기록되어야 합니다. '
+            '팁 불만의 증상, 사용 제품 규격, 수량, 로트, 사진 여부, 처리 예정 시간까지 모두 적었습니다. '
+            * 6
+        ) + '피드백 끝문장'
+        long_summary = (
+            'AI 판단도 장문으로 표시되어야 하며, 상세 페이지에서는 해당 부서 고객의 피드백만 보여야 합니다. '
+            * 6
+        ) + '판단 끝문장'
+        long_next_action = (
+            '다음 액션은 증상 확인, 제품 규격 확인, 교체 가능 여부 검토, 고객에게 처리 예정 시간 회신까지 포함합니다. '
+            * 6
+        ) + '다음 액션 끝문장'
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=selected_followup,
+            action_id='followup:feedback-detail-selected',
+            action_kind='customer_followup',
+            status='next_action',
+            feedback=long_feedback,
+            ai_result={
+                'summary': long_summary,
+                'nextAction': long_next_action,
+                'reason': '상세 화면 표시 검증',
+                'source': 'fallback',
+            },
+            action_snapshot={
+                'title': '피드백상세 후속',
+                'customer': selected_followup.customer_name,
+                'company': selected_followup.company.name,
+                'department': selected_followup.department.name,
+            },
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=other_followup,
+            action_id='followup:feedback-detail-other',
+            action_kind='customer_followup',
+            status='answered',
+            feedback='다른 부서 피드백',
+            ai_result={'summary': '다른 부서 판단', 'source': 'fallback'},
+            action_snapshot={'title': '다른피드백 후속'},
+        )
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(self.url, {'department_id': selected_department.id})
+
+        self.assertEqual(detail_response.status_code, 200)
+        detail_feedback_history = detail_response.json()['feedbackHistory']
+        self.assertEqual(detail_feedback_history['scope']['departmentId'], selected_department.id)
+        self.assertIn(selected_department.name, detail_feedback_history['scope']['label'])
+        self.assertEqual(detail_feedback_history['stats']['total'], 1)
+        self.assertEqual(detail_feedback_history['recent'][0]['actionId'], 'followup:feedback-detail-selected')
+        self.assertEqual(detail_feedback_history['recent'][0]['feedback'], long_feedback)
+        self.assertEqual(detail_feedback_history['recent'][0]['summary'], long_summary)
+        self.assertEqual(detail_feedback_history['recent'][0]['nextAction'], long_next_action)
+        self.assertIn('피드백 끝문장', detail_feedback_history['recent'][0]['feedback'])
+        self.assertIn('판단 끝문장', detail_feedback_history['recent'][0]['summary'])
+        self.assertIn('다음 액션 끝문장', detail_feedback_history['recent'][0]['nextAction'])
+        detail_action_ids = {item['actionId'] for item in detail_feedback_history['recent']}
+        self.assertNotIn('followup:feedback-detail-other', detail_action_ids)
+
+        general_response = self.client.get(self.url)
+        self.assertEqual(general_response.status_code, 200)
+        general_action_ids = {item['actionId'] for item in general_response.json()['feedbackHistory']['recent']}
+        self.assertIn('followup:feedback-detail-selected', general_action_ids)
+        self.assertIn('followup:feedback-detail-other', general_action_ids)
+
     def test_ai_workspace_summary_api_uses_requested_department_for_featured_panel(self):
         _first_followup, first_department = self._create_customer(self.user, '선택부서')
         _second_followup, second_department = self._create_customer(self.user, '최신부서')

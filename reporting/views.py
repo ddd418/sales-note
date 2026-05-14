@@ -7423,6 +7423,19 @@ def _ai_workspace_prompt_excerpt(value, limit=120):
     return text[:limit - 1].rstrip() + '...'
 
 
+def _ai_workspace_feedback_display_text(value):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+', '[이메일 제거]', text)
+    text = re.sub(r'\b01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}\b', '[연락처 제거]', text)
+    text = re.sub(r'\b0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}\b', '[연락처 제거]', text)
+    text = re.sub(r'[ \t\f\v]+', ' ', text)
+    text = re.sub(r' *[\r\n]+ *', '\n', text)
+    return text.strip()
+
+
 def _ai_workspace_money(value):
     return f"{_money_int(value):,}원"
 
@@ -7920,11 +7933,11 @@ def _ai_workspace_action_feedback_payload(feedback):
         'statusLabel': _ai_workspace_feedback_status_label(feedback.status),
         'intent': intent,
         'intentLabel': _ai_workspace_feedback_intent_label(intent),
-        'feedback': _ai_workspace_prompt_excerpt(feedback.feedback, 260),
-        'summary': _ai_workspace_prompt_excerpt(result.get('summary'), 240),
-        'nextAction': _ai_workspace_prompt_excerpt(result.get('nextAction'), 240),
+        'feedback': _ai_workspace_feedback_display_text(feedback.feedback),
+        'summary': _ai_workspace_feedback_display_text(result.get('summary')),
+        'nextAction': _ai_workspace_feedback_display_text(result.get('nextAction')),
         'nextActionDate': result.get('nextActionDate') or None,
-        'reason': _ai_workspace_prompt_excerpt(result.get('reason'), 220),
+        'reason': _ai_workspace_feedback_display_text(result.get('reason')),
         'decision': result.get('decision') or '',
         'source': result.get('source') or '',
         'prioritySignal': result.get('prioritySignal') or None,
@@ -9288,6 +9301,8 @@ def _ai_workspace_empty_feedback_history():
             'userCount': 0,
             'canViewAll': False,
             'selectedUserId': None,
+            'departmentId': None,
+            'departmentName': '',
         },
         'stats': {
             'total': 0,
@@ -9351,11 +9366,11 @@ def _ai_workspace_feedback_history_item(feedback):
         'department': identity['department'],
         'customerHref': identity['customerHref'],
         'djangoCustomerHref': identity['djangoCustomerHref'],
-        'feedback': _ai_workspace_prompt_excerpt(feedback.feedback, 260),
-        'summary': _ai_workspace_prompt_excerpt(result.get('summary'), 260),
-        'nextAction': _ai_workspace_prompt_excerpt(result.get('nextAction'), 260),
+        'feedback': _ai_workspace_feedback_display_text(feedback.feedback),
+        'summary': _ai_workspace_feedback_display_text(result.get('summary')),
+        'nextAction': _ai_workspace_feedback_display_text(result.get('nextAction')),
         'nextActionDate': result.get('nextActionDate') or None,
-        'reason': _ai_workspace_prompt_excerpt(result.get('reason'), 260),
+        'reason': _ai_workspace_feedback_display_text(result.get('reason')),
         'prioritySignal': result.get('prioritySignal') or None,
         'source': result.get('source') or '',
         'historyId': feedback.history_id,
@@ -9365,7 +9380,7 @@ def _ai_workspace_feedback_history_item(feedback):
     }
 
 
-def _ai_workspace_feedback_history_payload(request, user_profile):
+def _ai_workspace_feedback_history_payload(request, user_profile, department=None):
     from datetime import timedelta
 
     if not user_profile:
@@ -9380,6 +9395,12 @@ def _ai_workspace_feedback_history_payload(request, user_profile):
         scope_label = _user_display_name(request.user)
     elif user_profile.company:
         scope_label = f'{user_profile.company.name} 팀'
+    if department:
+        department_label = ' · '.join(_ai_prompt_context(
+            department.company.name if department.company else '',
+            department.name,
+        ))
+        scope_label = department_label or scope_label
 
     base_qs = AIWorkspaceActionFeedback.objects.filter(
         user__in=scope_users,
@@ -9390,6 +9411,8 @@ def _ai_workspace_feedback_history_payload(request, user_profile):
         'followup__department',
         'history',
     )
+    if department:
+        base_qs = base_qs.filter(followup__department_id=department.id)
 
     today = timezone.localdate()
     recent_start = today - timedelta(days=29)
@@ -9418,6 +9441,8 @@ def _ai_workspace_feedback_history_payload(request, user_profile):
             'userCount': scope_user_count,
             'canViewAll': user_profile.can_view_all_users(),
             'selectedUserId': selected_user.id if selected_user else None,
+            'departmentId': department.id if department else None,
+            'departmentName': department.name if department else '',
         },
         'stats': {
             'total': total,
@@ -9849,7 +9874,7 @@ def ai_workspace_summary_api(request):
         department_id=detail_department.id if detail_department else None,
     )
     daily_brief = _ai_workspace_daily_brief(action_queue, week_start, week_end)
-    feedback_history = _ai_workspace_feedback_history_payload(request, user_profile)
+    feedback_history = _ai_workspace_feedback_history_payload(request, user_profile, detail_department)
 
     return JsonResponse({
         'success': True,
