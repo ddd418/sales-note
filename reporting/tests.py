@@ -7818,6 +7818,90 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(selected_followup.priority, 'urgent')
         self.assertTrue(History.objects.filter(id=payload['crmSync']['taskHistoryId'], followup=selected_followup).exists())
 
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_splits_long_term_issue_followup_without_duplicates(self, _mock_client):
+        from datetime import timedelta
+        from reporting.models import AIWorkspaceActionFeedback, EmailLog, History
+
+        followup, department = self._create_customer(self.user, '이슈분리')
+        followup.priority = 'scheduled'
+        followup.save(update_fields=['priority', 'updated_at'])
+        self._create_department_analysis(self.user, department)
+        waiting_email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='issue-split@example.com',
+            recipient_email='issue-split@example.com',
+            subject='[하나과학] 보상판매 견적 및 제품 안내',
+            body='보상판매 견적 안내',
+            followup=followup,
+            gmail_message_id='gmail-msg-issue-split',
+            gmail_thread_id='gmail-thread-issue-split',
+            sent_at=timezone.now() - timedelta(days=3),
+        )
+        feedback_text = (
+            '보상판매 : 교수님께 허락을 못받았다고하여 이건 장기로 분류해야합니다. '
+            '현재는 팁에대한 불만이 있어서 그거 해결하는 것이 급선무 입니다.'
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': f'email_waiting:{waiting_email.id}', 'feedback': feedback_text}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertEqual(len(payload['feedback']['issueFollowups']), 2)
+        self.assertEqual(len(payload['crmSync']['issueTaskHistories']), 1)
+        self.assertTrue(any(
+            change['label'] == '이슈별 장기 후속조치 생성'
+            for change in payload['crmSync']['changes']
+        ))
+
+        main_task = History.objects.get(id=payload['crmSync']['taskHistoryId'])
+        self.assertIn('팁 불만은 오늘', main_task.next_action)
+        self.assertNotIn('보상판매 건은 장기 후속', main_task.next_action)
+        long_term_task_info = payload['crmSync']['issueTaskHistories'][0]
+        self.assertEqual(long_term_task_info['issue'], '보상판매')
+        self.assertEqual(long_term_task_info['priority'], 'long_term')
+        long_term_task = History.objects.get(id=long_term_task_info['historyId'])
+        self.assertNotEqual(long_term_task.id, main_task.id)
+        self.assertIn('보상판매 건은 장기 후속', long_term_task.next_action)
+        self.assertGreaterEqual(long_term_task.next_action_date, timezone.localdate() + timedelta(days=30))
+
+        feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'email_waiting:{waiting_email.id}')
+        self.assertEqual(feedback.ai_result['crmSync']['issueTaskHistories'][0]['historyId'], long_term_task.id)
+
+        second_response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({'actionId': f'email_waiting:{waiting_email.id}', 'feedback': feedback_text}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(second_response.status_code, 200)
+        second_payload = second_response.json()
+        self.assertEqual(second_payload['crmSync']['issueTaskHistories'][0]['historyId'], long_term_task.id)
+        self.assertTrue(any(
+            change['label'] == '이슈별 장기 후속조치 갱신'
+            for change in second_payload['crmSync']['changes']
+        ))
+        self.assertEqual(
+            History.objects.filter(followup=followup, next_action__icontains='팁 불만은 오늘').count(),
+            1,
+        )
+        self.assertEqual(
+            History.objects.filter(followup=followup, next_action__icontains='보상판매 건은 장기 후속').count(),
+            1,
+        )
+
     @patch('ai_chat.services.get_openai_client')
     def test_ai_workspace_action_feedback_api_specializes_generic_openai_issue_action(self, mock_client):
         from datetime import timedelta

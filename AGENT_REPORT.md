@@ -17037,3 +17037,92 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-works
 3. `https://sales-note-frontend-production.up.railway.app/customers/`에서 같은 고객 카드의 `지연 후속` 카운트가 과거 견적 제출 건 때문에 올라가지 않는지 확인합니다.
 4. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308`에서 AI 추천 실행 목록에 같은 `견적서 및 비교표 제출` 후속조치가 다시 뜨지 않는지 확인합니다.
 5. 제출 이후 실제 확인해야 하는 `견적 검토 여부 확인`, `회신 확인`, `구매 일정 확인`류 후속조치는 계속 남는지 함께 확인합니다.
+
+---
+
+## 2026-05-14 AI 현장 답변 이슈별 후속조치 분리
+
+### 1. Summary
+
+- AI 추천 실행 답변에 “보상판매는 장기, 현재 팁 불만 해결이 급선무”처럼 장기 이슈와 긴급 이슈가 함께 들어온 경우, CRM 후속조치를 분리해 저장하도록 개선했습니다.
+- 메인 AI 상황 동기화 후속조치는 오늘 처리할 긴급 불만 중심으로 저장하고, 장기 주제는 별도 `History` 후속조치로 생성합니다.
+- 같은 action에 답변을 다시 저장하면 이전에 만든 장기 후속조치를 갱신해 중복 생성하지 않습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+
+### 3. CRM Improvements
+
+- 고객 단일 긴급도는 현재 급한 이슈 기준으로 유지하면서, 장기 추적 이슈도 별도 후속조치로 남습니다.
+- “팁 불만” 같은 긴급 이슈는 오늘 확인할 증상/규격/수량/사진/처리 예정 시간 중심으로 실행 항목이 남습니다.
+- “보상판매” 같은 장기 이슈는 다음 확인일만 잡는 장기 후속조치로 분리되어 대시보드/고객 상세에서 따로 추적할 수 있습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트, 인증, CSRF, AI 사용 권한 검증은 유지했습니다.
+- 기존 AI action queue, `action_not_found` fallback, 고객 긴급도 동기화 동작은 유지했습니다.
+- React 런타임 동작은 변경하지 않고 API 타입만 새 응답 필드에 맞춰 보강했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_feedback_api_splits_long_term_issue_followup_without_duplicates --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 31 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 5 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 22 tests, OK
+```
+
+### 6. Known Limitations / Risks
+
+- 이슈 분리는 현재 “불만/클레임/급선무”와 “장기” 표현이 함께 있는 명확한 답변을 대상으로 합니다. 애매한 표현은 기존처럼 단일 후속조치 또는 검토 필요로 남을 수 있습니다.
+- 장기 후속조치 예정일은 기본 30일 뒤로 생성합니다. 실제 재확인일이 다르면 담당자가 고객 상세에서 조정해야 합니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: pending
+- GitHub: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: frontend runtime change 없음, 배포 예정 없음
+- DB migration: none
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. `문새롬 메일 답장 확인` 또는 테스트용 메일 답장 대기 액션에 `보상판매 : 교수님께 허락을 못받았다고하여 이건 장기로 분류해야합니다. 현재는 팁에대한 불만이 있어서 그거 해결하는 것이 급선무 입니다.`처럼 입력하고 저장합니다.
+3. 답변 저장 후 고객 긴급도가 `긴급`으로 유지되는지 확인합니다.
+4. 고객 상세 또는 영업노트 목록에서 `팁 불만` 관련 긴급 후속조치와 `보상판매` 장기 후속조치가 별도 항목으로 생겼는지 확인합니다.
+5. 같은 답변을 다시 저장했을 때 `보상판매` 장기 후속조치가 중복 생성되지 않고 기존 항목이 갱신되는지 확인합니다.

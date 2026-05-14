@@ -4500,3 +4500,36 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-14 AI 현장 답변 이슈별 후속조치 분리 계획
+
+**배경**:
+
+- AI 추천 실행 답변에서 “보상판매는 장기, 현재 팁 불만 해결이 급선무”처럼 서로 다른 주제가 한 번에 보고될 수 있다.
+- 현재 로직은 고객 긴급도는 `urgent`로 잘 반영하지만, CRM 후속조치는 하나의 `History.next_action`에 긴급 이슈와 장기 이슈를 함께 적는다.
+- 운영자가 실제로 실행하려면 “오늘 처리할 긴급 불만”과 “다음 확인일만 잡을 장기 보상판매”가 별도 후속조치로 보여야 한다.
+
+**DB 변경 필요 여부**: 없음.
+
+- 기존 `History` 후속조치를 사용한다.
+- 기존 `AIWorkspaceActionFeedback.ai_result.crmSync` JSON에 생성된 이슈별 후속조치 ID를 저장해 같은 답변을 다시 저장해도 중복 생성하지 않는다.
+
+**구현 범위**:
+
+- 불만/클레임/급선무 답변에서 기존처럼 긴급 이슈명과 장기 분리 주제를 추출한다.
+- 긴급 이슈는 기존 메인 AI 상황 동기화 후속조치로 저장하되, 메인 `next_action`은 오늘 처리할 긴급 불만 중심으로 유지한다.
+- 장기 주제가 함께 있으면 별도 `History`를 생성해 장기 후속조치로 저장하고, 예정일은 장기 확인용으로 여유 있게 지정한다.
+- 같은 `action_id`에 다시 답변을 저장하는 경우 기존 장기 후속조치를 갱신하고 중복 생성하지 않는다.
+- `crmSync.changes`에 메인 후속조치와 이슈별 장기 후속조치 생성/갱신 내역을 모두 남긴다.
+
+**검증 계획**:
+
+- “보상판매는 장기, 현재 팁 불만 해결이 급선무” 답변 저장 시 메인 후속조치는 `팁` 긴급 대응만 담고, 별도 장기 후속조치가 `보상판매` 내용으로 생성되는 테스트 추가.
+- 같은 action에 다시 답변을 저장해도 장기 후속조치가 중복 생성되지 않고 기존 항목이 갱신되는 테스트 추가.
+- 기존 AI workspace feedback 테스트 전체 실행.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

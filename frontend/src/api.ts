@@ -2451,6 +2451,15 @@ export type AIWorkspaceActionFeedback = {
   reason: string;
   decision: string;
   source: 'openai' | 'fallback' | '';
+  issueFollowups: Array<{
+    key: string;
+    kind: string;
+    issue: string;
+    priority: string;
+    isPrimary?: boolean;
+    nextAction: string;
+    nextActionDate: string | null;
+  }>;
   crmSync: {
     intent: string;
     intentLabel: string;
@@ -2465,6 +2474,16 @@ export type AIWorkspaceActionFeedback = {
     }>;
     taskHistoryId: number | null;
     taskHistoryHref: string;
+    issueTaskHistories: Array<{
+      key: string;
+      kind: string;
+      issue: string;
+      priority: string;
+      historyId: number;
+      historyHref: string;
+      nextAction: string;
+      nextActionDate: string | null;
+    }>;
   };
   updatedAt: string | null;
   historyId: number | null;
@@ -2592,6 +2611,7 @@ export type AIWorkspaceFeedbackHistoryItem = {
   nextAction: string;
   nextActionDate: string | null;
   reason: string;
+  issueFollowups: AIWorkspaceActionFeedback['issueFollowups'];
   source: 'openai' | 'fallback' | '';
   historyId: number | null;
   historyHref: string;

@@ -24,6 +24,7 @@ import logging
 import json
 import re
 import html
+from datetime import timedelta
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -8045,6 +8046,7 @@ def _ai_workspace_action_feedback_payload(feedback):
         'decision': result.get('decision') or '',
         'source': result.get('source') or '',
         'prioritySignal': result.get('prioritySignal') or None,
+        'issueFollowups': result.get('issueFollowups') or [],
         'crmSync': result.get('crmSync') or _ai_workspace_empty_crm_sync(intent),
         'updatedAt': _datetime_or_none(feedback.updated_at),
         'historyId': feedback.history_id,
@@ -8789,20 +8791,59 @@ def _ai_workspace_long_term_topic_label(feedback_text):
     return ''
 
 
-def _ai_workspace_specific_issue_feedback(action, feedback_text):
-    if not _ai_workspace_text_has_urgent_issue(feedback_text):
-        return {}
+def _ai_workspace_issue_followup_key(kind, issue):
+    slug = re.sub(r'\s+', '', str(issue or '').lower())
+    slug = re.sub(r'[^\w가-힣+#/\-]+', '', slug)
+    return f"{kind}:{slug[:40] or 'issue'}"
 
+
+def _ai_workspace_issue_followups_from_feedback(feedback_text):
+    if not _ai_workspace_text_has_urgent_issue(feedback_text):
+        return []
+
+    today = timezone.localdate()
     issue = _ai_workspace_feedback_issue_label(feedback_text) or '고객 불만'
     long_term_topic = _ai_workspace_long_term_topic_label(feedback_text)
-    next_action = (
+    primary_next_action = (
         f"{issue} 불만은 오늘 먼저 증상, 사용 제품 규격, 수량/로트, 사진 여부를 확인하고 "
         "교체/대체품/사용법 안내 중 가능한 해결안을 정해 처리 예정 시간을 회신하세요."
     )
+    issue_followups = [{
+        'key': _ai_workspace_issue_followup_key('urgent_issue', issue),
+        'kind': 'urgent_issue',
+        'issue': issue,
+        'priority': 'urgent',
+        'isPrimary': True,
+        'nextAction': primary_next_action,
+        'nextActionDate': (today + timedelta(days=1)).isoformat(),
+    }]
     if long_term_topic:
-        next_action = f"{next_action} {long_term_topic} 건은 장기 후속으로 분리해 다음 확인일만 잡으세요."
+        issue_followups.append({
+            'key': _ai_workspace_issue_followup_key('long_term_issue', long_term_topic),
+            'kind': 'long_term_issue',
+            'issue': long_term_topic,
+            'priority': 'long_term',
+            'isPrimary': False,
+            'nextAction': f"{long_term_topic} 건은 장기 후속으로 분리해 다음 확인일만 잡으세요.",
+            'nextActionDate': (today + timedelta(days=30)).isoformat(),
+        })
+    return issue_followups
 
-    if long_term_topic:
+
+def _ai_workspace_specific_issue_feedback(action, feedback_text):
+    issue_followups = _ai_workspace_issue_followups_from_feedback(feedback_text)
+    if not issue_followups:
+        return {}
+
+    primary = next((item for item in issue_followups if item.get('isPrimary')), issue_followups[0])
+    issue = primary.get('issue') or '고객 불만'
+    long_term_followups = [item for item in issue_followups if item.get('kind') == 'long_term_issue']
+    next_action = primary.get('nextAction') or ''
+    if long_term_followups:
+        next_action = f"{next_action} {' '.join(item.get('nextAction') or '' for item in long_term_followups).strip()}".strip()
+
+    if long_term_followups:
+        long_term_topic = long_term_followups[0].get('issue') or '장기 이슈'
         summary = f"{long_term_topic}는 장기 추적 대상으로 분리하고, 현재 우선순위는 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
     else:
         summary = f"현재 우선순위는 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
@@ -8811,6 +8852,7 @@ def _ai_workspace_specific_issue_feedback(action, feedback_text):
         'summary': summary,
         'nextAction': next_action,
         'reason': '일반적인 해결 지시가 아니라 현장 확인 항목, 가능한 해결안, 고객 회신 기준을 포함해 실행문을 구체화했습니다.',
+        'issueFollowups': issue_followups,
     }
 
 
@@ -8863,10 +8905,12 @@ def _ai_workspace_normalize_feedback_result(data, fallback, action=None, feedbac
     next_action = data.get('nextAction') or fallback.get('nextAction')
     reason = data.get('reason') or fallback.get('reason')
     specific = _ai_workspace_specific_issue_feedback(action or {}, feedback_text)
+    issue_followups = []
     if specific and status == 'next_action' and not should_hide:
         summary = specific.get('summary') or summary
         next_action = specific.get('nextAction') or next_action
         reason = specific.get('reason') or reason
+        issue_followups = specific.get('issueFollowups') or []
 
     return {
         'decision': decision,
@@ -8879,6 +8923,7 @@ def _ai_workspace_normalize_feedback_result(data, fallback, action=None, feedbac
         'reason': _ai_workspace_prompt_excerpt(reason, 260),
         'suggestedDraftType': data.get('suggestedDraftType') or fallback.get('suggestedDraftType') or '',
         'prioritySignal': priority_signal,
+        'issueFollowups': issue_followups,
     }
 
 
@@ -8984,6 +9029,7 @@ def _ai_workspace_empty_crm_sync(intent='needs_human_review'):
         'changes': [],
         'taskHistoryId': None,
         'taskHistoryHref': '',
+        'issueTaskHistories': [],
     }
 
 
@@ -9055,6 +9101,40 @@ def _ai_workspace_previous_sync_task(user, action, followup):
     ).first()
 
 
+def _ai_workspace_previous_issue_sync_tasks(user, action, followup):
+    previous = AIWorkspaceActionFeedback.objects.filter(
+        user=user,
+        action_id=action.get('id') or '',
+    ).first()
+    if not previous:
+        return {}
+
+    issue_rows = ((previous.ai_result or {}).get('crmSync') or {}).get('issueTaskHistories') or []
+    id_by_key = {}
+    for item in issue_rows:
+        if not isinstance(item, dict):
+            continue
+        key = item.get('key') or ''
+        history_id = item.get('historyId')
+        if key and history_id:
+            id_by_key[key] = history_id
+    if not id_by_key:
+        return {}
+
+    histories = History.objects.filter(
+        id__in=id_by_key.values(),
+        user=user,
+        followup=followup,
+        parent_history__isnull=True,
+    )
+    history_by_id = {history.id: history for history in histories}
+    return {
+        key: history_by_id[history_id]
+        for key, history_id in id_by_key.items()
+        if history_id in history_by_id
+    }
+
+
 def _ai_workspace_mark_histories_reviewed(user, histories, reason):
     now = timezone.now()
     changes = []
@@ -9118,6 +9198,106 @@ def _ai_workspace_create_sync_history(user, user_profile, followup, action, feed
         next_action_date=next_action_date,
         created_by=user,
     )
+
+
+def _ai_workspace_issue_sync_history_content(action, feedback_text, result, issue_followup):
+    return "\n".join(_ai_prompt_context(
+        f"[AI 이슈별 후속조치] {issue_followup.get('issue') or action.get('title') or action.get('id')}",
+        f"원본 액션: {action.get('title') or action.get('kindLabel') or action.get('id')}",
+        f"사용자 입력: {feedback_text}",
+        f"AI 요약: {result.get('summary') or ''}",
+        f"이슈 구분: {issue_followup.get('kind') or ''}",
+        f"다음 액션: {issue_followup.get('nextAction') or ''}",
+        f"판단 근거: {result.get('reason') or ''}",
+    ))
+
+
+def _ai_workspace_create_issue_sync_history(user, user_profile, followup, action, feedback_text, result, issue_followup, next_action, next_action_date):
+    return History.objects.create(
+        user=user,
+        company=user_profile.company if user_profile else None,
+        followup=followup,
+        action_type='memo',
+        content=_ai_workspace_issue_sync_history_content(action, feedback_text, result, issue_followup),
+        next_action=next_action,
+        next_action_date=next_action_date,
+        created_by=user,
+    )
+
+
+def _ai_workspace_primary_issue_followup(result):
+    issue_followups = result.get('issueFollowups') if isinstance(result.get('issueFollowups'), list) else []
+    for item in issue_followups:
+        if isinstance(item, dict) and item.get('isPrimary') and item.get('nextAction'):
+            return item
+    return None
+
+
+def _ai_workspace_sync_secondary_issue_followups(user, user_profile, followup, action, feedback_text, result, main_history=None):
+    issue_followups = result.get('issueFollowups') if isinstance(result.get('issueFollowups'), list) else []
+    secondary_followups = [
+        item for item in issue_followups
+        if isinstance(item, dict) and not item.get('isPrimary') and item.get('nextAction')
+    ]
+    if not secondary_followups:
+        return [], []
+
+    changes = []
+    synced = []
+    previous_tasks = _ai_workspace_previous_issue_sync_tasks(user, action, followup)
+    today = timezone.localdate()
+    for item in secondary_followups[:4]:
+        key = item.get('key') or _ai_workspace_issue_followup_key(item.get('kind') or 'issue', item.get('issue') or '')
+        next_action = item.get('nextAction') or ''
+        next_action_date = _parse_iso_date_or_none(item.get('nextActionDate'))
+        if not next_action_date:
+            next_action_date = today + timedelta(days=30 if item.get('priority') == 'long_term' else 7)
+
+        task_history = previous_tasks.get(key)
+        if main_history and task_history and task_history.id == main_history.id:
+            task_history = None
+        action_label = '이슈별 장기 후속조치' if item.get('priority') == 'long_term' else '이슈별 후속조치'
+        if task_history:
+            task_history.next_action = next_action
+            task_history.next_action_date = next_action_date
+            task_history.reviewed_at = None
+            task_history.reviewer = None
+            task_history.content = _ai_workspace_issue_sync_history_content(action, feedback_text, result, item)
+            task_history.save(update_fields=['content', 'next_action', 'next_action_date', 'reviewed_at', 'reviewer'])
+            change_label = f'{action_label} 갱신'
+        else:
+            task_history = _ai_workspace_create_issue_sync_history(
+                user,
+                user_profile,
+                followup,
+                action,
+                feedback_text,
+                result,
+                item,
+                next_action,
+                next_action_date,
+            )
+            change_label = f'{action_label} 생성'
+
+        href = reverse('reporting:history_detail', args=[task_history.id])
+        changes.append(_ai_workspace_sync_change(
+            change_label,
+            'history',
+            task_history.id,
+            href,
+            next_action,
+        ))
+        synced.append({
+            'key': key,
+            'kind': item.get('kind') or '',
+            'issue': item.get('issue') or '',
+            'priority': item.get('priority') or '',
+            'historyId': task_history.id,
+            'historyHref': href,
+            'nextAction': next_action,
+            'nextActionDate': next_action_date.isoformat() if next_action_date else None,
+        })
+    return changes, synced
 
 
 def _ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal=None):
@@ -9292,8 +9472,17 @@ def _ai_workspace_apply_crm_state_sync(user, user_profile, action, feedback_text
         changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal))
         sync['message'] = '후속조치 종료/보류가 CRM 상태에 반영됐습니다.'
     elif intent in {'follow_up_needed', 'positive_buying_signal', 'email_waiting'} and status == 'next_action':
-        next_action = result.get('nextAction') or _ai_workspace_default_next_action(intent, action)
-        next_action_date = _parse_iso_date_or_none(result.get('nextActionDate')) or _ai_workspace_default_next_action_date(intent)
+        primary_issue = _ai_workspace_primary_issue_followup(result)
+        next_action = (
+            (primary_issue or {}).get('nextAction')
+            or result.get('nextAction')
+            or _ai_workspace_default_next_action(intent, action)
+        )
+        next_action_date = (
+            _parse_iso_date_or_none((primary_issue or {}).get('nextActionDate'))
+            or _parse_iso_date_or_none(result.get('nextActionDate'))
+            or _ai_workspace_default_next_action_date(intent)
+        )
         task_history = target_history or _ai_workspace_previous_sync_task(user, action, followup)
         if task_history:
             task_history.next_action = next_action
@@ -9326,13 +9515,26 @@ def _ai_workspace_apply_crm_state_sync(user, user_profile, action, feedback_text
                 reverse('reporting:history_detail', args=[task_history.id]),
                 next_action,
             ))
+        issue_changes, issue_task_histories = _ai_workspace_sync_secondary_issue_followups(
+            user,
+            user_profile,
+            followup,
+            action,
+            feedback_text,
+            result,
+            task_history,
+        )
+        changes.extend(issue_changes)
         changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal))
         sync['taskHistoryId'] = task_history.id
         sync['taskHistoryHref'] = reverse('reporting:history_detail', args=[task_history.id])
+        sync['issueTaskHistories'] = issue_task_histories
         if intent == 'email_waiting':
             sync['message'] = '메일 답장 대기 후속조치가 CRM에 반영됐습니다.'
         elif intent == 'positive_buying_signal':
             sync['message'] = '긍정 신호에 맞춰 우선 후속조치가 CRM에 반영됐습니다.'
+        elif issue_task_histories:
+            sync['message'] = '긴급 이슈와 장기 이슈 후속조치가 CRM에 분리 반영됐습니다.'
         else:
             sync['message'] = '다음 후속조치가 CRM에 반영됐습니다.'
     elif intent == 'positive_buying_signal' and status == 'resolved':
@@ -9478,6 +9680,7 @@ def _ai_workspace_feedback_history_item(feedback):
         'nextActionDate': result.get('nextActionDate') or None,
         'reason': _ai_workspace_feedback_display_text(result.get('reason')),
         'prioritySignal': result.get('prioritySignal') or None,
+        'issueFollowups': result.get('issueFollowups') or [],
         'source': result.get('source') or '',
         'historyId': feedback.history_id,
         'historyHref': reverse('reporting:history_detail', args=[feedback.history_id]) if feedback.history_id else '',
