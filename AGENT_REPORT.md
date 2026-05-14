@@ -16770,6 +16770,34 @@ python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
 
 git diff --check
 → No whitespace errors; Git line-ending warnings only
+
+git commit -m "fix: scope AI feedback history detail view"
+git push origin main
+→ Commit d2050eb pushed
+
+railway deployment list --service web --limit 3 --json
+→ web auto deployment c95018b4 started for d2050eb
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI feedback display d2050eb"
+→ frontend deployment 29247816 started
+
+railway deployment list --service web --limit 2 --json
+→ web deployment c95018b4 SUCCESS
+
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ sales-note-frontend deployment 29247816 SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/?department_id=308
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308
+→ 200 React app shell
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/?department_id=308
+→ 401 login_required JSON
 ```
 
 ### 6. Known Limitations / Risks
@@ -16779,7 +16807,16 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Commit/deploy 전 문서 작성 단계입니다. 커밋 후 `web`과 `sales-note-frontend`를 Railway에 배포하고 이 항목을 후속 갱신합니다.
+- Runtime commit: `d2050eb fix: scope AI feedback history detail view`
+- GitHub: `main` pushed
+- Railway `web`: `c95018b4-0434-45a7-aca8-df976716a873` SUCCESS
+- Railway `sales-note-frontend`: `29247816-3808-4ea7-97b8-a9c8add5d8fe` SUCCESS
+- DB migration: none
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend AI workspace detail API returned expected anonymous 401 JSON.
+  - Frontend `/ai-workspace/?department_id=308` returned 200 React app shell.
+  - Frontend proxy AI workspace detail API returned expected anonymous 401 JSON.
 
 ### 8. Manual Server Test Process
 
