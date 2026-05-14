@@ -110,6 +110,7 @@ import {
   AIWorkspaceAction,
   AIWorkspaceData,
   AIWorkspaceDepartment,
+  AIWorkspaceDepartmentQuestionResponse,
   AIWorkspaceDraftType,
   AIWorkspaceActionDraftResponse,
   AIWorkspaceFollowupTarget,
@@ -124,6 +125,7 @@ import {
   PersonalScheduleDetailData,
   PersonalSchedulePayload,
   addNoteReply,
+  askAIWorkspaceDepartmentQuestion,
   bulkDeleteProducts,
   bulkUpsertProducts,
   cancelPrepayment as cancelCustomerPrepayment,
@@ -12173,6 +12175,114 @@ function AIWorkspaceDepartmentActionSummary({ data }: { data: AIWorkspaceData })
   );
 }
 
+function AIWorkspaceDepartmentQuestionPanel({
+  data,
+  departmentId,
+  error,
+  loading,
+  onQuestionChange,
+  onSubmit,
+  question,
+  result,
+}: {
+  data: AIWorkspaceData;
+  departmentId: number | null;
+  error: string;
+  loading: boolean;
+  onQuestionChange: (value: string) => void;
+  onSubmit: () => void;
+  question: string;
+  result: AIWorkspaceDepartmentQuestionResponse | null;
+}) {
+  const scope = data.feedbackHistory.scope;
+  if (!departmentId || !scope.departmentId) {
+    return null;
+  }
+
+  const departmentLabel = [
+    data.featuredDepartment?.companyName,
+    scope.departmentName || data.featuredDepartment?.departmentName,
+  ].filter(Boolean).join(' · ') || '선택 부서';
+  const trimmedQuestion = question.trim();
+  const canSubmit = trimmedQuestion.length >= 2 && !loading;
+  const answer = result?.answer;
+  const lastDelivery = result?.context.lastDelivery;
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (canSubmit) {
+      onSubmit();
+    }
+  };
+
+  return (
+    <section className="dashboard-panel ai-department-question-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Department Q&A</span>
+          <h2>부서 상황 질문</h2>
+        </div>
+        <MessageSquareText size={18} />
+      </div>
+      <div className="ai-department-question-scope">
+        <span>{departmentLabel}</span>
+        <small>고객 {formatNumber(result?.context.customerCount ?? data.featuredDepartment?.customerCount ?? 0)}명</small>
+      </div>
+      <form className="ai-department-question-form" onSubmit={handleSubmit}>
+        <textarea
+          maxLength={600}
+          onChange={(event) => onQuestionChange(event.target.value)}
+          placeholder="예: 해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?"
+          rows={3}
+          value={question}
+        />
+        <div>
+          <span>{formatNumber(trimmedQuestion.length)} / 600</span>
+          <button disabled={!canSubmit} type="submit">
+            {loading ? <Loader2 className="spin-icon" size={14} /> : <Send size={14} />}
+            {loading ? '분석 중' : 'AI에게 질문'}
+          </button>
+        </div>
+      </form>
+      {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
+      {answer ? (
+        <article className="ai-department-question-answer">
+          <div className="ai-department-question-answer-head">
+            <strong>{answer.summary}</strong>
+            <span>{result.source === 'openai' ? 'AI 답변' : 'CRM 기반 답변'}</span>
+          </div>
+          {answer.bullets.length > 0 ? (
+            <ul>
+              {answer.bullets.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          ) : null}
+          {lastDelivery ? (
+            <div className="ai-department-question-last-order">
+              <span>마지막 주문/납품</span>
+              <strong>{formatDateLabel(lastDelivery.date) || lastDelivery.date}</strong>
+              <small>
+                {[lastDelivery.customer, lastDelivery.amountLabel, lastDelivery.items].filter(Boolean).join(' · ')}
+              </small>
+            </div>
+          ) : null}
+          {answer.evidence.length > 0 ? (
+            <div className="ai-evidence-list">
+              {answer.evidence.slice(0, 6).map((item) => (
+                <span key={`${item.label}-${item.value}`}>
+                  <b>{item.label}</b>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </article>
+      ) : null}
+    </section>
+  );
+}
+
 function AIWorkspaceActionQueue({
   actions,
   draftLoadingKey,
@@ -12457,6 +12567,16 @@ function AIWorkspacePage({
   const [featuredRunningId, setFeaturedRunningId] = useState<number | null>(null);
   const [aiPanelMessage, setAiPanelMessage] = useState('');
   const [aiPanelError, setAiPanelError] = useState('');
+  const [departmentQuestion, setDepartmentQuestion] = useState('');
+  const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
+  const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
+  const [departmentQuestionError, setDepartmentQuestionError] = useState('');
+  const activeDepartmentId = data?.featuredDepartment?.departmentId ?? selectedDepartmentId ?? data?.selectedDepartmentId ?? null;
+
+  useEffect(() => {
+    setDepartmentQuestionResult(null);
+    setDepartmentQuestionError('');
+  }, [activeDepartmentId]);
 
   const handleCopyPrompt = async (target: AIWorkspacePromptTarget) => {
     try {
@@ -12542,6 +12662,24 @@ function AIWorkspacePage({
     }
   };
 
+  const handleAskDepartmentQuestion = async () => {
+    const question = departmentQuestion.trim();
+    if (!question || !activeDepartmentId || departmentQuestionLoading) {
+      return;
+    }
+
+    setDepartmentQuestionLoading(true);
+    setDepartmentQuestionError('');
+    try {
+      const result = await askAIWorkspaceDepartmentQuestion(activeDepartmentId, question);
+      setDepartmentQuestionResult(result);
+    } catch (error) {
+      setDepartmentQuestionError(error instanceof Error ? error.message : '부서 질문 답변에 실패했습니다.');
+    } finally {
+      setDepartmentQuestionLoading(false);
+    }
+  };
+
   const handleFeaturedVerificationNoteChange = (cardId: number, value: string) => {
     setFeaturedVerificationNotes((previous) => ({
       ...previous,
@@ -12621,7 +12759,6 @@ function AIWorkspacePage({
     { label: '이번 달 보고', value: `${formatNumber(data.metrics.weeklyReportsThisMonth)}건`, detail: '주간보고', icon: FileText, tone: 'green' as const },
   ];
   const featuredDepartment = data.featuredDepartment;
-  const activeDepartmentId = featuredDepartment?.departmentId ?? selectedDepartmentId ?? data.selectedDepartmentId ?? null;
 
   return (
     <section className="ai-page">
@@ -12681,6 +12818,16 @@ function AIWorkspacePage({
         <>
         <AIWorkspaceDailyBriefPanel data={data} />
         <AIWorkspaceDepartmentActionSummary data={data} />
+        <AIWorkspaceDepartmentQuestionPanel
+          data={data}
+          departmentId={activeDepartmentId}
+          error={departmentQuestionError}
+          loading={departmentQuestionLoading}
+          question={departmentQuestion}
+          result={departmentQuestionResult}
+          onQuestionChange={setDepartmentQuestion}
+          onSubmit={handleAskDepartmentQuestion}
+        />
 
         <div className="ai-workspace-layout">
           <div className="ai-workspace-main">

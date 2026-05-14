@@ -6828,6 +6828,103 @@ class AIWorkspaceSummaryApiTests(TestCase):
         department_ids = {department['id'] for department in payload['departments']}
         self.assertNotIn(coworker_department.id, department_ids)
 
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_department_question_answers_last_order_from_delivery_context(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, Schedule
+
+        followup, department = self._create_customer(self.user, '마지막주문')
+        older_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate() - timedelta(days=30),
+            visit_time=time(11, 0),
+            status='completed',
+            activity_type='delivery',
+            expected_revenue=Decimal('120000'),
+            notes='이전 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=older_schedule,
+            item_name='Old Buffer',
+            quantity=1,
+            unit_price=Decimal('120000'),
+        )
+        latest_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate() - timedelta(days=3),
+            visit_time=time(14, 0),
+            status='completed',
+            activity_type='delivery',
+            expected_revenue=Decimal('240000'),
+            notes='최근 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=latest_schedule,
+            item_name='qPCR Mix',
+            quantity=2,
+            unit_price=Decimal('100000'),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        latest_date = latest_schedule.visit_date.isoformat()
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['department']['id'], department.id)
+        self.assertEqual(payload['context']['lastDelivery']['date'], latest_date)
+        self.assertIn(latest_date, payload['answer']['summary'])
+        self.assertIn('qPCR Mix', payload['answer']['summary'])
+        evidence_text = ' '.join(item['value'] for item in payload['answer']['evidence'])
+        self.assertIn(latest_date, evidence_text)
+        self.assertIn('qPCR Mix', evidence_text)
+
+    def test_ai_workspace_department_question_requires_ai_permission(self):
+        _followup, department = self._create_customer(self.no_ai_user, '질문권한없음')
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '마지막 주문일 알려줘',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    def test_ai_workspace_department_question_blocks_inaccessible_department(self):
+        _own_followup, _own_department = self._create_customer(self.user, '질문내부서')
+        _coworker_followup, coworker_department = self._create_customer(self.coworker, '질문동료부서')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': coworker_department.id,
+                'question': '마지막 주문일 알려줘',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['error'], 'department_not_found')
+
     def test_ai_workspace_prompts_include_recent_notes_and_sales_amounts(self):
         from datetime import time, timedelta
         from decimal import Decimal

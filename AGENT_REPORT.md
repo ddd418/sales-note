@@ -17463,3 +17463,104 @@ curl.exe -i -s https://sales-note-frontend-production.up.railway.app/reporting/a
 4. 전체 액션, 긴급, 이번 주 기한, 금액 영향 값이 아래 `AI 추천 실행 목록`과 맞는지 확인합니다.
 5. 액션 유형별 건수와 우선 처리 액션 상위 3개가 표시되는지 확인합니다.
 6. 현장 답변 저장, 메일/노트/질문 초안, 고객/일정/노트 링크가 기존처럼 동작하는지 확인합니다.
+
+---
+
+## 2026-05-15 AI 워크스페이스 부서 질문 답변
+
+### 1. Summary
+
+- `/ai-workspace/?department_id=<id>` 부서 상세 화면에 `부서 상황 질문` 패널을 추가했습니다.
+- 사용자가 “해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?”처럼 질문하면, 선택 부서의 담당 고객/최근 영업노트/일정/견적/납품 컨텍스트만 사용해 답변합니다.
+- OpenAI 사용 가능 시 CRM 컨텍스트 기반 JSON 답변을 받고, 실패하거나 키가 없으면 서버 fallback이 마지막 주문/납품일 같은 핵심 질문에 직접 답합니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+- `AGENT_REPORT.md`
+
+### 3. CRM Improvements
+
+- 부서 상세 화면에서 카드/프롬프트를 복사하지 않고 자연어 질문으로 현재 상황을 확인할 수 있습니다.
+- “주문” 질문은 CRM의 납품/수주 기록을 근거로 해석하고, 마지막 납품일/고객/금액/품목을 함께 표시합니다.
+- 답변은 해당 로그인 사용자가 담당 중인 부서의 데이터로만 생성됩니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 `/reporting/*` 라우트, 로그인, CSRF, `can_use_ai` 권한 정책은 유지했습니다.
+- 담당하지 않는 부서에는 질문 API가 404로 응답해 부서 존재 여부와 내부 데이터를 노출하지 않습니다.
+- 기존 AI 추천 실행 목록, 현장 답변 저장, 초안 생성, 부서 분석 실행 흐름은 변경하지 않았습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_answers_last_order_from_delivery_context --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_blocks_inaccessible_department --verbosity=2
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 35 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, dist/assets/index-CrkDN6QC.js / dist/assets/index-CNi9SBsK.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+Local Playwright smoke
+→ Created temporary local AI user/department/delivery data
+→ Logged in and opened `http://127.0.0.1:5173/ai-workspace/?department_id=218`
+→ Verified `부서 상황 질문` panel rendered only in department scope
+→ Asked `해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?`
+→ Verified answer displayed `2026-05-13`, customer, amount, and `Smoke Reagent` evidence
+→ Temporary local user deleted, browser closed, local servers stopped, smoke artifacts removed
+```
+
+### 6. Known Limitations
+
+- “주문”은 현재 CRM 데이터 구조상 납품/수주 기록을 우선 근거로 해석합니다. 별도 주문서 모델이 생기면 컨텍스트 기준을 확장해야 합니다.
+- 질문/응답은 아직 저장하지 않습니다. 반복 질문 이력이나 팀 공유용 Q&A 로그는 별도 작업입니다.
+- OpenAI 답변도 제공된 CRM 컨텍스트만 사용하도록 제한했지만, 중요한 답변은 화면의 근거와 함께 사람이 확인해야 합니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: pending
+- GitHub: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: pending
+- DB migration: none
+- Production smoke: pending
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. `부서 분석 대상`에서 테스트할 부서를 선택해 `/ai-workspace/?department_id=<id>` 형태로 진입합니다.
+3. `부서 상황 질문` 패널이 `부서 실행 요약` 아래에 표시되는지 확인합니다.
+4. 입력창에 `해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?`를 입력하고 `AI에게 질문`을 누릅니다.
+5. 답변에 마지막 주문/납품일, 고객, 금액, 품목 또는 “기록 없음” 판단이 표시되는지 확인합니다.
+6. 같은 화면의 `AI 추천 실행 목록`, 현장 답변 저장, 메일/노트/질문 초안, 부서 AI 분석 실행이 기존처럼 동작하는지 확인합니다.

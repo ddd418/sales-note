@@ -2585,6 +2585,41 @@ export type AIWorkspaceActionFeedbackResponse = {
   message?: string;
 };
 
+export type AIWorkspaceDepartmentQuestionResponse = {
+  success?: boolean;
+  source: 'openai' | 'fallback';
+  generatedAt: string;
+  department: {
+    id: number;
+    name: string;
+    company: string;
+  };
+  question: string;
+  answer: {
+    summary: string;
+    bullets: string[];
+    evidence: AIWorkspaceActionEvidence[];
+    confidence: 'high' | 'medium' | 'low' | string;
+  };
+  context: {
+    customerCount: number;
+    summary: Record<string, number | string | null>;
+    lastDelivery: {
+      date: string;
+      customer: string;
+      amount: number;
+      amountLabel: string;
+      items: string;
+      source: string;
+      scheduleId: number | null;
+      notes: string;
+    } | null;
+  };
+  requiresHumanReview: boolean;
+  error?: string;
+  message?: string;
+};
+
 export type AIWorkspaceFeedbackKindSummary = {
   kind: AIWorkspaceActionKind | string;
   kindLabel: string;
@@ -6556,6 +6591,34 @@ export async function submitAIWorkspaceActionFeedback(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI action feedback failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function askAIWorkspaceDepartmentQuestion(
+  departmentId: number,
+  question: string,
+): Promise<AIWorkspaceDepartmentQuestionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/api/ai-workspace/department-question/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ departmentId, question }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI department question API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceDepartmentQuestionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI department question failed: ${response.status}`);
   }
   return data;
 }

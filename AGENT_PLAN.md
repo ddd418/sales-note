@@ -4619,3 +4619,39 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-15 AI 워크스페이스 부서 질문 답변 계획
+
+**배경**:
+
+- 운영자가 `/ai-workspace/?department_id=<id>`처럼 특정 부서 상세 화면에 들어갔을 때 “해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?” 같은 즉석 질문을 하고 싶다.
+- 현재 화면에는 부서 실행 요약과 AI 분석/프롬프트는 있지만, 선택 부서의 CRM 데이터에 대해 자연어 질문을 바로 던지는 입력 흐름은 없다.
+
+**DB 변경 필요 여부**: 없음.
+
+- 기존 `FollowUp`, `History`, `Schedule`, `Quote`, `DeliveryItem` 데이터만 읽는다.
+- 질문/응답은 영구 저장하지 않고 즉시 응답 payload로만 반환한다.
+- 새 모델, migration, 파일 저장은 추가하지 않는다.
+
+**구현 범위**:
+
+- `/reporting/api/ai-workspace/department-question/` POST API를 추가한다.
+- 기존 AI workspace와 동일하게 로그인, CSRF, `UserProfile.can_use_ai` 권한을 요구한다.
+- `departmentId`는 현재 로그인 사용자가 담당 중인 `FollowUp.department` 범위에 있을 때만 접근 가능하게 한다.
+- 부서별 고객, 최근 영업노트, 일정, 견적/납품 요약을 제한된 컨텍스트로 수집한다.
+- OpenAI 사용이 가능하면 수집한 CRM 컨텍스트만 근거로 답변하고, 사용 불가/실패 시 deterministic fallback으로 마지막 납품/주문일 같은 핵심 질문에 답한다.
+- React `/ai-workspace/?department_id=<id>` 화면에 부서 질문 입력 패널과 답변/evidence 표시를 추가한다.
+- 기존 `/reporting/*` 라우트, AI 추천 실행 목록, 답변 저장, 초안 생성, 부서 분석 실행은 변경하지 않는다.
+
+**검증 계획**:
+
+- 접근 가능한 부서에 “마지막 주문 날짜” 질문 시 최신 납품 일정/활동 날짜가 응답되는 테스트 추가.
+- AI 권한 없는 사용자는 403, 담당하지 않는 부서는 404로 차단되는 테스트 추가.
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`

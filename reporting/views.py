@@ -9852,6 +9852,338 @@ def _ai_workspace_featured_department_payload(
     }
 
 
+AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH = 600
+
+
+def _ai_workspace_question_department_for_user(user, department_id):
+    try:
+        parsed_id = int(department_id)
+    except (TypeError, ValueError):
+        return None
+    if parsed_id <= 0:
+        return None
+    return Department.objects.filter(
+        id=parsed_id,
+        followup_departments__user=user,
+    ).select_related('company').distinct().first()
+
+
+def _ai_workspace_question_text(value, limit=600):
+    text = _ai_workspace_feedback_display_text(value)
+    text = re.sub(r'\s+', ' ', text).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip() + '...'
+
+
+def _ai_workspace_question_delivery_item_text(items):
+    labels = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        product = _ai_workspace_question_text(item.get('product'), 80)
+        quantity = item.get('quantity') or 0
+        amount = item.get('total_price')
+        if amount is None:
+            amount = item.get('subtotal')
+        amount_label = f" / {_ai_workspace_money(amount)}" if amount else ''
+        if product:
+            labels.append(f"{product} {quantity}개{amount_label}")
+    return ', '.join(labels[:4])
+
+
+def _ai_workspace_question_delivery_payload(delivery):
+    if not isinstance(delivery, dict):
+        return None
+    date_value = str(delivery.get('date') or '').strip()
+    if not date_value:
+        return None
+    items_text = _ai_workspace_question_delivery_item_text(delivery.get('items') or [])
+    return {
+        'date': date_value,
+        'customer': _ai_workspace_question_text(delivery.get('customer'), 120),
+        'amount': _money_int(delivery.get('amount') or 0),
+        'amountLabel': _ai_workspace_money(delivery.get('amount') or 0),
+        'items': items_text,
+        'source': _ai_workspace_question_text(delivery.get('source'), 80),
+        'scheduleId': delivery.get('schedule_id'),
+        'notes': _ai_workspace_question_text(delivery.get('notes'), 280),
+    }
+
+
+def _ai_workspace_question_latest_delivery(deliveries):
+    today_label = timezone.localdate().isoformat()
+    payloads = [
+        payload
+        for payload in (_ai_workspace_question_delivery_payload(item) for item in deliveries or [])
+        if payload
+    ]
+    if not payloads:
+        return None
+    past_or_today = [item for item in payloads if item['date'] <= today_label]
+    return (past_or_today or payloads)[0]
+
+
+def _ai_workspace_department_question_context(department, user):
+    from ai_chat.services import gather_quote_delivery_data
+
+    followups = list(FollowUp.objects.filter(
+        user=user,
+        department=department,
+    ).select_related(
+        'company',
+        'department',
+    ).order_by('-ai_score', '-updated_at'))
+    followup_ids = [followup.id for followup in followups]
+    quote_delivery = gather_quote_delivery_data(department, user)
+    deliveries = quote_delivery.get('deliveries') or []
+    quotes = quote_delivery.get('quotes') or []
+    latest_delivery = _ai_workspace_question_latest_delivery(deliveries)
+
+    recent_histories = []
+    history_qs = History.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related('followup').order_by('-created_at')[:10]
+    for history in history_qs:
+        activity_date = history.meeting_date or history.delivery_date
+        date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
+        body_parts = [
+            history.content,
+            history.meeting_situation,
+            history.meeting_confirmed_facts,
+            history.meeting_obstacles,
+            history.meeting_next_action,
+            history.next_action,
+        ]
+        recent_histories.append({
+            'date': date_label,
+            'type': history.get_action_type_display(),
+            'customer': history.followup.customer_name if history.followup else '',
+            'content': _ai_workspace_question_text(' / '.join(part for part in body_parts if part), 700),
+            'nextActionDate': _date_or_none(history.next_action_date),
+        })
+
+    recent_schedules = []
+    schedule_qs = Schedule.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+    ).exclude(status='cancelled').select_related('followup').order_by('-visit_date', '-visit_time')[:10]
+    for schedule in schedule_qs:
+        recent_schedules.append({
+            'date': _date_or_none(schedule.visit_date),
+            'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
+            'type': schedule.get_activity_type_display(),
+            'status': schedule.get_status_display(),
+            'customer': schedule.followup.customer_name if schedule.followup else '',
+            'amount': _money_int(schedule.expected_revenue),
+            'purchaseConfirmed': bool(schedule.purchase_confirmed),
+            'notes': _ai_workspace_question_text(schedule.notes, 300),
+        })
+
+    return {
+        'department': {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+        },
+        'customers': [
+            {
+                'id': followup.id,
+                'name': followup.customer_name or followup.manager or '고객명 미정',
+                'manager': followup.manager or '',
+                'priority': followup.get_priority_display(),
+                'grade': followup.customer_grade or '',
+                'pipelineStage': followup.get_pipeline_stage_display(),
+            }
+            for followup in followups[:20]
+        ],
+        'summary': quote_delivery.get('summary') or {},
+        'lastDelivery': latest_delivery,
+        'recentDeliveries': [
+            payload
+            for payload in (_ai_workspace_question_delivery_payload(item) for item in deliveries[:8])
+            if payload
+        ],
+        'recentQuotes': [
+            {
+                'date': item.get('date') or '',
+                'customer': _ai_workspace_question_text(item.get('customer'), 120),
+                'stage': _ai_workspace_question_text(item.get('stage'), 80),
+                'amount': _money_int(item.get('total_amount') or 0),
+                'source': _ai_workspace_question_text(item.get('source'), 80),
+                'items': _ai_workspace_question_delivery_item_text(item.get('items') or []),
+                'notes': _ai_workspace_question_text(item.get('notes'), 240),
+            }
+            for item in quotes[:8]
+        ],
+        'recentNotes': recent_histories,
+        'recentSchedules': recent_schedules,
+    }
+
+
+def _ai_workspace_department_question_fallback(question, context):
+    normalized = re.sub(r'\s+', '', str(question or '').lower())
+    department = context.get('department') or {}
+    summary = context.get('summary') or {}
+    latest_delivery = context.get('lastDelivery')
+    asks_last_order = (
+        any(keyword in normalized for keyword in ['마지막', '최근', '최종', '마지막으로'])
+        and any(keyword in normalized for keyword in ['주문', '납품', '구매', '수주', '오더'])
+    )
+
+    if asks_last_order:
+        if latest_delivery:
+            item_part = f" 품목은 {latest_delivery['items']}입니다." if latest_delivery.get('items') else ''
+            amount_part = f" 금액은 {latest_delivery['amountLabel']}입니다." if latest_delivery.get('amount') else ''
+            answer = (
+                f"기록상 {department.get('name') or '선택 부서'}의 마지막 주문/납품일은 "
+                f"{latest_delivery['date']}입니다."
+                f"{amount_part}{item_part}"
+            )
+            bullets = [
+                f"고객: {latest_delivery.get('customer') or '고객명 미정'}",
+                f"출처: {latest_delivery.get('source') or 'CRM 납품 기록'}",
+            ]
+            if latest_delivery.get('notes'):
+                bullets.append(f"메모: {latest_delivery['notes']}")
+            evidence = [
+                {'label': '마지막 주문/납품일', 'value': latest_delivery['date']},
+                {'label': '고객', 'value': latest_delivery.get('customer') or '고객명 미정'},
+                {'label': '금액', 'value': latest_delivery.get('amountLabel') or '0원'},
+            ]
+            if latest_delivery.get('items'):
+                evidence.append({'label': '품목', 'value': latest_delivery['items']})
+            return {
+                'summary': answer,
+                'bullets': bullets,
+                'evidence': evidence,
+                'confidence': 'medium',
+            }
+        return {
+            'summary': f"기록상 {department.get('name') or '선택 부서'}의 주문/납품 내역을 찾지 못했습니다.",
+            'bullets': [
+                f"연결 고객 {len(context.get('customers') or [])}명 기준으로 확인했습니다.",
+                '견적만 있고 납품 기록이 없을 수 있으니 견적/일정 기록도 함께 확인해야 합니다.',
+            ],
+            'evidence': [
+                {'label': '납품 기록', 'value': '없음'},
+                {'label': '견적 수', 'value': f"{summary.get('total_quotes', 0)}건"},
+            ],
+            'confidence': 'low',
+        }
+
+    last_delivery_label = latest_delivery['date'] if latest_delivery else '납품 기록 없음'
+    return {
+        'summary': (
+            f"{department.get('company') or ''} {department.get('name') or '선택 부서'} 기준으로 "
+            f"고객 {len(context.get('customers') or [])}명, 견적 {summary.get('total_quotes', 0)}건, "
+            f"납품 {summary.get('total_deliveries', 0)}건이 기록되어 있습니다. "
+            f"마지막 주문/납품일은 {last_delivery_label}입니다."
+        ).strip(),
+        'bullets': [
+            f"총 견적 금액: {_ai_workspace_money(summary.get('total_quote_amount', 0))}",
+            f"총 납품 금액: {_ai_workspace_money(summary.get('total_delivery_amount', 0))}",
+            f"최근 영업노트: {len(context.get('recentNotes') or [])}건",
+        ],
+        'evidence': [
+            {'label': '고객 수', 'value': f"{len(context.get('customers') or [])}명"},
+            {'label': '견적/납품', 'value': f"{summary.get('total_quotes', 0)}건 / {summary.get('total_deliveries', 0)}건"},
+            {'label': '마지막 주문/납품', 'value': last_delivery_label},
+        ],
+        'confidence': 'low',
+    }
+
+
+def _ai_workspace_normalize_department_question_answer(data, fallback):
+    if not isinstance(data, dict):
+        return fallback
+    answer_text = (
+        data.get('answer')
+        or data.get('summary')
+        or data.get('directAnswer')
+        or ''
+    )
+    answer = _ai_workspace_question_text(answer_text, 1400)
+    bullets = [
+        _ai_workspace_question_text(item, 300)
+        for item in _ai_json_list(data.get('bullets') or data.get('keyPoints'))[:8]
+        if _ai_workspace_question_text(item, 300)
+    ]
+    evidence = []
+    evidence_items = data.get('evidence') or data.get('sourceNotes') or data.get('sources')
+    for item in _ai_json_list(evidence_items)[:8]:
+        if isinstance(item, dict):
+            label = _ai_workspace_question_text(item.get('label') or item.get('title') or '근거', 80)
+            value = _ai_workspace_question_text(item.get('value') or item.get('text') or item.get('detail'), 300)
+        else:
+            label = '근거'
+            value = _ai_workspace_question_text(item, 300)
+        if label and value:
+            evidence.append({'label': label, 'value': value})
+
+    confidence = str(data.get('confidence') or fallback.get('confidence') or 'low').strip().lower()
+    if confidence not in {'high', 'medium', 'low'}:
+        confidence = fallback.get('confidence') or 'low'
+
+    if not answer:
+        return fallback
+    return {
+        'summary': answer,
+        'bullets': bullets or fallback.get('bullets', []),
+        'evidence': evidence or fallback.get('evidence', []),
+        'confidence': confidence,
+    }
+
+
+def _ai_workspace_generate_department_question_answer(question, context):
+    fallback = _ai_workspace_department_question_fallback(question, context)
+    try:
+        from ai_chat.services import get_openai_client
+
+        client = get_openai_client()
+        model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+        prompt_payload = {
+            'question': question,
+            'crmContext': context,
+            'rules': [
+                '제공된 crmContext에 있는 사실만 사용한다.',
+                '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
+                '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
+                '데이터가 없으면 없다고 답하고 추측하지 않는다.',
+                '답변은 짧고 현장 담당자가 바로 이해할 수 있게 쓴다.',
+            ],
+        }
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    'role': 'system',
+                    'content': (
+                        '너는 내부 영업 CRM의 부서별 상황 질의응답 AI다. '
+                        '반드시 입력된 CRM 컨텍스트만 근거로 답하고, 없는 사실은 만들지 않는다. '
+                        '반드시 JSON으로 {"answer": string, "bullets": string[], '
+                        '"evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"}만 반환한다.'
+                    ),
+                },
+                {
+                    'role': 'user',
+                    'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder),
+                },
+            ],
+            temperature=0.15,
+            max_tokens=900,
+            response_format={'type': 'json_object'},
+        )
+        data = json.loads(response.choices[0].message.content)
+        answer = _ai_workspace_normalize_department_question_answer(data, fallback)
+        return answer, 'openai'
+    except Exception as exc:
+        logger.warning('AI workspace department question fallback used: %s', exc)
+        return fallback, 'fallback'
+
+
 @never_cache
 @require_http_methods(["GET"])
 def ai_workspace_summary_api(request):
@@ -10271,6 +10603,72 @@ def ai_workspace_summary_api(request):
             }
             for goal in recommended_goals
         ],
+    })
+
+
+@never_cache
+@require_POST
+def ai_workspace_department_question_api(request):
+    """Answer a short user question using one accessible department's CRM context."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_json',
+            'message': '요청 JSON 형식이 올바르지 않습니다.',
+        }, status=400)
+
+    department_id = payload.get('departmentId') or payload.get('department_id')
+    question = _ai_workspace_question_text(payload.get('question'), AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH)
+    if not department_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_department_id',
+            'message': 'departmentId가 필요합니다.',
+        }, status=400)
+    if len(question) < 2:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_question',
+            'message': '질문을 입력하세요.',
+        }, status=400)
+
+    department = _ai_workspace_question_department_for_user(request.user, department_id)
+    if not department:
+        return JsonResponse({
+            'success': False,
+            'error': 'department_not_found',
+            'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
+        }, status=404)
+
+    context = _ai_workspace_department_question_context(department, request.user)
+    answer, source = _ai_workspace_generate_department_question_answer(question, context)
+    return JsonResponse({
+        'success': True,
+        'source': source,
+        'generatedAt': timezone.now().isoformat(),
+        'department': context['department'],
+        'question': question,
+        'answer': answer,
+        'context': {
+            'customerCount': len(context.get('customers') or []),
+            'summary': context.get('summary') or {},
+            'lastDelivery': context.get('lastDelivery'),
+        },
+        'requiresHumanReview': True,
     })
 
 
