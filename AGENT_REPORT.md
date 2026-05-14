@@ -17539,6 +17539,31 @@ Local Playwright smoke
 → Asked `해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?`
 → Verified answer displayed `2026-05-13`, customer, amount, and `Smoke Reagent` evidence
 → Temporary local user deleted, browser closed, local servers stopped, smoke artifacts removed
+
+git commit -m "feat: answer AI department questions"
+git push origin main
+→ Commit eb086d7 pushed
+
+railway deployment up --service web --detach --message "Deploy AI department questions eb086d7"
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI department questions eb086d7"
+railway deployment list --service web --limit 4 --json
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ web deployment 676a4c46-3810-44b4-96fe-a50db32b6f21 SUCCESS
+→ sales-note-frontend deployment 1b3e3f70-7db9-4007-b13e-8af013792f8f SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10
+→ 200, assets/index-CrkDN6QC.js and assets/index-CNi9SBsK.css loaded
+→ JS contains `부서 상황 질문` and `department-question`
+→ CSS contains `ai-department-question-panel`
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+curl.exe -i -s https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/?department_id=10
+→ 401 Unauthorized JSON for anonymous request
+
+curl.exe -i -s -X POST https://web-production-5096.up.railway.app/reporting/api/ai-workspace/department-question/
+→ 403 Forbidden CSRF protection for anonymous POST without session/CSRF
 ```
 
 ### 6. Known Limitations
@@ -17549,12 +17574,19 @@ Local Playwright smoke
 
 ### 7. Production Deployment Status
 
-- Runtime commit: pending
-- GitHub: pending
-- Railway `web`: pending
-- Railway `sales-note-frontend`: pending
+- Runtime commit: `eb086d7 feat: answer AI department questions`
+- GitHub: `main` pushed
+- Railway `web`: `676a4c46-3810-44b4-96fe-a50db32b6f21` SUCCESS
+- Railway `sales-note-frontend`: `1b3e3f70-7db9-4007-b13e-8af013792f8f` SUCCESS
 - DB migration: none
-- Production smoke: pending
+- Production smoke:
+  - Frontend `/ai-workspace/?department_id=10` returned 200.
+  - Served `assets/index-CrkDN6QC.js` and `assets/index-CNi9SBsK.css`.
+  - Production JS contains `부서 상황 질문` and `department-question`.
+  - Production CSS contains `ai-department-question-panel`.
+  - Backend login page returned 200.
+  - Anonymous frontend-proxied AI workspace API returned expected `401 Unauthorized`.
+  - Anonymous department question POST returned expected CSRF-protected `403 Forbidden`.
 
 ### 8. Manual Server Test Process
 
