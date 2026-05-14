@@ -17202,6 +17202,27 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → No whitespace errors; Git line-ending warnings only
+
+git commit -m "fix: dedupe AI email waiting actions"
+git push origin main
+→ Commit 1fb5926 pushed
+
+railway deployment up --service web --detach --message "Deploy AI email waiting dedupe 1fb5926"
+railway deployment list --service web --limit 4 --json
+→ web deployment fd85a314-63c4-4e31-a2eb-06c4225a4bb8 SUCCESS
+→ GitHub auto deployment c3ed4422-43f8-4067-ae58-bbdf9d79c0ca REMOVED
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200 React app shell
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
 ```
 
 ### 6. Known Limitations / Risks
@@ -17211,11 +17232,16 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Runtime commit: pending
-- GitHub: pending
-- Railway `web`: pending
+- Runtime commit: `1fb5926 fix: dedupe AI email waiting actions`
+- GitHub: `main` pushed
+- Railway `web`: `fd85a314-63c4-4e31-a2eb-06c4225a4bb8` SUCCESS
 - Railway `sales-note-frontend`: frontend code change 없음, 재배포 없음
 - DB migration: none
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend AI workspace API returned expected anonymous 401 JSON.
+  - Frontend `/ai-workspace/` returned 200 React app shell.
+  - Frontend proxy AI workspace API returned expected anonymous 401 JSON.
 
 ### 8. Manual Server Test Process
 
