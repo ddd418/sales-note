@@ -17416,6 +17416,24 @@ Local Playwright smoke
 → Logged in at local React `/ai-workspace/?department_id=217`
 → Verified `부서 실행 요약` rendered with 2 scoped actions, type counts, top actions, and no console errors
 → Temporary local user deleted and local servers stopped
+
+git commit -m "feat: summarize AI department actions"
+git push origin main
+→ Commit aa714f0 pushed
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI department action summary aa714f0"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 597145e6-27d3-443a-b778-09ac47ca1740 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308
+→ 200, assets/index-DKhz3t-E.js and assets/index-ZwGE8OeC.css loaded
+
+Invoke-WebRequest production JS/CSS assets
+→ JS contains `부서 실행 요약` and `Department action summary`
+→ CSS contains `ai-department-action-summary`
+
+curl.exe -i -s https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/?department_id=308
+→ 401 Unauthorized JSON for anonymous request
 ```
 
 ### 6. Known Limitations
@@ -17425,7 +17443,17 @@ Local Playwright smoke
 
 ### 7. Production Deployment Status
 
-- Pending: frontend runtime change requires commit, push, and `sales-note-frontend` Railway deployment.
+- Runtime commit: `aa714f0 feat: summarize AI department actions`
+- GitHub: `main` pushed
+- Railway `sales-note-frontend`: `597145e6-27d3-443a-b778-09ac47ca1740` SUCCESS
+- Railway `web`: 변경 없음
+- DB migration: none
+- Production smoke:
+  - Frontend `/ai-workspace/?department_id=308` returned 200.
+  - Served `assets/index-DKhz3t-E.js` and `assets/index-ZwGE8OeC.css`.
+  - Production JS contains `부서 실행 요약` and `Department action summary`.
+  - Production CSS contains `ai-department-action-summary`.
+  - Anonymous frontend-proxied AI workspace API returned expected `401 Unauthorized`.
 
 ### 8. Manual Server Test Process
 
