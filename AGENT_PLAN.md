@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## Current task — React CRM legacy frontend migration documentation
+
+**목표**: 기존 Django 레거시 메뉴를 React CRM으로 순차 이관하고, 운영 검수 후 Django 템플릿 프론트를 제거하기 위한 장기 실행 계획을 문서화한다.
+
+### 확인된 상태
+
+- Django 레거시 사용자 메뉴의 원천은 `reporting/templates/reporting/base.html` 사이드바이다.
+- React에는 대시보드, 고객, 파이프라인, 영업노트, 일정, 메일, 주간보고, 서류, 제품, 선결제, AI가 이미 있다.
+- React에 아직 없는 주요 레거시 메뉴는 ToDo/업무하달, 관리자/직원관리, 리포트, 프로필, 명함 관리이다.
+- 기존 지침상 Django 템플릿은 React 대체 구현, Railway 배포, 운영 수동 검수 완료 전 삭제하지 않는다.
+- 이번 작업은 문서화만 수행하므로 DB 모델 변경과 Railway 배포는 필요 없다.
+
+### 구현 계획
+
+- `REACT_MIGRATION_PLAN.md`를 새로 만들어 장기 전환 계획의 단일 기준 문서로 보관한다.
+- Django 레거시 메뉴, 기존 route, React 목표 route, 1차 작업을 표로 정리한다.
+- React 권한 기반 내비게이션, API boundary, backend로 남겨야 하는 route, wave별 이관 순서, 삭제 gate를 명시한다.
+- 다음 구현 작업은 Wave 1 누락 메뉴 중 ToDo/업무하달 React v1로 제안한다.
+
+### 검증 계획
+
+- `git diff --check`
+- 문서 diff 확인
+- 런타임 변경 없음과 배포 불필요 여부 확인
+
+### 현재 상태
+
+- `REACT_MIGRATION_PLAN.md` 작성 완료.
+- `git diff --check` 통과.
+- 런타임 변경 없음. Railway 배포 불필요.
+- `AGENT_REPORT.md` 기록 및 커밋/푸시 예정.
+
+---
+
 ## Completed task — 견적서 생성 텍스트 잘림 방지 + 내부직원 참조 선택 UX
 
 **목표**: 견적서/거래명세서/납품서 생성 시 엑셀 템플릿의 치환 텍스트가 셀 폭보다 길어 PDF 또는 XLSX에서 잘려 보이지 않도록 한다. React 메일 작성 화면의 내부직원 참조는 긴 전체 이메일 목록 노출 대신 검색해서 한 명씩 선택하거나 전체 선택할 수 있게 한다.

@@ -17596,3 +17596,58 @@ curl.exe -i -s -X POST https://web-production-5096.up.railway.app/reporting/api/
 4. 입력창에 `해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?`를 입력하고 `AI에게 질문`을 누릅니다.
 5. 답변에 마지막 주문/납품일, 고객, 금액, 품목 또는 “기록 없음” 판단이 표시되는지 확인합니다.
 6. 같은 화면의 `AI 추천 실행 목록`, 현장 답변 저장, 메일/노트/질문 초안, 부서 AI 분석 실행이 기존처럼 동작하는지 확인합니다.
+
+---
+
+## 2026-05-15 React CRM legacy frontend migration plan documentation
+
+### 1. Summary
+
+- Django 레거시 사용자 메뉴를 React CRM으로 이관하고, 운영 검수 후 Django 템플릿 프론트를 제거하기 위한 장기 계획을 문서화했습니다.
+- `REACT_MIGRATION_PLAN.md`를 새 source of truth로 추가했습니다.
+- 첫 구현 wave는 React에 아직 없는 ToDo/업무하달, 관리자/직원관리, 리포트, 프로필, 명함 관리로 정리했습니다.
+
+### 2. Files Changed
+
+- `REACT_MIGRATION_PLAN.md`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### 3. CRM Improvements
+
+- 레거시 Django 메뉴별 현재 route, React 목표 route, 첫 작업이 명확해졌습니다.
+- React 권한 기반 내비게이션, API boundary, backend로 유지해야 하는 route, 삭제 gate를 문서화했습니다.
+- 다음 작업자가 Django 템플릿 삭제를 성급하게 시작하지 않고, React 대체 구현과 운영 검수 순서로 진행할 수 있게 했습니다.
+
+### 4. Existing Functionality Preserved
+
+- 런타임 코드 변경은 없습니다.
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 `/reporting/*`, `/todos/*`, `/ai/*`, React route 동작은 변경하지 않았습니다.
+
+### 5. Commands Run
+
+```text
+git status --short --branch
+→ main tracks origin/main, no pre-existing local changes
+
+git diff --check
+→ OK; Git line-ending warning only for AGENT_PLAN.md
+```
+
+### 6. Known Limitations
+
+- 이번 작업은 문서화만 수행했습니다. React route/API 구현은 아직 시작하지 않았습니다.
+- 메뉴별 세부 API payload와 화면 컴포넌트 설계는 각 wave 구현 시 기존 view/model/form을 다시 확인해 확정해야 합니다.
+
+### 7. Production Deployment Status
+
+- Runtime change: none
+- Railway deployment: not required
+- DB migration: none
+
+### 8. Recommended Next Task
+
+1. Wave 1 시작: `/reporting/api/navigation/`을 추가하고 React sidebar를 role/capability 기반으로 전환합니다.
+2. `/tasks/`와 `/tasks/manager/` React v1 및 ToDo/업무하달 JSON API를 구현합니다.
+3. 운영 검수 후 ToDo 관련 Django template route를 fallback/redirect 대상으로 전환합니다.
