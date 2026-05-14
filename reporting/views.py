@@ -6205,7 +6205,7 @@ def _schedules_quote_item_identity(item):
 
 
 def _schedules_quote_item_total_for_quantity(item, quantity):
-    from decimal import Decimal
+    from decimal import Decimal, ROUND_HALF_UP
 
     if not quantity:
         return Decimal('0')
@@ -6213,6 +6213,14 @@ def _schedules_quote_item_total_for_quantity(item, quantity):
     if unit_price is None:
         unit_price = item.unit_price
     if unit_price is None:
+        if item.total_price is not None and item.quantity:
+            original_quantity = Decimal(str(item.quantity or 0))
+            if original_quantity > 0:
+                return (
+                    Decimal(str(item.total_price or 0)) *
+                    Decimal(str(quantity)) /
+                    original_quantity
+                ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         return Decimal('0')
     return unit_price * Decimal(str(quantity)) * Decimal('1.1')
 
@@ -19854,14 +19862,28 @@ def followup_quote_items_api(request, followup_id):
                     quoted_quantity = progress.get('quotedQuantity', Decimal(str(item.quantity or 0)))
                     delivered_quantity = progress.get('deliveredQuantity', Decimal('0'))
                     remaining_quantity_decimal = progress.get('remainingQuantity', Decimal(str(remaining_quantity or 0)))
+                    item_total = _schedules_quote_item_total_for_quantity(item, remaining_quantity)
+                    item_quoted_total = _schedules_quote_item_total_for_quantity(item, quoted_quantity)
+                    item_delivered_total = _schedules_quote_item_total_for_quantity(item, delivered_quantity)
+                    fallback_effective_unit_price = None
+                    if item_total > 0 and Decimal(str(remaining_quantity or 0)) > 0:
+                        from decimal import ROUND_HALF_UP
+
+                        fallback_effective_unit_price = (
+                            item_total / Decimal(str(remaining_quantity or 0)) / Decimal('1.1')
+                        ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
                     product = item.product if item.product_id else None
-                    unit_price = float(item.unit_price) if item.unit_price is not None else 0
+                    unit_price = float(
+                        item.unit_price
+                        if item.unit_price is not None
+                        else fallback_effective_unit_price or 0
+                    )
                     discount_unit_price = (
                         float(item.discount_unit_price)
                         if item.discount_unit_price is not None
                         else None
                     )
-                    effective_unit_price = float(item.get_effective_unit_price() or item.unit_price or 0)
+                    effective_unit_price = float(item.get_effective_unit_price() or item.unit_price or fallback_effective_unit_price or 0)
                     unit = item.unit or (product.unit if product else '') or 'EA'
                     quote_group = _quote_group_key(item.quote_group)
                     item_data = {
@@ -19886,6 +19908,14 @@ def followup_quote_items_api(request, followup_id):
                         'discountUnitPrice': discount_unit_price,
                         'effective_unit_price': effective_unit_price,
                         'effectiveUnitPrice': effective_unit_price,
+                        'total_price': float(item_total),
+                        'totalPrice': float(item_total),
+                        'remaining_amount': float(item_total),
+                        'remainingAmount': float(item_total),
+                        'quoted_amount': float(item_quoted_total),
+                        'quotedAmount': float(item_quoted_total),
+                        'delivered_amount': float(item_delivered_total),
+                        'deliveredAmount': float(item_delivered_total),
                         'product_id': item.product_id,
                         'productId': item.product_id,
                         'product_code': product.product_code if product else '',
@@ -19906,14 +19936,11 @@ def followup_quote_items_api(request, followup_id):
                         grouped_quote_items[quote_group] = {
                             'label': _quote_group_label(quote_group),
                             'items': [],
-                            'total': Decimal('0'),
-                            'quoted_total': Decimal('0'),
-                            'delivered_total': Decimal('0'),
-                        }
+                        'total': Decimal('0'),
+                        'quoted_total': Decimal('0'),
+                        'delivered_total': Decimal('0'),
+                    }
                     grouped_quote_items[quote_group]['items'].append(item_data)
-                    item_total = _schedules_quote_item_total_for_quantity(item, remaining_quantity)
-                    item_quoted_total = _schedules_quote_item_total_for_quantity(item, quoted_quantity)
-                    item_delivered_total = _schedules_quote_item_total_for_quantity(item, delivered_quantity)
                     grouped_quote_items[quote_group]['total'] += item_total
                     grouped_quote_items[quote_group]['quoted_total'] += item_quoted_total
                     grouped_quote_items[quote_group]['delivered_total'] += item_delivered_total

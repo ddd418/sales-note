@@ -1,6 +1,45 @@
 # AGENT_PLAN.md
 
-## Current task — 납품 선결제 차감 품목 합계 0원 표시 긴급 수정
+## Current task — 견적 선택 적용 후 선결제 합계 0원 긴급 수정
+
+**목표**: `/schedules/903/`에서 견적 품목을 선택 적용했는데도 선결제 영역이 `차감할 납품 품목 합계가 없습니다`로 남는 문제를 해결한다.
+
+### 확인된 상태
+
+- 견적 품목 선택 적용 자체는 되었지만, 가져온 품목의 단가가 0원/빈 값이면 프론트 납품 합계가 계속 0원으로 계산된다.
+- 일부 레거시 견적 품목은 `unit_price`가 비어 있고 `total_price`만 남아 있을 수 있다.
+- 기존 quote-items API는 품목별 총액/잔여액을 내려주지 않고, `unit_price`가 없으면 `unitPrice: 0`을 내려줘 프론트가 금액을 복원할 수 없다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 백엔드 quote-items API에서 품목별 `totalPrice`, `remainingAmount`, `quotedAmount`, `deliveredAmount`를 내려준다.
+- `unit_price`가 없는 레거시 품목은 `total_price / quantity / 1.1`로 단가를 복원해 내려준다.
+- 프론트는 견적 품목의 단가가 0이어도 품목 총액 또는 단일 견적 잔여금액으로 단가를 복원해 납품 편집 row를 만든다.
+- 레거시 총액만 있는 견적 품목 회귀 테스트를 추가한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke 확인.
+
+### 현재 상태
+
+- 백엔드 quote-items API 품목별 총액/잔여액 payload 확장 완료.
+- `unit_price`가 없는 레거시 품목의 단가 복원 구현 완료.
+- 프론트 견적 품목 적용 시 총액 기반 단가 fallback 구현 완료.
+- 로컬 백엔드 테스트, Django checks, frontend 타입체크/빌드 통과.
+
+---
+
+## Previous task — 납품 선결제 차감 품목 합계 0원 표시 긴급 수정
 
 **목표**: React 일정 상세 `/schedules/903/`에서 선결제 차감 시 납품/견적 품목이 아직 반영되지 않았는데도 `품목 상한 ₩0 · 최대 차감 ₩0`으로 표시되어 사용자가 품목을 못 가져온 것으로 보이는 문제를 해결한다.
 

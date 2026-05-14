@@ -764,22 +764,37 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
   item: FollowupQuoteItem,
   quote: FollowupQuoteOption,
   index: number,
-): ScheduleDeliveryEditRow => ({
-  rowId: `quote-${quote.optionId}-${item.id ?? index}-${Date.now()}-${index}`,
-  productId: item.productId ? String(item.productId) : '',
-  productQuery: item.productCode || '',
-  itemName: item.itemName || item.productCode || '',
-  quantity: String(item.quantity || 1),
-  unit: item.unit || 'EA',
-  unitPrice: item.unitPrice !== undefined && item.unitPrice !== null ? moneyInputValue(item.unitPrice) : '',
-  discountRate: item.discountRate ? rateInputValue(item.discountRate) : '',
-  discountUnitPrice: item.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? moneyInputValue(item.discountUnitPrice) : '',
-  taxInvoiceIssued: Boolean(item.taxInvoiceIssued),
-  quoteGroup: item.quoteGroup || '',
-  notes: item.notes || '',
-  sourceQuoteScheduleId: item.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : String(quote.scheduleId || ''),
-  sourceQuoteItemId: item.sourceQuoteItemId ? String(item.sourceQuoteItemId) : String(item.id || ''),
-});
+): ScheduleDeliveryEditRow => {
+  const quantity = item.quantity || 1;
+  const itemTotal = item.totalPrice || item.remainingAmount || 0;
+  const quoteSingleItemFallback = quote.items.length === 1 ? quote.remainingAmount || quote.expectedRevenue || 0 : 0;
+  const totalFallback = itemTotal || quoteSingleItemFallback;
+  const fallbackUnitPrice = totalFallback > 0 && quantity > 0
+    ? Math.round(totalFallback / quantity / 1.1)
+    : 0;
+  const unitPrice = item.unitPrice > 0
+    ? item.unitPrice
+    : item.effectiveUnitPrice > 0
+      ? item.effectiveUnitPrice
+      : fallbackUnitPrice;
+  const usesOriginalUnitPrice = item.unitPrice > 0;
+  return {
+    rowId: `quote-${quote.optionId}-${item.id ?? index}-${Date.now()}-${index}`,
+    productId: item.productId ? String(item.productId) : '',
+    productQuery: item.productCode || '',
+    itemName: item.itemName || item.productCode || '',
+    quantity: String(quantity),
+    unit: item.unit || 'EA',
+    unitPrice: unitPrice > 0 ? moneyInputValue(unitPrice) : '',
+    discountRate: usesOriginalUnitPrice && item.discountRate ? rateInputValue(item.discountRate) : '',
+    discountUnitPrice: usesOriginalUnitPrice && item.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? moneyInputValue(item.discountUnitPrice) : '',
+    taxInvoiceIssued: Boolean(item.taxInvoiceIssued),
+    quoteGroup: item.quoteGroup || '',
+    notes: item.notes || '',
+    sourceQuoteScheduleId: item.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : String(quote.scheduleId || ''),
+    sourceQuoteItemId: item.sourceQuoteItemId ? String(item.sourceQuoteItemId) : String(item.id || ''),
+  };
+};
 
 const scheduleDeliveryRowsHaveUserInput = (rows: ScheduleDeliveryEditRow[]) => rows.some((row) => Boolean(
   row.id ||

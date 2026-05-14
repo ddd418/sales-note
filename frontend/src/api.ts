@@ -1119,6 +1119,10 @@ export type FollowupQuoteItem = {
   discountRate: number;
   discountUnitPrice: number | null;
   effectiveUnitPrice: number;
+  totalPrice: number;
+  remainingAmount: number;
+  quotedAmount: number;
+  deliveredAmount: number;
   taxInvoiceIssued: boolean;
   quoteGroup: string;
   quoteGroupLabel: string;
@@ -5954,6 +5958,7 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
   const remainingQuantity = Math.max(1, rawNumber(rawValue(item, 'remainingQuantity', 'remaining_quantity') ?? item.quantity, 1));
   const originalQuantity = Math.max(remainingQuantity, rawNumber(rawValue(item, 'originalQuantity', 'original_quantity'), remainingQuantity));
   const deliveredQuantity = Math.max(0, rawNumber(rawValue(item, 'deliveredQuantity', 'delivered_quantity')));
+  const totalPrice = rawNumber(rawValue(item, 'totalPrice', 'total_price'));
   return {
     id: rawNullableNumber(item.id),
     productId,
@@ -5971,6 +5976,10 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
     discountRate: rawNumber(rawValue(item, 'discountRate', 'discount_rate')),
     discountUnitPrice: rawNullableNumber(rawValue(item, 'discountUnitPrice', 'discount_unit_price')),
     effectiveUnitPrice: rawNumber(rawValue(item, 'effectiveUnitPrice', 'effective_unit_price'), unitPrice),
+    totalPrice,
+    remainingAmount: rawNumber(rawValue(item, 'remainingAmount', 'remaining_amount'), totalPrice),
+    quotedAmount: rawNumber(rawValue(item, 'quotedAmount', 'quoted_amount'), totalPrice),
+    deliveredAmount: rawNumber(rawValue(item, 'deliveredAmount', 'delivered_amount')),
     taxInvoiceIssued: rawBoolean(rawValue(item, 'taxInvoiceIssued', 'tax_invoice_issued')),
     quoteGroup,
     quoteGroupLabel: rawString(rawValue(item, 'quoteGroupLabel', 'quote_group_label')) || quoteGroup || '기본 견적서',

@@ -1,5 +1,85 @@
 # AGENT_REPORT.md
 
+## 2026-05-15 — Quote Import Price Recovery For Prepayment
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+
+### 요약
+
+`/schedules/903/`에서 견적 품목을 선택 적용했는데도 선결제 영역이 `차감할 납품 품목 합계가 없습니다`로 남는 문제를 수정했습니다. 원인은 일부 견적 품목이 `unit_price` 없이 `total_price`만 가진 레거시 데이터일 때, API가 `unitPrice: 0`을 내려주고 프론트가 납품 합계를 0원으로 계산하던 것입니다.
+
+이제 quote-items API가 품목별 총액/잔여액을 내려주고, `unit_price`가 없는 품목은 총액을 수량과 VAT 기준으로 나눠 단가를 복원합니다. 프론트도 단가가 0이어도 품목 총액이나 단일 견적 잔여금액으로 납품 row 단가를 복원합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 레거시 총액 기반 견적 품목의 단가/총액 복원 및 quote-items API payload 확장.
+- `reporting/tests.py`: `unit_price` 없이 `total_price`만 있는 견적 품목 회귀 테스트 추가.
+- `frontend/src/api.ts`: 견적 품목의 `totalPrice`, `remainingAmount`, `quotedAmount`, `deliveredAmount` 정규화 추가.
+- `frontend/src/App.tsx`: 견적 품목 적용 시 단가 0원 row를 총액 기준으로 복원.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 견적 품목을 선택 적용한 직후 납품 합계가 실제 견적 금액 기준으로 잡힙니다.
+- 선결제 `품목 상한`, `최대 차감`, `입력 후 남은 납품금액`이 0원으로 남는 경로를 차단했습니다.
+- 레거시 견적 데이터와 현재 구조화된 견적 데이터 모두 처리합니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/*` route와 권한 정책은 변경하지 않았습니다.
+- 구조화된 단가/할인단가가 있는 기존 견적 품목은 기존 계산을 그대로 사용합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
+→ Ran 9 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-C6-MmFJX.js / assets/index-GdZLLCy-.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 실제 견적 선택/선결제 차감 적용은 로그인 세션과 실제 일정 데이터가 필요해 사용자 수동 검수가 필요합니다.
+
+### 운영 배포 상태
+
+- 배포 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영에서 `/schedules/903/`에 로그인 상태로 접속합니다.
+2. 납품 품목 편집을 열고 `견적 품목 불러오기`에서 견적을 선택 적용합니다.
+3. 적용된 row의 기준단가 또는 할인단가가 0원이 아닌 값으로 채워지는지 확인합니다.
+4. 선결제 차감을 켜고 선결제를 선택합니다.
+5. `품목 상한`, `최대 차감`, `입력 후 남은 납품금액`이 실제 납품 합계 기준으로 표시되는지 확인합니다.
+
+### 권장 다음 작업
+
+- 이 운영 검수 후, 멈춰둔 AI 추천 실행 목록 현장 답변을 `Prompt goals / 추천 목표`에 반영하는 작업을 이어서 진행합니다.
+
+---
+
 ## 2026-05-15 — Delivery Prepayment Requires Items UX
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/번들 스모크 완료, 운영 수동검수 대기

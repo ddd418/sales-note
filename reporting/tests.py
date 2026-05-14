@@ -2496,6 +2496,45 @@ class QuoteItemsApiTests(TestCase):
         self.assertEqual(quote_item['quoteGroupLabel'], '수리')
         self.assertEqual(quote_item['notes'], '오링 교체')
 
+    def test_quote_items_api_recovers_unit_price_from_legacy_total_price(self):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        target = self._create_followup(self.user, '레거시 총액 견적')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='총액만 있는 견적 품목',
+            quantity=2,
+            unit='EA',
+            unit_price=10000,
+            quote_group='수리',
+        )
+        DeliveryItem.objects.filter(pk=item.pk).update(unit_price=None, total_price=110000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        quote = payload['quotes'][0]
+        quote_item = quote['items'][0]
+        self.assertEqual(quote['remainingAmount'], 110000.0)
+        self.assertEqual(quote_item['totalPrice'], 110000.0)
+        self.assertEqual(quote_item['remainingAmount'], 110000.0)
+        self.assertEqual(quote_item['unitPrice'], 50000.0)
+        self.assertEqual(quote_item['effectiveUnitPrice'], 50000.0)
+
     def test_quote_items_api_returns_remaining_items_after_partial_delivery_import(self):
         from datetime import time
         from django.utils import timezone
