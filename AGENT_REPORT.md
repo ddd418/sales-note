@@ -16363,3 +16363,98 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-works
 ### 9. Recommended Next Task
 
 운영 수동검수 후, AI action queue의 부서별 액션 수/종류를 화면 상단에 요약해 사용자가 “이 부서에서 지금 처리할 것”을 더 빨리 파악하게 하는 개선을 검토할 수 있습니다.
+
+## 2026-05-14 AI 워크스페이스 부서 검색 UI 개선
+
+### 1. Summary
+
+- React AI 워크스페이스에서 `Department analysis / 부서 분석 대상` 섹션을 `AI 추천 실행 목록` 위로 이동했습니다.
+- `부서 분석 대상`은 기본 전체 리스트를 표시하지 않고, 검색어 입력 후 검색 결과만 표시하도록 변경했습니다.
+- 검색어가 없을 때는 검색 안내 문구를 보여주고, 검색 결과가 없을 때는 빈 상태를 표시합니다.
+
+### 2. Files Changed
+
+- `frontend/src/App.tsx`
+- `AGENT_PLAN.md`
+
+### 3. CRM Improvements
+
+- 운영자가 `/ai-workspace/`에 들어오면 부서 분석 검색을 먼저 사용할 수 있어, 특정 회사/부서/고객 맥락으로 빠르게 진입할 수 있습니다.
+- 전체 부서 리스트가 기본으로 펼쳐지지 않아 AI 추천 실행 목록과 부서 검색 영역의 정보 밀도가 낮아졌습니다.
+- 검색어가 있을 때만 결과가 표시되어 “검색 리스트만 뜨게” 하는 운영 요구를 반영했습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 백엔드 API shape, 인증, `/reporting/*` 라우트는 변경하지 않았습니다.
+- `/ai-workspace/?department_id=<id>` 상세 화면의 기존 부서별 action queue 필터 동작은 유지했습니다.
+- 일반 `/ai-workspace/`의 AI 추천 실행 목록 동작은 유지했습니다.
+
+### 5. Commands Run
+
+```text
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+cd frontend && npm run build
+→ OK; existing Vite chunk-size warning only
+
+git commit -m "feat: refine AI workspace department search"
+git push origin main
+→ Commit b8f51d6 pushed
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy frontend AI workspace department search b8f51d6"
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ 5d567699-9e3c-4585-a899-bf6b64e9e9ad SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, asset index-I5qX-dYa.js
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-I5qX-dYa.js
+→ 200, new search hint strings present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON for anonymous access
+```
+
+### 6. Known Limitations
+
+- 실제 로그인 세션에서 검색 입력/결과 클릭 UX는 운영 사용자의 수동 확인이 필요합니다.
+- Railway CLI 배포 시 프론트 서비스는 `.\frontend --path-as-root`를 명시해야 합니다. 루트에서 배포하면 루트 `railway.toml`의 Django start command가 적용됩니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `b8f51d6 feat: refine AI workspace department search`
+- GitHub: `main` pushed
+- Railway `sales-note-frontend`: `5d567699-9e3c-4585-a899-bf6b64e9e9ad` SUCCESS
+- 참고: 배포 중 루트 `railway.toml`이 적용된 잘못된 프론트 배포 2건은 Django `SECRET_KEY` 오류로 crash 후 removed 되었고, `--path-as-root` 재배포로 정상 복구했습니다.
+- Production smoke:
+  - Frontend `/ai-workspace/` returned 200.
+  - Production HTML references `index-I5qX-dYa.js`.
+  - Production JS bundle contains `검색 후 표시` and `회사, 부서, 고객명` search hint strings.
+  - Frontend proxy `/reporting/api/ai-workspace/` returned expected anonymous 401 JSON.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/ai-workspace/`
+2. `Department analysis / 부서 분석 대상` 섹션이 `AI 추천 실행 목록` 위에 있는지 확인합니다.
+3. 검색어를 입력하지 않은 상태에서 부서 기본 리스트가 보이지 않고 검색 안내만 보이는지 확인합니다.
+4. 회사명, 부서명, 고객명 중 하나로 검색했을 때 검색 결과 리스트만 표시되는지 확인합니다.
+5. 결과가 없는 검색어를 입력했을 때 `검색 결과가 없습니다` 빈 상태가 보이는지 확인합니다.
+6. 일반 `/ai-workspace/`의 `AI 추천 실행 목록`은 기존처럼 전체 추천 목록이 유지되는지 확인합니다.
+
+### 9. Recommended Next Task
+
+운영 수동검수 후, 부서 검색 결과에서 바로 상세 분석 화면으로 이동했을 때 `AI 추천 실행 목록`과 부서 요약 카드가 같은 부서 기준으로 일관되게 보이는지 추가 점검하는 것이 좋습니다.
