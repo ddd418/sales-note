@@ -2,7 +2,7 @@
 
 ## 2026-05-15 — Quote Items API 502 Fix
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -53,6 +53,22 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: bulk load quote item progress"
+git push origin main
+→ pushed f424ebc to origin/main
+
+railway deployment list --service web --limit 2 --json
+→ 768f6950-9790-4ea5-a92c-a0fa5de01d27 SUCCESS, commit f424ebc
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/903/
+→ 200, React root and assets present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/followups/1/quote-items/
+→ 302 /reporting/login/?next=/reporting/api/followups/1/quote-items/
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/followups/1/quote-items/
+→ 302 /reporting/login/?next=/reporting/api/followups/1/quote-items/
 ```
 
 ### 알려진 제한
@@ -61,7 +77,13 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 진행 예정.
+- GitHub: `f424ebc fix: bulk load quote item progress` pushed to `origin/main`.
+- Railway `web`: `768f6950-9790-4ea5-a92c-a0fa5de01d27` SUCCESS, commit `f424ebc`.
+- Railway `sales-note-frontend`: 변경 없음. 기존 React bundle이 같은 API를 호출한다.
+- 운영 smoke OK:
+  - `/schedules/903/` 200.
+  - frontend proxy `/reporting/api/followups/1/quote-items/` anonymous 302 login redirect.
+  - backend direct `/reporting/api/followups/1/quote-items/` anonymous 302 login redirect.
 
 ### 운영 수동 검수 절차
 

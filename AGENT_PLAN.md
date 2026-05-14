@@ -29,6 +29,15 @@
 - `git diff --check`
 - 커밋/푸시 후 Railway `web` 배포 및 운영 API smoke 확인.
 
+### 현재 상태
+
+- bulk progress helper 구현 완료.
+- `followup_quote_items_api`가 다중 견적 일정의 납품 반영 수량을 bulk 계산하도록 변경 완료.
+- 로컬 회귀 테스트 및 Django checks 통과.
+- 커밋/푸시 완료: `f424ebc fix: bulk load quote item progress`.
+- Railway `web` 배포 완료: `768f6950-9790-4ea5-a92c-a0fa5de01d27` SUCCESS.
+- 운영 익명 smoke 완료: `/schedules/903/` 200, quote-items API 302 login redirect.
+
 ---
 
 ## Previous task — 일정 상세 납품품목 선결제 차감 + AI 액션 오류 긴급 수정
