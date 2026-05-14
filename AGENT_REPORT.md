@@ -17104,6 +17104,27 @@ git diff --check
 
 python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
 → Ran 22 tests, OK
+
+git commit -m "feat: split AI issue followups"
+git push origin main
+→ Commit d9f7cd2 pushed
+
+railway deployment up --service web --detach --message "Deploy AI issue followup split d9f7cd2"
+railway deployment list --service web --limit 4 --json
+→ web deployment ceeeda04-288f-421a-88c8-954290b1f817 SUCCESS
+→ GitHub auto deployment 9de5017e-5652-4eac-9426-0271e654b42b REMOVED
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200 React app shell
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
 ```
 
 ### 6. Known Limitations / Risks
@@ -17113,11 +17134,16 @@ python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
 
 ### 7. Production Deployment Status
 
-- Runtime commit: pending
-- GitHub: pending
-- Railway `web`: pending
+- Runtime commit: `d9f7cd2 feat: split AI issue followups`
+- GitHub: `main` pushed
+- Railway `web`: `ceeeda04-288f-421a-88c8-954290b1f817` SUCCESS
 - Railway `sales-note-frontend`: frontend runtime change 없음, 배포 예정 없음
 - DB migration: none
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend AI workspace API returned expected anonymous 401 JSON.
+  - Frontend `/ai-workspace/` returned 200 React app shell.
+  - Frontend proxy AI workspace API returned expected anonymous 401 JSON.
 
 ### 8. Manual Server Test Process
 
