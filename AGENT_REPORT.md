@@ -17330,7 +17330,7 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 
 - Runtime commit: `ac42a34 fix: dedupe AI email waiting by subject`
 - GitHub: `main` pushed
-- Railway `web`: `28b103cc-f3ce-4b43-9739-2eb0f5ed7738` SUCCESS
+- Railway `web`: `41e94dc3-c14b-4113-a8ab-a331b4da7dcb` SUCCESS
 - Railway `sales-note-frontend`: frontend code change 없음, 재배포 없음
 - DB migration: none
 - Production smoke:
@@ -17338,6 +17338,7 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
   - Backend AI workspace API returned expected anonymous 401 JSON.
   - Frontend `/ai-workspace/` returned 200 React app shell.
   - Frontend proxy AI workspace API returned expected anonymous 401 JSON.
+- User manual validation: completed by user on 2026-05-14.
 
 ### 8. Manual Server Test Process
 
@@ -17345,3 +17346,9 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 2. AI 추천 실행 목록에서 김미선/한국산업교정기술원 `메일 답장 확인` 카드가 원문 제목과 `Re: [RE]...` 제목으로 2개 나뉘지 않는지 확인합니다.
 3. 같은 견적 안내는 최신 발송 기준 1개만 남고, `별도 납품 일정 확인`처럼 제목이 다른 메일은 별도 액션으로 유지되는지 확인합니다.
 4. 남은 `메일 답장 확인` 카드의 `메일 보기`, `메일 초안`, `노트 초안`, 현장 답변 저장이 기존처럼 동작하는지 확인합니다.
+
+### 9. Handoff Notes
+
+- User confirmed production manual validation is complete on 2026-05-14.
+- Do not continue with a new implementation task from this report automatically; start from the next explicit user request.
+- Current working tree was clean before this handoff note update.
