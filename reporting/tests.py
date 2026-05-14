@@ -1495,6 +1495,66 @@ class DashboardSummaryApiTests(TestCase):
         self.assertTrue(any(item['stage'] == followup.pipeline_stage for item in payload['pipelineSummary']))
         self.assertEqual(payload['links']['createNote'], '/notes/?create=1')
 
+    def test_dashboard_summary_api_excludes_stale_quote_submission_followups(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import History
+
+        today = timezone.localdate()
+        followup = self._create_customer(
+            self.user,
+            '견적완료',
+            overdue=False,
+            today_schedule=False,
+        )
+        History.objects.filter(followup=followup).update(reviewed_at=timezone.now())
+        stale_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='견적서 제출 예정',
+            next_action='견적서 및 비교표 제출',
+            next_action_date=today - timedelta(days=1),
+        )
+        active_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='제출된 견적 검토 상황 확인',
+            next_action='견적 검토 여부 확인',
+            next_action_date=today - timedelta(days=1),
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('1200000'),
+        )
+        DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=quote_schedule,
+            user=self.user,
+            transaction_number='DASH-ST-Q-001',
+            output_format='pdf',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        overdue_ids = {item['id'] for item in payload['overdueActions']}
+        self.assertNotIn(stale_history.id, overdue_ids)
+        self.assertIn(active_history.id, overdue_ids)
+        self.assertEqual(payload['metrics']['overdueActions'], 1)
+
     def test_dashboard_summary_api_manager_sees_same_company_only(self):
         own = self._create_customer(self.user, '회사내고객')
         coworker = self._create_customer(self.coworker, '회사내동료')
@@ -1713,6 +1773,69 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(customer['upcomingSchedule']['activityLabel'], '견적 제출')
         self.assertEqual(customer['upcomingSchedule']['time'], '10:30')
         self.assertEqual(payload['metrics']['scheduledCustomers'], 1)
+
+    def test_customers_apis_exclude_stale_quote_submission_overdue_count(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import History, Schedule
+
+        today = timezone.localdate()
+        target = self._create_customer(self.user, '견적완료고객')
+        History.objects.filter(followup=target).update(reviewed_at=timezone.now())
+        stale_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            action_type='customer_meeting',
+            content='견적서 제출 예정',
+            next_action='견적서 및 비교표 제출',
+            next_action_date=today - timedelta(days=1),
+        )
+        active_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            action_type='customer_meeting',
+            content='견적 검토 상황 확인',
+            next_action='견적 검토 여부 확인',
+            next_action_date=today - timedelta(days=1),
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=today,
+            visit_time=time(10, 30),
+            activity_type='quote',
+            status='scheduled',
+            expected_revenue=Decimal('770000'),
+        )
+        DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=quote_schedule,
+            user=self.user,
+            transaction_number='CUSTOMER-ST-Q-001',
+            output_format='pdf',
+        )
+        self.client.force_login(self.user)
+
+        list_response = self.client.get(self.url)
+
+        self.assertEqual(list_response.status_code, 200)
+        customer = next(item for item in list_response.json()['customers'] if item['id'] == target.id)
+        self.assertEqual(customer['overdueActionCount'], 1)
+        self.assertEqual(customer['nextAction'], '견적 검토 여부 확인')
+        self.assertNotEqual(customer['nextAction'], stale_history.next_action)
+
+        detail_response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        overdue_ids = {item['id'] for item in detail_payload['overdueActions']}
+        self.assertNotIn(stale_history.id, overdue_ids)
+        self.assertIn(active_history.id, overdue_ids)
+        self.assertEqual(detail_payload['metrics']['overdueActions'], 1)
 
     def test_followup_create_ajax_creates_customer_for_salesman(self):
         from reporting.models import Company, Department, FollowUp
@@ -6914,6 +7037,60 @@ class AIWorkspaceSummaryApiTests(TestCase):
         prompt_text = '\n'.join(item['prompt'] for item in payload['promptTargets'])
         self.assertNotIn('AI-SOLD-Q-001', prompt_text)
         self.assertNotIn('판매 완료된 견적 일정', prompt_text)
+
+    def test_ai_workspace_action_queue_excludes_stale_quote_submission_history(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import History
+
+        followup, department = self._create_customer(self.user, '견적제출완료')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        stale_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='견적 제출 준비',
+            next_action='견적서 및 비교표 제출',
+            next_action_date=today - timedelta(days=1),
+        )
+        active_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='견적 제출 후 고객 확인 필요',
+            next_action='견적 검토 여부 확인',
+            next_action_date=today - timedelta(days=1),
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('900000'),
+        )
+        DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=quote_schedule,
+            user=self.user,
+            transaction_number='AI-ST-Q-001',
+            output_format='pdf',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        action_ids = {item['id'] for item in payload['actionQueue']}
+        self.assertNotIn(f'followup:{stale_history.id}', action_ids)
+        self.assertIn(f'followup:{active_history.id}', action_ids)
 
     def test_ai_workspace_action_draft_api_requires_ai_permission(self):
         self.client.force_login(self.no_ai_user)

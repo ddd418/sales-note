@@ -2361,6 +2361,80 @@ def _dashboard_history_payload(history):
     }
 
 
+def _history_requests_quote_submission(history):
+    action_text = ' '.join(
+        str(value or '')
+        for value in [history.next_action, history.meeting_next_action]
+    )
+    compact = re.sub(r'\s+', '', action_text).lower()
+    if not compact:
+        return False
+
+    has_quote_document = any(keyword in compact for keyword in ['견적서', '견적', '비교표'])
+    has_submission_action = any(
+        keyword in compact
+        for keyword in ['제출', '발송', '송부', '전달', '보내', '보냈', '메일발송']
+    )
+    checks_after_submission = any(
+        keyword in compact
+        for keyword in ['회신', '답장', '검토', '의사결정', '구매', '결재']
+    )
+    explicit_submission_check = any(
+        phrase in compact
+        for phrase in ['제출여부', '발송여부', '송부여부', '전달여부']
+    )
+    if checks_after_submission and not explicit_submission_check:
+        return False
+    return has_quote_document and has_submission_action
+
+
+def _history_has_quote_submission_evidence(history):
+    if not history or not history.followup_id or not history.user_id:
+        return False
+    if not _history_requests_quote_submission(history):
+        return False
+
+    created_at = history.created_at
+    quote_qs = Quote.objects.filter(
+        followup_id=history.followup_id,
+    ).filter(
+        Q(user_id=history.user_id) | Q(schedule__user_id=history.user_id)
+    ).exclude(stage__in=['draft', 'rejected', 'expired'])
+    if created_at:
+        quote_qs = quote_qs.filter(created_at__gte=created_at)
+    if quote_qs.exists():
+        return True
+
+    document_qs = DocumentGenerationLog.objects.filter(
+        schedule__followup_id=history.followup_id,
+        schedule__activity_type='quote',
+        document_type='quotation',
+    ).filter(
+        Q(user_id=history.user_id) | Q(schedule__user_id=history.user_id)
+    )
+    if created_at:
+        document_qs = document_qs.filter(created_at__gte=created_at)
+    if document_qs.exists():
+        return True
+
+    quote_history_qs = History.objects.filter(
+        user_id=history.user_id,
+        followup_id=history.followup_id,
+        parent_history__isnull=True,
+        action_type='quote',
+    ).exclude(pk=history.pk)
+    if created_at:
+        quote_history_qs = quote_history_qs.filter(created_at__gte=created_at)
+    return quote_history_qs.exists()
+
+
+def _histories_excluding_stale_quote_submission(histories):
+    return [
+        history for history in histories
+        if not _history_has_quote_submission_evidence(history)
+    ]
+
+
 def _dashboard_followup_payload(followup, latest_history=None, overdue=False):
     return {
         'id': followup.id,
@@ -2390,6 +2464,7 @@ def _dashboard_followup_payload(followup, latest_history=None, overdue=False):
 @require_http_methods(["GET"])
 def dashboard_summary_api(request):
     """React CRM dashboard용 읽기 전용 요약 API."""
+    from collections import Counter
     from datetime import timedelta
     from django.db.models import Case, IntegerField, Value, When
     from reporting.models import PersonalSchedule
@@ -2460,12 +2535,14 @@ def dashboard_summary_api(request):
         'user', 'followup', 'followup__company', 'followup__department'
     ).order_by('-created_at')
 
-    overdue_actions = list(overdue_actions_qs[:6])
-    due_today_actions = list(due_today_actions_qs[:6])
+    overdue_actions_all = _histories_excluding_stale_quote_submission(list(overdue_actions_qs))
+    due_today_actions_all = _histories_excluding_stale_quote_submission(list(due_today_actions_qs))
+    overdue_actions = overdue_actions_all[:6]
+    due_today_actions = due_today_actions_all[:6]
     recent_histories = list(recent_histories_qs[:8])
     overdue_followup_ids = {
-        followup_id for followup_id in overdue_actions_qs.values_list('followup_id', flat=True)[:100]
-        if followup_id
+        history.followup_id for history in overdue_actions_all[:100]
+        if history.followup_id
     }
 
     priority_order = Case(
@@ -2532,14 +2609,15 @@ def dashboard_summary_api(request):
                 created_at__date__gte=thirty_days_ago,
             ).exclude(action_type='memo').values('user_id').annotate(count=Count('id'))
         }
-        overdue_counts = {
-            item['user_id']: item['count']
-            for item in histories.filter(
+        team_overdue_histories = _histories_excluding_stale_quote_submission(list(
+            histories.filter(
                 user__in=team_users,
                 next_action_date__lt=today,
                 next_action_date__isnull=False,
-            ).exclude(action_type='memo').values('user_id').annotate(count=Count('id'))
-        }
+                reviewed_at__isnull=True,
+            ).exclude(action_type='memo')
+        ))
+        overdue_counts = Counter(history.user_id for history in team_overdue_histories)
         team_activity = [
             {
                 'userId': user.id,
@@ -2598,8 +2676,8 @@ def dashboard_summary_api(request):
                 upcoming_business_schedules_qs.count() +
                 upcoming_personal_qs.count()
             ),
-            'overdueActions': overdue_actions_qs.count(),
-            'dueTodayActions': due_today_actions_qs.count(),
+            'overdueActions': len(overdue_actions_all),
+            'dueTodayActions': len(due_today_actions_all),
             'recentNotes': histories.exclude(action_type='memo').count(),
             'pendingReviews': pending_review_count,
             'monthlyActivity': monthly_activity_count,
@@ -2730,7 +2808,21 @@ def _customers_enriched_queryset(queryset, today, priority_order, recent_histori
 def _customers_followup_payload(followup, today):
     recent_histories = list(getattr(followup, 'customer_recent_histories', []))
     latest_history = recent_histories[0] if recent_histories else None
-    next_action_date = latest_history.next_action_date if latest_history else None
+    visible_histories = _histories_excluding_stale_quote_submission(recent_histories)
+    latest_action_history = next(
+        (
+            history for history in visible_histories
+            if (history.next_action or history.meeting_next_action) and not history.reviewed_at
+        ),
+        None,
+    )
+    next_action_date = latest_action_history.next_action_date if latest_action_history else None
+    overdue_histories = [
+        history for history in visible_histories
+        if history.next_action_date
+        and history.next_action_date < today
+        and not history.reviewed_at
+    ]
     upcoming_schedules = list(getattr(followup, 'customer_upcoming_schedules', []))
     upcoming_schedule = upcoming_schedules[0] if upcoming_schedules else None
     phone = followup.phone_number or ''
@@ -2765,14 +2857,14 @@ def _customers_followup_payload(followup, today):
             latest_history.content or latest_history.meeting_next_action or latest_history.next_action or ''
         ).strip()[:140] if latest_history else '',
         'nextAction': (
-            latest_history.next_action or latest_history.meeting_next_action or ''
-        ).strip()[:140] if latest_history else '',
+            latest_action_history.next_action or latest_action_history.meeting_next_action or ''
+        ).strip()[:140] if latest_action_history else '',
         'nextActionDate': _date_or_none(next_action_date),
         'overdue': bool(next_action_date and next_action_date < today),
         'activityCount': int(getattr(followup, 'activity_count', 0) or 0),
         'scheduleCount': int(getattr(followup, 'schedule_count', 0) or 0),
         'upcomingScheduleCount': int(getattr(followup, 'upcoming_schedule_count', 0) or 0),
-        'overdueActionCount': int(getattr(followup, 'overdue_action_count', 0) or 0),
+        'overdueActionCount': len(overdue_histories),
         'upcomingSchedule': _customers_schedule_payload(upcoming_schedule) if upcoming_schedule else None,
         'href': reverse('reporting:followup_detail', args=[followup.id]),
         'companyHref': reverse('reporting:company_detail', args=[followup.company_id]) if followup.company_id else '',
@@ -2916,16 +3008,19 @@ def customers_summary_api(request):
 
     customers = list(followups[:60])
 
-    overdue_followup_ids = {
-        followup_id
-        for followup_id in History.objects.filter(
+    overdue_followup_histories = _histories_excluding_stale_quote_submission(list(
+        History.objects.filter(
             user__in=scope_users,
             next_action_date__lt=today,
             next_action_date__isnull=False,
             parent_history__isnull=True,
             reviewed_at__isnull=True,
-        ).values_list('followup_id', flat=True)[:200]
-        if followup_id
+        ).order_by('next_action_date', '-created_at')
+    ))
+    overdue_followup_ids = {
+        history.followup_id
+        for history in overdue_followup_histories[:200]
+        if history.followup_id
     }
     priority_customers = list(
         _customers_enriched_queryset(
@@ -3208,6 +3303,8 @@ def customer_detail_summary_api(request, followup_id):
         next_action_date__isnull=False,
         reviewed_at__isnull=True,
     ).order_by('next_action_date', '-created_at')
+    overdue_actions = _histories_excluding_stale_quote_submission(list(overdue_actions_qs))
+    upcoming_actions = _histories_excluding_stale_quote_submission(list(upcoming_actions_qs))
     upcoming_schedules = Schedule.objects.filter(
         followup=followup,
         user__in=scope_users,
@@ -3246,8 +3343,8 @@ def customer_detail_summary_api(request, followup_id):
         'metrics': {
             'recentNotes': notes_qs.count(),
             'upcomingSchedules': upcoming_schedules.count(),
-            'overdueActions': overdue_actions_qs.count(),
-            'upcomingActions': upcoming_actions_qs.count(),
+            'overdueActions': len(overdue_actions),
+            'upcomingActions': len(upcoming_actions),
         },
         'links': {
             'customers': '/customers/',
@@ -3265,11 +3362,11 @@ def customer_detail_summary_api(request, followup_id):
         ],
         'overdueActions': [
             _notes_history_payload(note, today, can_review_notes)
-            for note in list(overdue_actions_qs[:8])
+            for note in overdue_actions[:8]
         ],
         'upcomingActions': [
             _notes_history_payload(note, today, can_review_notes)
-            for note in list(upcoming_actions_qs[:8])
+            for note in upcoming_actions[:8]
         ],
         'upcomingSchedules': [
             _schedules_schedule_payload(schedule, today, _schedules_can_edit(request.user, schedule))
@@ -8200,6 +8297,8 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20, depar
         'followup__department',
     ).order_by('next_action_date', '-created_at')[:10]
     for history in pending_history_qs:
+        if _history_has_quote_submission_evidence(history):
+            continue
         followup = history.followup
         due_date = history.next_action_date
         score = 46 + _ai_workspace_score_date(due_date, today)

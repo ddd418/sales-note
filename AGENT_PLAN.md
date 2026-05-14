@@ -4470,3 +4470,33 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-14 AI/CRM stale 견적 제출 후속조치 정리 계획
+
+**배경**:
+
+- 운영 대시보드의 `Follow-up 지연 후속조치`에 이미 견적서/비교표가 제출된 고객의 과거 `견적서 및 비교표 제출` 후속조치가 계속 남는 케이스가 확인됐다.
+- React 대시보드 API와 AI 워크스페이스 액션 큐가 모두 `History.next_action_date`와 `reviewed_at`만 보고 미처리 후속조치를 노출해, 견적 일정/견적서 생성/견적 모델 상태가 이미 제출 완료를 가리켜도 과거 할 일이 남을 수 있다.
+- 이전 AI 상황 동기화는 사용자가 AI에게 보고한 이후 고객 상태와 우선순위를 쓰기 동기화하지만, 이번 케이스처럼 기존 데이터의 완료 증거가 이미 있는 경우 읽기 화면에서도 같은 기준으로 stale 액션을 제외해야 한다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- `견적서/비교표 제출/발송/송부/전달`류의 `History.next_action`을 제출형 견적 후속조치로 판정하는 공통 helper를 추가한다.
+- 해당 History 이후 같은 고객/담당자의 견적 모델(`Quote.stage != draft/rejected/expired`) 또는 견적서 생성 로그(`DocumentGenerationLog.document_type='quotation'`)가 있으면 stale 완료 증거로 본다.
+- React 대시보드 API의 지연 후속조치 목록/카운트/우선 고객 overdue 판정에서 stale 제출 후속조치를 제외한다.
+- React 고객 목록/상세 API의 `지연 후속` 카운트와 overdue 액션 목록에서도 같은 stale 제출 후속조치를 제외한다.
+- AI 워크스페이스 액션 큐의 `customer_followup` 액션에서도 같은 stale 제출 후속조치를 제외한다.
+- 실제 데이터는 GET 요청에서 자동 수정하지 않고, 화면/추천 목록의 노출 기준을 일관화한다.
+
+**검증 계획**:
+
+- 대시보드 API에서 견적서 생성 로그가 있는 과거 `견적서 및 비교표 제출` 후속조치가 `overdueActions`와 metric에서 제외되는 테스트 추가.
+- AI 워크스페이스 actionQueue에서 같은 stale History가 `followup:<history_id>` 액션으로 나오지 않는 테스트 추가.
+- 일반 `견적 검토 여부 확인`처럼 제출 이후 확인해야 하는 후속조치는 계속 노출되는지 테스트로 보존한다.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.DashboardSummaryApiTests reporting.tests.CustomersSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
