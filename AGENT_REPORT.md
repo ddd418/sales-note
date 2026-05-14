@@ -2,7 +2,7 @@
 
 ## 2026-05-15 — Quote Import Price Recovery For Prepayment
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -56,6 +56,26 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: recover quote item prices for prepayment caps"
+git push origin main
+→ pushed eba7dc6 to origin/main
+
+railway deployment list --service web --limit 2 --json
+→ 1b7c3300-3733-4890-9614-9e5a5483b276 SUCCESS, commit eba7dc6
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy quote price recovery eba7dc6"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ c9a04d49-b003-4c67-8d6c-d05c1f3a68f6 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/903/
+→ 200, assets/index-C6-MmFJX.js and assets/index-GdZLLCy-.css loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-C6-MmFJX.js
+→ 200, totalPrice and remainingAmount fallback strings present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/followups/1/quote-items/
+→ 302 /reporting/login/?next=/reporting/api/followups/1/quote-items/
 ```
 
 ### 알려진 제한
@@ -64,7 +84,14 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 진행 예정.
+- GitHub: `eba7dc6 fix: recover quote item prices for prepayment caps` pushed to `origin/main`.
+- Railway `web`: `1b7c3300-3733-4890-9614-9e5a5483b276` SUCCESS.
+- Railway `sales-note-frontend`: `c9a04d49-b003-4c67-8d6c-d05c1f3a68f6` SUCCESS.
+- 운영 smoke OK:
+  - `/schedules/903/` 200.
+  - latest frontend assets `index-C6-MmFJX.js`, `index-GdZLLCy-.css` loaded.
+  - deployed JS contains quote item `totalPrice` / `remainingAmount` fallback handling.
+  - quote-items API anonymous access still redirects to login.
 
 ### 운영 수동 검수 절차
 

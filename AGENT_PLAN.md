@@ -36,6 +36,10 @@
 - `unit_price`가 없는 레거시 품목의 단가 복원 구현 완료.
 - 프론트 견적 품목 적용 시 총액 기반 단가 fallback 구현 완료.
 - 로컬 백엔드 테스트, Django checks, frontend 타입체크/빌드 통과.
+- 커밋/푸시 완료: `eba7dc6 fix: recover quote item prices for prepayment caps`.
+- Railway `web` 배포 완료: `1b7c3300-3733-4890-9614-9e5a5483b276` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `c9a04d49-b003-4c67-8d6c-d05c1f3a68f6` SUCCESS.
+- 운영 smoke 완료: `/schedules/903/` 최신 번들 및 quote-items API 로그인 보호 확인.
 
 ---
 
