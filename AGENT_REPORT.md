@@ -17152,3 +17152,74 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 3. 답변 저장 후 고객 긴급도가 `긴급`으로 유지되는지 확인합니다.
 4. 고객 상세 또는 영업노트 목록에서 `팁 불만` 관련 긴급 후속조치와 `보상판매` 장기 후속조치가 별도 항목으로 생겼는지 확인합니다.
 5. 같은 답변을 다시 저장했을 때 `보상판매` 장기 후속조치가 중복 생성되지 않고 기존 항목이 갱신되는지 확인합니다.
+
+---
+
+## 2026-05-14 AI 추천 실행 메일 답장 대기 중복 제거
+
+### 1. Summary
+
+- AI 추천 실행 목록에서 같은 김미선 고객의 `메일 답장 확인` 카드가 3개 보이는 문제를 수정했습니다.
+- 같은 고객의 같은 `gmail_thread_id`/`thread_id` 메일은 최신 발송 1건만 `email_waiting` 액션으로 표시합니다.
+- thread id가 없는 경우에도 `Re:`, `[RE]`, `FW:` 등 답장 접두어를 제거한 제목과 수신자 기준으로 중복을 줄입니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### 3. CRM Improvements
+
+- 같은 메일 대화의 원문/답장/재답장이 추천 실행 목록을 여러 줄 차지하지 않습니다.
+- 운영자는 같은 고객의 같은 메일 회신 여부를 한 번만 확인하면 됩니다.
+- 서로 다른 메일 thread나 별도 주제는 기존처럼 별도 액션으로 남습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트, 인증, AI 사용 권한, 기존 수신 회신 감지 로직은 유지했습니다.
+- 메일 답장 대기 action id는 최신 발송 `EmailLog` 기준의 기존 `email_waiting:<id>` 형식을 유지합니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_dedupes_email_waiting_by_thread --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 32 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+```
+
+### 6. Known Limitations / Risks
+
+- thread id가 없는 메일은 정규화한 제목과 수신자 기준으로 묶습니다. 같은 제목으로 완전히 다른 용건을 같은 수신자에게 보낸 경우에는 하나로 묶일 수 있습니다.
+- 답변 저장 fallback은 기존처럼 특정 `email_waiting:<EmailLog.id>`로 직접 재구성할 수 있어, 기존에 화면에 떠 있던 오래된 action id도 저장 시 접근권한을 검증한 뒤 처리됩니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: pending
+- GitHub: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: frontend code change 없음, 재배포 없음
+- DB migration: none
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. AI 추천 실행 목록에서 김미선/한국산업교정기술원 메일 답장 확인 카드가 같은 제목으로 3개 반복되지 않는지 확인합니다.
+3. 같은 메일 대화는 최신 발송 기준 1개만 남고, 별도 thread/별도 주제 메일은 필요 시 별도 액션으로 유지되는지 확인합니다.
+4. 남은 `메일 답장 확인` 카드에서 `메일 보기`, `메일 초안`, `노트 초안` 버튼이 기존처럼 동작하는지 확인합니다.

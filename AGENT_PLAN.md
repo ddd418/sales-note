@@ -4533,3 +4533,32 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-14 AI 추천 실행 메일 답장 대기 중복 제거 계획
+
+**배경**:
+
+- 운영 AI 추천 실행 목록에서 같은 김미선 고객의 `메일 답장 확인` 카드가 3개 표시됐다.
+- 원인은 같은 메일 대화의 원문/답장/재답장이 각각 `EmailLog(email_type='sent')`로 저장되어 있고, AI action queue가 이를 모두 독립 `email_waiting` 액션으로 생성하기 때문이다.
+- 같은 고객, 같은 메일 thread 또는 같은 답장 제목의 미회신 메일은 운영자 입장에서는 하나의 “회신 여부 확인” 액션이다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- AI workspace `email_waiting` action 생성 단계에서 대화 단위 중복 제거를 추가한다.
+- 우선 `gmail_thread_id`/`thread_id`가 있으면 같은 고객 + 같은 thread 기준으로 하나만 표시한다.
+- thread id가 없으면 `Re:`, `[RE]`, `FW:` 같은 답장 접두어를 제거한 제목과 수신자 기준으로 하나만 표시한다.
+- 같은 대화에서는 최신 발송 메일만 action으로 남기고 이전 발송 로그는 추천 목록에서 제외한다.
+- 기존 수신 회신 존재 여부 검사는 유지한다.
+
+**검증 계획**:
+
+- 같은 고객/같은 thread에 원문, `Re:`, `[RE]` 발송 로그가 3개 있어도 `email_waiting` action은 1개만 내려오는 테스트 추가.
+- 서로 다른 thread 또는 다른 수신자는 기존처럼 별도 action으로 남는지 기존 테스트를 유지한다.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_dedupes_email_waiting_by_thread --verbosity=2`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

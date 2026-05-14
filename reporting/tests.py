@@ -7734,6 +7734,100 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(any(item['kind'] == 'email_waiting' for item in payload['actionQueue']))
         self.assertEqual(payload['dailyBrief']['counts']['emailWaiting'], 1)
 
+    def test_ai_workspace_action_queue_dedupes_email_waiting_by_thread(self):
+        from datetime import timedelta
+        from reporting.models import EmailLog
+
+        followup, department = self._create_customer(self.user, '김미선')
+        self._create_department_analysis(self.user, department)
+        sent_at = timezone.now() - timedelta(days=3)
+        original_email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='misen@example.com',
+            recipient_email='misen@example.com',
+            subject='[하나과학] 수리 견적 및 보상판매 견적 안내',
+            body='수리 견적 및 보상판매 견적 안내',
+            followup=followup,
+            gmail_message_id='gmail-msg-kim-original',
+            gmail_thread_id='gmail-thread-kim-quote',
+            sent_at=sent_at,
+        )
+        EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='misen@example.com',
+            recipient_email='misen@example.com',
+            subject='Re: [RE][하나과학] 수리 견적 및 보상판매 견적 안내',
+            body='수리 견적 및 보상판매 견적 안내 재발송',
+            followup=followup,
+            gmail_message_id='gmail-msg-kim-reply-1',
+            gmail_thread_id='gmail-thread-kim-quote',
+            sent_at=sent_at + timedelta(minutes=5),
+        )
+        latest_email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='misen@example.com',
+            recipient_email='misen@example.com',
+            subject='Re: [RE][하나과학] 수리 견적 및 보상판매 견적 안내',
+            body='수리 견적 및 보상판매 견적 안내 최종 발송',
+            followup=followup,
+            gmail_message_id='gmail-msg-kim-reply-2',
+            gmail_thread_id='gmail-thread-kim-quote',
+            sent_at=sent_at + timedelta(minutes=10),
+        )
+        other_thread_email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='misen@example.com',
+            recipient_email='misen@example.com',
+            subject='별도 납품 일정 확인',
+            body='별도 납품 일정 확인',
+            followup=followup,
+            gmail_message_id='gmail-msg-kim-other',
+            gmail_thread_id='gmail-thread-kim-delivery',
+            sent_at=sent_at + timedelta(minutes=20),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        email_actions = [
+            item for item in payload['actionQueue']
+            if item['kind'] == 'email_waiting' and item['followupId'] == followup.id
+        ]
+        action_ids = {item['id'] for item in email_actions}
+        self.assertIn(f'email_waiting:{latest_email.id}', action_ids)
+        self.assertIn(f'email_waiting:{other_thread_email.id}', action_ids)
+        self.assertNotIn(f'email_waiting:{original_email.id}', action_ids)
+        self.assertEqual(
+            len([item for item in email_actions if item['evidence'][1]['value'].endswith('보상판매 견적 안내')]),
+            1,
+        )
+
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_accepts_scoped_email_missing_from_global_queue(self, _mock_client):
         from datetime import timedelta
