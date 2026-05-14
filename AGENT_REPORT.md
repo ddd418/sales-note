@@ -16458,3 +16458,102 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 9. Recommended Next Task
 
 운영 수동검수 후, 부서 검색 결과에서 바로 상세 분석 화면으로 이동했을 때 `AI 추천 실행 목록`과 부서 요약 카드가 같은 부서 기준으로 일관되게 보이는지 추가 점검하는 것이 좋습니다.
+
+## 2026-05-14 AI 추천 실행 답변 action_not_found 수정
+
+### 1. Summary
+
+- `AI 추천 실행 목록`의 `메일 답장 대기` 카드에서 답변 저장 시 `action_not_found`가 뜨는 원인을 수정했습니다.
+- 원인은 부서 상세 action queue에는 보이는 오래된/부서 한정 메일 액션이 답변 저장 API의 전역 상위 action queue 재조회에서 빠질 수 있는 구조였습니다.
+- 현재 queue에서 action id를 못 찾으면 `email_waiting:<EmailLog.id>`를 소유권 기준으로 직접 재구성하는 fallback을 추가했습니다.
+- “보상판매는 장기, 현재 팁 불만 해결이 급선무”처럼 장기/긴급 신호가 같이 있는 답변은 현재 불만/급선무를 우선해 고객 긴급도를 `긴급`으로 반영하도록 보강했습니다.
+
+### 2. Files Changed
+
+- `reporting/views.py`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+
+### 3. CRM Improvements
+
+- 부서 상세 화면에서 보이는 메일 답장 대기 액션도 답변 저장 시 안정적으로 처리됩니다.
+- 오래된 보상판매 메일은 action id로 다시 찾아 답변을 기록할 수 있고, 현재 고객 불만/클레임 이슈는 고객 긴급도에 반영됩니다.
+- OpenAI fallback 상황에서도 `급선무`, `불만`, `클레임`, `허락 못받음`, `장기` 같은 실제 현장 표현을 더 정확히 처리합니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트, 인증, CSRF 보호는 유지했습니다.
+- 기존 action queue 생성 순서와 메일 답장 대기 기본 노출 제한은 유지했습니다.
+- 직접 재구성 fallback은 `EmailLog.user`, `email_type='sent'`, `status='sent'`, `sent_at`, 관련 `followup`을 검증한 경우에만 동작합니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_feedback_api_accepts_scoped_email_missing_from_global_queue --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 26 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+git commit -m "fix: accept scoped AI email action feedback"
+git push origin main
+→ Commit fc4b27d pushed
+
+railway deployment up --service web --detach --message "Deploy scoped AI email feedback fc4b27d"
+railway deployment list --service web --limit 2 --json
+→ d1339b53-091e-4b5c-9678-986112f0f458 SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+```
+
+### 6. Known Limitations
+
+- 실제 문새롬 운영 카드의 답변 저장은 로그인 세션이 필요해 사용자의 수동 확인이 필요합니다.
+- 비로그인 POST smoke는 CSRF 보호로 403 HTML이 반환됩니다. 이는 정상 보호 동작이며, API smoke는 GET의 401 JSON으로 확인했습니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `fc4b27d fix: accept scoped AI email action feedback`
+- GitHub: `main` pushed
+- Railway `web`: `d1339b53-091e-4b5c-9678-986112f0f458` SUCCESS
+- Railway `sales-note-frontend`: 프론트 코드 변경 없음, 재배포 없음
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend AI workspace API returned expected anonymous 401 JSON.
+  - Frontend proxy AI workspace API returned expected anonymous 401 JSON.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트 접속: `https://sales-note-frontend-production.up.railway.app/ai-workspace/`
+2. `문새롬 메일 답장 확인` 카드에 같은 답변을 다시 입력합니다.
+3. `action_not_found`가 뜨지 않고 답변 저장/CRM 반영 메시지가 나오는지 확인합니다.
+4. 문새롬 고객 상세 또는 대시보드 우선 고객에서 현재 고객 긴급도가 `긴급`으로 반영되는지 확인합니다.
+5. 생성된 다음 후속조치가 “팁 불만 해결” 중심의 내용으로 남는지 확인합니다.
+6. 보상판매 메일 액션이 계속 반복 노출되는지 여부도 새로고침 후 확인합니다.
+
+### 9. Recommended Next Task
+
+운영 수동검수 후, 같은 고객 안에서 “보상판매 장기”와 “팁 불만 긴급”처럼 주제가 다른 이슈를 고객 단일 긴급도뿐 아니라 이슈별 후속조치로 분리해 보여주는 개선을 검토하는 것이 좋습니다.
