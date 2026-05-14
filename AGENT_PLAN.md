@@ -52,7 +52,8 @@
 - React 일정 상세 견적 불러오기 다중 선택 UI 구현 완료.
 - DB 모델 변경과 migration 없음 확인.
 - 로컬 API 테스트, 타입체크, 빌드, Playwright smoke 통과.
-- 커밋/푸시 및 Railway 배포 진행 예정.
+- 커밋/푸시 완료: `4f01d95`, `3b04d91`.
+- Railway `web`, `sales-note-frontend` 운영 배포 및 익명 smoke 완료.
 
 ---
 

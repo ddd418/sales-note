@@ -2,7 +2,7 @@
 
 ## 2026-05-15 — Delivery Item Prepayment + AI Action Fallback + Quote Multi-Import
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -68,6 +68,30 @@ git diff --check
 
 Playwright local smoke on http://127.0.0.1:5173/schedules/567/
 → Login, delivery item edit, prepayment 50,000 apply, success message and detail prepayment display OK
+
+git commit -m "fix: apply delivery prepayments and AI action fallback"
+git commit -m "fix: unify AI actions and multi-import quotes"
+git push origin main
+→ pushed 4f01d95 and 3b04d91 to origin/main
+
+railway deployment list --service web --limit 2 --json
+→ 593a9c1b-53b8-4cc9-88dd-e14c1cec82c0 SUCCESS, commit 3b04d91
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI actions quote multi import 3b04d91"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 888e3b12-54d9-41ac-b3bc-587e14737bac SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/903/
+→ 200, assets/index-CBIucB6m.js loaded, "선택 적용" and "납품 저장 시 선결제 차감" present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=14
+→ 200, assets/index-CBIucB6m.js loaded, right copilot panel classes removed
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 for anonymous request
 ```
 
 ### 알려진 제한
@@ -77,7 +101,15 @@ Playwright local smoke on http://127.0.0.1:5173/schedules/567/
 
 ### 운영 배포 상태
 
-- GitHub/Railway 배포 진행 예정.
+- GitHub: `3b04d91 fix: unify AI actions and multi-import quotes` pushed to `origin/main`.
+- Railway `web`: `593a9c1b-53b8-4cc9-88dd-e14c1cec82c0` SUCCESS, commit `3b04d91`.
+- Railway `sales-note-frontend`: `888e3b12-54d9-41ac-b3bc-587e14737bac` SUCCESS.
+- 운영 smoke OK:
+  - `/schedules/903/` 200, latest frontend asset `index-CBIucB6m.js`.
+  - `선택 적용`, `납품 저장 시 선결제 차감` 문구 포함 확인.
+  - `/ai-workspace/?department_id=14` 200, removed right copilot panel classes absent.
+  - `/reporting/login/` 200.
+  - anonymous `/reporting/api/ai-workspace/` 401.
 
 ### 운영 수동 검수 절차
 
