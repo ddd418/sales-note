@@ -722,7 +722,11 @@ const scheduleQuoteGroupsFromRows = (rows: ScheduleDeliveryEditRow[]): string[] 
 };
 
 const parsePositiveFormNumber = (value: string) => {
-  const parsed = Number(String(value || '').replace(/,/g, '').trim());
+  const normalized = String(value ?? '').replace(/,/g, '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 };
 

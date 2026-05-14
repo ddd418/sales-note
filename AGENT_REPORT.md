@@ -1,5 +1,60 @@
 # AGENT_REPORT.md
 
+## 2026-05-15 — Empty Discount Unit Price Parsing Fix
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+
+### 요약
+
+견적 품목 선택 적용 후 기준단가가 정상 표시되는데도 선결제 영역이 `차감할 납품 품목 합계가 없습니다`로 남는 원인을 수정했습니다. 저장된 할인단가가 0원이었던 것이 아니라, 프론트 숫자 파서가 빈 문자열을 `Number('') === 0`으로 해석해 빈 할인단가를 0원 할인단가처럼 계산했습니다.
+
+이제 빈 할인단가는 `null`로 처리되어 “미입력” 상태로 남고, 납품 합계는 기준단가를 사용합니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: `parsePositiveFormNumber('')`가 `0`이 아니라 `null`을 반환하도록 수정.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 견적 품목 적용 후 빈 할인단가가 납품 합계를 0원으로 만들지 않습니다.
+- 선결제 상한 계산이 기준단가 기준으로 즉시 반영됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 저장된 견적/납품 데이터는 변경하지 않았습니다.
+- 사용자가 실제로 `0`을 입력한 경우에는 계속 0으로 처리됩니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-DNPyx-Uf.js / assets/index-GdZLLCy-.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+```
+
+### 알려진 제한
+
+- 운영 실제 적용 확인은 로그인 세션과 `/schedules/903/` 데이터가 필요해 사용자 수동 검수가 필요합니다.
+
+### 운영 배포 상태
+
+- 배포 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. `/schedules/903/`를 강력 새로고침합니다.
+2. 견적 품목을 선택 적용합니다.
+3. 할인단가가 빈칸인 상태에서 선결제 영역의 납품 합계와 품목 상한이 기준단가 기준으로 표시되는지 확인합니다.
+
+---
+
 ## 2026-05-15 — Quote Import Price Recovery For Prepayment
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 운영 수동검수 대기

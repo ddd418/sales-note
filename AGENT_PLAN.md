@@ -1,6 +1,38 @@
 # AGENT_PLAN.md
 
-## Current task — 견적 선택 적용 후 선결제 합계 0원 긴급 수정
+## Current task — 납품 품목 할인단가 빈값 합계 0원 긴급 수정
+
+**목표**: `/schedules/903/`에서 견적 품목 선택 적용 후 기준단가가 보이는데도 선결제 영역이 `차감할 납품 품목 합계가 없습니다`로 남는 문제를 해결한다.
+
+### 확인된 상태
+
+- 견적 품목 적용 후 row에는 기준단가가 정상 표시된다.
+- 그러나 `할인단가`가 빈칸이면 `parsePositiveFormNumber('')`가 `0`을 반환해, 합계 계산에서 빈 할인단가를 0원 할인단가로 오인한다.
+- 그 결과 기준단가가 있어도 `scheduleDeliveryEditRowsTotal()` 결과가 0원이 되어 선결제 차감이 차단된다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 프론트 숫자 파서가 빈 문자열/공백을 `null`로 반환하도록 수정한다.
+- 빈 할인단가는 “미입력”으로 유지하고 기준단가를 합계 계산에 사용한다.
+- 프론트 타입체크/빌드 후 운영 프론트 재배포한다.
+
+### 현재 상태
+
+- 빈 할인단가가 0원으로 계산되는 프론트 파싱 버그 수정 완료.
+- frontend 타입체크/빌드/server.mjs 체크 통과.
+
+### 검증 계획
+
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 `/schedules/903/` smoke 확인.
+
+---
+
+## Previous task — 견적 선택 적용 후 선결제 합계 0원 긴급 수정
 
 **목표**: `/schedules/903/`에서 견적 품목을 선택 적용했는데도 선결제 영역이 `차감할 납품 품목 합계가 없습니다`로 남는 문제를 해결한다.
 
