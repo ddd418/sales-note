@@ -7521,10 +7521,78 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
         self.assertEqual(payload['feedback']['status'], 'next_action')
         self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
-        self.assertIn('불만', payload['feedback']['nextAction'])
+        self.assertIn('팁', payload['feedback']['nextAction'])
+        self.assertIn('사용 제품 규격', payload['feedback']['nextAction'])
+        self.assertIn('처리 예정 시간', payload['feedback']['nextAction'])
+        self.assertIn('보상판매', payload['feedback']['nextAction'])
         selected_followup.refresh_from_db()
         self.assertEqual(selected_followup.priority, 'urgent')
         self.assertTrue(History.objects.filter(id=payload['crmSync']['taskHistoryId'], followup=selected_followup).exists())
+
+    @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_action_feedback_api_specializes_generic_openai_issue_action(self, mock_client):
+        from datetime import timedelta
+        from types import SimpleNamespace
+        from reporting.models import EmailLog
+
+        class FakeCompletions:
+            def create(self, *args, **kwargs):
+                content = json.dumps({
+                    'decision': 'next_action',
+                    'recommendedStatus': 'next_action',
+                    'intent': 'follow_up_needed',
+                    'shouldHide': False,
+                    'summary': '팁에 대한 불만이 있어 해결해야 합니다.',
+                    'nextAction': '팁에 대한 불만 사항을 해결하기 위한 조치를 취하세요.',
+                    'nextActionDate': None,
+                    'reason': '고객 불만이 있습니다.',
+                    'suggestedDraftType': 'note',
+                    'prioritySignal': {'priority': 'long_term', 'reason': '보상판매는 장기입니다.'},
+                })
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+        mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+        followup, department = self._create_customer(self.user, '문새롬구체화')
+        self._create_department_analysis(self.user, department)
+        email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='saerom@example.com',
+            recipient_email='saerom@example.com',
+            subject='[하나과학] 보상판매 견적 및 제품 간단 안내 드립니다',
+            body='보상판매 견적 안내',
+            followup=followup,
+            gmail_message_id='gmail-msg-specific-openai',
+            gmail_thread_id='gmail-thread-specific-openai',
+            sent_at=timezone.now() - timedelta(days=3),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({
+                'actionId': f'email_waiting:{email.id}',
+                'feedback': (
+                    '보상판매 : 교수님께 허락을 못받았다고하여 이건 장기로 분류해야합니다. '
+                    '현재는 팁에대한 불만이 있어서 그거 해결하는 것이 급선무 입니다.'
+                ),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'openai')
+        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertIn('팁', payload['feedback']['nextAction'])
+        self.assertIn('사용 제품 규격', payload['feedback']['nextAction'])
+        self.assertIn('처리 예정 시간', payload['feedback']['nextAction'])
+        self.assertIn('보상판매', payload['feedback']['nextAction'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_needs_review_does_not_change_crm_state(self, _mock_client):

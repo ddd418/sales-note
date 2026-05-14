@@ -8550,15 +8550,16 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'suggestedDraftType': '',
         })
     if any(keyword in normalized for keyword in urgent_issue_keywords):
+        specific = _ai_workspace_specific_issue_feedback(action, feedback_text)
         return with_priority({
             'decision': 'next_action',
             'recommendedStatus': 'next_action',
             'intent': 'follow_up_needed',
             'shouldHide': False,
-            'summary': '현재 고객 불만 또는 긴급 이슈 해결이 우선인 상태로 기록됐습니다.',
-            'nextAction': f"{title} 관련 고객 불만 사항을 확인하고 해결 방안과 후속 일정을 안내하세요.",
+            'summary': specific.get('summary') or '현재 고객 불만 또는 긴급 이슈 해결이 우선인 상태로 기록됐습니다.',
+            'nextAction': specific.get('nextAction') or f"{title} 관련 고객 불만 사항을 확인하고 해결 방안과 후속 일정을 안내하세요.",
             'nextActionDate': (timezone.localdate() + timedelta(days=1)).isoformat(),
-            'reason': '장기 보류 항목이 있더라도 현재 불만/급선무 표현이 있어 긴급 후속조치로 유지합니다.',
+            'reason': specific.get('reason') or '장기 보류 항목이 있더라도 현재 불만/급선무 표현이 있어 긴급 후속조치로 유지합니다.',
             'suggestedDraftType': 'note',
         })
     if any(keyword in normalized for keyword in email_waiting_keywords):
@@ -8623,7 +8624,78 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
     })
 
 
-def _ai_workspace_normalize_feedback_result(data, fallback):
+def _ai_workspace_text_has_urgent_issue(feedback_text):
+    normalized = re.sub(r'\s+', '', str(feedback_text or '').lower())
+    return any(keyword in normalized for keyword in [
+        '급선무', '불만', '클레임', '항의', '문제해결', '우선해결',
+        '우선처리', '먼저해결', '해결하는것이급', '해결이급',
+    ])
+
+
+def _ai_workspace_clean_issue_label(value):
+    label = re.sub(r'^[\s\-\*\u2022]+|[\s\-\*\u2022:：,.;]+$', '', str(value or ''))
+    label = re.sub(r'\s+', ' ', label).strip()
+    label = re.sub(r'^(현재는|현재|지금은|지금)\s*', '', label)
+    label = label.strip(' -:：,.;')
+    return _ai_workspace_prompt_excerpt(label, 40)
+
+
+def _ai_workspace_feedback_issue_label(feedback_text):
+    text = str(feedback_text or '')
+    patterns = [
+        r'(?:현재(?:는)?|지금(?:은)?)?\s*([가-힣A-Za-z0-9+#/\-\s]{1,30}?)(?:에\s*대한|에대한)\s*불만',
+        r'(?:현재(?:는)?|지금(?:은)?)?\s*([가-힣A-Za-z0-9+#/\-\s]{1,30}?)\s*불만',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            label = _ai_workspace_clean_issue_label(match.group(1))
+            if label:
+                return label
+    return ''
+
+
+def _ai_workspace_long_term_topic_label(feedback_text):
+    text = str(feedback_text or '')
+    patterns = [
+        r'([가-힣A-Za-z0-9+#/\-\s]{1,30})\s*[:：][^\n\r]{0,120}?장기',
+        r'([가-힣A-Za-z0-9+#/\-\s]{1,30})(?:은|는)[^\n\r]{0,120}?장기',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            label = _ai_workspace_clean_issue_label(match.group(1))
+            if label:
+                return label
+    return ''
+
+
+def _ai_workspace_specific_issue_feedback(action, feedback_text):
+    if not _ai_workspace_text_has_urgent_issue(feedback_text):
+        return {}
+
+    issue = _ai_workspace_feedback_issue_label(feedback_text) or '고객 불만'
+    long_term_topic = _ai_workspace_long_term_topic_label(feedback_text)
+    next_action = (
+        f"{issue} 불만은 오늘 먼저 증상, 사용 제품 규격, 수량/로트, 사진 여부를 확인하고 "
+        "교체/대체품/사용법 안내 중 가능한 해결안을 정해 처리 예정 시간을 회신하세요."
+    )
+    if long_term_topic:
+        next_action = f"{next_action} {long_term_topic} 건은 장기 후속으로 분리해 다음 확인일만 잡으세요."
+
+    if long_term_topic:
+        summary = f"{long_term_topic}는 장기 추적 대상으로 분리하고, 현재 우선순위는 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
+    else:
+        summary = f"현재 우선순위는 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
+
+    return {
+        'summary': summary,
+        'nextAction': next_action,
+        'reason': '일반적인 해결 지시가 아니라 현장 확인 항목, 가능한 해결안, 고객 회신 기준을 포함해 실행문을 구체화했습니다.',
+    }
+
+
+def _ai_workspace_normalize_feedback_result(data, fallback, action=None, feedback_text=''):
     decision = str(data.get('decision') or fallback.get('decision') or 'next_action').strip().lower()
     if decision not in {'keep', 'hide', 'next_action'}:
         decision = fallback.get('decision') or 'next_action'
@@ -8668,15 +8740,24 @@ def _ai_workspace_normalize_feedback_result(data, fallback):
     if fallback_priority_signal and fallback_priority_signal.get('source') == 'feedback':
         priority_signal = fallback_priority_signal
 
+    summary = data.get('summary') or fallback.get('summary')
+    next_action = data.get('nextAction') or fallback.get('nextAction')
+    reason = data.get('reason') or fallback.get('reason')
+    specific = _ai_workspace_specific_issue_feedback(action or {}, feedback_text)
+    if specific and status == 'next_action' and not should_hide:
+        summary = specific.get('summary') or summary
+        next_action = specific.get('nextAction') or next_action
+        reason = specific.get('reason') or reason
+
     return {
         'decision': decision,
         'recommendedStatus': status,
         'intent': intent,
         'shouldHide': should_hide,
-        'summary': _ai_workspace_prompt_excerpt(data.get('summary') or fallback.get('summary'), 260),
-        'nextAction': _ai_workspace_prompt_excerpt(data.get('nextAction') or fallback.get('nextAction'), 260),
+        'summary': _ai_workspace_prompt_excerpt(summary, 260),
+        'nextAction': _ai_workspace_prompt_excerpt(next_action, 260),
         'nextActionDate': next_action_date,
-        'reason': _ai_workspace_prompt_excerpt(data.get('reason') or fallback.get('reason'), 260),
+        'reason': _ai_workspace_prompt_excerpt(reason, 260),
         'suggestedDraftType': data.get('suggestedDraftType') or fallback.get('suggestedDraftType') or '',
         'prioritySignal': priority_signal,
     }
@@ -8727,6 +8808,8 @@ def _ai_workspace_evaluate_action_feedback(action, feedback_text, force_outcome=
                 '사용자가 일정 확정, 예정이라고 하면 prioritySignal.priority를 scheduled로 둔다.',
                 '사용자가 장기, 보류, 나중, 급하지 않음, 다음달, 내년이라고 하면 prioritySignal.priority를 long_term으로 둔다.',
                 '확신이 낮으면 needs_human_review로 판단하고 자동 상태 변경을 피한다.',
+                'nextAction은 "조치를 취하세요" 같은 일반론으로 쓰지 말고, 확인할 항목, 가능한 해결안, 고객에게 회신할 기준을 포함한다.',
+                '불만/클레임 건은 증상, 사용 제품 규격, 수량/로트, 사진 또는 사용 조건 확인처럼 담당자가 바로 물어볼 항목을 포함한다.',
                 '입력 근거와 사용자 답변에 없는 사실은 만들지 않는다.',
             ],
         }
@@ -8755,12 +8838,12 @@ def _ai_workspace_evaluate_action_feedback(action, feedback_text, force_outcome=
             response_format={'type': 'json_object'},
         )
         ai_text = response.choices[0].message.content
-        result = _ai_workspace_normalize_feedback_result(json.loads(ai_text), fallback)
+        result = _ai_workspace_normalize_feedback_result(json.loads(ai_text), fallback, action, feedback_text)
         result['source'] = 'openai'
         return result, 'openai'
     except Exception as exc:
         logger.warning('AI workspace action feedback fallback used: %s', exc)
-        result = _ai_workspace_normalize_feedback_result(fallback, fallback)
+        result = _ai_workspace_normalize_feedback_result(fallback, fallback, action, feedback_text)
         result['source'] = 'fallback'
         return result, 'fallback'
 

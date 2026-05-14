@@ -4387,3 +4387,30 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-14 AI 추천 실행 피드백 구체화 계획
+
+**배경**:
+
+- `문새롬 메일 답장 확인` 답변 저장은 정상 동작했지만, AI가 생성한 다음 액션이 “팁에 대한 불만 사항을 해결하기 위한 조치를 취하세요”처럼 너무 일반적이었다.
+- 운영자가 바로 실행하려면 고객 불만의 확인 항목, 해결안 선택지, 회신 기준, 장기 이슈 분리 기준이 함께 나와야 한다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- 불만/클레임/급선무 유형의 사용자 답변에서 핵심 이슈명을 추출한다. 예: `팁에대한 불만` → `팁`.
+- `보상판매 : ... 장기`처럼 장기 분리 대상이 함께 적힌 경우 별도 장기 후속으로 분리하라는 실행문을 포함한다.
+- OpenAI가 일반적인 `nextAction`을 반환하더라도 서버 정규화 단계에서 더 구체적인 실행문으로 보정한다.
+- OpenAI system rule에도 “조치를 취하세요” 수준의 일반 문장을 피하고 확인 항목/회신 기준을 포함하라는 지시를 추가한다.
+
+**검증 계획**:
+
+- OpenAI가 일반적인 다음 액션을 반환하는 테스트 더블을 넣어도 API 응답의 `nextAction`이 `팁`, `제품 규격`, `처리 예정 시간`, `보상판매`를 포함하는지 확인한다.
+- 기존 fallback/부서 scoped email feedback 테스트가 같은 구체 실행문을 반환하는지 확인한다.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
