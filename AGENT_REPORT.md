@@ -16824,3 +16824,85 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 2. `AI 실행 피드백` 섹션에서 긴 `답변`, `판단`, `다음 액션` 문구가 끝까지 줄바꿈되어 보이는지 확인합니다.
 3. 상세 화면에 접속합니다: `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308`
 4. `AI 실행 피드백` 섹션에 해당 부서/고객의 피드백만 보이고 다른 고객 피드백이 섞이지 않는지 확인합니다.
+
+---
+
+## 2026-05-14 AI 추천 질문 프롬프트 절단 수정
+
+### 1. Summary
+
+- `추천 질문` 카드의 promptTargets에서 `최근 영업노트` 본문이 150자로 잘려 `...`가 들어가던 로직을 제거했습니다.
+- 최근 영업노트의 `다음 액션`도 80자 제한 없이 prompt에 포함되도록 수정했습니다.
+- HTML 태그, 이메일, 연락처 마스킹은 유지했습니다.
+- 프론트 추천 질문 카드를 1열로 바꾸고, 제목/컨텍스트 칩 말줄임을 제거했으며, prompt preview 높이를 늘렸습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- 문새롬처럼 최근 영업노트에 핵심 불만/호환성/후속 조건이 길게 들어간 고객도 추천 질문 prompt에서 끝 문장까지 확인할 수 있습니다.
+- prompt 복사 시 이미 잘린 문장이 들어가지 않아, AI에게 넘기는 맥락 손실이 줄었습니다.
+- 추천 질문 카드가 긴 문장을 더 자연스럽게 보여주도록 레이아웃을 조정했습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트, 인증, CSRF 보호는 유지했습니다.
+- 추천 질문 API shape는 유지했습니다.
+- 일반/상세 AI workspace 스코프 동작은 이전 수정 상태를 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_prompt_targets_keep_full_recent_note_text reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_scopes_prompt_targets_to_requested_department --verbosity=2
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 29 tests, OK
+
+cd frontend && npm run build
+→ OK, Vite chunk-size warning only
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+```
+
+### 6. Known Limitations / Risks
+
+- 매우 긴 영업노트는 prompt preview 영역 안에서 스크롤로 확인합니다. 복사되는 prompt 자체는 잘리지 않습니다.
+- 운영 로그인 세션이 필요한 실제 화면 육안 확인은 사용자 서버 테스트로 확인해야 합니다.
+
+### 7. Production Deployment Status
+
+- Commit/deploy 전 문서 작성 단계입니다. 커밋 후 `web`과 `sales-note-frontend`를 Railway에 배포하고 이 항목을 후속 갱신합니다.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308`에 접속합니다.
+2. `추천 질문` 섹션에서 문새롬/고객 후속 prompt를 확인합니다.
+3. `최근 영업노트` 문장 끝이 `...`로 잘리지 않고, “모델명 확인 필요” 같은 마지막 맥락까지 보이는지 확인합니다.
+4. `복사` 버튼으로 복사한 prompt에도 같은 전체 문장이 포함되는지 확인합니다.

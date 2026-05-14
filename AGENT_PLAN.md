@@ -4442,3 +4442,31 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-14 AI 추천 질문 프롬프트 절단 수정 계획
+
+**배경**:
+
+- `/ai-workspace/`의 `추천 질문` 카드에서 복사되는 프롬프트의 `최근 영업노트` 내용이 `...`로 잘려 나온다.
+- 원인은 `_ai_workspace_recent_note_context()`가 영업노트 본문을 150자, 다음 액션을 80자로 줄여 promptTargets의 `prompt` 자체에 축약문을 넣는 구조다.
+- 프론트 카드 제목/컨텍스트 칩도 말줄임 처리와 낮은 preview 높이 때문에 사용자가 prompt가 잘린 것으로 보기 쉽다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- AI workspace prompt context의 최근 영업노트와 다음 액션은 prompt용 표시 정제만 하고 길이 절단을 제거한다.
+- 이메일/연락처/HTML 태그 제거는 유지한다.
+- `추천 질문` 프론트 카드 제목과 컨텍스트 칩은 줄바꿈되도록 수정한다.
+- prompt preview 영역은 더 넓게 보여주되, 과도하게 긴 경우 스크롤 가능한 상태를 유지한다.
+
+**검증 계획**:
+
+- 긴 최근 영업노트가 있는 고객의 promptTargets `prompt`에 끝문장이 포함되고 `...` 축약이 들어가지 않는 테스트 추가.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

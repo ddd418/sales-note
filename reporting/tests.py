@@ -6560,6 +6560,45 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn(other_department.name, prompt_text)
         self.assertEqual({target['department'] for target in payload['followupTargets']}, {selected_department.name})
 
+    def test_ai_workspace_prompt_targets_keep_full_recent_note_text(self):
+        from reporting.models import History
+
+        followup, department = self._create_customer(self.user, '문새롬프롬프트')
+        self._create_department_analysis(self.user, department)
+        long_note = (
+            'Thermo 멀티채널 피펫과 Paradigm 팁 호환성 문제를 길게 기록합니다. '
+            '팁이 빠지는 상황, 기포가 생기는 상황, 고객이 앞으로 구매가 어렵다고 말한 맥락, '
+            '실사용 모델명을 확인하지 못한 점, 다음 방문에서 확인해야 할 항목을 모두 남깁니다. '
+            * 5
+        ) + '프롬프트 최근 노트 끝문장 모델명 확인 필요'
+        long_next_action = (
+            '다음 연락에서는 피펫 모델명, 사용 팁 규격, 로트, 사진 여부, 대체품 테스트 가능 여부를 확인합니다. '
+            * 4
+        ) + '프롬프트 다음 액션 끝문장'
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content=long_note,
+            next_action=long_next_action,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        followup_prompt = next(
+            item['prompt']
+            for item in payload['promptTargets']
+            if item['id'] == f'followup-{followup.id}'
+        )
+        self.assertIn('프롬프트 최근 노트 끝문장 모델명 확인 필요', followup_prompt)
+        self.assertIn('프롬프트 다음 액션 끝문장', followup_prompt)
+        self.assertNotIn('프롬프트 최근 노트 끝문장 모델명...', followup_prompt)
+        self.assertNotIn('프롬프트 다음 액션...', followup_prompt)
+
     def test_ai_workspace_detail_scopes_action_queue_to_requested_department(self):
         from datetime import time, timedelta
         from decimal import Decimal

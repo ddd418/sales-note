@@ -7436,6 +7436,13 @@ def _ai_workspace_feedback_display_text(value):
     return text.strip()
 
 
+def _ai_workspace_prompt_context_text(value):
+    text = _ai_workspace_feedback_display_text(value)
+    if not text:
+        return ''
+    return re.sub(r'\s*\n+\s*', ' / ', text).strip()
+
+
 def _ai_workspace_money(value):
     return f"{_money_int(value):,}원"
 
@@ -7474,8 +7481,8 @@ def _ai_workspace_recent_note_context(user, followup_ids, limit=3):
             history.meeting_obstacles,
             history.meeting_next_action,
         ]
-        body = _ai_workspace_prompt_excerpt(' / '.join(part for part in body_parts if part), 150)
-        next_action = _ai_workspace_prompt_excerpt(history.next_action, 80)
+        body = _ai_workspace_prompt_context_text(' / '.join(part for part in body_parts if part))
+        next_action = _ai_workspace_prompt_context_text(history.next_action)
         if next_action:
             body = f"{body} / 다음: {next_action}" if body else f"다음: {next_action}"
         if not body:
