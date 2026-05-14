@@ -16654,3 +16654,56 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 9. Recommended Next Task
 
 Railway CLI 인증을 복구한 뒤 `d7300e0` 배포 상태를 확인하고, 이미 저장된 문새롬 feedback 레코드의 `nextAction`을 새 구체 실행문으로 backfill하는 것이 좋습니다.
+
+---
+
+## 2026-05-14 AI 추천 실행 피드백 구체화 운영 배포/백필 후속
+
+### 1. Summary
+
+- Railway CLI 재인증 후 `web` 운영 배포 상태를 확인했습니다.
+- 운영 최신 배포는 `SUCCESS`이며, 커밋 `8f58e4c docs: report AI issue feedback specificity` 기준입니다. 이 커밋에는 직전 런타임 커밋 `d7300e0 fix: specialize AI issue feedback actions`가 포함되어 있습니다.
+- 이미 저장되어 있던 문새롬 `email_waiting:312` 피드백 1건을 새 구체 실행문으로 backfill했습니다.
+- 연결된 feedback history와 AI 상황 동기화 후속조치 history의 `next_action`도 같은 구체 실행문으로 보정했습니다.
+
+### 2. Production Data Backfill
+
+- 대상 feedback: `AIWorkspaceActionFeedback id=3`, `action_id=email_waiting:312`
+- 보정된 urgency: `urgent`
+- 보정된 summary: `보상판매는 장기 추적 대상으로 분리하고, 현재 우선순위는 팁 불만의 원인 확인과 처리 일정 안내입니다.`
+- 보정된 nextAction: `팁 불만은 오늘 먼저 증상, 사용 제품 규격, 수량/로트, 사진 여부를 확인하고 교체/대체품/사용법 안내 중 가능한 해결안을 정해 처리 예정 시간을 회신하세요. 보상판매 건은 장기 후속으로 분리해 다음 확인일만 잡으세요.`
+- 함께 갱신한 history: `feedback_history:775`, `task_history:774`
+
+### 3. Commands Run
+
+```text
+railway deployment list --service web --limit 3 --json
+→ Latest web deployment SUCCESS, commit 8f58e4c8efe4a93b3f4d65ef6fc142c2cfd64214
+
+python manage.py shell -c "<production backfill script using DATABASE_PUBLIC_URL>"
+→ UPDATED feedback:3,feedback_history:775,task_history:774
+
+python manage.py shell -c "<production verification query>"
+→ FEEDBACK 3 email_waiting:312 urgent
+→ TASK_NEXT matches the new specific nextAction
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+```
+
+### 4. Production Deployment Status
+
+- Backend `web`: deployed and verified on Railway.
+- Frontend `sales-note-frontend`: no code change for this task.
+- DB migration: none.
+- Existing saved 문새롬 feedback: backfilled.
+
+### 5. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 문새롬 `메일 답장 확인`의 답변 결과를 확인합니다.
+3. 다음 액션이 “팁에 대한 불만 사항을 해결하기 위한 조치를 취하세요.”가 아니라 `증상`, `사용 제품 규격`, `수량/로트`, `사진 여부`, `처리 예정 시간`, `보상판매 장기 후속`을 포함하는지 확인합니다.
+4. 같은 유형의 새 답변을 저장했을 때도 일반 문장이 아닌 구체 실행문으로 저장되는지 확인합니다.
