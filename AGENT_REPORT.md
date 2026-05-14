@@ -2,7 +2,7 @@
 
 ## 2026-05-15 — Delivery Prepayment Cap UX
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -43,6 +43,24 @@ python manage.py check
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: cap delivery prepayment deductions"
+git push origin main
+→ pushed 70d9eb3 to origin/main
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy prepayment cap UX 70d9eb3"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 6bf4a51e-fe21-4db1-a6fb-707b294c08c3 SUCCESS
+
+railway deployment list --service web --limit 2 --json
+→ a691e80d-1776-4488-89e3-10aa8ab41622 SUCCESS, commit 70d9eb3
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/903/
+→ 200, assets/index-CIbRrZIe.js and assets/index-BlSVsxTc.css loaded
+→ "품목 상한", "전체 차감", "입력 후 남은 납품금액" present
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
 ```
 
 ### 알려진 제한
@@ -51,7 +69,14 @@ git diff --check
 
 ### 운영 배포 상태
 
-- GitHub/Railway 배포 진행 예정.
+- GitHub: `70d9eb3 fix: cap delivery prepayment deductions` pushed to `origin/main`.
+- Railway `sales-note-frontend`: `6bf4a51e-fe21-4db1-a6fb-707b294c08c3` SUCCESS.
+- Railway `web`: `a691e80d-1776-4488-89e3-10aa8ab41622` SUCCESS, commit `70d9eb3`.
+- 운영 smoke OK:
+  - `/schedules/903/` 200.
+  - latest frontend assets `index-CIbRrZIe.js`, `index-BlSVsxTc.css` loaded.
+  - `품목 상한`, `전체 차감`, `입력 후 남은 납품금액` 포함 확인.
+  - `/reporting/login/` 200.
 
 ### 운영 수동 검수 절차
 
