@@ -17249,3 +17249,99 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 2. AI 추천 실행 목록에서 김미선/한국산업교정기술원 메일 답장 확인 카드가 같은 제목으로 3개 반복되지 않는지 확인합니다.
 3. 같은 메일 대화는 최신 발송 기준 1개만 남고, 별도 thread/별도 주제 메일은 필요 시 별도 액션으로 유지되는지 확인합니다.
 4. 남은 `메일 답장 확인` 카드에서 `메일 보기`, `메일 초안`, `노트 초안` 버튼이 기존처럼 동작하는지 확인합니다.
+
+---
+
+## 2026-05-14 AI 추천 실행 메일 답장 대기 제목 중복 제거 보강
+
+### 1. Summary
+
+- 1차 수정 후에도 김미선 고객의 `메일 답장 확인` 카드가 원문 제목과 `Re: [RE]...` 제목으로 2개 남는 문제를 추가 수정했습니다.
+- 같은 고객/수신자/정규화 제목이면 Gmail thread id가 서로 달라도 최신 발송 1건만 `email_waiting` 액션으로 표시합니다.
+- `Re:`, `[RE]`, `FW:` 등 답장/전달 접두어를 제거한 제목 키를 thread 키와 함께 항상 중복 판단에 사용하도록 바꿨습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### 3. CRM Improvements
+
+- 같은 견적 안내 메일이 원문/답장 thread로 분리 저장되어도 AI 추천 실행 목록을 중복으로 차지하지 않습니다.
+- 운영자는 김미선/한국산업교정기술원 같은 실제 고객 케이스에서 같은 메일 답장 확인을 여러 번 처리하지 않아도 됩니다.
+- 같은 고객의 별도 납품 일정 확인처럼 제목이 다른 주제는 별도 액션으로 유지합니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트, 인증, AI 사용 권한, 기존 수신 회신 감지 로직은 유지했습니다.
+- 기존 `email_waiting:<EmailLog.id>` action id 형식과 버튼 href 구조는 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_dedupes_email_waiting_by_thread_or_subject --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 32 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+git commit -m "fix: dedupe AI email waiting by subject"
+git push origin main
+→ Commit ac42a34 pushed
+
+railway deployment up --service web --detach --message "Deploy AI email subject dedupe ac42a34"
+railway deployment list --service web --limit 4 --json
+→ web deployment 28b103cc-f3ce-4b43-9739-2eb0f5ed7738 SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200 React app shell
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+```
+
+### 6. Known Limitations / Risks
+
+- 같은 고객에게 같은 제목과 같은 수신자로 보낸 완전히 다른 업무 메일은 하나로 묶일 수 있습니다. 이번 운영 케이스에서는 같은 견적 안내의 중복 제거가 우선입니다.
+- 제목이 조금이라도 실질적으로 달라지면 별도 액션으로 남습니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `ac42a34 fix: dedupe AI email waiting by subject`
+- GitHub: `main` pushed
+- Railway `web`: `28b103cc-f3ce-4b43-9739-2eb0f5ed7738` SUCCESS
+- Railway `sales-note-frontend`: frontend code change 없음, 재배포 없음
+- DB migration: none
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend AI workspace API returned expected anonymous 401 JSON.
+  - Frontend `/ai-workspace/` returned 200 React app shell.
+  - Frontend proxy AI workspace API returned expected anonymous 401 JSON.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. AI 추천 실행 목록에서 김미선/한국산업교정기술원 `메일 답장 확인` 카드가 원문 제목과 `Re: [RE]...` 제목으로 2개 나뉘지 않는지 확인합니다.
+3. 같은 견적 안내는 최신 발송 기준 1개만 남고, `별도 납품 일정 확인`처럼 제목이 다른 메일은 별도 액션으로 유지되는지 확인합니다.
+4. 남은 `메일 답장 확인` 카드의 `메일 보기`, `메일 초안`, `노트 초안`, 현장 답변 저장이 기존처럼 동작하는지 확인합니다.
