@@ -16936,3 +16936,104 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 2. `추천 질문` 섹션에서 문새롬/고객 후속 prompt를 확인합니다.
 3. `최근 영업노트` 문장 끝이 `...`로 잘리지 않고, “모델명 확인 필요” 같은 마지막 맥락까지 보이는지 확인합니다.
 4. `복사` 버튼으로 복사한 prompt에도 같은 전체 문장이 포함되는지 확인합니다.
+
+---
+
+## 2026-05-14 AI/CRM stale 견적 제출 후속조치 정리
+
+### 1. Summary
+
+- 이미 견적서/비교표 제출 증거가 있는 과거 `견적서 및 비교표 제출` 후속조치가 대시보드/고객/AI 추천 목록에 계속 노출되지 않도록 공통 판정을 추가했습니다.
+- 같은 고객/담당자의 후속조치 작성 이후 `Quote` 제출 상태, 견적서 생성 로그, 또는 견적 히스토리가 있으면 해당 제출형 후속조치를 stale로 보고 읽기 화면에서 제외합니다.
+- `견적 검토 여부 확인`, `회신 확인`처럼 제출 이후 실제로 남아야 하는 확인성 후속조치는 계속 노출되도록 판정을 좁혔습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `AGENT_REPORT.md`
+
+### 3. CRM Improvements
+
+- 대시보드 `Follow-up 지연 후속조치`에서 이미 완료된 견적 제출 할 일이 남는 문제를 줄였습니다.
+- 고객 목록/상세의 `지연 후속` 카운트도 같은 기준을 사용해, 대시보드와 고객 화면의 긴급도 표시가 엇갈리지 않게 했습니다.
+- AI 워크스페이스 `customer_followup` 액션 큐에서도 stale 견적 제출 History를 제외해, 이미 제출한 일을 다시 추천하지 않게 했습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트와 인증/권한 흐름은 유지했습니다.
+- GET API는 기존 데이터를 자동 수정하지 않습니다. 실제 CRM 상태 쓰기 동기화는 기존 AI 피드백 저장/백필 경로에 맡겼습니다.
+- 제출 이후의 `견적 검토`, `회신 확인`, `구매 일정 확인`류 후속조치는 계속 남도록 했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests.test_dashboard_summary_api_excludes_stale_quote_submission_followups reporting.tests.CustomersSummaryApiTests.test_customers_apis_exclude_stale_quote_submission_overdue_count reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_excludes_stale_quote_submission_history --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests reporting.tests.CustomersSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 57 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+git commit -m "fix: hide stale quote submission followups"
+git push origin main
+→ Commit a555c8d pushed
+
+railway deployment list --service web --limit 3 --json
+→ web deployment 22bebc9a SUCCESS for commit a555c8d
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/dashboard/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/customers/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/?department_id=308
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/dashboard/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/dashboard/
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308
+→ 200 React app shell
+```
+
+### 6. Known Limitations / Risks
+
+- 이번 변경은 읽기 화면 노출 기준 정리입니다. 기존 `History.reviewed_at`을 자동으로 채우지는 않습니다.
+- 완료 증거는 후속조치 생성 이후의 `Quote`, 견적서 생성 로그, 견적 히스토리 기준입니다. 운영자가 견적을 제출했지만 아무 견적/서류/견적 히스토리가 남지 않은 경우에는 계속 노출될 수 있습니다.
+- `견적서 발송 후 회신 확인`처럼 제출 이후 확인해야 하는 문구는 stale로 숨기지 않습니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `a555c8d fix: hide stale quote submission followups`
+- GitHub: `main` pushed
+- Railway `web`: `22bebc9a-e25e-40d2-a869-eb21cc8691b1` SUCCESS
+- Railway `sales-note-frontend`: not redeployed; no frontend code changes
+- DB migration: none
+- Production smoke:
+  - Backend dashboard/customers/AI workspace APIs returned expected anonymous 401 JSON.
+  - Frontend `/dashboard/`, `/customers/`, `/ai-workspace/?department_id=308` returned 200 React app shell.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/dashboard/`에 접속합니다.
+2. `Follow-up 지연 후속조치`에서 홍철화 고객의 이미 제출된 `견적서 및 비교표 제출` 항목이 사라졌는지 확인합니다.
+3. `https://sales-note-frontend-production.up.railway.app/customers/`에서 같은 고객 카드의 `지연 후속` 카운트가 과거 견적 제출 건 때문에 올라가지 않는지 확인합니다.
+4. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308`에서 AI 추천 실행 목록에 같은 `견적서 및 비교표 제출` 후속조치가 다시 뜨지 않는지 확인합니다.
+5. 제출 이후 실제 확인해야 하는 `견적 검토 여부 확인`, `회신 확인`, `구매 일정 확인`류 후속조치는 계속 남는지 함께 확인합니다.
