@@ -8008,18 +8008,21 @@ def _ai_workspace_email_waiting_subject_key(subject):
     return value.strip()
 
 
-def _ai_workspace_email_waiting_dedupe_key(email):
+def _ai_workspace_email_waiting_dedupe_keys(email):
     followup_key = email.followup_id or 0
+    keys = []
     if email.gmail_thread_id:
-        return ('thread', followup_key, email.gmail_thread_id)
+        keys.append(('thread', followup_key, email.gmail_thread_id))
     if email.thread_id:
-        return ('thread', followup_key, email.thread_id)
+        keys.append(('thread', followup_key, email.thread_id))
 
     recipient = (email.to_email or email.recipient_email or '').strip().lower()
     subject_key = _ai_workspace_email_waiting_subject_key(email.subject)
-    if subject_key or recipient:
-        return ('subject', followup_key, recipient, subject_key)
-    return ('email', followup_key, email.id)
+    if subject_key:
+        keys.append(('subject', followup_key, recipient, subject_key))
+    if not keys:
+        keys.append(('email', followup_key, email.id))
+    return keys
 
 
 def _ai_workspace_email_waiting_action_payload(email, today=None):
@@ -8288,8 +8291,8 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20, depar
     seen_email_waiting_keys = set()
     for email in sent_email_qs:
         followup = email.followup
-        dedupe_key = _ai_workspace_email_waiting_dedupe_key(email)
-        if dedupe_key in seen_email_waiting_keys:
+        dedupe_keys = _ai_workspace_email_waiting_dedupe_keys(email)
+        if any(key in seen_email_waiting_keys for key in dedupe_keys):
             continue
         thread_values = _ai_workspace_email_thread_values(email)
         received_q = Q()
@@ -8303,12 +8306,13 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20, depar
         ).filter(
             Q(received_at__gt=email.sent_at) | Q(created_at__gt=email.sent_at)
         ).exists():
+            seen_email_waiting_keys.update(dedupe_keys)
             continue
 
         action = _ai_workspace_email_waiting_action_payload(email, today)
         if not action:
             continue
-        seen_email_waiting_keys.add(dedupe_key)
+        seen_email_waiting_keys.update(dedupe_keys)
         actions.append(action)
         email_waiting_count += 1
         if email_waiting_count >= 5:

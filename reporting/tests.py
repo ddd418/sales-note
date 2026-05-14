@@ -7734,7 +7734,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(any(item['kind'] == 'email_waiting' for item in payload['actionQueue']))
         self.assertEqual(payload['dailyBrief']['counts']['emailWaiting'], 1)
 
-    def test_ai_workspace_action_queue_dedupes_email_waiting_by_thread(self):
+    def test_ai_workspace_action_queue_dedupes_email_waiting_by_thread_or_subject(self):
         from datetime import timedelta
         from reporting.models import EmailLog
 
@@ -7755,10 +7755,10 @@ class AIWorkspaceSummaryApiTests(TestCase):
             body='수리 견적 및 보상판매 견적 안내',
             followup=followup,
             gmail_message_id='gmail-msg-kim-original',
-            gmail_thread_id='gmail-thread-kim-quote',
+            gmail_thread_id='gmail-thread-kim-quote-original',
             sent_at=sent_at,
         )
-        EmailLog.objects.create(
+        reply_email = EmailLog.objects.create(
             user=self.user,
             sender=self.user,
             provider='gmail',
@@ -7772,7 +7772,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             body='수리 견적 및 보상판매 견적 안내 재발송',
             followup=followup,
             gmail_message_id='gmail-msg-kim-reply-1',
-            gmail_thread_id='gmail-thread-kim-quote',
+            gmail_thread_id='gmail-thread-kim-quote-reply-1',
             sent_at=sent_at + timedelta(minutes=5),
         )
         latest_email = EmailLog.objects.create(
@@ -7789,7 +7789,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             body='수리 견적 및 보상판매 견적 안내 최종 발송',
             followup=followup,
             gmail_message_id='gmail-msg-kim-reply-2',
-            gmail_thread_id='gmail-thread-kim-quote',
+            gmail_thread_id='gmail-thread-kim-quote-reply-2',
             sent_at=sent_at + timedelta(minutes=10),
         )
         other_thread_email = EmailLog.objects.create(
@@ -7823,6 +7823,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn(f'email_waiting:{latest_email.id}', action_ids)
         self.assertIn(f'email_waiting:{other_thread_email.id}', action_ids)
         self.assertNotIn(f'email_waiting:{original_email.id}', action_ids)
+        self.assertNotIn(f'email_waiting:{reply_email.id}', action_ids)
         self.assertEqual(
             len([item for item in email_actions if item['evidence'][1]['value'].endswith('보상판매 견적 안내')]),
             1,

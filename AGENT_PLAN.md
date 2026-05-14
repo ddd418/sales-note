@@ -4562,3 +4562,31 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-14 AI 추천 실행 메일 답장 대기 제목 중복 제거 보강 계획
+
+**배경**:
+
+- 1차 중복 제거 후에도 김미선 고객의 `메일 답장 확인` 카드가 2개 남았다.
+- 남은 중복은 원문 제목과 `Re: [RE]...` 답장 제목이 같은 견적 안내임에도 서로 다른 Gmail thread id로 저장된 케이스다.
+- 기존 구현은 thread id가 있으면 thread 기준으로만 우선 판단하고, 제목/수신자 기준은 thread id 없는 보조 케이스처럼 동작해 운영 화면의 실제 중복을 완전히 제거하지 못했다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- `email_waiting` 중복 키를 단일 키가 아니라 복수 키 목록으로 만든다.
+- 각 발송 메일에 대해 thread 키와 `정규화 제목 + 수신자 + 고객` 키를 모두 등록한다.
+- 최신 발송 메일을 먼저 처리하므로, 같은 견적 안내 묶음에서는 최신 1건만 action으로 남긴다.
+- 같은 고객의 별도 제목/별도 주제 메일은 기존처럼 별도 action으로 유지한다.
+
+**검증 계획**:
+
+- 원문과 `Re: [RE]...` 발송 로그가 서로 다른 Gmail thread id를 가져도 `email_waiting` action은 1개만 내려오는 테스트로 보강한다.
+- 별도 납품 일정 확인 메일은 같은 고객이라도 별도 action으로 유지되는지 확인한다.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_dedupes_email_waiting_by_thread_or_subject --verbosity=2`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
