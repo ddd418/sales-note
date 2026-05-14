@@ -6339,6 +6339,156 @@ def _schedules_quote_item_progress_entries(
     return remaining_entries, has_import_activity, has_sold_items, progress_by_item_id
 
 
+def _schedules_quote_item_progress_entries_for_schedules(
+    quote_schedules,
+    include_legacy_matches_for_completed=False,
+    exclude_delivery_schedule_id=None,
+):
+    """Return quote item delivery progress for many quote schedules with bulk queries."""
+    from collections import defaultdict
+    from decimal import Decimal
+
+    schedules = list(quote_schedules)
+    if not schedules:
+        return {}
+
+    quote_items_by_schedule_id = {}
+    imported_quantities = {}
+    item_schedule_id_by_item_id = {}
+    identity_items_by_schedule = defaultdict(list)
+    has_import_activity_by_schedule_id = {schedule.id: False for schedule in schedules}
+
+    for schedule in schedules:
+        quote_items = list(schedule.delivery_items_set.all())
+        quote_items.sort(key=lambda item: item.id or 0)
+        quote_items_by_schedule_id[schedule.id] = quote_items
+        for item in quote_items:
+            if not item.id:
+                continue
+            imported_quantities[item.id] = Decimal('0')
+            item_schedule_id_by_item_id[item.id] = schedule.id
+            identity_items_by_schedule[(schedule.id, _schedules_quote_item_identity(item))].append(item)
+
+    quote_item_ids = list(imported_quantities)
+    if quote_item_ids:
+        linked_queryset = DeliveryItem.objects.filter(
+            source_quote_item_id__in=quote_item_ids,
+            schedule__activity_type='delivery',
+        ).exclude(
+            schedule__status='cancelled',
+        )
+        if exclude_delivery_schedule_id:
+            linked_queryset = linked_queryset.exclude(schedule_id=exclude_delivery_schedule_id)
+        for row in linked_queryset.values('source_quote_item_id').annotate(total=Sum('quantity')):
+            source_item_id = row['source_quote_item_id']
+            if source_item_id not in imported_quantities:
+                continue
+            quantity = Decimal(str(row['total'] or 0))
+            imported_quantities[source_item_id] += quantity
+            schedule_id = item_schedule_id_by_item_id.get(source_item_id)
+            if schedule_id and quantity:
+                has_import_activity_by_schedule_id[schedule_id] = True
+
+    schedule_ids = [schedule.id for schedule in schedules]
+    schedule_linked_items = DeliveryItem.objects.filter(
+        source_quote_schedule_id__in=schedule_ids,
+        source_quote_item__isnull=True,
+        schedule__activity_type='delivery',
+    ).exclude(
+        schedule__status='cancelled',
+    ).select_related('schedule')
+    if exclude_delivery_schedule_id:
+        schedule_linked_items = schedule_linked_items.exclude(schedule_id=exclude_delivery_schedule_id)
+    for delivered_item in schedule_linked_items:
+        source_schedule_id = delivered_item.source_quote_schedule_id
+        if not source_schedule_id:
+            continue
+        has_import_activity_by_schedule_id[source_schedule_id] = True
+        candidates = identity_items_by_schedule.get((
+            source_schedule_id,
+            _schedules_quote_item_identity(delivered_item),
+        ), [])
+        for quote_item in candidates:
+            if quote_item.id in imported_quantities:
+                imported_quantities[quote_item.id] += Decimal(str(delivered_item.quantity or 0))
+                break
+
+    if include_legacy_matches_for_completed:
+        completed_schedules = [
+            schedule
+            for schedule in schedules
+            if schedule.status == 'completed' and schedule.followup_id
+        ]
+        completed_schedule_ids_by_owner_followup = defaultdict(list)
+        for schedule in completed_schedules:
+            completed_schedule_ids_by_owner_followup[(schedule.user_id, schedule.followup_id)].append(schedule.id)
+
+        if completed_schedule_ids_by_owner_followup:
+            owner_ids = {owner_id for owner_id, _followup_id in completed_schedule_ids_by_owner_followup}
+            followup_ids = {followup_id for _owner_id, followup_id in completed_schedule_ids_by_owner_followup}
+            legacy_delivery_items = DeliveryItem.objects.filter(
+                schedule__user_id__in=owner_ids,
+                schedule__followup_id__in=followup_ids,
+                schedule__activity_type='delivery',
+                source_quote_schedule__isnull=True,
+                source_quote_item__isnull=True,
+            ).exclude(
+                schedule__status='cancelled',
+            ).select_related('schedule')
+            if exclude_delivery_schedule_id:
+                legacy_delivery_items = legacy_delivery_items.exclude(schedule_id=exclude_delivery_schedule_id)
+
+            for delivered_item in legacy_delivery_items:
+                candidate_schedule_ids = completed_schedule_ids_by_owner_followup.get((
+                    delivered_item.schedule.user_id,
+                    delivered_item.schedule.followup_id,
+                ), [])
+                delivered_identity = _schedules_quote_item_identity(delivered_item)
+                for schedule_id in candidate_schedule_ids:
+                    candidates = identity_items_by_schedule.get((schedule_id, delivered_identity), [])
+                    for quote_item in candidates:
+                        if quote_item.id not in imported_quantities:
+                            continue
+                        quote_quantity = Decimal(str(quote_item.quantity or 0))
+                        already_imported = imported_quantities[quote_item.id]
+                        if already_imported >= quote_quantity:
+                            continue
+                        imported_quantities[quote_item.id] += Decimal(str(delivered_item.quantity or 0))
+                        has_import_activity_by_schedule_id[schedule_id] = True
+                        break
+
+    progress_by_schedule_id = {}
+    for schedule in schedules:
+        remaining_entries = []
+        progress_by_item_id = {}
+        has_sold_items = False
+        for item in quote_items_by_schedule_id.get(schedule.id, []):
+            quantity = Decimal(str(item.quantity or 0))
+            imported_quantity = imported_quantities.get(item.id, Decimal('0'))
+            if imported_quantity > 0:
+                has_sold_items = True
+            remaining_quantity = quantity - imported_quantity
+            if remaining_quantity > 0:
+                display_remaining_quantity = remaining_quantity
+                if remaining_quantity == int(remaining_quantity):
+                    display_remaining_quantity = int(remaining_quantity)
+                remaining_entries.append((item, display_remaining_quantity))
+            progress_by_item_id[item.id] = {
+                'quotedQuantity': quantity,
+                'deliveredQuantity': imported_quantity,
+                'remainingQuantity': max(quantity - imported_quantity, Decimal('0')),
+            }
+
+        progress_by_schedule_id[schedule.id] = {
+            'remaining_entries': remaining_entries,
+            'has_import_activity': has_import_activity_by_schedule_id.get(schedule.id, False),
+            'has_sold_items': has_sold_items,
+            'progress_by_item_id': progress_by_item_id,
+        }
+
+    return progress_by_schedule_id
+
+
 def _schedules_remaining_quote_item_entries(quote_schedule, include_legacy_matches=False):
     remaining_entries, has_import_activity, has_sold_items, _progress = _schedules_quote_item_progress_entries(
         quote_schedule,
@@ -19664,30 +19814,35 @@ def followup_quote_items_api(request, followup_id):
         # 같은 부서의 본인 견적 일정 조회. 완료된 견적이라도 일부 품목만 납품된
         # 경우에는 남은 품목을 다시 선택할 수 있어야 하므로 품목 단위로 걸러낸다.
         quote_items_queryset = DeliveryItem.objects.select_related('product').order_by('id')
-        quote_schedules = Schedule.objects.filter(
+        quote_schedules = list(Schedule.objects.filter(
             followup__in=quote_followups,
             activity_type='quote',
             status__in=['scheduled', 'completed'],
             user=request.user,
         ).select_related('followup', 'followup__company', 'followup__department').prefetch_related(
             Prefetch('delivery_items_set', queryset=quote_items_queryset),
-        ).order_by('-visit_date', '-visit_time', '-created_at')
+        ).order_by('-visit_date', '-visit_time', '-created_at'))
         
-        if not quote_schedules.exists():
+        if not quote_schedules:
             return JsonResponse({
                 'error': '이 부서에 대한 본인 작성 견적이 없습니다.'
             })
         
         # 모든 견적 정보 수집 (납품되지 않은 것만)
         quotes_data = []
+        progress_by_schedule_id = _schedules_quote_item_progress_entries_for_schedules(
+            quote_schedules,
+            include_legacy_matches_for_completed=True,
+        )
         
         for quote_schedule in quote_schedules:
             logger.info(f"[QUOTE_ITEMS_API] Schedule ID: {quote_schedule.id}, visit_date: {quote_schedule.visit_date}")
 
-            remaining_entries, has_import_activity, has_sold_items, progress_by_item_id = _schedules_quote_item_progress_entries(
-                quote_schedule,
-                include_legacy_matches=quote_schedule.status == 'completed',
-            )
+            schedule_progress = progress_by_schedule_id.get(quote_schedule.id, {})
+            remaining_entries = schedule_progress.get('remaining_entries', [])
+            has_import_activity = schedule_progress.get('has_import_activity', False)
+            has_sold_items = schedule_progress.get('has_sold_items', False)
+            progress_by_item_id = schedule_progress.get('progress_by_item_id', {})
             if quote_schedule.status == 'completed' and not (has_import_activity or has_sold_items):
                 continue
 

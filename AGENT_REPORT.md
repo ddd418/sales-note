@@ -1,5 +1,82 @@
 # AGENT_REPORT.md
 
+## 2026-05-15 — Quote Items API 502 Fix
+
+**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+
+### 요약
+
+React 일정 상세 `/schedules/903/`의 `견적 품목 불러오기`가 `Quote items API unavailable: 502`로 실패하는 원인을 API 처리 구조에서 좁혔습니다. 프론트/백엔드 익명 smoke는 모두 정상 302였으므로 전체 프록시 장애가 아니라, 로그인된 특정 고객/부서 데이터에서 견적 일정별 납품 반영 수량을 반복 조회하다 요청이 길어지는 문제가 유력했습니다.
+
+`/reporting/api/followups/<id>/quote-items/`가 같은 부서의 여러 견적 일정을 한 번에 계산하도록 bulk progress helper를 추가해, 부분 납품/완료 견적/legacy 납품 매칭을 기존 의미대로 유지하면서 쿼리 수를 고정했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 다중 견적 일정의 납품 반영 수량을 bulk query로 계산하는 helper 추가 및 quote-items API 적용.
+- `reporting/tests.py`: 대량 completed/scheduled 견적 데이터에서도 API가 빠르게 JSON을 반환하는 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 납품 일정에서 견적 품목을 불러올 때 같은 부서에 견적/납품 데이터가 많아도 API가 안정적으로 응답합니다.
+- 기존 다중 견적 선택, 부분 납품 잔여 수량, 완료 견적 제외/잔여 노출 정책은 유지했습니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/*` route와 기존 권한 정책은 변경하지 않았습니다.
+- 단일 일정 기준 견적 진행률 helper는 그대로 유지해 저장/검증 경로에 영향을 주지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/followups/1/quote-items/
+→ 302 /reporting/login/?next=/reporting/api/followups/1/quote-items/
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/followups/1/quote-items/
+→ 302 /reporting/login/?next=/reporting/api/followups/1/quote-items/
+
+railway deployment list --service web --limit 4 --json
+→ latest web deployment 71ed24ff... SUCCESS
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1
+→ Ran 8 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영의 로그인된 실제 `/schedules/903/` 화면은 사용자 세션이 필요하므로 최종 확인은 사용자의 수동 검수가 필요합니다.
+
+### 운영 배포 상태
+
+- 배포 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영에서 `/schedules/903/`에 로그인 상태로 접속합니다.
+2. `납품 품목` 편집 또는 `견적 품목 불러오기` 패널을 엽니다.
+3. `견적 품목 불러오기` 버튼을 누릅니다.
+4. `Quote items API unavailable: 502`가 더 이상 뜨지 않고 견적 목록이 표시되는지 확인합니다.
+5. 여러 견적을 체크해 품목을 불러온 뒤 저장까지 진행되는지 확인합니다.
+
+### 권장 다음 작업
+
+- 이 운영 장애 검수 후, 직전 요청이었던 AI 추천 실행 목록의 현장 답변을 `Prompt goals / 추천 목표`에 반영하는 작업을 이어서 진행합니다.
+
+---
+
 ## 2026-05-15 — Delivery Prepayment Cap UX
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기

@@ -1,6 +1,37 @@
 # AGENT_PLAN.md
 
-## Current task — 일정 상세 납품품목 선결제 차감 + AI 액션 오류 긴급 수정
+## Current task — 견적 품목 불러오기 API 502 긴급 수정
+
+**목표**: React 일정 상세 `/schedules/903/`의 `견적 품목 불러오기`에서 `/reporting/api/followups/<id>/quote-items/` 호출이 502로 실패하는 문제를 해결한다.
+
+### 확인된 상태
+
+- React는 `loadFollowupQuoteItems()`에서 `/reporting/api/followups/<followupId>/quote-items/`를 호출하고, JSON이 아닌 502 응답이면 `Quote items API unavailable: 502`를 표시한다.
+- 운영 익명 smoke에서는 프론트 프록시와 백엔드 직접 URL 모두 302 로그인 리다이렉트가 정상이라 프록시 전체 장애는 아니다.
+- 해당 Django API는 같은 부서의 견적 일정을 순회하면서 각 견적 일정마다 납품 반영 수량을 별도 DB 조회로 계산한다.
+- 특정 부서/고객에 견적/납품 데이터가 많으면 요청 시간이 길어져 프론트 프록시 또는 Railway edge에서 502로 보일 수 있다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 견적 일정 목록 전체에 대해 원 견적 품목별 납품 반영 수량을 bulk query로 한 번에 계산하는 helper를 추가한다.
+- 기존 단일 일정 계산 helper는 유지해 다른 저장/검증 경로의 동작을 보존한다.
+- `followup_quote_items_api`만 bulk helper를 사용하도록 바꿔 다중 견적/부분 납품 계산을 빠르게 처리한다.
+- 여러 completed 견적의 legacy 납품 매칭도 기존 의미를 유지하되 bulk 계산으로 처리한다.
+- API가 정상 JSON을 반환하도록 회귀 테스트를 추가한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.QuoteItemsApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 API smoke 확인.
+
+---
+
+## Previous task — 일정 상세 납품품목 선결제 차감 + AI 액션 오류 긴급 수정
 
 **목표**: React 일정 상세 `/schedules/<id>/`에서 납품품목을 저장할 때 같은 고객/부서의 선결제를 선택해 잔액에서 차감할 수 있게 한다. 이어서 AI Workspace 부서 상세 액션에서 `action_not_found`가 뜨는 경로를 막고, 중복 실행 패널을 제거한다. 납품 일정의 `견적 불러오기`는 여러 견적을 한 번에 선택해 가져올 수 있게 한다.
 

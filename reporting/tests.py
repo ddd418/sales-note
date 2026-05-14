@@ -2621,6 +2621,66 @@ class QuoteItemsApiTests(TestCase):
         self.assertEqual(item['remainingQuantity'], 2.0)
         self.assertEqual(item['quantity'], 2)
 
+    def test_quote_items_api_bulk_progress_avoids_per_quote_queries(self):
+        from datetime import time
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        target = self._create_followup(self.user, '대량 견적 고객')
+        for index in range(8):
+            quote_schedule = self._create_quote_schedule(
+                target,
+                self.user,
+                f'완료 견적 품목 {index}',
+                10000 + index,
+                quote_group='수리',
+            )
+            quote_schedule.status = 'completed'
+            quote_schedule.save(update_fields=['status'])
+            quote_item = quote_schedule.delivery_items_set.first()
+            quote_item.quantity = 2
+            quote_item.save(update_fields=['quantity', 'total_price', 'updated_at'])
+            if index % 2 == 0:
+                delivery_schedule = Schedule.objects.create(
+                    user=self.user,
+                    company=self.company,
+                    followup=target,
+                    visit_date=timezone.localdate(),
+                    visit_time=time(11, 0),
+                    activity_type='delivery',
+                    status='completed',
+                )
+                DeliveryItem.objects.create(
+                    schedule=delivery_schedule,
+                    source_quote_schedule=quote_schedule,
+                    source_quote_item=quote_item,
+                    item_name=quote_item.item_name,
+                    quantity=1,
+                    unit='EA',
+                    unit_price=quote_item.unit_price,
+                    quote_group='수리',
+                )
+        for index in range(4):
+            self._create_quote_schedule(
+                target,
+                self.user,
+                f'진행 견적 품목 {index}',
+                20000 + index,
+                quote_group='보상판매',
+            )
+        self.client.force_login(self.user)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['count'], 8)
+        self.assertLessEqual(len(captured), 20)
+
     def test_quote_items_api_excludes_completed_quote_schedules(self):
         target = self._create_followup(self.user, '완료 제외 고객')
         completed = self._create_quote_schedule(target, self.user, '완료된 견적 품목', 1000000)
