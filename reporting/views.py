@@ -7698,6 +7698,7 @@ def _ai_workspace_priority_signal_from_feedback(feedback_text, intent='', status
     urgent_keywords = [
         '긴급', '급함', '급해', '최우선', '빨리', '바로', '즉시',
         '오늘중', '오늘까지', '금일', '내일까지', '48시간', '이번주안',
+        '급선무', '불만', '클레임', '항의', '문제해결', '우선해결', '우선처리',
     ]
     scheduled_keywords = [
         '일정잡', '일정확정', '날짜잡', '미팅예정', '방문예정', '연락일정', '방문일정',
@@ -7707,14 +7708,14 @@ def _ai_workspace_priority_signal_from_feedback(feedback_text, intent='', status
         '챙겨', '리마인드', '답장대기', '회신대기',
     ]
 
-    if any(keyword in normalized for keyword in long_term_keywords):
-        return _ai_workspace_priority_signal('long_term', '사용자 답변에 장기/보류 또는 낮은 긴급도 신호가 포함됐습니다.', 'fallback')
     if any(keyword in normalized for keyword in urgent_keywords):
-        return _ai_workspace_priority_signal('urgent', '사용자 답변에 긴급 또는 즉시 처리 신호가 포함됐습니다.', 'fallback')
+        return _ai_workspace_priority_signal('urgent', '사용자 답변에 긴급, 고객 불만 또는 즉시 처리 신호가 포함됐습니다.', 'feedback')
+    if any(keyword in normalized for keyword in long_term_keywords):
+        return _ai_workspace_priority_signal('long_term', '사용자 답변에 장기/보류 또는 낮은 긴급도 신호가 포함됐습니다.', 'feedback')
     if any(keyword in normalized for keyword in scheduled_keywords):
-        return _ai_workspace_priority_signal('scheduled', '사용자 답변에 일정이 정해진 상태라는 신호가 포함됐습니다.', 'fallback')
+        return _ai_workspace_priority_signal('scheduled', '사용자 답변에 일정이 정해진 상태라는 신호가 포함됐습니다.', 'feedback')
     if any(keyword in normalized for keyword in followup_keywords):
-        return _ai_workspace_priority_signal('followup', '사용자 답변에 후속 확인 또는 재연락 신호가 포함됐습니다.', 'fallback')
+        return _ai_workspace_priority_signal('followup', '사용자 답변에 후속 확인 또는 재연락 신호가 포함됐습니다.', 'feedback')
 
     if intent == 'resolved_no_purchase':
         return _ai_workspace_priority_signal('long_term', '구매 보류/종료 의도라 고객 긴급도를 장기로 낮춥니다.', 'fallback')
@@ -7861,6 +7862,54 @@ def _ai_workspace_action_payload(
         'hrefs': hrefs or {},
         'feedback': None,
     }
+
+
+def _ai_workspace_email_thread_values(email):
+    return [
+        value
+        for value in [
+            email.gmail_thread_id,
+            email.thread_id,
+            email.gmail_message_id,
+            email.message_id,
+        ]
+        if value
+    ]
+
+
+def _ai_workspace_email_waiting_action_payload(email, today=None):
+    from datetime import timedelta
+
+    followup = email.followup
+    if not followup:
+        return None
+
+    today = today or timezone.localdate()
+    thread_values = _ai_workspace_email_thread_values(email)
+    due_date = (email.sent_at.date() + timedelta(days=2)) if email.sent_at else today
+    score = 50 + _ai_workspace_score_date(due_date, today)
+    evidence = [
+        _ai_workspace_evidence('발송일', email.sent_at.date().isoformat() if email.sent_at else '', f"/mailbox/thread/{thread_values[0]}/" if thread_values else ''),
+        _ai_workspace_evidence('제목', email.subject or ''),
+        _ai_workspace_evidence('수신자', email.to_email or email.recipient_email or ''),
+    ]
+    return _ai_workspace_action_payload(
+        action_id=f'email_waiting:{email.id}',
+        kind='email_waiting',
+        score=score,
+        title=f"{_ai_workspace_prompt_excerpt(followup.customer_name or followup.manager or '고객명 미정', 60)} 메일 답장 확인",
+        recommended_action='발송한 메일에 대한 회신 여부를 확인하고, 필요하면 짧은 리마인드 메일을 보내세요.',
+        followup=followup,
+        due_date=due_date,
+        evidence=evidence,
+        draft_types=['email', 'note'],
+        hrefs={
+            'customer': f'/customers/{followup.id}/',
+            'mailboxThread': f"/mailbox/thread/{thread_values[0]}/" if thread_values else '',
+            'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
+            'djangoMailboxThread': reverse('reporting:mailbox_thread', args=[thread_values[0]]) if thread_values else '',
+        },
+    )
 
 
 def _ai_workspace_action_feedback_payload(feedback):
@@ -8092,13 +8141,7 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20, depar
     email_waiting_count = 0
     for email in sent_email_qs:
         followup = email.followup
-        thread_values = [
-            email.gmail_thread_id,
-            email.thread_id,
-            email.gmail_message_id,
-            email.message_id,
-        ]
-        thread_values = [value for value in thread_values if value]
+        thread_values = _ai_workspace_email_thread_values(email)
         received_q = Q()
         for value in thread_values:
             received_q |= Q(gmail_thread_id=value) | Q(thread_id=value) | Q(gmail_message_id=value) | Q(message_id=value)
@@ -8112,30 +8155,10 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20, depar
         ).exists():
             continue
 
-        due_date = (email.sent_at.date() + timedelta(days=2)) if email.sent_at else today
-        score = 50 + _ai_workspace_score_date(due_date, today)
-        evidence = [
-            _ai_workspace_evidence('발송일', email.sent_at.date().isoformat() if email.sent_at else '', f"/mailbox/thread/{thread_values[0]}/" if thread_values else ''),
-            _ai_workspace_evidence('제목', email.subject or ''),
-            _ai_workspace_evidence('수신자', email.to_email or email.recipient_email or ''),
-        ]
-        actions.append(_ai_workspace_action_payload(
-            action_id=f'email_waiting:{email.id}',
-            kind='email_waiting',
-            score=score,
-            title=f"{_ai_workspace_prompt_excerpt(followup.customer_name or followup.manager or '고객명 미정', 60)} 메일 답장 확인",
-            recommended_action='발송한 메일에 대한 회신 여부를 확인하고, 필요하면 짧은 리마인드 메일을 보내세요.',
-            followup=followup,
-            due_date=due_date,
-            evidence=evidence,
-            draft_types=['email', 'note'],
-            hrefs={
-                'customer': f'/customers/{followup.id}/',
-                'mailboxThread': f"/mailbox/thread/{thread_values[0]}/" if thread_values else '',
-                'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
-                'djangoMailboxThread': reverse('reporting:mailbox_thread', args=[thread_values[0]]) if thread_values else '',
-            },
-        ))
+        action = _ai_workspace_email_waiting_action_payload(email, today)
+        if not action:
+            continue
+        actions.append(action)
         email_waiting_count += 1
         if email_waiting_count >= 5:
             break
@@ -8320,6 +8343,29 @@ def _ai_workspace_find_action(user, action_id, week_start, week_end):
     for action in _ai_workspace_build_action_queue(user, week_start, week_end, limit=60):
         if action['id'] == action_id:
             return action
+    return _ai_workspace_rebuild_action_by_id(user, action_id)
+
+
+def _ai_workspace_rebuild_action_by_id(user, action_id):
+    """Rebuild an owned action when it was visible in a scoped/stale queue but not in the current top queue."""
+    email_id = _ai_workspace_action_numeric_id(action_id, 'email_waiting:')
+    if email_id:
+        email = EmailLog.objects.filter(
+            id=email_id,
+            user=user,
+            email_type='sent',
+            status='sent',
+            followup__isnull=False,
+            sent_at__isnull=False,
+        ).select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+        ).first()
+        if not email:
+            return None
+        return _ai_workspace_email_waiting_action_payload(email)
+
     return None
 
 
@@ -8458,7 +8504,12 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
     ]
     hold_keywords = [
         '보류', '나중', '추후', '검토중', '검토해본', '다음달', '내년',
-        '대기', '아직결정', '승인대기', '예산확정후',
+        '대기', '아직결정', '승인대기', '예산확정후', '장기',
+        '허락못받', '허락을못받', '승인못받', '결재못받',
+    ]
+    urgent_issue_keywords = [
+        '급선무', '불만', '클레임', '항의', '문제해결', '우선해결',
+        '우선처리', '먼저해결', '해결하는것이급', '해결이급',
     ]
     email_waiting_keywords = [
         '메일보냈', '이메일보냈', '메일발송', '이메일발송', '메일은보냈',
@@ -8497,6 +8548,18 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'nextActionDate': None,
             'reason': '완료 신호가 포함되어 있어 추가 추천 액션이 필요하지 않습니다.',
             'suggestedDraftType': '',
+        })
+    if any(keyword in normalized for keyword in urgent_issue_keywords):
+        return with_priority({
+            'decision': 'next_action',
+            'recommendedStatus': 'next_action',
+            'intent': 'follow_up_needed',
+            'shouldHide': False,
+            'summary': '현재 고객 불만 또는 긴급 이슈 해결이 우선인 상태로 기록됐습니다.',
+            'nextAction': f"{title} 관련 고객 불만 사항을 확인하고 해결 방안과 후속 일정을 안내하세요.",
+            'nextActionDate': (timezone.localdate() + timedelta(days=1)).isoformat(),
+            'reason': '장기 보류 항목이 있더라도 현재 불만/급선무 표현이 있어 긴급 후속조치로 유지합니다.',
+            'suggestedDraftType': 'note',
         })
     if any(keyword in normalized for keyword in email_waiting_keywords):
         return with_priority({
@@ -8601,6 +8664,9 @@ def _ai_workspace_normalize_feedback_result(data, fallback):
         data.get('prioritySignal') or data.get('priority_signal') or data.get('customerPriority') or data.get('priority'),
         fallback.get('prioritySignal'),
     )
+    fallback_priority_signal = fallback.get('prioritySignal') if isinstance(fallback.get('prioritySignal'), dict) else None
+    if fallback_priority_signal and fallback_priority_signal.get('source') == 'feedback':
+        priority_signal = fallback_priority_signal
 
     return {
         'decision': decision,
@@ -8655,6 +8721,8 @@ def _ai_workspace_evaluate_action_feedback(action, feedback_text, force_outcome=
                 '메일을 보냈고 답장이나 회신이 없다는 표현이면 email_waiting으로 판단한다.',
                 '관심, 승인 예정, 구매 의향처럼 긍정 신호가 있으면 positive_buying_signal로 판단한다.',
                 '사용자가 긴급, 오늘, 즉시, 빨리라고 하면 prioritySignal.priority를 urgent로 둔다.',
+                '사용자가 현재 불만, 클레임, 항의, 급선무, 우선 해결이라고 하면 follow_up_needed로 두고 prioritySignal.priority를 urgent로 둔다.',
+                '보상판매처럼 일부 항목은 장기라고 해도 현재 해결해야 할 불만/급선무가 함께 있으면 현재 이슈를 우선한다.',
                 '사용자가 후속, 다음주, 재연락, 확인 필요라고 하면 prioritySignal.priority를 followup으로 둔다.',
                 '사용자가 일정 확정, 예정이라고 하면 prioritySignal.priority를 scheduled로 둔다.',
                 '사용자가 장기, 보류, 나중, 급하지 않음, 다음달, 내년이라고 하면 prioritySignal.priority를 long_term으로 둔다.',

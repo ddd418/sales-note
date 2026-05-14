@@ -7446,6 +7446,87 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['dailyBrief']['counts']['emailWaiting'], 1)
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_accepts_scoped_email_missing_from_global_queue(self, _mock_client):
+        from datetime import timedelta
+        from reporting.models import EmailLog, History
+
+        selected_followup, selected_department = self._create_customer(self.user, '문새롬메일')
+        selected_followup.priority = 'scheduled'
+        selected_followup.save(update_fields=['priority', 'updated_at'])
+        other_followup, other_department = self._create_customer(self.user, '다른메일')
+        self._create_department_analysis(self.user, selected_department)
+        self._create_department_analysis(self.user, other_department)
+        old_sent_at = timezone.now() - timedelta(days=120)
+        waiting_email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            to_email='saerom@example.com',
+            recipient_email='saerom@example.com',
+            subject='[하나과학] 보상판매 견적 및 제품 간단 안내 드립니다',
+            body='보상판매 견적 안내',
+            followup=selected_followup,
+            gmail_message_id='gmail-msg-scoped-waiting',
+            gmail_thread_id='gmail-thread-scoped-waiting',
+            sent_at=old_sent_at,
+        )
+        for index in range(6):
+            EmailLog.objects.create(
+                user=self.user,
+                sender=self.user,
+                provider='gmail',
+                email_type='sent',
+                is_sent=True,
+                status='sent',
+                from_email='sales@example.com',
+                to_email=f'other-{index}@example.com',
+                recipient_email=f'other-{index}@example.com',
+                subject=f'최근 미회신 메일 {index}',
+                body='최근 미회신 메일',
+                followup=other_followup,
+                gmail_message_id=f'gmail-msg-global-waiting-{index}',
+                gmail_thread_id=f'gmail-thread-global-waiting-{index}',
+                sent_at=timezone.now() - timedelta(days=3, minutes=index),
+            )
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(self.url, {'department_id': selected_department.id})
+        self.assertEqual(detail_response.status_code, 200)
+        detail_action_ids = {item['id'] for item in detail_response.json()['actionQueue']}
+        self.assertIn(f'email_waiting:{waiting_email.id}', detail_action_ids)
+
+        general_response = self.client.get(self.url)
+        self.assertEqual(general_response.status_code, 200)
+        general_action_ids = {item['id'] for item in general_response.json()['actionQueue']}
+        self.assertNotIn(f'email_waiting:{waiting_email.id}', general_action_ids)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({
+                'actionId': f'email_waiting:{waiting_email.id}',
+                'feedback': (
+                    '보상판매 : 교수님께 허락을 못받았다고하여 이건 장기로 분류해야합니다. '
+                    '현재는 팁에대한 불만이 있어서 그거 해결하는 것이 급선무 입니다.'
+                ),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
+        self.assertEqual(payload['feedback']['status'], 'next_action')
+        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertIn('불만', payload['feedback']['nextAction'])
+        selected_followup.refresh_from_db()
+        self.assertEqual(selected_followup.priority, 'urgent')
+        self.assertTrue(History.objects.filter(id=payload['crmSync']['taskHistoryId'], followup=selected_followup).exists())
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_needs_review_does_not_change_crm_state(self, _mock_client):
         from datetime import time, timedelta
         from decimal import Decimal

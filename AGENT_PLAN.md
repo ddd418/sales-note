@@ -4357,3 +4357,33 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 - Railway `sales-note-frontend` 배포 후 운영 `/ai-workspace/` smoke 확인.
+
+## 2026-05-14 AI 추천 실행 답변 action_not_found 수정 계획
+
+**배경**:
+
+- 운영 `AI 추천 실행 목록`의 `메일 답장 대기` 카드에서 사용자가 현장 답변을 입력하면 `action_not_found`가 반환되는 케이스가 발생했다.
+- 부서 상세 화면은 `department_id` 기준으로 해당 부서의 오래된 메일 답장 대기 액션을 보여줄 수 있지만, 답변 저장 API는 전역 action queue만 다시 만들어 action id를 찾는다.
+- 전역 queue에는 메일 답장 대기 액션이 최근 발송 메일 상위/최대 5건으로 제한되어 있어, 부서 상세에 보였던 오래된 액션이 저장 시점에 누락될 수 있다.
+- 사용자의 답변처럼 “보상판매는 장기, 현재 팁 불만 해결이 급선무”인 경우 장기/긴급 신호가 함께 들어와도 고객의 현재 긴급도와 다음 액션이 잘 반영되어야 한다.
+
+**DB 변경 필요 여부**: 없음.
+
+**구현 범위**:
+
+- `_ai_workspace_find_action()`가 현재 queue에서 action을 못 찾으면 action id prefix와 소유권을 기준으로 액션 스냅샷을 직접 재구성하는 fallback을 추가한다.
+- 우선 `email_waiting:<EmailLog.id>` 직접 재구성을 지원해, 부서 상세/오래된 메일 액션도 답변 저장과 초안 생성이 가능하게 한다.
+- 직접 재구성은 반드시 `EmailLog.user == request.user`, `email_type='sent'`, `status='sent'`, `sent_at` 존재, 관련 `followup` 존재를 검증한다.
+- fallback 판단 키워드에 `장기`, `허락 못받음`, `불만`, `클레임`, `급선무` 등 실제 현장 표현을 보강한다.
+- 장기 보류와 현재 긴급 이슈가 함께 적힌 답변은 “현재/급선무/불만” 신호를 우선해 고객 긴급도를 `urgent`로 반영하도록 한다.
+
+**검증 계획**:
+
+- 부서 상세 action queue에는 보이지만 전역 queue에는 누락되는 오래된 `email_waiting` 액션에 답변을 저장하면 200이 반환되고 CRM sync가 적용되는 테스트 추가.
+- “보상판매는 장기, 현재 팁 불만 해결이 급선무” 답변이 fallback에서도 `follow_up_needed` + `urgent` prioritySignal로 처리되는 테스트 추가.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
