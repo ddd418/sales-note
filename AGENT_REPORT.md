@@ -16889,6 +16889,28 @@ cd frontend && node --check server.mjs
 
 git diff --check
 → No whitespace errors; Git line-ending warnings only
+
+git commit -m "fix: preserve full AI prompt context"
+git push origin main
+→ Commit 20da590 pushed
+
+railway deployment list --service web --limit 3 --json
+→ web deployment 8fd3e985 SUCCESS for commit 20da590
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI prompt context 20da590"
+→ frontend deployment e11dcfbb started
+
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ frontend deployment e11dcfbb SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/?department_id=308
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=308
+→ 200 React app shell
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/?department_id=308
+→ 401 login_required JSON
 ```
 
 ### 6. Known Limitations / Risks
@@ -16898,7 +16920,15 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Commit/deploy 전 문서 작성 단계입니다. 커밋 후 `web`과 `sales-note-frontend`를 Railway에 배포하고 이 항목을 후속 갱신합니다.
+- Runtime commit: `20da590 fix: preserve full AI prompt context`
+- GitHub: `main` pushed
+- Railway `web`: `8fd3e985-faab-4936-9681-501a5453f6e8` SUCCESS
+- Railway `sales-note-frontend`: `e11dcfbb-a076-41dd-b655-9daa91c7dbb3` SUCCESS
+- DB migration: none
+- Production smoke:
+  - Backend AI workspace detail API returned expected anonymous 401 JSON.
+  - Frontend `/ai-workspace/?department_id=308` returned 200 React app shell.
+  - Frontend proxy AI workspace detail API returned expected anonymous 401 JSON.
 
 ### 8. Manual Server Test Process
 
