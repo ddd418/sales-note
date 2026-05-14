@@ -17352,3 +17352,86 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 - User confirmed production manual validation is complete on 2026-05-14.
 - Do not continue with a new implementation task from this report automatically; start from the next explicit user request.
 - Current working tree was clean before this handoff note update.
+
+---
+
+## 2026-05-15 AI 워크스페이스 부서 실행 요약
+
+### 1. Summary
+
+- `/ai-workspace/?department_id=<id>`처럼 부서 상세 범위로 진입했을 때 `부서 실행 요약` 패널을 추가했습니다.
+- 해당 부서의 `AI 추천 실행 목록`을 기준으로 전체 액션, 긴급 액션, 이번 주 기한, 금액 영향 합계를 먼저 보여줍니다.
+- 액션 유형별 건수와 우선 처리 액션 상위 3개를 함께 표시해 카드 목록을 훑기 전에 현재 부서의 처리 포인트를 파악할 수 있게 했습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+- `AGENT_REPORT.md`
+
+### 3. CRM Improvements
+
+- 부서 상세 AI 화면에서 “이 부서에서 지금 처리할 것”을 요약 카드로 먼저 확인할 수 있습니다.
+- 견적 후속, 고객 후속, 메일 답장 대기, PainPoint 등 액션 유형 분포가 바로 보입니다.
+- 금액 영향과 기한이 있는 액션을 상단에서 확인할 수 있어 부서별 영업 우선순위 판단이 빨라집니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 `/reporting/*` 라우트, 인증, CSRF, AI 권한 정책은 변경하지 않았습니다.
+- 백엔드 API shape는 변경하지 않고 기존 `actionQueue`, `feedbackHistory.scope`, `week`, `featuredDepartment` payload만 사용했습니다.
+- 기존 AI 추천 실행 목록, 현장 답변 저장, 초안 생성, 부서 검색 흐름은 유지했습니다.
+
+### 5. Commands Run
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DKhz3t-E.js / dist/assets/index-ZwGE8OeC.css generated
+→ Vite chunk-size warning only
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_scopes_action_queue_to_requested_department --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py migrate
+→ Applied local SQLite reporting.0100_aiworkspaceactionfeedback for browser smoke only
+
+Local Playwright smoke
+→ Created temporary local AI user/department/action data
+→ Logged in at local React `/ai-workspace/?department_id=217`
+→ Verified `부서 실행 요약` rendered with 2 scoped actions, type counts, top actions, and no console errors
+→ Temporary local user deleted and local servers stopped
+```
+
+### 6. Known Limitations
+
+- 이 변경은 부서 상세 스코프에서만 표시되는 읽기 요약입니다. 새로운 액션 종류를 만들거나 AI action queue 계산 기준을 바꾸지는 않습니다.
+- 일반 `/ai-workspace/` 전체 화면에는 부서 실행 요약을 표시하지 않습니다.
+
+### 7. Production Deployment Status
+
+- Pending: frontend runtime change requires commit, push, and `sales-note-frontend` Railway deployment.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. `부서 분석 대상`에서 회사명/부서명/고객명으로 검색해 부서를 선택합니다.
+3. `/ai-workspace/?department_id=<id>` 상세 화면에서 `오늘의 AI 영업 지휘석` 아래 `부서 실행 요약` 패널이 보이는지 확인합니다.
+4. 전체 액션, 긴급, 이번 주 기한, 금액 영향 값이 아래 `AI 추천 실행 목록`과 맞는지 확인합니다.
+5. 액션 유형별 건수와 우선 처리 액션 상위 3개가 표시되는지 확인합니다.
+6. 현장 답변 저장, 메일/노트/질문 초안, 고객/일정/노트 링크가 기존처럼 동작하는지 확인합니다.

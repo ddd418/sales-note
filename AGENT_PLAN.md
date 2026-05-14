@@ -4590,3 +4590,32 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-15 AI 워크스페이스 부서 실행 요약 계획
+
+**배경**:
+
+- 최근 AI Workspace 작업으로 `/ai-workspace/?department_id=<id>` 상세 화면의 `AI 추천 실행 목록`은 해당 부서 기준으로 필터링된다.
+- 다만 운영자가 부서 상세로 들어갔을 때 카드 목록을 훑기 전까지 이 부서에 긴급/메일대기/견적후속/고객후속이 몇 건인지, 금액 영향이 있는지 한눈에 보기 어렵다.
+
+**DB 변경 필요 여부**: 없음.
+
+- 기존 `/reporting/api/ai-workspace/`의 `actionQueue`, `feedbackHistory.scope`, `week`, `featuredDepartment` payload만 사용한다.
+- 새 모델, migration, 외부 연동은 추가하지 않는다.
+
+**구현 범위**:
+
+- React AI Workspace에 부서 상세 범위에서만 표시되는 `부서 실행 요약` 패널을 추가한다.
+- 현재 부서 `actionQueue`를 기준으로 전체 액션 수, 긴급 액션 수, 이번 주 기한 액션 수, 예상 금액 영향 합계를 계산해 표시한다.
+- 액션 유형별 건수/비중과 우선 처리 액션 상위 3개를 함께 보여준다.
+- action이 없으면 부서 범위에 처리할 추천 실행 항목이 없다는 빈 상태를 표시한다.
+- 기존 `AI 추천 실행 목록`, 답변 저장, 초안 생성, 부서 검색, `/reporting/*` fallback, 인증/권한 정책은 유지한다.
+
+**검증 계획**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

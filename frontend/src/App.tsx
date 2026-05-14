@@ -12077,6 +12077,102 @@ function AIWorkspaceDailyBriefPanel({ data }: { data: AIWorkspaceData }) {
   );
 }
 
+function AIWorkspaceDepartmentActionSummary({ data }: { data: AIWorkspaceData }) {
+  const scope = data.feedbackHistory.scope;
+  if (!scope.departmentId) {
+    return null;
+  }
+
+  const actions = data.actionQueue || [];
+  const kindCounts = actions.reduce<Array<{ kind: string; label: string; count: number }>>((items, action) => {
+    const existing = items.find((item) => item.kind === action.kind);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      items.push({ kind: action.kind, label: action.kindLabel, count: 1 });
+    }
+    return items;
+  }, []).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const maxKindCount = Math.max(1, ...kindCounts.map((item) => item.count));
+  const topActions = [...actions].sort((a, b) => {
+    if (b.priorityScore !== a.priorityScore) {
+      return b.priorityScore - a.priorityScore;
+    }
+    return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
+  }).slice(0, 3);
+  const weekEnd = data.week.end || '';
+  const dueThisWeek = actions.filter((action) => action.dueDate && (!weekEnd || action.dueDate <= weekEnd)).length;
+  const totalMoneyImpact = actions.reduce((sum, action) => sum + (action.moneyImpact || 0), 0);
+  const departmentLabel = [
+    data.featuredDepartment?.companyName,
+    scope.departmentName || data.featuredDepartment?.departmentName,
+  ].filter(Boolean).join(' · ') || scope.label || '선택 부서';
+  const summaryStats = [
+    { label: '전체 액션', value: `${formatNumber(actions.length)}건`, icon: ListChecks },
+    { label: '긴급', value: `${formatNumber(data.dailyBrief.counts.urgentActions)}건`, icon: AlertTriangle },
+    { label: '이번 주 기한', value: `${formatNumber(dueThisWeek)}건`, icon: CalendarDays },
+    { label: '금액 영향', value: totalMoneyImpact ? formatWon(totalMoneyImpact) : '0원', icon: CircleDollarSign },
+  ];
+
+  return (
+    <section className="dashboard-panel ai-department-action-summary">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Department action summary</span>
+          <h2>부서 실행 요약</h2>
+        </div>
+        <ListChecks size={18} />
+      </div>
+      <div className="ai-department-summary-scope">
+        <span>{departmentLabel}</span>
+        <small>{formatDateLabel(data.week.start)} - {formatDateLabel(data.week.end)}</small>
+      </div>
+      <div className="ai-department-summary-stats">
+        {summaryStats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div className="ai-department-summary-stat" key={stat.label}>
+              <Icon size={16} />
+              <span>{stat.label}</span>
+              <strong>{stat.value}</strong>
+            </div>
+          );
+        })}
+      </div>
+      {actions.length > 0 ? (
+        <div className="ai-department-summary-body">
+          <div className="ai-department-kind-summary">
+            {kindCounts.map((kind) => (
+              <div className="ai-department-kind-row" key={kind.kind}>
+                <span>{kind.label}</span>
+                <strong>{formatNumber(kind.count)}건</strong>
+                <i style={{ width: `${Math.max(12, Math.round((kind.count / maxKindCount) * 100))}%` }} />
+              </div>
+            ))}
+          </div>
+          <div className="ai-department-focus-list">
+            {topActions.map((action) => (
+              <article key={action.id}>
+                <div>
+                  <span>{action.kindLabel}</span>
+                  <strong>{action.title}</strong>
+                </div>
+                <small>
+                  {action.priorityLabel}
+                  {action.dueDate ? ` · ${formatDateLabel(action.dueDate)}` : ''}
+                  {action.moneyImpact ? ` · ${formatWon(action.moneyImpact)}` : ''}
+                </small>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <DashboardEmpty label={`${scope.departmentName || '선택 부서'}에서 오늘 바로 처리할 추천 액션이 없습니다`} />
+      )}
+    </section>
+  );
+}
+
 function AIWorkspaceActionQueue({
   actions,
   draftLoadingKey,
@@ -12584,6 +12680,7 @@ function AIWorkspacePage({
       {data.permission.canUseAi ? (
         <>
         <AIWorkspaceDailyBriefPanel data={data} />
+        <AIWorkspaceDepartmentActionSummary data={data} />
 
         <div className="ai-workspace-layout">
           <div className="ai-workspace-main">
