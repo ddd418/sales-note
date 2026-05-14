@@ -1,8 +1,8 @@
 # AGENT_PLAN.md
 
-## Current task — 일정 상세 납품품목 선결제 차감 긴급 추가
+## Current task — 일정 상세 납품품목 선결제 차감 + AI 액션 오류 긴급 수정
 
-**목표**: React 일정 상세 `/schedules/<id>/`에서 납품품목을 저장할 때 같은 고객/부서의 선결제를 선택해 잔액에서 차감할 수 있게 한다. 이어서 AI Workspace 부서 상세 액션에서 `action_not_found`가 뜨는 경로를 막는다.
+**목표**: React 일정 상세 `/schedules/<id>/`에서 납품품목을 저장할 때 같은 고객/부서의 선결제를 선택해 잔액에서 차감할 수 있게 한다. 이어서 AI Workspace 부서 상세 액션에서 `action_not_found`가 뜨는 경로를 막고, 중복 실행 패널을 제거한다. 납품 일정의 `견적 불러오기`는 여러 견적을 한 번에 선택해 가져올 수 있게 한다.
 
 ### 확인된 상태
 
@@ -12,6 +12,8 @@
 - 납품품목 저장 API `/reporting/api/schedules/<id>/delivery-items/update/`는 품목 저장과 견적 일정 완료 처리는 하지만 선결제 적용 요청을 처리하지 않는다.
 - AI Workspace 초안/답변 API는 전역 action queue를 다시 구성한 뒤 action id를 찾는데, 부서 상세에서만 보이는 하위순위 액션은 전역 queue 제한 때문에 누락될 수 있다.
 - 기존 직접 재구성 fallback은 `email_waiting:<id>`만 지원해 `quote:<id>`, `followup:<id>` 등에서 `action_not_found`가 발생할 수 있다.
+- `/ai-workspace/?department_id=14` 형태의 부서 상세에서 왼쪽 실행 목록과 오른쪽 보조 패널의 PainPoint/추천 항목이 중복 노출된다.
+- 일정 상세 `견적 불러오기`는 기존 단일 적용 버튼만 있어 여러 견적을 한 번에 가져올 수 없다.
 - DB 모델 변경과 migration은 필요 없다.
 
 ### 구현 계획
@@ -23,11 +25,14 @@
 - 견적 일정(`activity_type=quote`) 품목 편집에는 선결제 차감 UI를 노출하지 않는다.
 - AI Workspace action id 직접 재구성 fallback을 `quote`, `quote_schedule`, `delivery`, `followup`, `painpoint`, `weekly_report`까지 확장한다.
 - 이미 완료/숨김 처리된 action은 기존 feedback 숨김 정책으로 계속 차단한다.
+- AI Workspace 오른쪽 보조 실행/PainPoint 패널은 제거하고 중앙 실행 목록만 남긴다.
+- `견적 불러오기` 카드에 체크박스를 추가하고 선택한 여러 견적을 한 번에 적용한다.
 
 ### 검증 계획
 
 - 납품품목 저장 API가 품목 저장과 동시에 선결제를 차감하고, 재저장 시 기존 차감을 복구 후 재적용하는 회귀 테스트 추가.
 - 부서 상세에는 보이지만 전역 queue에는 밀려난 견적/후속 액션의 초안 생성과 현장 답변 저장이 200으로 처리되는 회귀 테스트 추가.
+- 부서 상세에는 보이지만 전역 queue에는 밀려난 PainPoint 액션의 현장 답변 저장이 200으로 처리되는 회귀 테스트 추가.
 - `python -m py_compile reporting\views.py reporting\tests.py`
 - 관련 일정/선결제/AI Workspace 테스트 실행.
 - `python manage.py check`
@@ -43,6 +48,8 @@
 - 기존 선결제 헬퍼와 React 일정 상세 구조를 확인했다.
 - React 일정 상세 납품품목 선결제 UI/API 구현 완료.
 - AI Workspace `action_not_found` fallback 확장 완료.
+- AI Workspace 오른쪽 중복 실행 패널 제거 완료.
+- React 일정 상세 견적 불러오기 다중 선택 UI 구현 완료.
 - DB 모델 변경과 migration 없음 확인.
 - 로컬 API 테스트, 타입체크, 빌드, Playwright smoke 통과.
 - 커밋/푸시 및 Railway 배포 진행 예정.

@@ -6152,6 +6152,7 @@ function ScheduleDetailPage({
   const [quoteImportOpen, setQuoteImportOpen] = useState(false);
   const [quoteImportLoading, setQuoteImportLoading] = useState(false);
   const [quoteImportError, setQuoteImportError] = useState('');
+  const [selectedQuoteImportIds, setSelectedQuoteImportIds] = useState<string[]>([]);
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -6191,6 +6192,7 @@ function ScheduleDetailPage({
     setQuoteImportOpen(false);
     setQuoteImportLoading(false);
     setQuoteImportError('');
+    setSelectedQuoteImportIds([]);
     setProductError('');
     setScheduleDeleting(false);
     setScheduleDeleteError('');
@@ -6575,6 +6577,8 @@ function ScheduleDetailPage({
     try {
       const quotes = await loadFollowupQuoteItems(currentSchedule.followupId);
       setQuoteImportData(quotes);
+      const availableQuoteIds = new Set(quotes.quotes.map((quote) => quote.optionId));
+      setSelectedQuoteImportIds((previous) => previous.filter((optionId) => availableQuoteIds.has(optionId)));
       if (!quotes.quotes.length) {
         setQuoteImportError('불러올 수 있는 견적 품목이 없습니다.');
       }
@@ -6600,6 +6604,7 @@ function ScheduleDetailPage({
     if (quoteImportOpen) {
       setQuoteImportOpen(false);
       setQuoteImportError('');
+      setSelectedQuoteImportIds([]);
       return;
     }
     setDeliveryEditOpen(true);
@@ -6607,12 +6612,24 @@ function ScheduleDetailPage({
     setDeliveryError('');
     setDeliveryMessage('');
     setQuoteImportOpen(true);
+    setSelectedQuoteImportIds([]);
     void ensureProductsLoaded();
     void loadQuoteImports();
   };
 
-  const handleQuoteImportApply = (quote: FollowupQuoteOption) => {
-    if (!quote.items.length) {
+  const handleQuoteImportSelectionChange = (optionId: string, selected: boolean) => {
+    setSelectedQuoteImportIds((previous) => {
+      if (selected) {
+        return previous.includes(optionId) ? previous : [...previous, optionId];
+      }
+      return previous.filter((id) => id !== optionId);
+    });
+    setQuoteImportError('');
+  };
+
+  const handleQuoteImportApply = (quotes: FollowupQuoteOption | FollowupQuoteOption[]) => {
+    const quoteList = (Array.isArray(quotes) ? quotes : [quotes]).filter((quote) => quote.items.length > 0);
+    if (!quoteList.length) {
       setQuoteImportError('선택한 견적에 품목이 없습니다.');
       return;
     }
@@ -6622,14 +6639,26 @@ function ScheduleDetailPage({
     ) {
       return;
     }
-    const importedRows = quote.items.map((item, index) => makeScheduleDeliveryEditRowFromQuoteItem(item, quote, index));
+    const importedRows = quoteList.flatMap((quote, quoteIndex) => (
+      quote.items.map((item, itemIndex) => makeScheduleDeliveryEditRowFromQuoteItem(
+        item,
+        quote,
+        quoteIndex * 1000 + itemIndex,
+      ))
+    ));
     setDeliveryRows(importedRows.length > 0 ? importedRows : [makeScheduleDeliveryEditRow(undefined, 0)]);
     setDeliveryEditOpen(true);
     setQuoteImportOpen(false);
+    setSelectedQuoteImportIds([]);
     setQuoteImportError('');
     setDeliveryError('');
-    const quoteLabel = quoteImportOptionTitle(quote);
-    setDeliveryMessage(`${quoteLabel} 품목 ${quote.items.length}개를 불러왔습니다. 저장을 눌러 납품 일정에 반영하세요.`);
+    const quoteLabel = quoteList.length === 1 ? quoteImportOptionTitle(quoteList[0]) : `${quoteList.length}개 견적`;
+    setDeliveryMessage(`${quoteLabel} 품목 ${importedRows.length}개를 불러왔습니다. 저장을 눌러 납품 일정에 반영하세요.`);
+  };
+
+  const handleSelectedQuoteImportApply = () => {
+    const selectedQuotes = quoteImportData?.quotes.filter((quote) => selectedQuoteImportIds.includes(quote.optionId)) ?? [];
+    handleQuoteImportApply(selectedQuotes);
   };
 
   const handleDeliveryFieldChange = (rowId: string, field: ScheduleDeliveryEditField, value: string | boolean) => {
@@ -7413,17 +7442,28 @@ function ScheduleDetailPage({
               <div className="schedule-quote-import-heading">
                 <div>
                   <strong>견적 품목 불러오기</strong>
-                  <span>같은 부서의 본인 견적 일정에서 가져올 견적서를 선택합니다.</span>
+                  <span>같은 부서의 본인 견적 일정에서 하나 이상 선택해 한 번에 가져옵니다.</span>
                 </div>
-                <button
-                  className="customer-row-action schedule-delivery-edit-toggle"
-                  disabled={quoteImportLoading}
-                  onClick={() => void loadQuoteImports()}
-                  type="button"
-                >
-                  {quoteImportLoading ? <Loader2 className="spin-icon" size={14} /> : <RefreshCw size={14} />}
-                  <span>새로고침</span>
-                </button>
+                <div className="schedule-quote-import-actions">
+                  <span>{selectedQuoteImportIds.length ? `${formatNumber(selectedQuoteImportIds.length)}개 선택` : '선택 대기'}</span>
+                  <button
+                    className="route-secondary-action"
+                    disabled={deliverySaving || quoteImportLoading || selectedQuoteImportIds.length === 0}
+                    onClick={handleSelectedQuoteImportApply}
+                    type="button"
+                  >
+                    선택 적용
+                  </button>
+                  <button
+                    className="customer-row-action schedule-delivery-edit-toggle"
+                    disabled={quoteImportLoading}
+                    onClick={() => void loadQuoteImports()}
+                    type="button"
+                  >
+                    {quoteImportLoading ? <Loader2 className="spin-icon" size={14} /> : <RefreshCw size={14} />}
+                    <span>새로고침</span>
+                  </button>
+                </div>
               </div>
               {quoteImportError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{quoteImportError}</span></div> : null}
               {quoteImportLoading ? (
@@ -7433,38 +7473,41 @@ function ScheduleDetailPage({
                 </div>
               ) : quoteImportData?.quotes.length ? (
                 <div className="schedule-quote-import-list">
-                  {quoteImportData.quotes.map((quote) => (
-                    <div className="schedule-quote-import-card" key={quote.optionId}>
-                      <div>
-                        <strong>{quoteImportOptionTitle(quote)}</strong>
-                        <span>{[
-                          quote.customerName || '고객명 미정',
-                          quote.companyName,
-                          quote.departmentName,
-                          quote.quoteDate ? formatDateLabel(quote.quoteDate) : '',
-                          `일정 #${quote.scheduleId}`,
-                          `남은 품목 ${formatNumber(quote.items.length)}개`,
-                          quote.remainingAmount ? `잔여 ${formatWon(quote.remainingAmount)}` : '',
-                        ].filter(Boolean).join(' · ')}</span>
-                        <div className="schedule-quote-import-badges">
-                          <span className={quote.hasPartialDelivery ? 'partial' : 'pending'}>
-                            {quote.deliveryStatusLabel}
+                  {quoteImportData.quotes.map((quote) => {
+                    const selected = selectedQuoteImportIds.includes(quote.optionId);
+                    return (
+                      <div className={selected ? 'schedule-quote-import-card selected' : 'schedule-quote-import-card'} key={quote.optionId}>
+                        <label className="schedule-quote-import-select">
+                          <input
+                            checked={selected}
+                            disabled={deliverySaving}
+                            onChange={(event) => handleQuoteImportSelectionChange(quote.optionId, event.target.checked)}
+                            type="checkbox"
+                          />
+                          <span className="schedule-quote-import-main">
+                            <strong>{quoteImportOptionTitle(quote)}</strong>
+                            <span>{[
+                              quote.customerName || '고객명 미정',
+                              quote.companyName,
+                              quote.departmentName,
+                              quote.quoteDate ? formatDateLabel(quote.quoteDate) : '',
+                              `일정 #${quote.scheduleId}`,
+                              `남은 품목 ${formatNumber(quote.items.length)}개`,
+                              quote.remainingAmount ? `잔여 ${formatWon(quote.remainingAmount)}` : '',
+                            ].filter(Boolean).join(' · ')}</span>
+                            <span className="schedule-quote-import-badges">
+                              <span className={quote.hasPartialDelivery ? 'partial' : 'pending'}>
+                                {quote.deliveryStatusLabel}
+                              </span>
+                              {quote.deliveredAmount > 0 ? <span>납품 반영 {formatWon(quote.deliveredAmount)}</span> : null}
+                              {quote.quotedAmount > 0 ? <span>원 견적 {formatWon(quote.quotedAmount)}</span> : null}
+                            </span>
+                            <p>{quote.items.map(quoteImportItemSummary).slice(0, 6).join(', ')}</p>
                           </span>
-                          {quote.deliveredAmount > 0 ? <span>납품 반영 {formatWon(quote.deliveredAmount)}</span> : null}
-                          {quote.quotedAmount > 0 ? <span>원 견적 {formatWon(quote.quotedAmount)}</span> : null}
-                        </div>
-                        <p>{quote.items.map(quoteImportItemSummary).slice(0, 6).join(', ')}</p>
+                        </label>
                       </div>
-                      <button
-                        className="route-secondary-action"
-                        disabled={deliverySaving}
-                        onClick={() => handleQuoteImportApply(quote)}
-                        type="button"
-                      >
-                        적용
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <DashboardEmpty label="불러올 수 있는 견적이 없습니다" />
@@ -12768,11 +12811,6 @@ function AIWorkspacePage({
   const [actionFeedbackSavingId, setActionFeedbackSavingId] = useState('');
   const [actionFeedbackMessage, setActionFeedbackMessage] = useState('');
   const [actionFeedbackError, setActionFeedbackError] = useState('');
-  const [featuredVerificationNotes, setFeaturedVerificationNotes] = useState<Record<number, string>>({});
-  const [featuredVerifyingId, setFeaturedVerifyingId] = useState<number | null>(null);
-  const [featuredRunningId, setFeaturedRunningId] = useState<number | null>(null);
-  const [aiPanelMessage, setAiPanelMessage] = useState('');
-  const [aiPanelError, setAiPanelError] = useState('');
   const [departmentQuestion, setDepartmentQuestion] = useState('');
   const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
   const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
@@ -12886,64 +12924,6 @@ function AIWorkspacePage({
     }
   };
 
-  const handleFeaturedVerificationNoteChange = (cardId: number, value: string) => {
-    setFeaturedVerificationNotes((previous) => ({
-      ...previous,
-      [cardId]: value,
-    }));
-  };
-
-  const handleFeaturedPainpointVerify = async (card: CustomerAiPainpoint) => {
-    if (!card.canVerify || !card.verifyHref || featuredVerifyingId) {
-      return;
-    }
-
-    setFeaturedVerifyingId(card.id);
-    setAiPanelError('');
-    setAiPanelMessage('');
-    try {
-      await verifyAiPainpoint(card.verifyHref, featuredVerificationNotes[card.id] || '');
-      await onRefresh({ departmentId: data?.featuredDepartment?.departmentId ?? selectedDepartmentId });
-      setAiPanelMessage('PainPoint 검증 메모를 저장했습니다.');
-      setFeaturedVerificationNotes((previous) => {
-        const next = { ...previous };
-        delete next[card.id];
-        return next;
-      });
-    } catch (error) {
-      setAiPanelError(error instanceof Error ? error.message : 'PainPoint 검증 저장에 실패했습니다.');
-    } finally {
-      setFeaturedVerifyingId(null);
-    }
-  };
-
-  const handleFeaturedDepartmentRun = async () => {
-    const featuredDepartment = data?.featuredDepartment;
-    if (!featuredDepartment?.canAnalyze || !featuredDepartment.runHref || featuredRunningId) {
-      setAiPanelError(featuredDepartment?.message || 'AI 분석을 실행할 수 없습니다.');
-      setAiPanelMessage('');
-      return;
-    }
-
-    setFeaturedRunningId(featuredDepartment.departmentId);
-    setAiPanelError('');
-    setAiPanelMessage('');
-    try {
-      const result = await runAiDepartmentAnalysis(featuredDepartment.runHref);
-      await onRefresh({ departmentId: featuredDepartment.departmentId });
-      const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
-      const priorityUpdates = result.priority_updates ?? result.priorityUpdates ?? 0;
-      const messageParts = ['AI 분석을 완료했습니다.'];
-      if (cardCount > 0) messageParts.push(`PainPoint ${formatNumber(cardCount)}건`);
-      if (priorityUpdates > 0) messageParts.push(`우선순위 갱신 ${formatNumber(priorityUpdates)}건`);
-      setAiPanelMessage(messageParts.join(' '));
-    } catch (error) {
-      setAiPanelError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
-    } finally {
-      setFeaturedRunningId(null);
-    }
-  };
-
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -12964,7 +12944,6 @@ function AIWorkspacePage({
     { label: '고객 분석', value: `${formatNumber(data.metrics.followupAnalyses)}건`, detail: '개별 고객', icon: Target, tone: 'amber' as const },
     { label: '이번 달 보고', value: `${formatNumber(data.metrics.weeklyReportsThisMonth)}건`, detail: '주간보고', icon: FileText, tone: 'green' as const },
   ];
-  const featuredDepartment = data.featuredDepartment;
 
   return (
     <section className="ai-page">
@@ -13140,116 +13119,6 @@ function AIWorkspacePage({
             ) : null}
           </div>
 
-          <aside className="ai-workspace-copilot">
-            <div className="customer-ai-card ai-workspace-featured-ai">
-              <div className="customer-ai-card-heading">
-                <div>
-                  <span className="eyebrow">Department AI</span>
-                  <h3>{featuredDepartment?.departmentName || '부서 AI 분석'}</h3>
-                </div>
-                <Sparkles size={18} />
-              </div>
-              {featuredDepartment ? (
-                <>
-                  {featuredDepartment.hasAnalysis ? (
-                    <p>{featuredDepartment.summary || '분석 요약 없음'}</p>
-                  ) : (
-                    <p>{featuredDepartment.message || '아직 부서 AI 분석이 없습니다.'}</p>
-                  )}
-                  <div className="customer-ai-metrics">
-                    <span>고객 <strong>{formatNumber(featuredDepartment.customerCount)}</strong></span>
-                    <span>미팅 <strong>{formatNumber(featuredDepartment.meetingCount)}</strong></span>
-                    <span>견적 <strong>{formatNumber(featuredDepartment.quoteCount)}</strong></span>
-                    <span>납품 <strong>{formatNumber(featuredDepartment.deliveryCount)}</strong></span>
-                    <span>PainPoint <strong>{formatNumber(featuredDepartment.painpointCount)}</strong></span>
-                    <span>미검증 <strong>{formatNumber(featuredDepartment.unverifiedPainpointCount)}</strong></span>
-                  </div>
-                  {featuredDepartment.customerPreview.length > 0 ? (
-                    <div className="ai-featured-customer-chips">
-                      {featuredDepartment.customerPreview.map((customer) => (
-                        <span key={customer}>{customer}</span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {aiPanelError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{aiPanelError}</span></div> : null}
-                  {aiPanelMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{aiPanelMessage}</span></div> : null}
-                  <div className="customer-ai-actions">
-                    {featuredDepartment.href ? (
-                      <a className="route-secondary-action" href={featuredDepartment.href}>
-                        Django 보기
-                        <MoveUpRight size={15} />
-                      </a>
-                    ) : null}
-                    {featuredDepartment.hubHref ? (
-                      <a className="route-secondary-action" href={featuredDepartment.hubHref}>
-                        AI 허브
-                        <MoveUpRight size={15} />
-                      </a>
-                    ) : null}
-                    <button
-                      className="route-primary-action customer-ai-run-button"
-                      disabled={!featuredDepartment.canAnalyze || !featuredDepartment.runHref || Boolean(featuredRunningId)}
-                      onClick={handleFeaturedDepartmentRun}
-                      type="button"
-                    >
-                      {featuredRunningId === featuredDepartment.departmentId ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
-                      AI 분석 실행
-                    </button>
-                  </div>
-                  {featuredDepartment.hasAnalysis ? (
-                    <CustomerAiResultPanel
-                      aiDepartment={featuredDepartment}
-                      verificationNotes={featuredVerificationNotes}
-                      verifyingId={featuredVerifyingId}
-                      onNoteChange={handleFeaturedVerificationNoteChange}
-                      onVerify={handleFeaturedPainpointVerify}
-                    />
-                  ) : (
-                    <DashboardEmpty label="AI 분석 실행 후 결과가 표시됩니다" />
-                  )}
-                </>
-              ) : (
-                <DashboardEmpty label="AI 분석 대상 부서가 없습니다" />
-              )}
-            </div>
-
-            <section className="dashboard-panel ai-side-panel">
-              <div className="dashboard-panel-heading">
-                <div>
-                  <span className="eyebrow">Action</span>
-                  <h2>바로 실행</h2>
-                </div>
-                <MoveUpRight size={18} />
-              </div>
-              <div className="ai-tool-list">
-                <a href={data.links.aiHub}>
-                  <Sparkles size={17} />
-                  <span>부서 분석/프롬프트</span>
-                </a>
-                <a href={data.links.weeklyAiDraft}>
-                  <FileText size={17} />
-                  <span>이번 주 AI 초안</span>
-                </a>
-                <a href={data.links.customers}>
-                  <Users size={17} />
-                  <span>고객 목록</span>
-                </a>
-                <a href={data.links.notes}>
-                  <MessageSquareText size={17} />
-                  <span>영업노트</span>
-                </a>
-              </div>
-
-              <div className="dashboard-panel-heading ai-side-heading">
-                <div>
-                  <span className="eyebrow">PainPoint</span>
-                  <h2>검증 대기</h2>
-                </div>
-                <AlertTriangle size={18} />
-              </div>
-              <AIWorkspacePainpointList painpoints={data.painpoints} />
-            </section>
-          </aside>
         </div>
         </>
       ) : null}

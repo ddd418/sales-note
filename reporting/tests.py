@@ -8214,6 +8214,58 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotEqual(payload['error'] if 'error' in payload else '', 'action_not_found')
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_accepts_scoped_painpoint_missing_from_global_queue(self, _mock_client):
+        from ai_chat.models import PainPointCard
+        from reporting.models import AIWorkspaceActionFeedback
+
+        selected_followup, selected_department = self._create_customer(self.user, '미생물공생및면역')
+        selected_analysis = self._create_department_analysis(self.user, selected_department)
+        selected_card = selected_analysis.painpoint_cards.first()
+        selected_card.category = 'compatibility'
+        selected_card.hypothesis = '현재 사용 중인 튜브가 고속 원심분리 시 깨지거나 뚜껑이 열리는 문제가 있다.'
+        selected_card.verification_question = 'Paradigm Tube의 사용감과 15000g에서도 안열리는지 확인했는가?'
+        selected_card.confidence = 'med'
+        selected_card.confidence_score = 60
+        selected_card.save(update_fields=['category', 'hypothesis', 'verification_question', 'confidence', 'confidence_score'])
+        for index in range(8):
+            _other_followup, other_department = self._create_customer(self.user, f'전역PainPoint{index}')
+            other_analysis = self._create_department_analysis(self.user, other_department)
+            other_card = other_analysis.painpoint_cards.first()
+            other_card.confidence_score = 90 - index
+            other_card.save(update_fields=['confidence_score'])
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(self.url, {'department_id': selected_department.id})
+        self.assertEqual(detail_response.status_code, 200)
+        detail_action_ids = {item['id'] for item in detail_response.json()['actionQueue']}
+        self.assertIn(f'painpoint:{selected_card.id}', detail_action_ids)
+
+        general_response = self.client.get(self.url)
+        self.assertEqual(general_response.status_code, 200)
+        general_action_ids = {item['id'] for item in general_response.json()['actionQueue']}
+        self.assertNotIn(f'painpoint:{selected_card.id}', general_action_ids)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({
+                'actionId': f'painpoint:{selected_card.id}',
+                'feedback': 'Paradigm Tube 샘플을 전달하고 15000g 원심분리 후 뚜껑 열림 여부를 확인하기로 했습니다.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['action']['id'], f'painpoint:{selected_card.id}')
+        self.assertNotEqual(payload['error'] if 'error' in payload else '', 'action_not_found')
+        self.assertTrue(AIWorkspaceActionFeedback.objects.filter(
+            user=self.user,
+            action_id=f'painpoint:{selected_card.id}',
+            followup=selected_followup,
+        ).exists())
+        self.assertTrue(PainPointCard.objects.filter(id=selected_card.id).exists())
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_accepts_scoped_email_missing_from_global_queue(self, _mock_client):
         from datetime import timedelta
         from reporting.models import EmailLog, History
