@@ -16557,3 +16557,100 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 ### 9. Recommended Next Task
 
 운영 수동검수 후, 같은 고객 안에서 “보상판매 장기”와 “팁 불만 긴급”처럼 주제가 다른 이슈를 고객 단일 긴급도뿐 아니라 이슈별 후속조치로 분리해 보여주는 개선을 검토하는 것이 좋습니다.
+
+## 2026-05-14 AI 추천 실행 피드백 구체화
+
+### 1. Summary
+
+- `문새롬 메일 답장 확인`의 다음 액션이 “팁에 대한 불만 사항을 해결하기 위한 조치를 취하세요”처럼 일반적인 문장으로 저장되는 문제를 개선했습니다.
+- 불만/클레임/급선무 유형의 현장 답변에서는 핵심 이슈명(`팁`)을 추출하고, 확인 항목/해결안/고객 회신 기준이 들어간 실행문으로 보정합니다.
+- `보상판매 : ... 장기`처럼 장기 분리 대상이 함께 있으면 “보상판매 건은 장기 후속으로 분리”하라는 문장을 추가합니다.
+- OpenAI가 다시 일반적인 `nextAction`을 반환하더라도 서버 정규화 단계에서 구체 실행문으로 바꿉니다.
+
+### 2. Files Changed
+
+- `reporting/views.py`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+
+### 3. CRM Improvements
+
+- AI 추천 실행 답변의 다음 액션이 실제 영업 담당자가 바로 확인할 수 있는 체크리스트형 문장에 가까워졌습니다.
+- 고객 불만 건은 `증상`, `사용 제품 규격`, `수량/로트`, `사진 여부`, `교체/대체품/사용법 안내`, `처리 예정 시간 회신`을 포함합니다.
+- 같은 답변 안에 장기 이슈와 긴급 불만 이슈가 섞여 있어도, 장기 추적과 현재 긴급 대응을 분리해서 안내합니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*` 라우트, 인증, CSRF 보호는 유지했습니다.
+- 기존 AI feedback 저장 API shape는 유지했습니다.
+- 기존 action_not_found 수정 로직과 고객 긴급도 동기화는 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_feedback_api_accepts_scoped_email_missing_from_global_queue reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_feedback_api_specializes_generic_openai_issue_action --verbosity=2
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 27 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ No whitespace errors; Git line-ending warnings only
+
+git commit -m "fix: specialize AI issue feedback actions"
+git push origin main
+→ Commit d7300e0 pushed
+
+railway deployment up --service web --detach --message "Deploy specialized AI issue feedback d7300e0"
+→ Failed: Railway CLI Unauthorized, re-login required
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+```
+
+### 6. Known Limitations
+
+- Railway CLI OAuth token expired during this task, so I could not manually start or inspect a Railway deployment ID for `d7300e0`.
+- `main` push completed and production smoke endpoints are healthy, but deployment status for this exact commit requires `railway login` and redeploy/status check.
+- Existing already-saved generic AI feedback may still display the old sentence until the action is answered again or the production record is backfilled after Railway CLI access is restored.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `d7300e0 fix: specialize AI issue feedback actions`
+- GitHub: `main` pushed
+- Railway `web`: manual deploy/status check blocked by expired Railway CLI session (`Unauthorized. Please run railway login again.`)
+- Railway `sales-note-frontend`: 프론트 코드 변경 없음, 재배포 없음
+- Production smoke:
+  - Backend login page returned 200.
+  - Backend AI workspace API returned expected anonymous 401 JSON.
+  - Frontend proxy AI workspace API returned expected anonymous 401 JSON.
+
+### 8. Manual Server Test Process
+
+1. Railway CLI 재로그인 또는 GitHub 자동 배포 완료 후 운영 프론트에 접속합니다: `https://sales-note-frontend-production.up.railway.app/ai-workspace/`
+2. `문새롬 메일 답장 확인` 카드에 같은 답변을 다시 입력합니다.
+3. 다음 액션이 “조치를 취하세요”가 아니라 `팁 불만은 오늘 먼저 증상, 사용 제품 규격, 수량/로트, 사진 여부를 확인... 처리 예정 시간을 회신... 보상판매 건은 장기 후속...`처럼 구체적으로 나오는지 확인합니다.
+4. 고객 긴급도는 현재 `팁 불만/급선무` 기준으로 `긴급` 유지되는지 확인합니다.
+
+### 9. Recommended Next Task
+
+Railway CLI 인증을 복구한 뒤 `d7300e0` 배포 상태를 확인하고, 이미 저장된 문새롬 feedback 레코드의 `nextAction`을 새 구체 실행문으로 backfill하는 것이 좋습니다.
