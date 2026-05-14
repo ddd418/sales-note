@@ -2974,6 +2974,11 @@ h2 {
   font-weight: 800;
 }
 
+.schedule-prepayment-amount label {
+  display: grid;
+  gap: 5px;
+}
+
 .schedule-prepayment-amount input {
   min-height: 36px;
 }
@@ -2981,6 +2986,37 @@ h2 {
 .schedule-prepayment-amount input:disabled {
   background: var(--panel-soft);
   color: var(--muted);
+}
+
+.schedule-prepayment-limit {
+  color: #1d4ed8 !important;
+  font-weight: 900;
+}
+
+.schedule-prepayment-limit.over {
+  color: #b91c1c !important;
+}
+
+.schedule-prepayment-fill-button {
+  min-height: 32px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.schedule-prepayment-fill-button:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: #eff6ff;
+}
+
+.schedule-prepayment-fill-button:disabled {
+  border-color: var(--line);
+  background: var(--panel-soft);
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .schedule-prepayment-loading {

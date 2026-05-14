@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-05-15 — Delivery Prepayment Cap UX
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+일정 상세 납품 품목 편집의 선결제 차감 입력에 품목 금액 상한 안내를 추가했습니다. 선결제를 체크하면 해당 행에서 `품목 상한`, `최대 차감`, `입력 후 남은 납품금액`을 즉시 보여주고, `전체 차감` 버튼으로 입력 가능한 최대 차감액을 자동 입력합니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: 선결제별 최대 차감 계산, 전체 차감 자동 입력, 납품 합계 초과 저장 전 검증 추가.
+- `frontend/src/styles.css`: 선결제 상한 안내와 전체 차감 버튼 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 선결제 차감 입력 중 납품 품목 금액을 초과할 수 있는지 즉시 알 수 있습니다.
+- 여러 선결제를 선택해도 다른 선결제에서 이미 차감한 금액을 반영해 남은 품목 상한을 계산합니다.
+- `전체 차감`은 선결제 사용 가능 잔액과 남은 납품금액 중 작은 값으로 자동 입력합니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/*` 기존 route는 변경하지 않았습니다.
+- 기존 선결제 적용/복구 API와 납품 품목 저장 흐름은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-CIbRrZIe.js / assets/index-BlSVsxTc.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 수동 검수는 실제 선결제와 납품 품목 데이터가 있는 일정에서 확인해야 합니다.
+
+### 운영 배포 상태
+
+- GitHub/Railway 배포 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영에서 `/schedules/903/`에 로그인 상태로 접속합니다.
+2. `납품 품목`의 `편집`을 열고 `납품 저장 시 선결제 차감`을 체크합니다.
+3. 선결제를 선택했을 때 `품목 상한`, `최대 차감`, `입력 후 남은 납품금액`이 표시되는지 확인합니다.
+4. 직접 차감액을 입력했을 때 남은 금액이 바뀌는지 확인합니다.
+5. `전체 차감`을 눌렀을 때 입력 가능한 최대 차감액이 자동 입력되는지 확인합니다.
+6. 납품 합계를 초과해 저장하려 하면 저장 전 오류가 표시되는지 확인합니다.
+
+### 권장 다음 작업
+
+- 선결제 차감 UX 운영 검수 후, 대량 메일 자동화 또는 AI 전체 CRM 질문형 기능 중 우선순위 높은 작업으로 진행합니다.
+
+---
+
 ## 2026-05-15 — Delivery Item Prepayment + AI Action Fallback + Quote Multi-Import
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크 완료, 운영 수동검수 대기
