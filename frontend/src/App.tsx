@@ -107,6 +107,7 @@ import {
   ScheduleFileItem,
   ScheduleEditPayload,
   ScheduleItem,
+  SchedulePrepaymentSelectionPayload,
   AIWorkspaceAction,
   AIWorkspaceData,
   AIWorkspaceDepartment,
@@ -738,6 +739,25 @@ const discountUnitFromRate = (base: number, rate: number) => (
 
 const discountRateFromUnit = (base: number, discountUnit: number) => (
   base > 0 ? Math.max(Math.min((1 - discountUnit / base) * 100, 100), 0) : 0
+);
+
+const scheduleDeliveryEditRowsTotal = (rows: ScheduleDeliveryEditRow[]) => (
+  rows.reduce((total, row) => {
+    const quantity = Number(row.quantity);
+    const unitPrice = parsePositiveFormNumber(row.unitPrice);
+    const discountUnitPrice = parsePositiveFormNumber(row.discountUnitPrice);
+    const discountRate = parsePositiveFormNumber(row.discountRate);
+    if (!Number.isFinite(quantity) || quantity <= 0 || unitPrice === null || unitPrice < 0) {
+      return total;
+    }
+    let effectiveUnitPrice = unitPrice;
+    if (discountUnitPrice !== null) {
+      effectiveUnitPrice = Math.max(discountUnitPrice, 0);
+    } else if (discountRate !== null) {
+      effectiveUnitPrice = discountUnitFromRate(unitPrice, Math.min(Math.max(discountRate, 0), 100));
+    }
+    return total + Math.round(quantity * effectiveUnitPrice * 1.1);
+  }, 0)
 );
 
 const makeScheduleDeliveryEditRowFromQuoteItem = (
@@ -6124,6 +6144,10 @@ function ScheduleDetailPage({
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryMessage, setDeliveryMessage] = useState('');
+  const [deliveryUsePrepayment, setDeliveryUsePrepayment] = useState(Boolean(currentSchedule?.activityType === 'delivery' && currentSchedule.usePrepayment));
+  const [deliveryPrepaymentRows, setDeliveryPrepaymentRows] = useState<SchedulePrepaymentEditRow[]>([]);
+  const [deliveryPrepaymentsLoading, setDeliveryPrepaymentsLoading] = useState(false);
+  const [deliveryPrepaymentsError, setDeliveryPrepaymentsError] = useState('');
   const [quoteImportData, setQuoteImportData] = useState<FollowupQuoteItemsData | null>(null);
   const [quoteImportOpen, setQuoteImportOpen] = useState(false);
   const [quoteImportLoading, setQuoteImportLoading] = useState(false);
@@ -6159,6 +6183,10 @@ function ScheduleDetailPage({
     setDeliverySaving(false);
     setDeliveryError('');
     setDeliveryMessage('');
+    setDeliveryUsePrepayment(Boolean(data?.schedule?.activityType === 'delivery' && data.schedule.usePrepayment));
+    setDeliveryPrepaymentRows([]);
+    setDeliveryPrepaymentsLoading(false);
+    setDeliveryPrepaymentsError('');
     setQuoteImportData(null);
     setQuoteImportOpen(false);
     setQuoteImportLoading(false);
@@ -6225,6 +6253,45 @@ function ScheduleDetailPage({
     };
   }, [editOpen, editForm.activityType, editForm.followupId, currentSchedule?.canEdit, currentSchedule?.id]);
 
+  useEffect(() => {
+    if (
+      !deliveryEditOpen ||
+      !currentSchedule?.canEdit ||
+      currentSchedule.activityType !== 'delivery' ||
+      !currentSchedule.followupId
+    ) {
+      setDeliveryPrepaymentRows([]);
+      setDeliveryPrepaymentsLoading(false);
+      setDeliveryPrepaymentsError('');
+      return undefined;
+    }
+
+    let active = true;
+    setDeliveryPrepaymentsLoading(true);
+    setDeliveryPrepaymentsError('');
+    loadPrepayments(currentSchedule.followupId, currentSchedule.id)
+      .then((options) => {
+        if (active) {
+          setDeliveryPrepaymentRows(makeSchedulePrepaymentRows(options));
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setDeliveryPrepaymentRows([]);
+          setDeliveryPrepaymentsError(error instanceof Error ? error.message : '선결제 목록을 불러오지 못했습니다.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setDeliveryPrepaymentsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [deliveryEditOpen, currentSchedule?.activityType, currentSchedule?.canEdit, currentSchedule?.followupId, currentSchedule?.id]);
+
   const handleEditFieldChange = (field: keyof ScheduleEditFormState, value: string | boolean) => {
     setEditForm((previous) => ({
       ...previous,
@@ -6254,6 +6321,34 @@ function ScheduleDetailPage({
     )));
     setEditError('');
     setEditMessage('');
+  };
+
+  const handleDeliveryPrepaymentToggle = (selected: boolean) => {
+    setDeliveryUsePrepayment(selected);
+    setDeliveryError('');
+    setDeliveryMessage('');
+  };
+
+  const handleDeliveryPrepaymentRowToggle = (id: number, selected: boolean) => {
+    setDeliveryPrepaymentRows((rows) => rows.map((row) => (
+      row.id === id
+        ? {
+          ...row,
+          selected,
+          amountInput: selected && !row.amountInput && row.selectedAmount > 0 ? String(row.selectedAmount) : row.amountInput,
+        }
+        : row
+    )));
+    setDeliveryError('');
+    setDeliveryMessage('');
+  };
+
+  const handleDeliveryPrepaymentAmountChange = (id: number, amountInput: string) => {
+    setDeliveryPrepaymentRows((rows) => rows.map((row) => (
+      row.id === id ? { ...row, amountInput } : row
+    )));
+    setDeliveryError('');
+    setDeliveryMessage('');
   };
 
   const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -6457,6 +6552,7 @@ function ScheduleDetailPage({
     }
     const willOpen = !deliveryEditOpen;
     setDeliveryRows(makeScheduleDeliveryEditRows(data.deliveryItems));
+    setDeliveryUsePrepayment(Boolean(willOpen && currentSchedule.activityType === 'delivery' && currentSchedule.usePrepayment));
     setDeliveryError('');
     setDeliveryMessage('');
     setProductError('');
@@ -6507,6 +6603,7 @@ function ScheduleDetailPage({
       return;
     }
     setDeliveryEditOpen(true);
+    setDeliveryUsePrepayment(Boolean(currentSchedule.usePrepayment));
     setDeliveryError('');
     setDeliveryMessage('');
     setQuoteImportOpen(true);
@@ -6708,6 +6805,41 @@ function ScheduleDetailPage({
       acc[group] = (quoteGroupNotes[group] || '').trim();
       return acc;
     }, {});
+    const deliveryPrepaymentSelections = deliveryPrepaymentRows.filter((row) => row.selected);
+    const useDeliveryPrepayment = currentSchedule.activityType === 'delivery' && deliveryUsePrepayment;
+    if (useDeliveryPrepayment) {
+      if (deliveryPrepaymentsLoading) {
+        setDeliveryError('선결제 목록을 불러오는 중입니다.');
+        return;
+      }
+      if (deliveryPrepaymentsError) {
+        setDeliveryError(deliveryPrepaymentsError);
+        return;
+      }
+      if (!deliveryPrepaymentSelections.length) {
+        setDeliveryError('차감할 선결제를 선택하세요.');
+        return;
+      }
+      for (const [index, row] of deliveryPrepaymentSelections.entries()) {
+        const amount = Number(row.amountInput);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          setDeliveryError(`${index + 1}번째 선결제 차감 금액을 입력하세요.`);
+          return;
+        }
+        if (amount > row.availableBalance) {
+          setDeliveryError(`${row.payerName} 선결제 잔액이 부족합니다.`);
+          return;
+        }
+      }
+    }
+    const prepaymentOptions = currentSchedule.activityType === 'delivery'
+      ? {
+        usePrepayment: useDeliveryPrepayment,
+        prepayments: useDeliveryPrepayment
+          ? deliveryPrepaymentSelections.map<SchedulePrepaymentSelectionPayload>((row) => ({ id: row.id, amount: row.amountInput.trim() }))
+          : [],
+      }
+      : undefined;
 
     setDeliverySaving(true);
     setDeliveryError('');
@@ -6718,6 +6850,7 @@ function ScheduleDetailPage({
         payloadItems,
         quoteGroupNotesPayload,
         sourceQuoteScheduleIds,
+        prepaymentOptions,
       );
       const refreshed = await onRefresh();
       setDeliveryRows(makeScheduleDeliveryEditRows(refreshed?.deliveryItems ?? updated.deliveryItems ?? []));
@@ -6871,6 +7004,15 @@ function ScheduleDetailPage({
     return row.selected && Number.isFinite(amount) && amount > 0 ? total + amount : total;
   }, 0);
   const payableAfterPrepayment = Math.max(prepaymentBaseAmount - selectedPrepaymentAmount, 0);
+  const deliveryEditTotalAmount = scheduleDeliveryEditRowsTotal(deliveryRows);
+  const deliveryPrepaymentBaseAmount = deliveryEditOpen
+    ? (deliveryEditTotalAmount > 0 ? deliveryEditTotalAmount : prepaymentBaseAmount)
+    : prepaymentBaseAmount;
+  const selectedDeliveryPrepaymentAmount = deliveryPrepaymentRows.reduce((total, row) => {
+    const amount = Number(row.amountInput);
+    return row.selected && Number.isFinite(amount) && amount > 0 ? total + amount : total;
+  }, 0);
+  const deliveryPayableAfterPrepayment = Math.max(deliveryPrepaymentBaseAmount - selectedDeliveryPrepaymentAmount, 0);
   const metrics = [
     { label: '일정 상태', value: schedule.statusLabel, detail: schedule.activityLabel, icon: CalendarDays, tone: schedule.overdue ? 'red' as const : 'blue' as const },
     { label: '방문 일시', value: schedule.date ? formatDateLabel(schedule.date) : '날짜 없음', detail: schedule.time || '시간 없음', icon: Clock, tone: 'green' as const },
@@ -7497,6 +7639,70 @@ function ScheduleDetailPage({
                       />
                     </label>
                   ))}
+                </div>
+              ) : null}
+              {!isQuoteSchedule ? (
+                <div className="schedule-prepayment-editor schedule-delivery-prepayment-editor">
+                  <label className="schedule-edit-inline-check">
+                    <input
+                      checked={deliveryUsePrepayment}
+                      onChange={(event) => handleDeliveryPrepaymentToggle(event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>납품 저장 시 선결제 차감</span>
+                  </label>
+                  {deliveryUsePrepayment ? (
+                    <div className="schedule-prepayment-body">
+                      {deliveryPrepaymentsError ? (
+                        <div className="dashboard-api-alert compact">
+                          <AlertTriangle size={16} />
+                          <span>{deliveryPrepaymentsError}</span>
+                        </div>
+                      ) : null}
+                      {deliveryPrepaymentsLoading ? (
+                        <div className="schedule-prepayment-loading">
+                          <Loader2 className="spin-icon" size={15} />
+                          <span>선결제 조회 중</span>
+                        </div>
+                      ) : deliveryPrepaymentRows.length > 0 ? (
+                        <div className="schedule-prepayment-list">
+                          {deliveryPrepaymentRows.map((row) => (
+                            <div className={row.selected ? 'schedule-prepayment-row selected' : 'schedule-prepayment-row'} key={row.id}>
+                              <label className="schedule-prepayment-check">
+                                <input
+                                  checked={row.selected}
+                                  onChange={(event) => handleDeliveryPrepaymentRowToggle(row.id, event.target.checked)}
+                                  type="checkbox"
+                                />
+                                <span>
+                                  <strong>{[row.paymentDate ? formatDateLabel(row.paymentDate) : '입금일 없음', row.payerName].filter(Boolean).join(' · ')}</strong>
+                                  <small>{[row.customerName, `잔액 ${formatWon(row.balance)}`, `사용 가능 ${formatWon(row.availableBalance)}`].filter(Boolean).join(' · ')}</small>
+                                </span>
+                              </label>
+                              <label className="schedule-prepayment-amount">
+                                <span>차감</span>
+                                <input
+                                  disabled={!row.selected}
+                                  inputMode="numeric"
+                                  min="0"
+                                  onChange={(event) => handleDeliveryPrepaymentAmountChange(row.id, event.target.value)}
+                                  type="number"
+                                  value={row.amountInput}
+                                />
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <DashboardEmpty label="사용 가능한 선결제가 없습니다" />
+                      )}
+                      <div className="schedule-prepayment-totals">
+                        <span>납품 합계 <strong>{formatWon(deliveryPrepaymentBaseAmount)}</strong></span>
+                        <span>차감 <strong>{formatWon(selectedDeliveryPrepaymentAmount)}</strong></span>
+                        <span>실결제 <strong>{formatWon(deliveryPayableAfterPrepayment)}</strong></span>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               <div className="notes-create-actions schedule-delivery-edit-actions">

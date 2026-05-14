@@ -1,5 +1,94 @@
 # AGENT_REPORT.md
 
+## 2026-05-15 — Delivery Item Prepayment + AI Action Fallback
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+React 일정 상세의 납품 품목 편집에서 선결제를 선택해 저장 시 차감할 수 있게 했습니다. 동시에 AI Workspace 부서/스코프 화면에서 보였던 액션이 전역 queue 제한 때문에 초안/답변 저장 시 `action_not_found`로 실패하는 경로를 보강했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 납품품목 저장 API의 선결제 적용/복구 처리 추가, 납품품목 금액 payload의 null 보존, AI action id 직접 재구성 fallback 확장.
+- `reporting/tests.py`: 납품품목 선결제 적용/재적용/잔액초과 차단 및 AI 액션 fallback 회귀 테스트 추가.
+- `frontend/src/App.tsx`: 납품품목 편집 폼에 선결제 차감 체크, 선결제 목록, 차감 금액, 납품 합계/차감/실결제 요약 UI 추가.
+- `frontend/src/api.ts`: 납품품목 저장 API 옵션과 nullable 단가 타입 반영.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 납품 품목 저장과 선결제 차감을 한 화면에서 처리할 수 있어 일정 수정 폼을 따로 열 필요가 줄었습니다.
+- 재저장 시 기존 선결제 사용분을 복구한 뒤 새 선택값으로 다시 차감해 중복 차감 위험을 줄였습니다.
+- 선결제 잔액 초과 입력은 저장 전/서버 저장 중 모두 차단합니다.
+- 부서 상세에서 확인한 AI 추천 액션도 초안 작성/현장 답변 저장 시 안정적으로 처리됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- `/reporting/*` 기존 route와 레거시 화면은 유지했습니다.
+- 견적 일정의 납품품목 편집에는 선결제 차감 UI를 노출하지 않았습니다.
+- 완료/숨김 처리된 AI 액션은 기존 feedback 숨김 정책으로 계속 차단합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 53 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 37 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-D7Ffr7HX.js / assets/index-CNi9SBsK.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Playwright local smoke on http://127.0.0.1:5173/schedules/567/
+→ Login, delivery item edit, prepayment 50,000 apply, success message and detail prepayment display OK
+```
+
+### 알려진 제한
+
+- 사용자가 추가로 요청한 `/ai-workspace/` 전체 CRM 질문형 AI와 `/mailbox/` 엑셀 붙여넣기 기반 대량 메일 자동화는 이번 긴급 선결제/`action_not_found` 수정 범위에 포함하지 않았습니다. 이 작업 완료와 운영 검수 후 다음 작업으로 진행합니다.
+- 운영 수동 검수는 실제 계정/실제 선결제 데이터가 필요합니다.
+
+### 운영 배포 상태
+
+- GitHub/Railway 배포 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영에서 로그인 후 선결제가 있는 납품 일정 상세(`/schedules/<id>/`)를 엽니다.
+2. `납품 품목`의 `편집`을 누릅니다.
+3. `납품 저장 시 선결제 차감`을 체크하고 사용할 선결제를 선택합니다.
+4. 차감 금액을 입력했을 때 `납품 합계 / 차감 / 실결제`가 즉시 갱신되는지 확인합니다.
+5. 저장 후 성공 메시지와 상세 우측 `선결제` 금액이 입력한 차감액으로 표시되는지 확인합니다.
+6. 같은 화면에서 다시 편집해 차감 해제 저장 시 `선결제`가 `미사용`으로 돌아오는지 확인합니다.
+7. AI Workspace 부서 상세에서 추천 액션의 초안 생성 또는 현장 답변 저장을 실행해 `action_not_found`가 재현되지 않는지 확인합니다.
+
+### 권장 다음 작업
+
+- 사용자가 추가 요청한 `/ai-workspace/` 전체 CRM 질문형 AI를 먼저 설계/구현하고, 이후 `/mailbox/` 엑셀 붙여넣기 기반 대량 메일 자동화로 진행합니다.
+
+---
+
 ## 2026-05-13 — Quote Document Text Wrap + Mail Internal CC Selection
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/익명 스모크/운영 수동검수 완료

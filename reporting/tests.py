@@ -5033,10 +5033,165 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
         self.assertEqual(payload['deliveryItems'][0]['quoteGroup'], '보상판매')
         self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
+        self.assertIsNone(payload['deliveryItems'][1]['unitPrice'])
+        self.assertIsNone(payload['deliveryItems'][1]['discountUnitPrice'])
         self.assertEqual(
             {note['quoteGroup']: note['notes'] for note in payload['schedule']['quoteGroupNotes']},
             {'보상판매': '보상판매 기타사항', '수리': '수리 기타사항'},
         )
+
+    def test_schedule_delivery_items_update_api_applies_reapplies_and_restores_prepayment(self):
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Prepayment, PrepaymentUsage
+
+        schedule = self._create_schedule(self.user, '납품품목선결제', activity_type='delivery')
+        prepayment = Prepayment.objects.create(
+            customer=schedule.followup,
+            company=schedule.followup.company,
+            amount=100000,
+            balance=100000,
+            payment_date=timezone.localdate(),
+            payer_name='선결제입금자',
+            created_by=self.user,
+        )
+        update_url = reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id])
+        self.client.force_login(self.user)
+
+        apply_response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'usePrepayment': True,
+                'prepayments': [{'id': prepayment.id, 'amount': '60000'}],
+                'items': [
+                    {
+                        'itemName': 'Prepaid Kit',
+                        'quantity': 2,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(apply_response.status_code, 200)
+        self.assertIn('선결제를 차감', apply_response.json()['message'])
+        prepayment.refresh_from_db()
+        schedule.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 40000)
+        self.assertTrue(schedule.use_prepayment)
+        self.assertEqual(schedule.prepayment, prepayment)
+        self.assertEqual(int(schedule.prepayment_amount), 60000)
+        usage = PrepaymentUsage.objects.get(schedule=schedule)
+        self.assertEqual(int(usage.amount), 60000)
+        self.assertEqual(usage.schedule_item.item_name, 'Prepaid Kit')
+        self.assertEqual(apply_response.json()['schedule']['prepaymentUsages'][0]['amount'], 60000)
+
+        reapply_response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'usePrepayment': True,
+                'prepayments': [{'id': prepayment.id, 'amount': '30000'}],
+                'items': [
+                    {
+                        'itemName': 'Prepaid Kit Updated',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(reapply_response.status_code, 200)
+        prepayment.refresh_from_db()
+        schedule.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 70000)
+        self.assertEqual(int(schedule.prepayment_amount), 30000)
+        self.assertEqual(PrepaymentUsage.objects.filter(schedule=schedule).count(), 1)
+        self.assertEqual(int(PrepaymentUsage.objects.get(schedule=schedule).amount), 30000)
+
+        restore_response = self.client.post(
+            update_url,
+            data=json.dumps({
+                'usePrepayment': False,
+                'prepayments': [],
+                'items': [
+                    {
+                        'itemName': 'Prepaid Kit Updated',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(restore_response.status_code, 200)
+        self.assertIn('선결제 차감을 해제', restore_response.json()['message'])
+        prepayment.refresh_from_db()
+        schedule.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 100000)
+        self.assertFalse(schedule.use_prepayment)
+        self.assertIsNone(schedule.prepayment)
+        self.assertEqual(int(schedule.prepayment_amount), 0)
+        self.assertFalse(PrepaymentUsage.objects.filter(schedule=schedule).exists())
+
+    def test_schedule_delivery_items_update_api_blocks_over_balance_prepayment_without_saving_items(self):
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Prepayment, PrepaymentUsage
+
+        schedule = self._create_schedule(self.user, '납품품목선결제잔액차단', activity_type='delivery')
+        original_item = DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Original Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+        )
+        prepayment = Prepayment.objects.create(
+            customer=schedule.followup,
+            company=schedule.followup.company,
+            amount=1000,
+            balance=1000,
+            payment_date=timezone.localdate(),
+            payer_name='잔액부족입금자',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'usePrepayment': True,
+                'prepayments': [{'id': prepayment.id, 'amount': '2000'}],
+                'items': [
+                    {
+                        'itemName': 'Blocked Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '2000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('잔액이 부족', response.json()['error'])
+        prepayment.refresh_from_db()
+        schedule.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 1000)
+        self.assertFalse(schedule.use_prepayment)
+        self.assertFalse(PrepaymentUsage.objects.filter(schedule=schedule).exists())
+        items = list(DeliveryItem.objects.filter(schedule=schedule))
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].id, original_item.id)
+        self.assertEqual(items[0].item_name, 'Original Kit')
 
     def test_schedule_delivery_items_update_api_marks_imported_quote_completed(self):
         import datetime
@@ -7925,6 +8080,138 @@ class AIWorkspaceSummaryApiTests(TestCase):
             len([item for item in email_actions if item['evidence'][1]['value'].endswith('보상판매 견적 안내')]),
             1,
         )
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_draft_api_accepts_scoped_quote_missing_from_global_queue(self, _mock_client):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import Quote, Schedule
+
+        selected_followup, selected_department = self._create_customer(self.user, '스코프견적초안')
+        other_followup, other_department = self._create_customer(self.user, '전역견적초안')
+        self._create_department_analysis(self.user, selected_department)
+        self._create_department_analysis(self.user, other_department)
+        today = timezone.localdate()
+        selected_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=selected_followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            status='scheduled',
+            activity_type='quote',
+            expected_revenue=Decimal('100000'),
+        )
+        selected_quote = Quote.objects.create(
+            quote_number='AI-SCOPED-Q-DRAFT',
+            schedule=selected_schedule,
+            followup=selected_followup,
+            user=self.user,
+            valid_until=today + timedelta(days=30),
+            stage='sent',
+            subtotal=Decimal('100000'),
+            probability=30,
+        )
+        for index in range(10):
+            schedule = Schedule.objects.create(
+                user=self.user,
+                company=self.company,
+                followup=other_followup,
+                visit_date=today,
+                visit_time=time(11, 0),
+                status='scheduled',
+                activity_type='quote',
+                expected_revenue=Decimal('900000'),
+            )
+            Quote.objects.create(
+                quote_number=f'AI-GLOBAL-Q-DRAFT-{index}',
+                schedule=schedule,
+                followup=other_followup,
+                user=self.user,
+                valid_until=today + timedelta(days=index + 1),
+                stage='sent',
+                subtotal=Decimal('900000'),
+                probability=70,
+            )
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(self.url, {'department_id': selected_department.id})
+        self.assertEqual(detail_response.status_code, 200)
+        detail_action_ids = {item['id'] for item in detail_response.json()['actionQueue']}
+        self.assertIn(f'quote:{selected_quote.id}', detail_action_ids)
+
+        general_response = self.client.get(self.url)
+        self.assertEqual(general_response.status_code, 200)
+        general_action_ids = {item['id'] for item in general_response.json()['actionQueue']}
+        self.assertNotIn(f'quote:{selected_quote.id}', general_action_ids)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_draft_api'),
+            data=json.dumps({'actionId': f'quote:{selected_quote.id}', 'draftType': 'note'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['action']['id'], f'quote:{selected_quote.id}')
+        self.assertIn('스코프견적초안', payload['draft']['body'])
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_feedback_api_accepts_scoped_followup_missing_from_global_queue(self, _mock_client):
+        from datetime import timedelta
+        from reporting.models import History
+
+        selected_followup, selected_department = self._create_customer(self.user, '스코프후속답변')
+        other_followup, other_department = self._create_customer(self.user, '전역후속답변')
+        self._create_department_analysis(self.user, selected_department)
+        self._create_department_analysis(self.user, other_department)
+        today = timezone.localdate()
+        selected_history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=selected_followup,
+            action_type='customer_meeting',
+            content='스코프 후속',
+            next_action='스코프 고객 견적 검토 확인',
+            next_action_date=today + timedelta(days=3),
+        )
+        for index in range(10):
+            History.objects.create(
+                user=self.user,
+                company=self.company,
+                followup=other_followup,
+                action_type='customer_meeting',
+                content=f'전역 후속 {index}',
+                next_action=f'전역 고객 후속 {index}',
+                next_action_date=today,
+            )
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(self.url, {'department_id': selected_department.id})
+        self.assertEqual(detail_response.status_code, 200)
+        detail_action_ids = {item['id'] for item in detail_response.json()['actionQueue']}
+        self.assertIn(f'followup:{selected_history.id}', detail_action_ids)
+
+        general_response = self.client.get(self.url)
+        self.assertEqual(general_response.status_code, 200)
+        general_action_ids = {item['id'] for item in general_response.json()['actionQueue']}
+        self.assertNotIn(f'followup:{selected_history.id}', general_action_ids)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_feedback_api'),
+            data=json.dumps({
+                'actionId': f'followup:{selected_history.id}',
+                'feedback': '고객이 추가 자료를 메일로 보내달라고 했습니다',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['action']['id'], f'followup:{selected_history.id}')
+        self.assertEqual(payload['feedback']['status'], 'next_action')
+        self.assertNotEqual(payload['error'] if 'error' in payload else '', 'action_not_found')
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_accepts_scoped_email_missing_from_global_queue(self, _mock_client):

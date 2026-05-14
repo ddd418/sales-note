@@ -1,6 +1,55 @@
 # AGENT_PLAN.md
 
-## Current task — React CRM legacy frontend migration documentation
+## Current task — 일정 상세 납품품목 선결제 차감 긴급 추가
+
+**목표**: React 일정 상세 `/schedules/<id>/`에서 납품품목을 저장할 때 같은 고객/부서의 선결제를 선택해 잔액에서 차감할 수 있게 한다. 이어서 AI Workspace 부서 상세 액션에서 `action_not_found`가 뜨는 경로를 막는다.
+
+### 확인된 상태
+
+- `Schedule`에는 이미 `use_prepayment`, `prepayment`, `prepayment_amount` 필드가 있다.
+- `Prepayment`와 `PrepaymentUsage` 모델 및 일정 수정 API의 선결제 적용/복구 헬퍼가 이미 존재한다.
+- React 일정 상세의 "일정 수정" 폼에는 선결제 사용 UI가 있지만, "납품 품목" 편집 폼에는 선결제 선택/차감 UI가 없다.
+- 납품품목 저장 API `/reporting/api/schedules/<id>/delivery-items/update/`는 품목 저장과 견적 일정 완료 처리는 하지만 선결제 적용 요청을 처리하지 않는다.
+- AI Workspace 초안/답변 API는 전역 action queue를 다시 구성한 뒤 action id를 찾는데, 부서 상세에서만 보이는 하위순위 액션은 전역 queue 제한 때문에 누락될 수 있다.
+- 기존 직접 재구성 fallback은 `email_waiting:<id>`만 지원해 `quote:<id>`, `followup:<id>` 등에서 `action_not_found`가 발생할 수 있다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 기존 `_schedules_apply_prepayments()` / `_schedules_restore_prepayments()` 헬퍼를 납품품목 저장 API에서도 재사용한다.
+- 납품품목 저장 payload에 `usePrepayment`와 `prepayments` 선택 목록을 받도록 확장한다.
+- React 납품품목 편집 폼에 선결제 차감 체크, 선결제 목록, 차감 금액 입력, 납품 합계/차감/실결제 요약을 추가한다.
+- 기존 일정 수정 폼의 선결제 로직, 권한, 같은 부서 선결제 조회 정책은 유지한다.
+- 견적 일정(`activity_type=quote`) 품목 편집에는 선결제 차감 UI를 노출하지 않는다.
+- AI Workspace action id 직접 재구성 fallback을 `quote`, `quote_schedule`, `delivery`, `followup`, `painpoint`, `weekly_report`까지 확장한다.
+- 이미 완료/숨김 처리된 action은 기존 feedback 숨김 정책으로 계속 차단한다.
+
+### 검증 계획
+
+- 납품품목 저장 API가 품목 저장과 동시에 선결제를 차감하고, 재저장 시 기존 차감을 복구 후 재적용하는 회귀 테스트 추가.
+- 부서 상세에는 보이지만 전역 queue에는 밀려난 견적/후속 액션의 초안 생성과 현장 답변 저장이 200으로 처리되는 회귀 테스트 추가.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- 관련 일정/선결제/AI Workspace 테스트 실행.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke 확인.
+
+### 현재 상태
+
+- AI 워크스페이스 진행 중 변경은 `wip-ai-workspace-global-question` stash로 보관했다.
+- 기존 선결제 헬퍼와 React 일정 상세 구조를 확인했다.
+- React 일정 상세 납품품목 선결제 UI/API 구현 완료.
+- AI Workspace `action_not_found` fallback 확장 완료.
+- DB 모델 변경과 migration 없음 확인.
+- 로컬 API 테스트, 타입체크, 빌드, Playwright smoke 통과.
+- 커밋/푸시 및 Railway 배포 진행 예정.
+
+---
+
+## Completed task — React CRM legacy frontend migration documentation
 
 **목표**: 기존 Django 레거시 메뉴를 React CRM으로 순차 이관하고, 운영 검수 후 Django 템플릿 프론트를 제거하기 위한 장기 실행 계획을 문서화한다.
 
@@ -30,9 +79,8 @@
 - `REACT_MIGRATION_PLAN.md` 작성 완료.
 - `git diff --check` 통과.
 - 런타임 변경 없음. Railway 배포 불필요.
-- `AGENT_REPORT.md` 기록 및 커밋/푸시 예정.
-
----
+- `AGENT_REPORT.md` 기록, 커밋/푸시 완료.
+- Commit: `debc3f4 docs: add React migration plan`
 
 ## Completed task — 견적서 생성 텍스트 잘림 방지 + 내부직원 참조 선택 UX
 

@@ -1068,10 +1068,10 @@ export type ScheduleDeliveryItem = {
   itemName: string;
   quantity: number;
   unit: string;
-  unitPrice: number;
+  unitPrice: number | null;
   discountRate: number;
   discountUnitPrice: number | null;
-  effectiveUnitPrice: number;
+  effectiveUnitPrice: number | null;
   totalPrice: number;
   taxInvoiceIssued: boolean;
   quoteGroup: string;
@@ -1095,6 +1095,11 @@ export type ScheduleDeliveryItemPayload = {
   notes?: string;
   sourceQuoteScheduleId?: number | null;
   sourceQuoteItemId?: number | null;
+};
+
+export type ScheduleDeliveryItemsUpdateOptions = {
+  usePrepayment?: boolean;
+  prepayments?: SchedulePrepaymentSelectionPayload[];
 };
 
 export type FollowupQuoteItem = {
@@ -6382,18 +6387,25 @@ export async function updateScheduleDeliveryItems(
   items: ScheduleDeliveryItemPayload[],
   quoteGroupNotes?: Record<string, string>,
   sourceQuoteScheduleIds?: number[],
+  options?: ScheduleDeliveryItemsUpdateOptions,
 ): Promise<ScheduleDeliveryItemsUpdateResponse> {
   const csrfToken = getCookie('csrftoken');
   const payload: {
     items: ScheduleDeliveryItemPayload[];
     quoteGroupNotes: Record<string, string>;
     sourceQuoteScheduleIds?: number[];
+    usePrepayment?: boolean;
+    prepayments?: SchedulePrepaymentSelectionPayload[];
   } = {
     items,
     quoteGroupNotes: quoteGroupNotes ?? {},
   };
   if (sourceQuoteScheduleIds?.length) {
     payload.sourceQuoteScheduleIds = sourceQuoteScheduleIds;
+  }
+  if (options) {
+    payload.usePrepayment = Boolean(options.usePrepayment);
+    payload.prepayments = options.usePrepayment ? options.prepayments ?? [] : [];
   }
   const response = await fetch(submitUrl, {
     method: 'POST',

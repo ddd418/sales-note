@@ -5711,6 +5711,7 @@ def _save_schedule_quote_group_notes(schedule, notes_map):
 
 def _schedules_delivery_item_payload(item):
     product = item.product if item.product_id else None
+    effective_unit_price = item.get_effective_unit_price()
     return {
         'id': item.id,
         'productId': item.product_id,
@@ -5719,10 +5720,10 @@ def _schedules_delivery_item_payload(item):
         'itemName': item.item_name,
         'quantity': item.quantity,
         'unit': item.unit or '',
-        'unitPrice': _money_int(item.unit_price),
+        'unitPrice': _money_int(item.unit_price) if item.unit_price is not None else None,
         'discountRate': float(item.discount_rate or 0),
-        'discountUnitPrice': _money_int(item.discount_unit_price),
-        'effectiveUnitPrice': _money_int(item.get_effective_unit_price()),
+        'discountUnitPrice': _money_int(item.discount_unit_price) if item.discount_unit_price is not None else None,
+        'effectiveUnitPrice': _money_int(effective_unit_price) if effective_unit_price is not None else None,
         'totalPrice': _money_int(item.total_price),
         'taxInvoiceIssued': bool(item.tax_invoice_issued),
         'quoteGroup': item.quote_group or '',
@@ -7448,8 +7449,13 @@ def schedules_delivery_items_update_api(request, schedule_id):
     except PermissionError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=403)
 
+    prepayment_requested = any(key in payload for key in ['usePrepayment', 'use_prepayment', 'prepayments'])
+    use_prepayment_raw = payload.get('usePrepayment', payload.get('use_prepayment'))
+    use_prepayment = use_prepayment_raw in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
+
     try:
         completed_quote_schedule_ids = []
+        prepayment_total = 0
         with transaction.atomic():
             existing_source_quote_schedule_ids = list(
                 DeliveryItem.objects.select_for_update()
@@ -7467,6 +7473,11 @@ def schedules_delivery_items_update_api(request, schedule_id):
             _save_schedule_quote_group_notes(schedule, quote_group_notes)
             schedule.save(update_fields=['quote_extra_notes', 'updated_at'])
             _schedules_sync_delivery_histories(schedule, request.user, len(delivery_items))
+            if prepayment_requested:
+                if use_prepayment:
+                    prepayment_total = _schedules_apply_prepayments(schedule, request.user, payload.get('prepayments'))
+                else:
+                    _schedules_restore_prepayments(schedule)
             completed_quote_schedule_ids = _schedules_mark_source_quote_schedules_completed(
                 schedule,
                 request.user,
@@ -7482,8 +7493,14 @@ def schedules_delivery_items_update_api(request, schedule_id):
 
     refreshed = _schedules_get_detail_schedule(schedule.id)
     message = '납품 품목을 저장했습니다.'
-    if completed_quote_schedule_ids:
+    if completed_quote_schedule_ids and prepayment_total:
+        message = '납품 품목을 저장하고 원본 견적 일정을 완료 처리했으며 선결제를 차감했습니다.'
+    elif completed_quote_schedule_ids:
         message = '납품 품목을 저장하고 원본 견적 일정을 완료 처리했습니다.'
+    elif prepayment_total:
+        message = '납품 품목을 저장하고 선결제를 차감했습니다.'
+    elif prepayment_requested and not use_prepayment:
+        message = '납품 품목을 저장하고 선결제 차감을 해제했습니다.'
     return JsonResponse({
         **_schedules_detail_payload(request, refreshed, get_user_profile(request.user)),
         'completedQuoteScheduleIds': completed_quote_schedule_ids,
@@ -8500,11 +8517,152 @@ def _ai_workspace_find_action(user, action_id, week_start, week_end):
     for action in _ai_workspace_build_action_queue(user, week_start, week_end, limit=60):
         if action['id'] == action_id:
             return action
-    return _ai_workspace_rebuild_action_by_id(user, action_id)
+    rebuilt = _ai_workspace_rebuild_action_by_id(user, action_id)
+    if not rebuilt:
+        return None
+    visible_actions = _ai_workspace_apply_action_feedback(user, [rebuilt])
+    return visible_actions[0] if visible_actions else None
 
 
 def _ai_workspace_rebuild_action_by_id(user, action_id):
     """Rebuild an owned action when it was visible in a scoped/stale queue but not in the current top queue."""
+    from datetime import date, timedelta
+    from ai_chat.models import PainPointCard
+
+    today = timezone.localdate()
+
+    quote_id = _ai_workspace_action_numeric_id(action_id, 'quote:')
+    if quote_id:
+        quote = Quote.objects.filter(
+            id=quote_id,
+            user=user,
+            converted_to_delivery=False,
+        ).exclude(
+            stage__in=['draft', 'rejected', 'expired', 'converted'],
+        ).exclude(
+            schedule__status='completed',
+        ).select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+            'schedule',
+        ).first()
+        if not quote:
+            return None
+        followup = quote.followup
+        amount = quote.total_amount or quote.subtotal or 0
+        schedule_href = f'/schedules/{quote.schedule_id}/' if quote.schedule_id else ''
+        evidence = [
+            _ai_workspace_evidence('견적번호', quote.quote_number, schedule_href),
+            _ai_workspace_evidence('상태', quote.get_stage_display()),
+            _ai_workspace_evidence('금액', _ai_workspace_money(amount)),
+            _ai_workspace_evidence('유효기한', quote.valid_until.isoformat() if quote.valid_until else ''),
+        ]
+        return _ai_workspace_action_payload(
+            action_id=f'quote:{quote.id}',
+            kind='quote_followup',
+            score=55 + _ai_workspace_score_amount(amount) + _ai_workspace_score_date(quote.valid_until, today) + min(12, int((quote.probability or 0) / 10)),
+            title=f"{_ai_workspace_prompt_excerpt(followup.customer_name or followup.manager or '고객명 미정', 60)} 견적 후속",
+            recommended_action='견적 검토 상황, 의사결정 일정, 필요 서류를 확인하고 다음 연락 일정을 잡으세요.',
+            followup=followup,
+            money_impact=amount,
+            due_date=quote.valid_until,
+            evidence=evidence,
+            draft_types=['email', 'note', 'questions'],
+            hrefs={
+                'customer': f'/customers/{followup.id}/',
+                'schedule': schedule_href,
+                'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
+                'djangoSchedule': reverse('reporting:schedule_detail', args=[quote.schedule_id]) if quote.schedule_id else '',
+            },
+        )
+
+    quote_schedule_id = _ai_workspace_action_numeric_id(action_id, 'quote_schedule:')
+    if quote_schedule_id:
+        schedule = Schedule.objects.filter(
+            id=quote_schedule_id,
+            user=user,
+            activity_type='quote',
+            status='scheduled',
+            expected_revenue__gt=0,
+            quotes__isnull=True,
+        ).select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+        ).first()
+        if not schedule:
+            return None
+        followup = schedule.followup
+        amount = schedule.expected_revenue or 0
+        evidence = [
+            _ai_workspace_evidence('견적 일정', schedule.visit_date.isoformat(), f'/schedules/{schedule.id}/'),
+            _ai_workspace_evidence('예상 금액', _ai_workspace_money(amount)),
+            _ai_workspace_evidence('메모', schedule.notes or ''),
+        ]
+        return _ai_workspace_action_payload(
+            action_id=f'quote_schedule:{schedule.id}',
+            kind='quote_followup',
+            score=48 + _ai_workspace_score_amount(amount) + _ai_workspace_score_date(schedule.visit_date, today),
+            title=f"{_ai_workspace_prompt_excerpt(followup.customer_name or followup.manager or '고객명 미정', 60)} 견적 일정 후속",
+            recommended_action='견적서 발송/검토 여부와 다음 구매 절차를 확인하세요.',
+            followup=followup,
+            money_impact=amount,
+            due_date=schedule.visit_date,
+            evidence=evidence,
+            draft_types=['email', 'note', 'questions'],
+            hrefs={
+                'customer': f'/customers/{followup.id}/',
+                'schedule': f'/schedules/{schedule.id}/',
+                'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
+                'djangoSchedule': reverse('reporting:schedule_detail', args=[schedule.id]),
+            },
+        )
+
+    delivery_id = _ai_workspace_action_numeric_id(action_id, 'delivery:')
+    if delivery_id:
+        schedule = Schedule.objects.filter(
+            id=delivery_id,
+            user=user,
+            activity_type='delivery',
+            status='scheduled',
+            visit_date__lte=today + timedelta(days=7),
+        ).select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+        ).prefetch_related('delivery_items_set').first()
+        if not schedule:
+            return None
+        followup = schedule.followup
+        items = list(schedule.delivery_items_set.all())
+        amount = _ai_workspace_delivery_total(items, schedule.expected_revenue)
+        item_preview = ', '.join(_ai_workspace_prompt_excerpt(item.item_name, 36) for item in items[:3])
+        evidence = [
+            _ai_workspace_evidence('납품 예정일', schedule.visit_date.isoformat(), f'/schedules/{schedule.id}/'),
+            _ai_workspace_evidence('납품 금액', _ai_workspace_money(amount)),
+            _ai_workspace_evidence('품목', item_preview),
+            _ai_workspace_evidence('메모', schedule.notes or ''),
+        ]
+        return _ai_workspace_action_payload(
+            action_id=f'delivery:{schedule.id}',
+            kind='delivery_risk',
+            score=58 + _ai_workspace_score_amount(amount) + _ai_workspace_score_date(schedule.visit_date, today),
+            title=f"{_ai_workspace_prompt_excerpt(followup.customer_name or followup.manager or '고객명 미정', 60)} 납품 일정 확인",
+            recommended_action='납품일, 수량, 서류, 고객 수령 조건을 확인하고 누락 리스크를 정리하세요.',
+            followup=followup,
+            money_impact=amount,
+            due_date=schedule.visit_date,
+            evidence=evidence,
+            draft_types=['email', 'note'],
+            hrefs={
+                'customer': f'/customers/{followup.id}/',
+                'schedule': f'/schedules/{schedule.id}/',
+                'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
+                'djangoSchedule': reverse('reporting:schedule_detail', args=[schedule.id]),
+            },
+        )
+
     email_id = _ai_workspace_action_numeric_id(action_id, 'email_waiting:')
     if email_id:
         email = EmailLog.objects.filter(
@@ -8522,6 +8680,132 @@ def _ai_workspace_rebuild_action_by_id(user, action_id):
         if not email:
             return None
         return _ai_workspace_email_waiting_action_payload(email)
+
+    history_id = _ai_workspace_action_numeric_id(action_id, 'followup:')
+    if history_id:
+        history = History.objects.filter(
+            id=history_id,
+            user=user,
+            followup__isnull=False,
+            next_action__isnull=False,
+            reviewed_at__isnull=True,
+            parent_history__isnull=True,
+        ).exclude(next_action='').exclude(
+            content__startswith='[AI 상황 동기화 후속조치]'
+        ).select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+        ).first()
+        if not history or _history_has_quote_submission_evidence(history):
+            return None
+        followup = history.followup
+        due_date = history.next_action_date
+        score = 46 + _ai_workspace_score_date(due_date, today)
+        if not due_date:
+            score += 6
+        evidence = [
+            _ai_workspace_evidence('후속 예정일', due_date.isoformat() if due_date else '날짜 미정', f'/notes/{history.id}/'),
+            _ai_workspace_evidence('최근 기록', history.get_action_type_display()),
+            _ai_workspace_evidence('다음 액션', history.next_action),
+            _ai_workspace_evidence('메모', history.content or ''),
+        ]
+        return _ai_workspace_action_payload(
+            action_id=f'followup:{history.id}',
+            kind='customer_followup',
+            score=score,
+            title=f"{_ai_workspace_prompt_excerpt(followup.customer_name or followup.manager or '고객명 미정', 60)} 후속조치",
+            recommended_action=history.next_action or '고객 후속조치를 진행하세요.',
+            followup=followup,
+            due_date=due_date,
+            evidence=evidence,
+            draft_types=['email', 'note', 'questions'],
+            hrefs={
+                'customer': f'/customers/{followup.id}/',
+                'note': f'/notes/{history.id}/',
+                'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
+                'djangoNote': reverse('reporting:history_detail', args=[history.id]),
+            },
+        )
+
+    painpoint_id = _ai_workspace_action_numeric_id(action_id, 'painpoint:')
+    if painpoint_id:
+        card = PainPointCard.objects.filter(
+            id=painpoint_id,
+            analysis__user=user,
+            verification_status='unverified',
+        ).select_related(
+            'analysis',
+            'analysis__department',
+            'analysis__department__company',
+        ).first()
+        if not card:
+            return None
+        department = card.analysis.department
+        followup = _ai_workspace_related_followup_by_department(user).get(department.id)
+        evidence = [
+            _ai_workspace_evidence('가설', card.hypothesis, reverse('ai_chat:department_analysis', args=[department.id])),
+            _ai_workspace_evidence('검증 질문', card.verification_question),
+            _ai_workspace_evidence('신뢰도', f'{card.get_confidence_display()} {card.confidence_score}'),
+            _ai_workspace_evidence('카테고리', card.get_category_display()),
+        ]
+        return _ai_workspace_action_payload(
+            action_id=f'painpoint:{card.id}',
+            kind='painpoint_validation',
+            score=52 + min(32, int(card.confidence_score or 0) // 3),
+            title=f"{department.name} PainPoint 검증",
+            recommended_action='고객에게 부담 없는 검증 질문으로 실제 니즈인지 확인하고 검증 메모를 남기세요.',
+            followup=followup,
+            evidence=evidence,
+            draft_types=['questions', 'email', 'note'],
+            hrefs={
+                'customer': f'/customers/{followup.id}/' if followup else '',
+                'ai': reverse('ai_chat:department_analysis', args=[department.id]),
+                'aiHub': f"{reverse('ai_chat:department_list')}?department={department.id}",
+            },
+        )
+
+    if str(action_id or '').startswith('weekly_report:'):
+        raw_week_start = str(action_id).split(':', 1)[1]
+        try:
+            week_start = date.fromisoformat(raw_week_start)
+        except (TypeError, ValueError):
+            return None
+        week_end = week_start + timedelta(days=4)
+        if WeeklyReport.objects.filter(user=user, week_start=week_start).exists():
+            return None
+        activity_count = History.objects.filter(
+            user=user,
+            created_at__date__gte=week_start,
+            created_at__date__lte=week_end,
+        ).count()
+        schedule_count = Schedule.objects.filter(
+            user=user,
+            visit_date__gte=week_start,
+            visit_date__lte=week_end,
+        ).count()
+        if not activity_count and not schedule_count:
+            return None
+        evidence = [
+            _ai_workspace_evidence('보고 기간', f'{week_start.isoformat()} ~ {week_end.isoformat()}'),
+            _ai_workspace_evidence('영업노트', f'{activity_count}건'),
+            _ai_workspace_evidence('일정', f'{schedule_count}건'),
+        ]
+        return _ai_workspace_action_payload(
+            action_id=f'weekly_report:{week_start.isoformat()}',
+            kind='weekly_report',
+            score=56 + (16 if today >= week_end else 0) + min(12, activity_count + schedule_count),
+            title='이번 주 주간보고 초안 작성',
+            recommended_action='이번 주 활동, 견적, 납품 기록을 기준으로 주간보고 초안을 작성하세요.',
+            money_impact=None,
+            due_date=week_end,
+            evidence=evidence,
+            draft_types=['weekly_report', 'note'],
+            hrefs={
+                'report': '/weekly-reports/new/',
+                'weeklyAiDraft': f"{reverse('reporting:weekly_report_ai_draft')}?week_start={week_start.isoformat()}&week_end={week_end.isoformat()}",
+            },
+        )
 
     return None
 
