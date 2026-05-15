@@ -104,7 +104,19 @@ export type DashboardData = {
     recentNotes: number;
     pendingReviews: number;
     monthlyActivity: number;
+    yearRevenue: number;
+    quarterRevenue: number;
     monthlyRevenue: number;
+  };
+  revenuePeriod: {
+    year: number;
+    quarter: number;
+    yearStart: string;
+    yearEnd: string;
+    quarterStart: string;
+    quarterEnd: string;
+    monthStart: string;
+    monthEnd: string;
   };
   links: {
     operationalDashboard: string;
@@ -2960,7 +2972,19 @@ const emptyDashboardData: DashboardData = {
     recentNotes: 0,
     pendingReviews: 0,
     monthlyActivity: 0,
+    yearRevenue: 0,
+    quarterRevenue: 0,
     monthlyRevenue: 0,
+  },
+  revenuePeriod: {
+    year: new Date().getFullYear(),
+    quarter: Math.floor(new Date().getMonth() / 3) + 1,
+    yearStart: '',
+    yearEnd: '',
+    quarterStart: '',
+    quarterEnd: '',
+    monthStart: '',
+    monthEnd: '',
   },
   links: {
     operationalDashboard: '/reporting/dashboard/',
@@ -4064,7 +4088,41 @@ export async function loadDashboardData(): Promise<DashboardData> {
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Dashboard API unavailable: ${response.status}`);
     }
-    return payload;
+    return {
+      ...emptyDashboardData,
+      ...payload,
+      scope: {
+        ...emptyDashboardData.scope,
+        ...(payload.scope ?? {}),
+      },
+      currentUser: {
+        ...emptyDashboardData.currentUser,
+        ...(payload.currentUser ?? {}),
+      },
+      metrics: {
+        ...emptyDashboardData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      revenuePeriod: {
+        ...emptyDashboardData.revenuePeriod,
+        ...(payload.revenuePeriod ?? {}),
+      },
+      links: {
+        ...emptyDashboardData.links,
+        ...(payload.links ?? {}),
+      },
+      today: {
+        ...emptyDashboardData.today,
+        ...(payload.today ?? {}),
+      },
+      upcomingSchedules: payload.upcomingSchedules ?? emptyDashboardData.upcomingSchedules,
+      overdueActions: payload.overdueActions ?? emptyDashboardData.overdueActions,
+      dueTodayActions: payload.dueTodayActions ?? emptyDashboardData.dueTodayActions,
+      recentActivities: payload.recentActivities ?? emptyDashboardData.recentActivities,
+      priorityCustomers: payload.priorityCustomers ?? emptyDashboardData.priorityCustomers,
+      pipelineSummary: payload.pipelineSummary ?? emptyDashboardData.pipelineSummary,
+      teamActivity: payload.teamActivity ?? emptyDashboardData.teamActivity,
+    };
   } catch (error) {
     return {
       ...emptyDashboardData,

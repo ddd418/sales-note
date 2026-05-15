@@ -13255,6 +13255,8 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     return null;
   }
 
+  const revenueYear = data.revenuePeriod.year || new Date().getFullYear();
+  const revenueQuarter = data.revenuePeriod.quarter || Math.floor(new Date().getMonth() / 3) + 1;
   const metricCards = [
     {
       label: '활성 고객',
@@ -13263,6 +13265,22 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       icon: Users,
       tone: 'blue' as const,
       href: data.links.customers,
+    },
+    {
+      label: '당해년도 전체 매출',
+      value: formatWon(data.metrics.yearRevenue),
+      detail: `${revenueYear}년 납품 일정 기준`,
+      icon: CircleDollarSign,
+      tone: 'amber' as const,
+      href: data.links.operationalDashboard,
+    },
+    {
+      label: '현재 분기 매출',
+      value: formatWon(data.metrics.quarterRevenue),
+      detail: `${revenueYear}년 ${revenueQuarter}분기`,
+      icon: Target,
+      tone: 'green' as const,
+      href: data.links.operationalDashboard,
     },
     {
       label: '오늘 일정',
@@ -14053,6 +14071,7 @@ function DetailPanel({
             <strong>{formatWon(deal.latestQuote.amount)}</strong>
             <span>{deal.latestQuote.probability}%</span>
           </div>
+          {deal.latestQuote.basisDate ? <small>기준일 {formatDateLabel(deal.latestQuote.basisDate)}</small> : null}
           {deal.latestQuote.validUntil ? <small>유효기한 {deal.latestQuote.validUntil}</small> : null}
         </div>
       ) : null}

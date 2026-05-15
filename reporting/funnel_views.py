@@ -994,6 +994,28 @@ def _history_pricing_amount(history):
     return history.delivery_amount or Decimal('0')
 
 
+def _history_pricing_date(history):
+    if history.delivery_date:
+        return history.delivery_date
+    if history.meeting_date:
+        return history.meeting_date
+    if history.created_at:
+        return timezone.localtime(history.created_at).date()
+    return None
+
+
+def _latest_dated_entries(entries):
+    dated_entries = [entry for entry in entries if entry.get('date')]
+    if not dated_entries:
+        return []
+    latest_date = max(entry['date'] for entry in dated_entries)
+    return [entry for entry in dated_entries if entry['date'] == latest_date]
+
+
+def _sum_entry_amounts(entries):
+    return sum((entry['amount'] for entry in entries), Decimal('0'))
+
+
 def _latest_schedule_history_amount(schedule, action_type=None):
     histories = getattr(schedule, 'pricing_histories', None)
     if histories is None:
@@ -1062,10 +1084,29 @@ def _quote_model_pricing(followup, stage):
     def build(quote_matches, source):
         if not quote_matches:
             return None
-        priced_quotes = [quote for quote in quote_matches if _quote_amount(quote) > 0]
-        selected_quotes = priced_quotes if priced_quotes else quote_matches[:1]
+        priced_entries = [
+            {
+                'quote': quote,
+                'amount': _quote_amount(quote),
+                'date': quote.quote_date,
+            }
+            for quote in quote_matches
+            if _quote_amount(quote) > 0
+        ]
+        selected_entries = _latest_dated_entries(priced_entries)
+        selected_quotes = [entry['quote'] for entry in selected_entries]
+        if not selected_quotes:
+            selected_quotes = quote_matches[:1]
+            selected_entries = [
+                {
+                    'quote': quote,
+                    'amount': _quote_amount(quote),
+                    'date': quote.quote_date,
+                }
+                for quote in selected_quotes
+            ]
         primary_quote = selected_quotes[0]
-        amount = sum((_quote_amount(quote) for quote in selected_quotes), Decimal('0'))
+        amount = _sum_entry_amounts(selected_entries)
         if amount > 0:
             probability = round(
                 sum(
@@ -1088,6 +1129,7 @@ def _quote_model_pricing(followup, stage):
             'stage': primary_quote.get_stage_display() if count == 1 else f'{primary_quote.get_stage_display()} 외 {count - 1}건',
             'probability': int(probability or 0),
             'valid_until': primary_quote.valid_until,
+            'basis_date': selected_entries[0]['date'] if selected_entries else primary_quote.quote_date,
             'count': count,
         }
 
@@ -1117,19 +1159,24 @@ def _quote_model_pricing(followup, stage):
 def _select_quote_reference_pricing(followup, stage):
     schedules = list(getattr(followup, 'pricing_schedules', []))
     quote_schedules = [schedule for schedule in schedules if schedule.activity_type == 'quote']
-    priced_schedules = [
-        (schedule, _schedule_quote_amount(schedule))
-        for schedule in quote_schedules
-        if _schedule_quote_amount(schedule) > 0
-    ]
-    if priced_schedules:
-        total_amount = sum((amount for _schedule, amount in priced_schedules), Decimal('0'))
-        primary_schedule = priced_schedules[0][0]
-        count = len(priced_schedules)
+    priced_schedule_entries = []
+    for schedule in quote_schedules:
+        amount = _schedule_quote_amount(schedule)
+        if amount > 0:
+            priced_schedule_entries.append({
+                'schedule': schedule,
+                'amount': amount,
+                'date': schedule.visit_date,
+            })
+    selected_schedule_entries = _latest_dated_entries(priced_schedule_entries)
+    if selected_schedule_entries:
+        total_amount = _sum_entry_amounts(selected_schedule_entries)
+        primary_schedule = selected_schedule_entries[0]['schedule']
+        count = len(selected_schedule_entries)
         probability = round(
             sum(
-                amount * Decimal(str(schedule.probability or STAGE_PROBABILITY.get(stage, 30)))
-                for schedule, amount in priced_schedules
+                entry['amount'] * Decimal(str(entry['schedule'].probability or STAGE_PROBABILITY.get(stage, 30)))
+                for entry in selected_schedule_entries
             ) / total_amount
         ) if total_amount > 0 else STAGE_PROBABILITY.get(stage, 30)
         return {
@@ -1141,20 +1188,26 @@ def _select_quote_reference_pricing(followup, stage):
             'stage': primary_schedule.get_activity_type_display() if count == 1 else f'{primary_schedule.get_activity_type_display()} 외 {count - 1}건',
             'probability': int(probability or 0),
             'valid_until': primary_schedule.expected_close_date,
+            'basis_date': selected_schedule_entries[0]['date'],
             'count': count,
         }
 
     histories = list(getattr(followup, 'pricing_histories', []))
     quote_histories = [history for history in histories if history.action_type == 'quote']
-    priced_histories = [
-        (history, _history_pricing_amount(history))
-        for history in quote_histories
-        if _history_pricing_amount(history) > 0
-    ]
-    if priced_histories:
-        total_amount = sum((amount for _history, amount in priced_histories), Decimal('0'))
-        primary_history = priced_histories[0][0]
-        count = len(priced_histories)
+    priced_history_entries = []
+    for history in quote_histories:
+        amount = _history_pricing_amount(history)
+        if amount > 0:
+            priced_history_entries.append({
+                'history': history,
+                'amount': amount,
+                'date': _history_pricing_date(history),
+            })
+    selected_history_entries = _latest_dated_entries(priced_history_entries)
+    if selected_history_entries:
+        total_amount = _sum_entry_amounts(selected_history_entries)
+        primary_history = selected_history_entries[0]['history']
+        count = len(selected_history_entries)
         return {
             'object': primary_history,
             'kind': 'history',
@@ -1164,6 +1217,7 @@ def _select_quote_reference_pricing(followup, stage):
             'stage': primary_history.get_action_type_display() if count == 1 else f'{primary_history.get_action_type_display()} 외 {count - 1}건',
             'probability': STAGE_PROBABILITY.get(stage, 30),
             'valid_until': None,
+            'basis_date': selected_history_entries[0]['date'],
             'count': count,
         }
 
@@ -1181,6 +1235,7 @@ def _select_quote_reference_pricing(followup, stage):
                 'stage': quote_schedule.get_activity_type_display(),
                 'probability': quote_schedule.probability or STAGE_PROBABILITY.get(stage, 30),
                 'valid_until': quote_schedule.expected_close_date,
+                'basis_date': quote_schedule.visit_date,
             }
 
     quote_history = quote_histories[0] if quote_histories else None
@@ -1196,6 +1251,7 @@ def _select_quote_reference_pricing(followup, stage):
                 'stage': quote_history.get_action_type_display(),
                 'probability': STAGE_PROBABILITY.get(stage, 30),
                 'valid_until': None,
+                'basis_date': _history_pricing_date(quote_history),
             }
 
     return _quote_model_pricing(followup, stage)
@@ -1280,17 +1336,19 @@ def _actual_delivery_revenue(followup):
         for schedule in schedules
         if schedule.activity_type == 'delivery' and schedule.status == 'completed'
     ]
-    total = Decimal('0')
     processed_schedule_ids = set()
-    latest_schedule = None
+    delivery_entries = []
 
     for schedule in completed_delivery_schedules:
         amount = _delivery_schedule_amount(schedule)
         if amount > 0:
-            total += amount
+            delivery_entries.append({
+                'object': schedule,
+                'amount': amount,
+                'date': schedule.visit_date,
+                'number': f'납품 #{schedule.id}',
+            })
             processed_schedule_ids.add(schedule.id)
-            if latest_schedule is None:
-                latest_schedule = schedule
 
     histories = list(getattr(followup, 'pricing_histories', getattr(followup, 'all_histories', [])))
     for history in histories:
@@ -1300,9 +1358,23 @@ def _actual_delivery_revenue(followup):
             continue
         amount = _history_pricing_amount(history)
         if amount > 0:
-            total += amount
+            delivery_entries.append({
+                'object': history,
+                'amount': amount,
+                'date': _history_pricing_date(history),
+                'number': f'활동 #{history.id}',
+            })
 
-    return total, latest_schedule
+    selected_entries = _latest_dated_entries(delivery_entries)
+    if not selected_entries:
+        return Decimal('0'), None, None, 0
+
+    return (
+        _sum_entry_amounts(selected_entries),
+        selected_entries[0]['object'],
+        selected_entries[0]['date'],
+        len(selected_entries),
+    )
 
 
 def _select_pipeline_pricing(followup, stage):
@@ -1313,17 +1385,26 @@ def _select_pipeline_pricing(followup, stage):
     납품 History 금액에도 저장된다. 파이프라인 단계별로 실제 업무 소스를 우선한다.
     """
     if stage == 'won':
-        amount, delivery_schedule = _actual_delivery_revenue(followup)
+        amount, delivery_object, basis_date, count = _actual_delivery_revenue(followup)
         if amount > 0:
+            if isinstance(delivery_object, Schedule):
+                number = f'납품 #{delivery_object.id}'
+            elif isinstance(delivery_object, History):
+                number = f'활동 #{delivery_object.id}'
+            else:
+                number = '납품 히스토리'
+            if count > 1:
+                number = f'{number} 외 {count - 1}건'
             return {
-                'object': delivery_schedule,
+                'object': delivery_object,
                 'kind': 'delivery',
                 'amount': amount,
-                'source': '실제 납품 매출',
-                'number': f'납품 #{delivery_schedule.id}' if delivery_schedule else '납품 히스토리',
+                'source': f'실제 납품 매출 {count}건' if count > 1 else '실제 납품 매출',
+                'number': number,
                 'stage': '완료됨',
                 'probability': 100,
                 'valid_until': None,
+                'basis_date': basis_date,
             }
 
     if stage in ('quote', 'negotiation'):
@@ -1344,6 +1425,7 @@ def _select_pipeline_pricing(followup, stage):
         'stage': '',
         'probability': STAGE_PROBABILITY.get(stage, 30),
         'valid_until': None,
+        'basis_date': None,
     }
 
 
@@ -1579,6 +1661,7 @@ def pipeline_command_center_api(request):
         latest_quote_payload = None
         if pricing['source'] or pricing_amount > 0:
             valid_until = pricing['valid_until']
+            basis_date = pricing.get('basis_date')
             latest_quote_payload = {
                 'number': pricing['number'],
                 'stage': pricing['stage'],
@@ -1587,6 +1670,7 @@ def pipeline_command_center_api(request):
                 'validUntil': valid_until.isoformat() if valid_until else None,
                 'source': pricing['source'],
                 'basisType': pricing['kind'],
+                'basisDate': basis_date.isoformat() if basis_date else None,
             }
         next_schedule_payload = None
         if next_schedule:

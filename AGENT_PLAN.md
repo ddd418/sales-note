@@ -1,6 +1,45 @@
 # AGENT_PLAN.md
 
-## Current task — 납품 품목 할인단가 빈값 합계 0원 긴급 수정
+## Current task — React 매출 지표 및 파이프라인 날짜별 금액 보정
+
+**목표**: React 대시보드에서 현재 로그인 범위 기준 당해년도 전체 매출과 현재 분기 매출을 바로 확인할 수 있게 하고, 메인 파이프라인 카드 금액이 고객 전체 누적 매출로 부풀지 않도록 날짜별 기준 금액을 사용한다.
+
+### 확인된 상태
+
+- `/reporting/api/dashboard/`는 이미 `monthlyRevenue`를 납품 일정(`activity_type='delivery'`)의 `DeliveryItem.total_price` 합계로 계산한다.
+- 권한 범위는 `_dashboard_scope_users()`를 통해 실무자는 본인, 매니저/관리자는 허용 범위 사용자를 기준으로 잡는다.
+- `/reporting/api/pipeline/`는 한 고객의 견적 일정/활동 또는 완료 납품을 여러 날짜에 걸쳐 모두 합산해 카드 금액으로 내려줄 수 있다.
+- 그 결과 파이프라인 대표 금액과 단계 합계가 최신 카드 기준 금액이 아니라 누적 매출처럼 보일 수 있다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 대시보드 API에 당해년도 매출과 현재 분기 매출을 기존 월 매출과 같은 납품 일정 기준으로 추가한다.
+- API payload에 매출 기간 메타데이터를 함께 내려 React 카드 상세 문구에 사용할 수 있게 한다.
+- React `DashboardData` 타입과 fallback 데이터를 확장한다.
+- 대시보드 핵심 지표 카드에 `당해년도 전체 매출`, `현재 분기 매출`, `이번 달 매출`을 표시한다.
+- 파이프라인 금액 산정은 최신 기준일의 견적/납품만 사용하고, 같은 날짜에 여러 건이 있으면 그 날짜 묶음만 합산한다.
+- 파이프라인 상세 패널에는 금액 기준일을 표시한다.
+- 대시보드 API 회귀 테스트로 본인 범위/기간별 매출 합계를 검증한다.
+- 파이프라인 API 회귀 테스트로 서로 다른 날짜 금액이 누적 합산되지 않는지 검증한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python -m py_compile reporting\funnel_views.py`
+- `python manage.py test reporting.tests.PipelineApiTests --verbosity=1`
+- `python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke 확인.
+
+---
+
+## Previous task — 납품 품목 할인단가 빈값 합계 0원 긴급 수정
 
 **목표**: `/schedules/903/`에서 견적 품목 선택 적용 후 기준단가가 보이는데도 선결제 영역이 `차감할 납품 품목 합계가 없습니다`로 남는 문제를 해결한다.
 

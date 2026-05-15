@@ -41,6 +41,7 @@ export type Deal = {
     validUntil?: string | null;
     source?: string;
     basisType?: string;
+    basisDate?: string | null;
   } | null;
   quoteComparison?: {
     quotedAmount: number;

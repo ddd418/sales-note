@@ -1572,6 +1572,84 @@ class DashboardSummaryApiTests(TestCase):
         self.assertNotIn(other.id, priority_ids)
         self.assertTrue(payload['scope']['canViewAll'])
 
+    def test_dashboard_summary_api_includes_year_and_quarter_revenue(self):
+        from datetime import date, time
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, Schedule
+
+        today = timezone.localdate()
+        quarter = ((today.month - 1) // 3) + 1
+        quarter_start_month = ((quarter - 1) * 3) + 1
+        followup = self._create_customer(
+            self.user,
+            '매출고객',
+            overdue=False,
+            today_schedule=False,
+        )
+        coworker_followup = self._create_customer(
+            self.coworker,
+            '동료매출',
+            overdue=False,
+            today_schedule=False,
+        )
+
+        def create_delivery(owner, target_followup, visit_date, unit_price):
+            schedule = Schedule.objects.create(
+                user=owner,
+                company=owner.userprofile.company,
+                followup=target_followup,
+                visit_date=visit_date,
+                visit_time=time(11, 0),
+                status='completed',
+                activity_type='delivery',
+            )
+            DeliveryItem.objects.create(
+                schedule=schedule,
+                item_name='납품품목',
+                quantity=1,
+                unit_price=Decimal(str(unit_price)),
+            )
+            return int(Decimal(str(unit_price)) * Decimal('1.1'))
+
+        expected_year = 0
+        expected_quarter = 0
+        expected_month = create_delivery(self.user, followup, today, 100000)
+        expected_year += expected_month
+        expected_quarter += expected_month
+
+        quarter_delivery = create_delivery(
+            self.user,
+            followup,
+            date(today.year, quarter_start_month, 1),
+            200000,
+        )
+        expected_year += quarter_delivery
+        expected_quarter += quarter_delivery
+        if today.month == quarter_start_month:
+            expected_month += quarter_delivery
+
+        if quarter_start_month > 1:
+            expected_year += create_delivery(
+                self.user,
+                followup,
+                date(today.year, 1, 15),
+                300000,
+            )
+
+        create_delivery(self.user, followup, date(today.year - 1, 12, 15), 400000)
+        create_delivery(self.coworker, coworker_followup, today, 500000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['metrics']['yearRevenue'], expected_year)
+        self.assertEqual(payload['metrics']['quarterRevenue'], expected_quarter)
+        self.assertEqual(payload['metrics']['monthlyRevenue'], expected_month)
+        self.assertEqual(payload['revenuePeriod']['year'], today.year)
+        self.assertEqual(payload['revenuePeriod']['quarter'], quarter)
+
 
 class CustomersSummaryApiTests(TestCase):
     """React 고객 화면 읽기 API 검증"""
@@ -8922,7 +9000,7 @@ class PipelineApiTests(TestCase):
             unit_price=unit_price,
         )
 
-    def _create_delivery_schedule(self, followup, owner, name, unit_price, quantity=1):
+    def _create_delivery_schedule(self, followup, owner, name, unit_price, quantity=1, days_delta=-1):
         from datetime import time, timedelta
         from django.utils import timezone
         from reporting.models import Schedule
@@ -8931,7 +9009,7 @@ class PipelineApiTests(TestCase):
             user=owner,
             company=owner.userprofile.company,
             followup=followup,
-            visit_date=timezone.localdate() - timedelta(days=1),
+            visit_date=timezone.localdate() + timedelta(days=days_delta),
             visit_time=time(11, 0),
             status='completed',
             activity_type='delivery',
@@ -9103,13 +9181,14 @@ class PipelineApiTests(TestCase):
         stages = {stage['id']: stage for stage in payload['stages']}
         self.assertEqual(stages['won']['totalValue'], 4400000)
 
-    def test_pipeline_api_sums_multiple_quote_schedules(self):
+    def test_pipeline_api_uses_latest_quote_schedule_date_amount(self):
         from datetime import time, timedelta
         from django.utils import timezone
         from reporting.models import Schedule
 
-        followup = self._create_pipeline_customer(self.user, '복수견적', stage='quote')
-        self._create_delivery_item(followup.schedules.first(), '첫 견적품목', 1000000)
+        followup = self._create_pipeline_customer(self.user, '날짜별견적', stage='quote')
+        first_schedule = followup.schedules.first()
+        self._create_delivery_item(first_schedule, '과거 견적품목', 1000000)
         second_schedule = Schedule.objects.create(
             user=self.user,
             company=self.user.userprofile.company,
@@ -9119,16 +9198,48 @@ class PipelineApiTests(TestCase):
             status='scheduled',
             activity_type='quote',
         )
-        self._create_delivery_item(second_schedule, '두번째 견적품목', 2000000)
+        self._create_delivery_item(second_schedule, '최신 견적품목', 2000000)
+        same_day_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.user.userprofile.company,
+            followup=followup,
+            visit_date=timezone.localdate() + timedelta(days=2),
+            visit_time=time(15, 0),
+            status='scheduled',
+            activity_type='quote',
+        )
+        self._create_delivery_item(same_day_schedule, '같은날 견적품목', 500000)
         self.client.force_login(self.user)
 
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
         deal = next(deal for deal in response.json()['deals'] if deal['id'] == followup.id)
-        self.assertEqual(deal['value'], 3300000)
+        self.assertEqual(deal['value'], 2750000)
         self.assertEqual(deal['latestQuote']['source'], '견적 일정 2건')
         self.assertIn('외 1건', deal['latestQuote']['number'])
+        self.assertEqual(deal['latestQuote']['basisDate'], (timezone.localdate() + timedelta(days=2)).isoformat())
+
+    def test_pipeline_api_uses_latest_delivery_date_amount_for_won(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        followup = self._create_pipeline_customer(self.user, '날짜별수주', stage='won')
+        self._create_delivery_schedule(followup, self.user, '과거납품', 1000000, days_delta=-20)
+        self._create_delivery_schedule(followup, self.user, '최신납품', 2000000, days_delta=-1)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        deal = next(deal for deal in payload['deals'] if deal['id'] == followup.id)
+        self.assertEqual(deal['value'], 2200000)
+        self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출')
+        self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
+        self.assertEqual(deal['latestQuote']['basisDate'], (timezone.localdate() - timedelta(days=1)).isoformat())
+        stages = {stage['id']: stage for stage in payload['stages']}
+        self.assertEqual(stages['won']['totalValue'], 2200000)
 
     def test_pipeline_api_uses_quote_history_items_before_quote_model_fallback(self):
         followup = self._create_pipeline_customer(self.user, '견적히스토리', stage='quote')

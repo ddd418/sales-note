@@ -24,7 +24,7 @@ import logging
 import json
 import re
 import html
-from datetime import timedelta
+from datetime import date, timedelta
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -2478,11 +2478,20 @@ def dashboard_summary_api(request):
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
     today = timezone.localdate()
     week_end = today + timedelta(days=6)
-    month_start = today.replace(day=1)
-    if today.month == 12:
-        month_end = today.replace(year=today.year + 1, month=1, day=1)
+    year_start = date(today.year, 1, 1)
+    next_year_start = date(today.year + 1, 1, 1)
+    quarter = ((today.month - 1) // 3) + 1
+    quarter_start_month = ((quarter - 1) * 3) + 1
+    quarter_start = date(today.year, quarter_start_month, 1)
+    if quarter_start_month == 10:
+        quarter_end = date(today.year + 1, 1, 1)
     else:
-        month_end = today.replace(month=today.month + 1, day=1)
+        quarter_end = date(today.year, quarter_start_month + 3, 1)
+    month_start = date(today.year, today.month, 1)
+    if today.month == 12:
+        month_end = date(today.year + 1, 1, 1)
+    else:
+        month_end = date(today.year, today.month + 1, 1)
 
     followups = FollowUp.objects.filter(user__in=scope_users)
     schedules = Schedule.objects.filter(user__in=scope_users)
@@ -2629,10 +2638,20 @@ def dashboard_summary_api(request):
             for user in team_users
         ]
 
-    monthly_revenue = DeliveryItem.objects.filter(
+    revenue_items = DeliveryItem.objects.filter(
         schedule__in=schedules,
         schedule__activity_type='delivery',
         schedule__status__in=['scheduled', 'completed'],
+    )
+    yearly_revenue = revenue_items.filter(
+        schedule__visit_date__gte=year_start,
+        schedule__visit_date__lt=next_year_start,
+    ).aggregate(total=Sum('total_price'))['total'] or 0
+    quarterly_revenue = revenue_items.filter(
+        schedule__visit_date__gte=quarter_start,
+        schedule__visit_date__lt=quarter_end,
+    ).aggregate(total=Sum('total_price'))['total'] or 0
+    monthly_revenue = revenue_items.filter(
         schedule__visit_date__gte=month_start,
         schedule__visit_date__lt=month_end,
     ).aggregate(total=Sum('total_price'))['total'] or 0
@@ -2682,7 +2701,19 @@ def dashboard_summary_api(request):
             'recentNotes': histories.exclude(action_type='memo').count(),
             'pendingReviews': pending_review_count,
             'monthlyActivity': monthly_activity_count,
+            'yearRevenue': _money_int(yearly_revenue),
+            'quarterRevenue': _money_int(quarterly_revenue),
             'monthlyRevenue': _money_int(monthly_revenue),
+        },
+        'revenuePeriod': {
+            'year': today.year,
+            'quarter': quarter,
+            'yearStart': year_start.isoformat(),
+            'yearEnd': next_year_start.isoformat(),
+            'quarterStart': quarter_start.isoformat(),
+            'quarterEnd': quarter_end.isoformat(),
+            'monthStart': month_start.isoformat(),
+            'monthEnd': month_end.isoformat(),
         },
         'links': {
             'operationalDashboard': reverse('reporting:dashboard'),

@@ -1,5 +1,89 @@
 # AGENT_REPORT.md
 
+## 2026-05-15 — Dashboard Revenue Metrics And Pipeline Date-Based Amounts
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시 및 운영 배포 진행 예정
+
+### 요약
+
+React 대시보드에 현재 로그인 범위 기준 `당해년도 전체 매출`과 `현재 분기 매출` 카드를 추가했습니다.
+
+메인 파이프라인(`/`) 금액은 고객 전체 누적 견적/납품을 합산하지 않도록 수정했습니다. 이제 카드 대표 금액은 가장 최근 기준일의 견적/납품 묶음만 사용합니다. 같은 날짜에 여러 견적/납품이 있으면 그 날짜 안에서만 합산하고, 다른 날짜의 과거 금액은 제외합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 대시보드 API에 연/분기 매출과 기간 메타데이터 추가.
+- `reporting/funnel_views.py`: 파이프라인 금액 산정을 최신 기준일별 금액으로 변경하고 `basisDate` payload 추가.
+- `reporting/tests.py`: 대시보드 매출 기간 및 파이프라인 날짜별 금액 회귀 테스트 추가.
+- `frontend/src/api.ts`: 대시보드 매출 타입/fallback 정규화 추가.
+- `frontend/src/App.tsx`: 대시보드 매출 카드와 파이프라인 상세 기준일 표시 추가.
+- `frontend/src/mockData.ts`: 파이프라인 금액 기준일 타입 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록.
+
+### CRM 개선
+
+- 대시보드 첫 화면에서 당해년도/현재 분기/이번 달 매출을 바로 비교할 수 있습니다.
+- 파이프라인 카드 금액과 단계 합계가 고객 누적 매출로 부풀지 않고 최신 업무 날짜 기준으로 표시됩니다.
+- 파이프라인 상세 패널에서 금액 기준일을 확인할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/*` route와 인증/권한 정책은 유지했습니다.
+- 같은 날짜에 여러 견적/납품이 있는 경우에는 기존처럼 해당 업무 묶음의 합계를 보여줍니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\funnel_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.PipelineApiTests --verbosity=1
+→ Ran 13 tests, OK
+
+python manage.py test reporting.tests.DashboardSummaryApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-Cw_brbov.js / assets/index-GdZLLCy-.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 실제 금액 확인은 로그인 세션과 실제 파이프라인/대시보드 데이터가 필요해 사용자 수동 검수가 필요합니다.
+
+### 운영 배포 상태
+
+- 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영 `/dashboard/`에서 `당해년도 전체 매출`, `현재 분기 매출`, `이번 달 매출` 카드가 보이는지 확인합니다.
+2. 운영 `/`에서 여러 날짜의 견적/납품 이력이 있는 고객 카드를 엽니다.
+3. 카드 금액이 고객 전체 누적이 아니라 최신 기준일의 금액으로 표시되는지 확인합니다.
+4. 우측 상세 패널의 가격 기준 영역에서 `기준일`이 표시되는지 확인합니다.
+
+### 권장 다음 작업
+
+- 운영 검수 후 AI Workspace 전체 부서 질문/PI 검색 보완 작업을 이어서 진행합니다.
+
+---
+
 ## 2026-05-15 — Empty Discount Unit Price Parsing Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/번들 스모크 완료, 운영 수동검수 대기
