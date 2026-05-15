@@ -18324,13 +18324,16 @@ git diff --check
 
 - Runtime commit: `9abf0ce fix: save delivery items with prepayment`
 - GitHub: `main` pushed.
-- Railway manual deploy attempt:
-  - `railway deployment up --service web --detach --message "Deploy delivery prepayment fix 9abf0ce"` → failed, `Unauthorized. Please run railway login again.`
-  - `railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy delivery prepayment fix 9abf0ce"` → failed, `Unauthorized. Please run railway login again.`
-- Production smoke while blocked:
-  - Frontend `/schedules/903/` returned 200 but still serves previous JS `assets/index-DNPyx-Uf.js`, so frontend deployment has not updated.
+- Initial Railway deploy attempt was blocked by expired CLI OAuth token; after `railway login`, both services deployed successfully.
+- Railway `web`: `f6d287f1-b05c-41f8-bd57-4945fc1997f3` SUCCESS.
+- Railway `sales-note-frontend`: `5248103f-19c9-4b54-a520-22bd07cd3271` SUCCESS.
+- DB migration: none.
+- Production smoke:
+  - Frontend `/schedules/903/` returned 200.
+  - Latest assets served: `assets/index-CtUrLDX9.js`, `assets/index-GdZLLCy-.css`.
+  - Backend `/reporting/login/` returned 200.
   - Frontend-proxied `/reporting/api/schedules/903/` returned expected anonymous `401 login_required`.
-- Deployment status: blocked by expired Railway CLI OAuth token. Re-run deploy after `railway login`.
+  - Latest web logs show migrations no-op and gunicorn startup OK.
 
 ### 8. Manual Server Test Process
 
