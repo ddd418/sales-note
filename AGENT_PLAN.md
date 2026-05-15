@@ -37,6 +37,18 @@
 - `git diff --check`
 - 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke 확인.
 
+### 현재 상태
+
+- 대시보드 API 연/분기 매출 payload 추가 완료.
+- React 대시보드 매출 카드 추가 완료.
+- 파이프라인 카드 금액을 최신 기준일별 금액으로 보정 완료.
+- 파이프라인 상세 기준일 표시 완료.
+- 로컬 백엔드 테스트, Django checks, frontend 타입체크/빌드 통과.
+- 커밋/푸시 완료: `f011bc9 fix: use dated revenue for pipeline cards`.
+- Railway `web` 배포 완료: `bc76b797-eb67-407b-987b-77c81c0d9f8b` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `90d787cc-e7dd-4c03-8366-4d1c4571c9d2` SUCCESS.
+- 운영 smoke 완료: `/`, `/dashboard/` 최신 번들 `assets/index-Cw_brbov.js` 반영 및 API 로그인 보호 확인.
+
 ---
 
 ## Previous task — 납품 품목 할인단가 빈값 합계 0원 긴급 수정

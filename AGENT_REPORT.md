@@ -2,7 +2,7 @@
 
 ## 2026-05-15 — Dashboard Revenue Metrics And Pipeline Date-Based Amounts
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시 및 운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -61,6 +61,32 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: use dated revenue for pipeline cards"
+git push origin main
+→ pushed f011bc9 to origin/main
+
+railway deployment list --service web --limit 2 --json
+→ bc76b797-eb67-407b-987b-77c81c0d9f8b SUCCESS, commit f011bc9
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy dashboard revenue and dated pipeline amounts f011bc9"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 90d787cc-e7dd-4c03-8366-4d1c4571c9d2 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/
+→ 200, assets/index-Cw_brbov.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/dashboard/
+→ 200, assets/index-Cw_brbov.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-Cw_brbov.js
+→ 200, `당해년도 전체 매출`, `현재 분기 매출`, `basisDate`, `기준일` strings present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/pipeline/ -MaximumRedirection 0
+→ 302 /reporting/login/?next=/reporting/api/pipeline/
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/dashboard/ -SkipHttpErrorCheck
+→ 401 login_required JSON
 ```
 
 ### 알려진 제한
@@ -69,7 +95,15 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 진행 예정.
+- GitHub: `f011bc9 fix: use dated revenue for pipeline cards` pushed to `origin/main`.
+- Railway `web`: `bc76b797-eb67-407b-987b-77c81c0d9f8b` SUCCESS.
+- Railway `sales-note-frontend`: `90d787cc-e7dd-4c03-8366-4d1c4571c9d2` SUCCESS.
+- 운영 smoke OK:
+  - `/` 200, latest frontend asset `assets/index-Cw_brbov.js` loaded.
+  - `/dashboard/` 200, latest frontend asset loaded.
+  - deployed JS contains dashboard revenue card labels and pipeline `basisDate`/`기준일` handling.
+  - anonymous pipeline API redirects to login.
+  - anonymous dashboard API returns `401 login_required` JSON.
 
 ### 운영 수동 검수 절차
 
