@@ -18322,7 +18322,15 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending commit/push/deploy after local validation.
+- Runtime commit: `9abf0ce fix: save delivery items with prepayment`
+- GitHub: `main` pushed.
+- Railway manual deploy attempt:
+  - `railway deployment up --service web --detach --message "Deploy delivery prepayment fix 9abf0ce"` → failed, `Unauthorized. Please run railway login again.`
+  - `railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy delivery prepayment fix 9abf0ce"` → failed, `Unauthorized. Please run railway login again.`
+- Production smoke while blocked:
+  - Frontend `/schedules/903/` returned 200 but still serves previous JS `assets/index-DNPyx-Uf.js`, so frontend deployment has not updated.
+  - Frontend-proxied `/reporting/api/schedules/903/` returned expected anonymous `401 login_required`.
+- Deployment status: blocked by expired Railway CLI OAuth token. Re-run deploy after `railway login`.
 
 ### 8. Manual Server Test Process
 
