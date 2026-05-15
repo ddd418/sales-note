@@ -905,6 +905,9 @@ class DeliveryItem(models.Model):
         unit_price = Decimal(str(self.unit_price))
         if self.discount_unit_price is not None:
             discount_price = Decimal(str(self.discount_unit_price))
+            discount_rate = Decimal(str(self.discount_rate or 0))
+            if discount_price <= 0 and discount_rate <= 0 and unit_price > 0:
+                return unit_price
             return max(discount_price, Decimal('0'))
 
         discount_rate = Decimal(str(self.discount_rate or 0))
@@ -935,6 +938,10 @@ class DeliveryItem(models.Model):
 
             unit_price = Decimal(str(self.unit_price))
             discount_rate = Decimal(str(self.discount_rate or 0))
+            if self.discount_unit_price is not None:
+                discount_price = Decimal(str(self.discount_unit_price))
+                if discount_price <= 0 and discount_rate <= 0 and unit_price > 0:
+                    self.discount_unit_price = None
             if self.discount_unit_price is None and discount_rate > 0:
                 discount_rate = min(discount_rate, Decimal('100'))
                 self.discount_unit_price = (

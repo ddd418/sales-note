@@ -2,7 +2,7 @@
 
 ## 2026-05-15 — Empty Discount Unit Price Parsing Fix
 
-**상태**: 구현/로컬 검증 완료, 운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/번들 스모크 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -37,6 +37,26 @@ cd frontend; npm run build
 
 cd frontend; node --check server.mjs
 → OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "fix: treat empty discount unit price as blank"
+git push origin main
+→ pushed e3d2d90 to origin/main
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy empty discount price fix e3d2d90"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 3ce950f1-f99d-4315-9dec-61808c9f1dff SUCCESS
+
+railway deployment list --service web --limit 2 --json
+→ 1c6a9e90-44cc-4d09-b90b-850d4f15889a SUCCESS, commit e3d2d90
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/903/
+→ 200, assets/index-DNPyx-Uf.js and assets/index-GdZLLCy-.css loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DNPyx-Uf.js
+→ 200, blank numeric parse guard and discountUnitPrice handling present
 ```
 
 ### 알려진 제한
@@ -45,7 +65,13 @@ cd frontend; node --check server.mjs
 
 ### 운영 배포 상태
 
-- 배포 진행 예정.
+- GitHub: `e3d2d90 fix: treat empty discount unit price as blank` pushed to `origin/main`.
+- Railway `sales-note-frontend`: `3ce950f1-f99d-4315-9dec-61808c9f1dff` SUCCESS.
+- Railway `web`: `1c6a9e90-44cc-4d09-b90b-850d4f15889a` SUCCESS.
+- 운영 smoke OK:
+  - `/schedules/903/` 200.
+  - latest frontend assets `index-DNPyx-Uf.js`, `index-GdZLLCy-.css` loaded.
+  - deployed JS contains blank numeric parse guard and `discountUnitPrice` handling.
 
 ### 운영 수동 검수 절차
 
@@ -18218,3 +18244,90 @@ git diff --check
 1. Wave 1 시작: `/reporting/api/navigation/`을 추가하고 React sidebar를 role/capability 기반으로 전환합니다.
 2. `/tasks/`와 `/tasks/manager/` React v1 및 ToDo/업무하달 JSON API를 구현합니다.
 3. 운영 검수 후 ToDo 관련 Django template route를 fallback/redirect 대상으로 전환합니다.
+
+---
+
+## 2026-05-15 Schedule Prepayment Delivery Save Fix
+
+### 1. Summary
+
+- `/schedules/903/` 납품 품목 저장 500 오류를 수정했습니다.
+- 운영 로그의 직접 원인인 PostgreSQL `FOR UPDATE` + `DISTINCT` 조합을 제거했습니다.
+- 할인율 없는 `discount_unit_price=0` 레거시 값을 빈 할인단가로 정규화해 견적 불러오기/납품 저장/서류 변수에서 0원 품목으로 계산되지 않게 했습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/models.py`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+
+### 3. CRM Improvements
+
+- 견적 품목 불러오기에서 사용자가 입력하지 않은 할인단가가 `0`으로 보이지 않습니다.
+- 납품 품목 저장 시 원본 견적 일정 ID 수집 쿼리가 PostgreSQL에서 실패하지 않습니다.
+- 선결제 차감 저장 API는 납품 품목 합계보다 큰 차감액을 서버에서도 차단합니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델 필드/마이그레이션 변경은 없습니다.
+- 기존 `/reporting/*` 라우트와 일정 수정 API의 선결제 조정 흐름은 유지했습니다.
+- 100% 할인처럼 할인율이 있는 0원 할인단가는 계속 명시 할인으로 처리합니다.
+
+### 5. Commands Run
+
+```text
+railway logs --service web --tail 200
+→ Confirmed production error: FOR UPDATE is not allowed with DISTINCT clause
+
+python -m py_compile reporting\models.py reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests.test_quote_items_api_treats_legacy_zero_discount_unit_price_as_blank reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_treats_zero_discount_unit_price_without_rate_as_blank reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_blocks_prepayment_above_delivery_total reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_collects_existing_source_quotes_without_distinct_lock --verbosity=2
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_applies_and_restores_prepayments reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_blocks_prepayment_above_delivery_total --verbosity=2
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 66 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, dist/assets/index-CtUrLDX9.js / dist/assets/index-GdZLLCy-.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- 기존 DB의 `discount_unit_price=0` 값 자체를 마이그레이션으로 고치지는 않았습니다. 대신 읽기/계산/저장 단계에서 안전하게 해석합니다.
+- 운영 화면에서 이미 열린 페이지는 새 번들을 받기 위해 새로고침이 필요합니다.
+
+### 7. Production Deployment Status
+
+- Pending commit/push/deploy after local validation.
+
+### 8. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/schedules/903/`에 접속합니다.
+2. `납품 품목`에서 `견적 불러오기`를 열고 문제 견적을 선택 적용합니다.
+3. `SO825.0002`, `SO320.336W` 행의 할인단가가 빈칸인지 확인합니다.
+4. 선결제를 선택하고 `전체 차감` 또는 직접 금액 입력 후 저장합니다.
+5. `납품 품목을 저장하고 ... 선결제를 차감했습니다.` 메시지가 표시되고 500 오류가 나오지 않는지 확인합니다.

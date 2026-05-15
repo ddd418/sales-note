@@ -5959,6 +5959,15 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
   const originalQuantity = Math.max(remainingQuantity, rawNumber(rawValue(item, 'originalQuantity', 'original_quantity'), remainingQuantity));
   const deliveredQuantity = Math.max(0, rawNumber(rawValue(item, 'deliveredQuantity', 'delivered_quantity')));
   const totalPrice = rawNumber(rawValue(item, 'totalPrice', 'total_price'));
+  const discountRate = rawNumber(rawValue(item, 'discountRate', 'discount_rate'));
+  const rawDiscountUnitPrice = rawNullableNumber(rawValue(item, 'discountUnitPrice', 'discount_unit_price'));
+  const discountUnitPrice = rawDiscountUnitPrice !== null && !(rawDiscountUnitPrice <= 0 && discountRate <= 0 && unitPrice > 0)
+    ? rawDiscountUnitPrice
+    : null;
+  const rawEffectiveUnitPrice = rawNullableNumber(rawValue(item, 'effectiveUnitPrice', 'effective_unit_price'));
+  const effectiveUnitPrice = rawEffectiveUnitPrice !== null && !(rawEffectiveUnitPrice <= 0 && discountUnitPrice === null && unitPrice > 0)
+    ? rawEffectiveUnitPrice
+    : unitPrice;
   return {
     id: rawNullableNumber(item.id),
     productId,
@@ -5973,9 +5982,9 @@ const normalizeFollowupQuoteItem = (value: unknown): FollowupQuoteItem => {
     quantity: remainingQuantity,
     unit: rawString(item.unit) || 'EA',
     unitPrice,
-    discountRate: rawNumber(rawValue(item, 'discountRate', 'discount_rate')),
-    discountUnitPrice: rawNullableNumber(rawValue(item, 'discountUnitPrice', 'discount_unit_price')),
-    effectiveUnitPrice: rawNumber(rawValue(item, 'effectiveUnitPrice', 'effective_unit_price'), unitPrice),
+    discountRate,
+    discountUnitPrice,
+    effectiveUnitPrice,
     totalPrice,
     remainingAmount: rawNumber(rawValue(item, 'remainingAmount', 'remaining_amount'), totalPrice),
     quotedAmount: rawNumber(rawValue(item, 'quotedAmount', 'quoted_amount'), totalPrice),

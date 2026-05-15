@@ -2535,6 +2535,42 @@ class QuoteItemsApiTests(TestCase):
         self.assertEqual(quote_item['unitPrice'], 50000.0)
         self.assertEqual(quote_item['effectiveUnitPrice'], 50000.0)
 
+    def test_quote_items_api_treats_legacy_zero_discount_unit_price_as_blank(self):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        target = self._create_followup(self.user, '할인단가0 견적')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='SO825.0002',
+            quantity=1,
+            unit='EA',
+            unit_price=379950,
+        )
+        DeliveryItem.objects.filter(pk=item.pk).update(discount_rate=0, discount_unit_price=0, total_price=0)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:followup_quote_items_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        quote_item = payload['quotes'][0]['items'][0]
+        self.assertIsNone(quote_item['discountUnitPrice'])
+        self.assertEqual(quote_item['discountRate'], 0.0)
+        self.assertEqual(quote_item['unitPrice'], 379950.0)
+        self.assertEqual(quote_item['effectiveUnitPrice'], 379950.0)
+        self.assertEqual(quote_item['totalPrice'], 417945.0)
+
     def test_quote_items_api_returns_remaining_items_after_partial_delivery_import(self):
         from datetime import time
         from django.utils import timezone
@@ -5239,6 +5275,81 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(schedule.prepayment_amount), 0)
         self.assertFalse(PrepaymentUsage.objects.filter(schedule=schedule).exists())
 
+    def test_schedule_delivery_items_update_api_treats_zero_discount_unit_price_without_rate_as_blank(self):
+        import json
+        from reporting.models import DeliveryItem
+
+        schedule = self._create_schedule(self.user, '납품할인단가0', activity_type='delivery')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'itemName': 'SO825.0002',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '379950',
+                        'discountRate': '',
+                        'discountUnitPrice': '0',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        item = DeliveryItem.objects.get(schedule=schedule)
+        self.assertIsNone(item.discount_unit_price)
+        self.assertEqual(float(item.discount_rate), 0.0)
+        self.assertEqual(int(item.get_effective_unit_price()), 379950)
+        self.assertEqual(int(item.total_price), 417945)
+        self.assertIsNone(payload['deliveryItems'][0]['discountUnitPrice'])
+        self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 379950)
+        self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 417945)
+
+    def test_schedule_delivery_items_update_api_blocks_prepayment_above_delivery_total(self):
+        import json
+        from django.utils import timezone
+        from reporting.models import Prepayment
+
+        schedule = self._create_schedule(self.user, '납품선결제상한서버', activity_type='delivery')
+        prepayment = Prepayment.objects.create(
+            customer=schedule.followup,
+            company=schedule.followup.company,
+            amount=1000000,
+            balance=1000000,
+            payment_date=timezone.localdate(),
+            payer_name='상한입금자',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'usePrepayment': True,
+                'prepayments': [{'id': prepayment.id, 'amount': '60000'}],
+                'items': [
+                    {
+                        'itemName': 'Limit Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '50000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('납품 품목 합계', response.json()['error'])
+        prepayment.refresh_from_db()
+        self.assertEqual(int(prepayment.balance), 1000000)
+
     def test_schedule_delivery_items_update_api_blocks_over_balance_prepayment_without_saving_items(self):
         import json
         from django.utils import timezone
@@ -5586,6 +5697,71 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(delivery_item.item_name, 'Manual Replacement Kit')
         self.assertIsNone(delivery_item.source_quote_schedule_id)
         self.assertIsNone(delivery_item.source_quote_item_id)
+
+    def test_schedule_delivery_items_update_api_collects_existing_source_quotes_without_distinct_lock(self):
+        import datetime
+        import json
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = self._create_schedule(self.user, '견적원본중복잠금회피', activity_type='delivery')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='completed',
+        )
+        quote_item = DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Existing Linked Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=40000,
+        )
+        for index in range(2):
+            DeliveryItem.objects.create(
+                schedule=schedule,
+                source_quote_schedule=quote_schedule,
+                source_quote_item=quote_item if index == 0 else None,
+                item_name=f'Existing Linked Kit {index}',
+                quantity=1,
+                unit='EA',
+                unit_price=40000,
+            )
+        self.client.force_login(self.user)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.post(
+                reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+                data=json.dumps({
+                    'items': [
+                        {
+                            'itemName': 'Manual Replacement Kit',
+                            'quantity': 1,
+                            'unit': 'EA',
+                            'unitPrice': '10000',
+                        },
+                    ],
+                }),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        source_quote_queries = [
+            query['sql'].upper()
+            for query in captured.captured_queries
+            if 'SOURCE_QUOTE_SCHEDULE_ID' in query['sql'].upper()
+        ]
+        self.assertTrue(source_quote_queries)
+        self.assertFalse(any('DISTINCT' in query for query in source_quote_queries))
+        quote_schedule.refresh_from_db()
+        self.assertEqual(quote_schedule.status, 'scheduled')
 
     def test_completed_quote_items_do_not_increment_product_sold_count(self):
         from reporting.models import DeliveryItem, Product

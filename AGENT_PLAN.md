@@ -21,6 +21,10 @@
 
 - 빈 할인단가가 0원으로 계산되는 프론트 파싱 버그 수정 완료.
 - frontend 타입체크/빌드/server.mjs 체크 통과.
+- 커밋/푸시 완료: `e3d2d90 fix: treat empty discount unit price as blank`.
+- Railway `sales-note-frontend` 배포 완료: `3ce950f1-f99d-4315-9dec-61808c9f1dff` SUCCESS.
+- Railway `web` 배포 완료: `1c6a9e90-44cc-4d09-b90b-850d4f15889a` SUCCESS.
+- 운영 smoke 완료: `/schedules/903/` 최신 번들 및 빈값 파싱 guard 반영 확인.
 
 ### 검증 계획
 
@@ -4899,6 +4903,41 @@ python pre_deployment_check.py
 - AI 권한 없는 사용자는 403, 담당하지 않는 부서는 404로 차단되는 테스트 추가.
 - `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
 - `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+
+## 2026-05-15 납품 품목 선결제 저장/할인단가 0 수정 계획
+
+**배경**:
+
+- `/schedules/903/`에서 견적 품목을 불러오면 할인단가가 사용자가 입력하지 않은 `0`으로 표시된다.
+- 같은 화면에서 선결제 차감과 함께 납품 품목 저장 시 `납품 품목 저장 중 오류가 발생했습니다.`가 표시된다.
+- 운영 로그 확인 결과 저장 실패의 직접 원인은 PostgreSQL에서 `FOR UPDATE`와 `DISTINCT`를 함께 쓴 쿼리(`FOR UPDATE is not allowed with DISTINCT clause`)다.
+- 할인단가 0은 과거/레거시 데이터의 `discount_unit_price=0, discount_rate=0` 조합이 “할인 없음”이 아니라 “0원 할인단가”로 해석되는 문제다.
+
+**DB 변경 필요 여부**: 없음.
+
+- 기존 `DeliveryItem.discount_unit_price` 값을 마이그레이션하지 않고, 읽기/저장/계산 단계에서 `할인율 0 + 할인단가 0 + 기준단가 있음`은 할인 없음으로 정규화한다.
+
+**구현 범위**:
+
+- React 납품 품목 저장 API에서 기존 원본 견적 일정 ID 수집 시 `select_for_update().distinct()` 조합을 제거하고 Python에서 중복 제거한다.
+- `DeliveryItem` 계산/저장 로직에서 할인율 없는 0원 할인단가를 빈 할인단가로 취급한다.
+- 견적 품목 불러오기 API와 일정 상세 API의 payload도 같은 기준으로 `discountUnitPrice: null`, 정상 기준단가/총액을 내려준다.
+- React 견적 품목 정규화와 import row 생성에서도 방어적으로 같은 값을 할인 없음으로 처리한다.
+- 선결제 차감 저장 시 납품 품목 합계보다 큰 선결제 차감액은 서버에서도 차단한다.
+
+**검증 계획**:
+
+- 견적 품목 API가 레거시 `discount_unit_price=0`을 빈 할인단가로 반환하는 테스트 추가.
+- 납품 품목 저장 API가 `discountUnitPrice: "0"` 입력을 빈 할인단가로 저장하고 정상 총액을 계산하는 테스트 추가.
+- PostgreSQL 오류 원인이 된 `DISTINCT` 원본 견적 ID 잠금 쿼리가 사라졌는지 쿼리 캡처 테스트 추가.
+- `python -m py_compile reporting\models.py reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.QuoteItemsApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1`
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `cd frontend && npx tsc --noEmit --pretty false`

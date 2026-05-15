@@ -5709,9 +5709,27 @@ def _save_schedule_quote_group_notes(schedule, notes_map):
     schedule.quote_extra_notes = notes_map.get('', '')
 
 
+def _schedules_discount_unit_price_or_none(item):
+    """Treat legacy zero discount-unit values without a discount rate as blank."""
+    from decimal import Decimal, InvalidOperation
+
+    if item.discount_unit_price is None:
+        return None
+    try:
+        discount_unit_price = Decimal(str(item.discount_unit_price))
+        discount_rate = Decimal(str(item.discount_rate or 0))
+        unit_price = Decimal(str(item.unit_price or 0)) if item.unit_price is not None else Decimal('0')
+    except (InvalidOperation, ValueError):
+        return item.discount_unit_price
+    if discount_unit_price <= 0 and discount_rate <= 0 and unit_price > 0:
+        return None
+    return item.discount_unit_price
+
+
 def _schedules_delivery_item_payload(item):
     product = item.product if item.product_id else None
     effective_unit_price = item.get_effective_unit_price()
+    discount_unit_price = _schedules_discount_unit_price_or_none(item)
     return {
         'id': item.id,
         'productId': item.product_id,
@@ -5722,7 +5740,7 @@ def _schedules_delivery_item_payload(item):
         'unit': item.unit or '',
         'unitPrice': _money_int(item.unit_price) if item.unit_price is not None else None,
         'discountRate': float(item.discount_rate or 0),
-        'discountUnitPrice': _money_int(item.discount_unit_price) if item.discount_unit_price is not None else None,
+        'discountUnitPrice': _money_int(discount_unit_price) if discount_unit_price is not None else None,
         'effectiveUnitPrice': _money_int(effective_unit_price) if effective_unit_price is not None else None,
         'totalPrice': _money_int(item.total_price),
         'taxInvoiceIssued': bool(item.tax_invoice_issued),
@@ -5873,7 +5891,7 @@ def _schedules_parse_prepayment_inputs(raw_items):
     return parsed
 
 
-def _schedules_apply_prepayments(schedule, actor, raw_items):
+def _schedules_apply_prepayments(schedule, actor, raw_items, enforce_delivery_total=False):
     from decimal import Decimal
 
     if schedule.activity_type != 'delivery':
@@ -5903,6 +5921,14 @@ def _schedules_apply_prepayments(schedule, actor, raw_items):
         if amount > available_balance:
             payer_name = prepayment.payer_name or '미지정'
             raise ValueError(f'{payer_name} 선결제 잔액이 부족합니다.')
+
+    if enforce_delivery_total:
+        selected_total = sum((amount for _prepayment_id, amount in selected_items), Decimal('0'))
+        _delivery_text, delivery_total = _schedules_delivery_items_summary(schedule)
+        if delivery_total <= 0:
+            raise ValueError('차감할 납품 품목 합계가 없습니다. 먼저 견적 품목을 불러오거나 납품 품목 금액을 입력하세요.')
+        if selected_total > Decimal(str(delivery_total)):
+            raise ValueError(f'선결제 차감 금액은 납품 품목 합계 {_money_int(delivery_total):,}원까지 입력할 수 있습니다.')
 
     _schedules_restore_prepayments(schedule)
 
@@ -6066,6 +6092,8 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None, target_schedu
                 raise ValueError(f'{index}번째 할인단가는 0 이상이어야 합니다.')
             if unit_price is not None and discount_unit_price > unit_price:
                 raise ValueError(f'{index}번째 할인단가는 기준단가보다 클 수 없습니다.')
+            if unit_price is not None and unit_price > 0 and discount_unit_price <= 0 and discount_rate <= 0:
+                discount_unit_price = None
 
         tax_invoice_issued = raw_item.get('taxInvoiceIssued') in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
         item_data = {
@@ -7615,12 +7643,14 @@ def schedules_delivery_items_update_api(request, schedule_id):
         completed_quote_schedule_ids = []
         prepayment_total = 0
         with transaction.atomic():
-            existing_source_quote_schedule_ids = list(
+            existing_source_quote_schedule_ids = []
+            for source_id in (
                 DeliveryItem.objects.select_for_update()
                 .filter(schedule=schedule, source_quote_schedule_id__isnull=False)
                 .values_list('source_quote_schedule_id', flat=True)
-                .distinct()
-            )
+            ):
+                if source_id and source_id not in existing_source_quote_schedule_ids:
+                    existing_source_quote_schedule_ids.append(source_id)
             for source_id in existing_source_quote_schedule_ids:
                 if source_id not in source_quote_schedule_ids:
                     source_quote_schedule_ids.append(source_id)
@@ -7633,7 +7663,12 @@ def schedules_delivery_items_update_api(request, schedule_id):
             _schedules_sync_delivery_histories(schedule, request.user, len(delivery_items))
             if prepayment_requested:
                 if use_prepayment:
-                    prepayment_total = _schedules_apply_prepayments(schedule, request.user, payload.get('prepayments'))
+                    prepayment_total = _schedules_apply_prepayments(
+                        schedule,
+                        request.user,
+                        payload.get('prepayments'),
+                        enforce_delivery_total=True,
+                    )
                 else:
                     _schedules_restore_prepayments(schedule)
             completed_quote_schedule_ids = _schedules_mark_source_quote_schedules_completed(
@@ -18541,7 +18576,11 @@ def schedule_delivery_items_api(request, schedule_id):
                 'quantity': item.quantity,
                 'unit_price': float(item.unit_price or 0),
                 'discount_rate': float(item.discount_rate or 0),
-                'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
+                'discount_unit_price': (
+                    float(_schedules_discount_unit_price_or_none(item))
+                    if _schedules_discount_unit_price_or_none(item) is not None
+                    else None
+                ),
                 'effective_unit_price': float(effective_unit_price),
                 'total_price': float(item_total),
                 'tax_invoice_issued': tax_invoice_status,
@@ -18602,7 +18641,11 @@ def history_delivery_items_api(request, history_id):
                     'quantity': item.quantity,
                     'unit_price': float(item.unit_price or 0),
                     'discount_rate': float(item.discount_rate or 0),
-                    'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
+                    'discount_unit_price': (
+                        float(_schedules_discount_unit_price_or_none(item))
+                        if _schedules_discount_unit_price_or_none(item) is not None
+                        else None
+                    ),
                     'effective_unit_price': float(effective_unit_price),
                     'total_price': float(item_total),
                     'tax_invoice_issued': history.tax_invoice_issued,  # History 기준으로 강제 설정
@@ -19454,7 +19497,11 @@ def schedule_delivery_items_api(request, schedule_id):
                 'quantity': item.quantity,
                 'unit_price': float(item.unit_price or 0),
                 'discount_rate': float(item.discount_rate or 0),
-                'discount_unit_price': float(item.discount_unit_price) if item.discount_unit_price is not None else None,
+                'discount_unit_price': (
+                    float(_schedules_discount_unit_price_or_none(item))
+                    if _schedules_discount_unit_price_or_none(item) is not None
+                    else None
+                ),
                 'effective_unit_price': float(effective_unit_price),
                 'total_price': float(item.total_price or 0),
                 'tax_invoice_issued': item.tax_invoice_issued,
@@ -19878,9 +19925,10 @@ def followup_quote_items_api(request, followup_id):
                         if item.unit_price is not None
                         else fallback_effective_unit_price or 0
                     )
+                    normalized_discount_unit_price = _schedules_discount_unit_price_or_none(item)
                     discount_unit_price = (
-                        float(item.discount_unit_price)
-                        if item.discount_unit_price is not None
+                        float(normalized_discount_unit_price)
+                        if normalized_discount_unit_price is not None
                         else None
                     )
                     effective_unit_price = float(item.get_effective_unit_price() or item.unit_price or fallback_effective_unit_price or 0)
@@ -24192,12 +24240,13 @@ def _document_item_prices(item):
     base_unit_price = Decimal(str(item.unit_price or 0))
     effective_unit_price = item.get_effective_unit_price() or base_unit_price
     discount_rate = Decimal(str(item.discount_rate or 0))
-    if item.discount_unit_price is not None and base_unit_price > 0 and discount_rate <= 0:
+    discount_unit_price = _schedules_discount_unit_price_or_none(item)
+    if discount_unit_price is not None and base_unit_price > 0 and discount_rate <= 0:
         discount_rate = (
             (Decimal('1') - (effective_unit_price / base_unit_price)) * Decimal('100')
         ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     has_discount = (
-        item.discount_unit_price is not None
+        discount_unit_price is not None
         or discount_rate > 0
         or effective_unit_price < base_unit_price
     )

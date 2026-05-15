@@ -782,6 +782,10 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
       ? item.effectiveUnitPrice
       : fallbackUnitPrice;
   const usesOriginalUnitPrice = item.unitPrice > 0;
+  const hasExplicitDiscount = usesOriginalUnitPrice
+    && item.discountUnitPrice !== undefined
+    && item.discountUnitPrice !== null
+    && (item.discountRate > 0 || item.discountUnitPrice < unitPrice);
   return {
     rowId: `quote-${quote.optionId}-${item.id ?? index}-${Date.now()}-${index}`,
     productId: item.productId ? String(item.productId) : '',
@@ -791,7 +795,7 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
     unit: item.unit || 'EA',
     unitPrice: unitPrice > 0 ? moneyInputValue(unitPrice) : '',
     discountRate: usesOriginalUnitPrice && item.discountRate ? rateInputValue(item.discountRate) : '',
-    discountUnitPrice: usesOriginalUnitPrice && item.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? moneyInputValue(item.discountUnitPrice) : '',
+    discountUnitPrice: hasExplicitDiscount ? moneyInputValue(item.discountUnitPrice ?? 0) : '',
     taxInvoiceIssued: Boolean(item.taxInvoiceIssued),
     quoteGroup: item.quoteGroup || '',
     notes: item.notes || '',
