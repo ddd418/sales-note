@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-16 — AI Workspace Structured Action Answers
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 예정
+
+### 요약
+
+AI Workspace 질문 답변이 짧은 요약/불릿으로 압축되어 보이는 문제를 개선하기 위해, 답변에 고객별 `actionItems` 구조를 추가했습니다. 각 작업은 판단 이유, 다음 액션, 확인 시점, CRM 근거를 분리해 React 화면에서 읽기 쉬운 상세 블록으로 표시합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI 질문 답변 정규화/프롬프트/fallback에 작업별 상세 항목 추가.
+- `reporting/tests.py`: 작업별 상세 응답 정규화와 전체 범위 fallback 회귀 테스트 추가.
+- `frontend/src/api.ts`: AI 질문 응답 타입에 `actionItems` 추가.
+- `frontend/src/App.tsx`: AI 질문 답변에 작업별 상세 블록 렌더링 추가.
+- `frontend/src/styles.css`: 작업별 상세 답변 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 전체 부서 질문에서 “누구를 왜 먼저 챙길지”와 “무엇을 언제 할지”가 고객별로 분리됩니다.
+- 기존 요약/불릿/근거 응답도 계속 표시되어 API 하위 호환성을 유지합니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `reporting` 앱과 `/reporting/*` route는 유지했습니다.
+- AI 사용 권한과 로그인 보호는 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_answers_global_action_search_without_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_action_items --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-C4GJE0Pe.js / assets/index-xu5Ye0bW.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Select-String frontend\dist\assets\index-C4GJE0Pe.js -Pattern "판단 이유|다음 액션|확인 시점|ai-department-question-action-item"
+→ OK, new answer detail labels and class present in built bundle
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 41 tests, FAILED 1 existing date-sensitive weekly_report expectation
+```
+
+### 알려진 제한
+
+- 운영 실제 답변 품질은 운영 OpenAI 모델 설정과 실제 CRM 데이터에 따라 달라집니다.
+- 전체 `AIWorkspaceSummaryApiTests`는 현재 날짜가 토요일인 환경에서 `weekly_report` 액션을 기대하는 기존 테스트 1건이 실패합니다. 이번 변경의 집중 테스트는 통과했습니다.
+
+### 운영 배포 상태
+
+- 커밋/푸시 및 Railway 배포 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영 `/ai-workspace/`에 로그인합니다.
+2. `전체 부서` 상태에서 “월요일 오후에 진행할 미완료 후속 조치와 높은 우선순위 추천 작업을 알려줘”를 질문합니다.
+3. 이다민, 김기윤, 문새롬, 이준서 같은 고객별 작업이 분리되어 보이는지 확인합니다.
+4. 각 작업에 판단 이유, 다음 액션, 확인 시점, CRM 근거가 표시되는지 확인합니다.
+5. 기존 요약/불릿/근거 영역과 로그인 보호가 정상인지 확인합니다.
+
+### 권장 다음 작업
+
+- 운영 검수 후 실제 업무 질문 예시를 더 모아 AI 답변 평가 케이스를 보강합니다.
+
+---
+
 ## 2026-05-16 — Schedule Note Compose And AI Question Upgrade
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기

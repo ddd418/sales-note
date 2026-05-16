@@ -1,5 +1,46 @@
 # AGENT_PLAN.md
 
+## Current task — AI Workspace 작업별 상세 답변 개선
+
+**목표**: AI Workspace 질문 답변이 짧은 요약/불릿으로 잘려 보이지 않도록, 고객별 추천 작업의 판단 이유, 다음 액션, 확인 시점, CRM 근거를 구조화해서 보여준다.
+
+### 확인된 상태
+
+- `/reporting/api/ai-workspace/question/`는 기존에 `summary`, `bullets`, `evidence` 중심으로 답변을 내려준다.
+- React 답변 UI는 요약을 굵은 문장으로 표시하고, 불릿과 근거를 짧은 목록으로만 렌더링한다.
+- OpenAI 프롬프트는 상세 답변을 요구하지만 JSON 스키마에 고객별 실행 항목 필드가 없어 출력이 압축된다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 답변 API에 기존 필드는 유지하고 `answer.actionItems`를 추가한다.
+- `actionItems`는 순위, 고객/회사/부서, 우선순위, 판단 이유, 다음 액션, 확인 시점, CRM 근거를 포함한다.
+- OpenAI 출력 토큰과 정규화 문자 제한을 늘려 장문 이유/액션이 잘리지 않게 한다.
+- OpenAI 실패 fallback도 전체 범위 추천 액션/미완료 후속조치에서 `actionItems`를 생성한다.
+- React AI 질문 답변 영역에 작업별 상세 블록을 추가하고 기존 summary/bullets/evidence fallback은 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_answers_global_action_search_without_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_action_items --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke 확인.
+
+### 현재 상태
+
+- 백엔드 `actionItems` 정규화, OpenAI 프롬프트/토큰 한도 조정, 전체 범위 fallback 상세 작업 생성 완료.
+- React AI 질문 답변 상세 블록과 타입/스타일 추가 완료.
+- 로컬 집중 테스트, Django checks, frontend 타입체크/빌드 통과.
+- 전체 `AIWorkspaceSummaryApiTests` 실행 중 기존 날짜 의존 `weekly_report` 기대값 실패 1건 확인.
+- 커밋/푸시 및 Railway 배포 진행 예정.
+
+---
+
 ## Current task — 일정 상세 영업노트 작성 및 AI 질문 확장
 
 **목표**: React 일정 상세에서 영업노트를 바로 작성할 수 있게 하고, 영업노트 수정 포맷을 `활동 내용`/`다음 액션` 중심으로 단순화한다. AI Workspace는 전체 부서 범위 질문과 최신 피드백 기반 맥락 판단, 최신 외부 정보 검색 보조를 지원한다.

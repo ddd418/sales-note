@@ -12740,6 +12740,7 @@ function AIWorkspaceDepartmentQuestionPanel({
   const trimmedQuestion = question.trim();
   const canSubmit = trimmedQuestion.length >= 2 && !loading;
   const answer = result?.answer;
+  const actionItems = answer?.actionItems ?? [];
   const lastDelivery = result?.context.lastDelivery;
   const allDepartmentCustomerCount = data.departments.reduce((total, department) => total + department.customerCount, 0);
   const customerCount = result?.context.customerCount ?? (
@@ -12811,9 +12812,59 @@ function AIWorkspaceDepartmentQuestionPanel({
       {answer ? (
         <article className="ai-department-question-answer">
           <div className="ai-department-question-answer-head">
-            <strong>{answer.summary}</strong>
+            <p>{answer.summary}</p>
             <span>{result.source === 'openai' ? (result.webSearchUsed ? 'AI 답변 · 웹 검색' : 'AI 답변') : 'CRM 기반 답변'}</span>
           </div>
+          {actionItems.length > 0 ? (
+            <div className="ai-department-question-actions">
+              {actionItems.map((item, index) => {
+                const meta = [item.customer, item.department, item.company].filter(Boolean).join(' · ');
+                const evidence = item.crmEvidence ?? [];
+                return (
+                  <section className="ai-department-question-action-item" key={`${item.rank || index}-${item.title}-${item.customer}`}>
+                    <div className="ai-department-question-action-head">
+                      <div>
+                        <span>{item.priority || '추천 작업'}</span>
+                        <strong>{item.title || `추천 작업 ${index + 1}`}</strong>
+                      </div>
+                      <small>{formatNumber(item.rank || index + 1)}</small>
+                    </div>
+                    {meta ? <p className="ai-department-question-action-meta">{meta}</p> : null}
+                    <dl className="ai-department-question-action-detail">
+                      {item.reason ? (
+                        <div>
+                          <dt>판단 이유</dt>
+                          <dd>{item.reason}</dd>
+                        </div>
+                      ) : null}
+                      {item.nextAction ? (
+                        <div>
+                          <dt>다음 액션</dt>
+                          <dd>{item.nextAction}</dd>
+                        </div>
+                      ) : null}
+                      {item.timing ? (
+                        <div>
+                          <dt>확인 시점</dt>
+                          <dd>{item.timing}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                    {evidence.length > 0 ? (
+                      <div className="ai-department-question-action-evidence">
+                        {evidence.slice(0, 4).map((evidenceItem) => (
+                          <span key={`${item.rank}-${evidenceItem.label}-${evidenceItem.value}`}>
+                            <b>{evidenceItem.label}</b>
+                            {evidenceItem.value}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+            </div>
+          ) : null}
           {answer.bullets.length > 0 ? (
             <ul>
               {answer.bullets.map((item) => (

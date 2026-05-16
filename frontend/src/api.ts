@@ -2625,6 +2625,18 @@ export type AIWorkspaceDepartmentQuestionResponse = {
     summary: string;
     bullets: string[];
     evidence: AIWorkspaceActionEvidence[];
+    actionItems?: {
+      rank: number;
+      title: string;
+      customer: string;
+      company: string;
+      department: string;
+      priority: string;
+      reason: string;
+      nextAction: string;
+      timing: string;
+      crmEvidence: AIWorkspaceActionEvidence[];
+    }[];
     confidence: 'high' | 'medium' | 'low' | string;
   };
   context: {

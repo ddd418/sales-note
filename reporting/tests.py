@@ -7506,6 +7506,50 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('전체 부서', answer_text)
         self.assertIn(department.name, answer_text)
         self.assertIn(other_department.name, answer_text)
+        action_items = payload['answer']['actionItems']
+        self.assertGreaterEqual(len(action_items), 2)
+        self.assertTrue(any(item['department'] == department.name for item in action_items))
+        self.assertTrue(any(item['department'] == other_department.name for item in action_items))
+        for item in action_items[:2]:
+            self.assertTrue(item['reason'])
+            self.assertTrue(item['nextAction'])
+            self.assertTrue(item['timing'])
+            self.assertIsInstance(item['crmEvidence'], list)
+
+    def test_ai_workspace_department_question_normalizes_action_items(self):
+        from reporting.views import _ai_workspace_normalize_department_question_answer
+
+        result = _ai_workspace_normalize_department_question_answer({
+            'answer': '월요일 오후에는 미완료 후속과 높은 우선순위 작업을 먼저 처리합니다.',
+            'bullets': ['긴급 후속 2건을 먼저 확인합니다.'],
+            'actionItems': [{
+                'rank': 1,
+                'title': '이다민 고객 후속',
+                'customer': '이다민',
+                'company': 'AI워크스페이스회사',
+                'department': 'PCR 연구실',
+                'priority': '높음',
+                'reason': '최근 샘플 피드백이 남아 있고 PainPoint 검증이 아직 열려 있습니다.',
+                'nextAction': '추가 피드백을 요청하고 Paradigm Tube의 장점을 짧게 정리해 회신합니다.',
+                'timing': '월요일 오후 첫 번째 블록에서 확인합니다.',
+                'crmEvidence': [{'label': '추천 작업', 'value': 'PainPoint 검증 및 견적 후속'}],
+            }],
+            'evidence': [{'label': '전체 범위', 'value': '추천 액션 10건'}],
+            'confidence': 'high',
+        }, {
+            'summary': 'fallback',
+            'bullets': [],
+            'evidence': [],
+            'actionItems': [],
+            'confidence': 'low',
+        })
+
+        self.assertEqual(result['confidence'], 'high')
+        self.assertEqual(result['actionItems'][0]['rank'], 1)
+        self.assertEqual(result['actionItems'][0]['customer'], '이다민')
+        self.assertIn('Paradigm Tube', result['actionItems'][0]['nextAction'])
+        self.assertIn('월요일 오후', result['actionItems'][0]['timing'])
+        self.assertEqual(result['actionItems'][0]['crmEvidence'][0]['label'], '추천 작업')
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context(self, _mock_client):

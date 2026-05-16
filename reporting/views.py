@@ -10400,6 +10400,7 @@ def _ai_workspace_featured_department_payload(
 
 
 AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH = 600
+AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS = 2400
 
 
 def _ai_workspace_question_department_for_user(user, department_id):
@@ -10490,6 +10491,23 @@ def _ai_workspace_question_delivery_payload(delivery):
         'scheduleId': delivery.get('schedule_id'),
         'notes': _ai_workspace_question_text(delivery.get('notes'), 280),
     }
+
+
+def _ai_workspace_question_evidence_payload(items, limit=10, value_limit=700):
+    evidence = []
+    for item in _ai_json_list(items)[:limit]:
+        if isinstance(item, dict):
+            label = _ai_workspace_question_text(item.get('label') or item.get('title') or '근거', 90)
+            value = _ai_workspace_question_text(
+                item.get('value') or item.get('text') or item.get('detail') or item.get('summary'),
+                value_limit,
+            )
+        else:
+            label = '근거'
+            value = _ai_workspace_question_text(item, value_limit)
+        if label and value:
+            evidence.append({'label': label, 'value': value})
+    return evidence
 
 
 def _ai_workspace_question_latest_delivery(deliveries):
@@ -10628,6 +10646,86 @@ def _ai_workspace_question_action_payload(action):
             if isinstance(item, dict)
         ],
     }
+
+
+def _ai_workspace_question_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _ai_workspace_question_action_item_from_candidate(item, rank):
+    if not isinstance(item, dict):
+        return None
+
+    customer = _ai_workspace_question_text(item.get('customer'), 120)
+    company = _ai_workspace_question_text(item.get('company'), 120)
+    department = _ai_workspace_question_text(item.get('department'), 120)
+    next_action = _ai_workspace_question_text(
+        item.get('recommendedAction') or item.get('nextAction') or item.get('action'),
+        760,
+    )
+    title = _ai_workspace_question_text(
+        item.get('title') or next_action or f'추천 작업 {rank}',
+        180,
+    )
+    due_date = item.get('dueDate') or item.get('date') or ''
+    priority = _ai_workspace_question_text(item.get('priority') or item.get('priorityLabel'), 80)
+    money_impact = _money_int(item.get('moneyImpact') or 0)
+    overdue = bool(item.get('overdue'))
+
+    reason_parts = []
+    if priority:
+        reason_parts.append(f'우선순위 {priority}')
+    if overdue and due_date:
+        reason_parts.append(f'{due_date} 후속 기한이 지났습니다')
+    elif due_date:
+        reason_parts.append(f'{due_date} 기준 확인 일정이 있습니다')
+    if money_impact:
+        reason_parts.append(f'매출 영향 {_ai_workspace_money(money_impact)}')
+
+    evidence = _ai_workspace_question_evidence_payload(item.get('evidence'), limit=3, value_limit=360)
+    note = _ai_workspace_question_text(item.get('note') or item.get('feedback') or item.get('summary'), 520)
+    if note:
+        evidence.append({'label': 'CRM 기록', 'value': note})
+    if evidence and not reason_parts:
+        reason_parts.append(evidence[0]['value'])
+    if not reason_parts:
+        reason_parts.append('CRM에 미완료 후속조치 또는 추천 액션으로 남아 있습니다')
+
+    timing = ''
+    if overdue and due_date:
+        timing = f'이미 기한이 지난 {due_date} 항목이므로 가장 가까운 업무 시간에 먼저 확인합니다.'
+    elif due_date:
+        timing = f'{due_date} 일정이 밀리지 않도록 그 전에 회신/상태를 확인합니다.'
+    else:
+        timing = '가장 가까운 업무 블록에서 상태를 확인하고 다음 연락일을 다시 잡습니다.'
+
+    if not next_action:
+        next_action = '고객 상태와 다음 연락 필요 여부를 확인하고 CRM 후속일을 갱신합니다.'
+
+    return {
+        'rank': rank,
+        'title': title,
+        'customer': customer,
+        'company': company,
+        'department': department,
+        'priority': priority or ('긴급' if overdue else '추천'),
+        'reason': _ai_workspace_question_text('. '.join(reason_parts), 900),
+        'nextAction': next_action,
+        'timing': _ai_workspace_question_text(timing, 420),
+        'crmEvidence': evidence[:4],
+    }
+
+
+def _ai_workspace_question_action_items_from_candidates(candidates, limit=5):
+    action_items = []
+    for item in _ai_json_list(candidates)[:limit]:
+        action_item = _ai_workspace_question_action_item_from_candidate(item, len(action_items) + 1)
+        if action_item:
+            action_items.append(action_item)
+    return action_items
 
 
 def _ai_workspace_global_question_context(user):
@@ -10883,6 +10981,7 @@ def _ai_workspace_question_fallback(question, context):
             top = candidates[:3]
             bullets = []
             evidence = []
+            action_items = _ai_workspace_question_action_items_from_candidates(candidates)
             for index, item in enumerate(top, start=1):
                 label = ' · '.join(_ai_prompt_context(
                     item.get('company'),
@@ -10900,6 +10999,7 @@ def _ai_workspace_question_fallback(question, context):
                 ),
                 'bullets': bullets,
                 'evidence': evidence,
+                'actionItems': action_items,
                 'confidence': 'medium',
             }
         return {
@@ -10916,6 +11016,7 @@ def _ai_workspace_question_fallback(question, context):
                 {'label': '추천 액션', 'value': '현재 action queue 없음'},
                 {'label': '미완료 후속', 'value': f"{len(open_followups)}건"},
             ],
+            'actionItems': [],
             'confidence': 'low',
         }
 
@@ -10965,6 +11066,7 @@ def _ai_workspace_question_fallback(question, context):
 
     last_delivery_label = latest_delivery['date'] if latest_delivery else '납품 기록 없음'
     if scope_type == 'all':
+        action_items = _ai_workspace_question_action_items_from_candidates(recommended_actions or open_followups)
         return {
             'summary': (
                 f"{scope_label} 기준으로 고객 {len(context.get('customers') or [])}명, "
@@ -10983,6 +11085,7 @@ def _ai_workspace_question_fallback(question, context):
                 {'label': '추천 액션', 'value': f"{len(recommended_actions)}건"},
                 {'label': '미완료 후속', 'value': f"{len(open_followups)}건"},
             ],
+            'actionItems': action_items,
             'confidence': 'low',
         }
 
@@ -11010,6 +11113,7 @@ def _ai_workspace_question_fallback(question, context):
 
 def _ai_workspace_normalize_department_question_answer(data, fallback):
     if not isinstance(data, dict):
+        fallback.setdefault('actionItems', [])
         return fallback
     answer_text = (
         data.get('answer')
@@ -11017,34 +11121,63 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
         or data.get('directAnswer')
         or ''
     )
-    answer = _ai_workspace_question_text(answer_text, 2200)
+    answer = _ai_workspace_question_text(answer_text, 4200)
     bullets = [
-        _ai_workspace_question_text(item, 420)
+        _ai_workspace_question_text(item, 700)
         for item in _ai_json_list(data.get('bullets') or data.get('keyPoints'))[:10]
-        if _ai_workspace_question_text(item, 420)
+        if _ai_workspace_question_text(item, 700)
     ]
-    evidence = []
     evidence_items = data.get('evidence') or data.get('sourceNotes') or data.get('sources')
-    for item in _ai_json_list(evidence_items)[:10]:
-        if isinstance(item, dict):
-            label = _ai_workspace_question_text(item.get('label') or item.get('title') or '근거', 80)
-            value = _ai_workspace_question_text(item.get('value') or item.get('text') or item.get('detail'), 420)
-        else:
-            label = '근거'
-            value = _ai_workspace_question_text(item, 420)
-        if label and value:
-            evidence.append({'label': label, 'value': value})
+    evidence = _ai_workspace_question_evidence_payload(evidence_items, limit=10, value_limit=700)
+
+    action_items = []
+    raw_action_items = data.get('actionItems') or data.get('actions') or data.get('recommendedActions')
+    for index, item in enumerate(_ai_json_list(raw_action_items)[:5], start=1):
+        if not isinstance(item, dict):
+            continue
+        rank = _ai_workspace_question_int(item.get('rank') or item.get('order'), index)
+        crm_evidence = _ai_workspace_question_evidence_payload(
+            item.get('crmEvidence') or item.get('evidence') or item.get('sourceNotes') or item.get('sources'),
+            limit=4,
+            value_limit=520,
+        )
+        title = _ai_workspace_question_text(item.get('title') or item.get('name') or item.get('action'), 220)
+        next_action = _ai_workspace_question_text(
+            item.get('nextAction') or item.get('recommendedAction') or item.get('action'),
+            900,
+        )
+        reason = _ai_workspace_question_text(item.get('reason') or item.get('why') or item.get('rationale'), 900)
+        timing = _ai_workspace_question_text(
+            item.get('timing') or item.get('checkTiming') or item.get('dueDate') or item.get('date'),
+            520,
+        )
+        if not any([title, next_action, reason, timing]):
+            continue
+        action_items.append({
+            'rank': rank,
+            'title': title or next_action or f'추천 작업 {rank}',
+            'customer': _ai_workspace_question_text(item.get('customer'), 140),
+            'company': _ai_workspace_question_text(item.get('company'), 140),
+            'department': _ai_workspace_question_text(item.get('department'), 140),
+            'priority': _ai_workspace_question_text(item.get('priority') or item.get('priorityLabel'), 90),
+            'reason': reason,
+            'nextAction': next_action,
+            'timing': timing,
+            'crmEvidence': crm_evidence,
+        })
 
     confidence = str(data.get('confidence') or fallback.get('confidence') or 'low').strip().lower()
     if confidence not in {'high', 'medium', 'low'}:
         confidence = fallback.get('confidence') or 'low'
 
     if not answer:
+        fallback.setdefault('actionItems', [])
         return fallback
     return {
         'summary': answer,
         'bullets': bullets or fallback.get('bullets', []),
         'evidence': evidence or fallback.get('evidence', []),
+        'actionItems': action_items or fallback.get('actionItems', []),
         'confidence': confidence,
     }
 
@@ -11107,7 +11240,11 @@ def _ai_workspace_generate_department_question_answer(question, context):
                 '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
                 'webSearchAllowed가 true이고 최신 외부 정보가 필요한 질문에서만 웹 검색 결과를 보조 근거로 사용한다. 내부 CRM 고객명/영업내용을 웹 검색어로 노출하지 않는다.',
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',
-                '답변은 너무 짧게 쓰지 말고, 직접 판단, 이유, 다음 액션, 확인 타이밍, CRM 근거를 포함한다.',
+                'answer는 2-4문장으로 결론과 우선순위 판단을 설명한다.',
+                '실행해야 할 작업이 있으면 actionItems에 최대 5개를 우선순위 순서로 넣는다.',
+                '각 actionItems 항목은 title, customer, company, department, priority, reason, nextAction, timing, crmEvidence를 채운다.',
+                'reason, nextAction, timing은 짧은 단어 조각이 아니라 실행자가 바로 이해할 수 있는 한 문장 이상으로 쓴다.',
+                'bullets는 보조 요약만 넣고, 고객별 실행 상세는 actionItems에 넣는다.',
             ],
         }
         system_prompt = (
@@ -11115,6 +11252,9 @@ def _ai_workspace_generate_department_question_answer(question, context):
             'CRM 컨텍스트의 최신성, 완료/미완료 상태, 후속조치 우선순위를 판단한다. '
             '답변은 한국어로 쓰고, 단답형을 피한다. '
             '반드시 JSON으로 {"answer": string, "bullets": string[], '
+            '"actionItems": [{"rank": number, "title": string, "customer": string, "company": string, '
+            '"department": string, "priority": string, "reason": string, "nextAction": string, '
+            '"timing": string, "crmEvidence": [{"label": string, "value": string}]}], '
             '"evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"}만 반환한다.'
         )
         data = None
@@ -11128,7 +11268,7 @@ def _ai_workspace_generate_department_question_answer(question, context):
                 tools=[{'type': 'web_search'}],
                 tool_choice='auto',
                 include=['web_search_call.action.sources'],
-                max_output_tokens=1400,
+                max_output_tokens=AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS,
             )
             data = _ai_workspace_json_from_text(_ai_workspace_response_output_text(response))
             web_search_used = any(
@@ -11149,7 +11289,7 @@ def _ai_workspace_generate_department_question_answer(question, context):
                     },
                 ],
                 temperature=0.2,
-                max_tokens=1400,
+                max_tokens=AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS,
                 response_format={'type': 'json_object'},
             )
             data = _ai_workspace_json_from_text(response.choices[0].message.content)
@@ -11158,6 +11298,7 @@ def _ai_workspace_generate_department_question_answer(question, context):
         return answer, 'openai', web_search_used
     except Exception as exc:
         logger.warning('AI workspace department question fallback used: %s', exc)
+        fallback.setdefault('actionItems', [])
         return fallback, 'fallback', False
 
 
