@@ -950,6 +950,7 @@ export type NoteCreatePayload = {
   followupId: number;
   nextAction?: string;
   nextActionDate?: string;
+  scheduleId?: number;
 };
 
 export type NoteCreateResponse = {
@@ -958,6 +959,7 @@ export type NoteCreateResponse = {
   message?: string;
   historyId?: number;
   href?: string;
+  reactHref?: string;
   note?: NoteItem;
 };
 
@@ -968,11 +970,6 @@ export type NoteEditPayload = {
   deliveryAmount?: string;
   deliveryItems?: string;
   followupId: number;
-  meetingConfirmedFacts?: string;
-  meetingNextAction?: string;
-  meetingObstacles?: string;
-  meetingResearcherQuote?: string;
-  meetingSituation?: string;
   nextAction?: string;
   nextActionDate?: string;
   serviceStatus?: string;
@@ -1059,6 +1056,7 @@ export type ScheduleItem = {
   customerHref: string;
   djangoCustomerHref?: string;
   createHistoryHref: string;
+  djangoCreateHistoryHref?: string;
 };
 
 export type ScheduleFileItem = {
@@ -2271,6 +2269,7 @@ export type ScheduleDetailData = {
     customer: string;
     djangoCustomer: string;
     createNote: string;
+    djangoCreateNote?: string;
     deleteSchedule: string;
     uploadFiles: string;
     updateDeliveryItems: string;
@@ -2609,12 +2608,18 @@ export type AIWorkspaceActionFeedbackResponse = {
 export type AIWorkspaceDepartmentQuestionResponse = {
   success?: boolean;
   source: 'openai' | 'fallback';
+  webSearchUsed?: boolean;
   generatedAt: string;
+  scope?: {
+    type?: string;
+    label?: string;
+    departmentId?: number | null;
+  };
   department: {
     id: number;
     name: string;
     company: string;
-  };
+  } | null;
   question: string;
   answer: {
     summary: string;
@@ -2624,6 +2629,7 @@ export type AIWorkspaceDepartmentQuestionResponse = {
   };
   context: {
     customerCount: number;
+    departmentCount?: number;
     summary: Record<string, number | string | null>;
     lastDelivery: {
       date: string;
@@ -2635,6 +2641,8 @@ export type AIWorkspaceDepartmentQuestionResponse = {
       scheduleId: number | null;
       notes: string;
     } | null;
+    recommendedActionCount?: number;
+    recentFeedbackCount?: number;
   };
   requiresHumanReview: boolean;
   error?: string;
@@ -3519,6 +3527,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     customer: '',
     djangoCustomer: '',
     createNote: '',
+    djangoCreateNote: '',
     deleteSchedule: '',
     uploadFiles: '',
     updateDeliveryItems: '',
@@ -6684,11 +6693,12 @@ export async function submitAIWorkspaceActionFeedback(
 }
 
 export async function askAIWorkspaceDepartmentQuestion(
-  departmentId: number,
+  departmentId: number | null,
   question: string,
 ): Promise<AIWorkspaceDepartmentQuestionResponse> {
   const csrfToken = getCookie('csrftoken');
-  const response = await fetch('/reporting/api/ai-workspace/department-question/', {
+  const body = departmentId ? { departmentId, question } : { question };
+  const response = await fetch('/reporting/api/ai-workspace/question/', {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -6696,7 +6706,7 @@ export async function askAIWorkspaceDepartmentQuestion(
       'Content-Type': 'application/json',
       ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
     },
-    body: JSON.stringify({ departmentId, question }),
+    body: JSON.stringify(body),
   });
   redirectIfLoginRequired(response);
   const contentType = response.headers.get('content-type') || '';

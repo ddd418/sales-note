@@ -1,5 +1,50 @@
 # AGENT_PLAN.md
 
+## Current task — 일정 상세 영업노트 작성 및 AI 질문 확장
+
+**목표**: React 일정 상세에서 영업노트를 바로 작성할 수 있게 하고, 영업노트 수정 포맷을 `활동 내용`/`다음 액션` 중심으로 단순화한다. AI Workspace는 전체 부서 범위 질문과 최신 피드백 기반 맥락 판단, 최신 외부 정보 검색 보조를 지원한다.
+
+### 확인된 상태
+
+- `History` 모델에는 legacy 미팅 구조화 필드가 남아 있지만, React 최종 방향은 단순 영업노트 UI다.
+- 기존 React 노트 생성 화면은 이미 `활동 내용`과 `다음 액션` 중심이지만, 노트 수정 화면에는 미팅 구조화 필드 5개가 남아 있다.
+- 일정 상세 API는 기존 Django `create-from-schedule` 링크만 내려주고, React 일정 상세 안에는 노트 작성 폼이 없다.
+- AI 부서 질문 API는 `departmentId`를 필수로 요구하고, 답변 프롬프트도 짧은 답변 중심이다.
+- AI 질문 컨텍스트는 최신 `AIWorkspaceActionFeedback`을 포함하지 않아 과거 일정 계획과 최신 완료 답변이 충돌할 수 있다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- `notes_create_api`가 `scheduleId`를 받아 현재 사용자 일정과 고객이 일치할 때 `History.schedule`에 연결하도록 한다.
+- 일정 상세 API의 React 노트 작성 링크와 Django fallback 링크를 분리한다.
+- React 일정 상세에 일정 연결 영업노트 작성 폼을 추가한다.
+- React 영업노트 상세/수정 화면에서 미팅 구조화 필드 5개를 제거하고 서버 저장 시 해당 필드는 비운다.
+- 기존 legacy 미팅 필드는 과거 데이터 표시 fallback으로만 사용한다.
+- AI 질문 컨텍스트에 최근 노트, 최근 일정, 최근 AI 실행 피드백을 포함한다.
+- `departmentId`가 없으면 전체 부서 컨텍스트를 만들어 전체 범위 질문에 답한다.
+- 최신 외부 정보가 필요한 질문은 OpenAI Responses API `web_search` 도구를 사용할 수 있게 한다.
+- 답변 프롬프트를 단답형에서 판단/이유/다음 액션/타이밍/근거 중심으로 강화한다.
+
+### 검증 계획
+
+- `python manage.py test reporting.tests.NotesSummaryApiTests`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_answers_global_action_search_without_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_answers_last_order_from_delivery_context`
+- `python manage.py check`
+- `cd frontend; npm run build`
+- Playwright CLI local smoke: 일정 상세 노트 작성, 노트 수정 필드 단순화, AI 전체 부서 질문 렌더링/답변 확인.
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 smoke 확인.
+
+### 현재 상태
+
+- 백엔드 일정 연결 노트 생성, 노트 구조화 필드 정리, AI 전역 질문/최신 피드백 컨텍스트 구현 완료.
+- React 일정 상세 노트 작성 폼, 노트 수정 단순화, AI 전체/선택 부서 질문 UI 구현 완료.
+- 로컬 테스트와 빌드, Playwright CLI smoke 통과.
+- 커밋/푸시/배포 진행 중.
+
+---
+
 ## Current task — React 매출 지표 및 파이프라인 날짜별 금액 보정
 
 **목표**: React 대시보드에서 현재 로그인 범위 기준 당해년도 전체 매출과 현재 분기 매출을 바로 확인할 수 있게 하고, 메인 파이프라인 카드 금액이 고객 전체 누적 매출로 부풀지 않도록 날짜별 기준 금액을 사용한다.
@@ -4995,3 +5040,60 @@ python pre_deployment_check.py
 - `cd frontend && npm run build`
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
+## 2026-05-16 Schedule-linked notes and AI workspace answer upgrade plan
+
+**Background**:
+
+- User requested that `/schedules/907/` and other React schedule detail pages allow writing a sales note directly from the schedule.
+- Sales note editing currently exposes structured meeting fields (`오늘 상황`, `연구원 발언`, `확인한 사실`, `장애물/반대`, `미팅 다음 액션`) that should be removed from the user-facing React format. The remaining note format should be `활동 내용` and `다음 액션`.
+- AI Workspace department Q&A is currently too terse, department-only, and does not include the recent field-feedback records that can supersede older schedule/note context.
+- User also requested whole-department/global AI questions such as finding departments that need next action.
+
+**DB change required**: No.
+
+- Reuse existing `History.schedule`, `History.content`, `History.next_action`, `History.next_action_date`, `Schedule`, `FollowUp`, and `AIWorkspaceActionFeedback`.
+- Keep legacy structured meeting fields in the model for backwards compatibility and legacy Django screens, but stop exposing them as separate React editing fields.
+
+**Implementation scope**:
+
+- Backend notes API:
+  - Allow `notes_create_api` to accept an optional `scheduleId`.
+  - Validate that the schedule belongs to the current user and matches the selected followup before linking the created `History`.
+  - Keep managers read-only and preserve current customer ownership checks.
+  - Require `content` for all React note edits, including customer meetings.
+  - On React note update, clear legacy structured meeting fields so edited notes use the simplified format.
+  - Use legacy structured field text only as a read/display fallback for old notes whose `content` is empty.
+- Backend schedules API:
+  - Point schedule note creation links to React note creation with `customer` and `schedule` query parameters while keeping Django schedule/detail routes intact.
+- React notes UI:
+  - Remove structured meeting fields from the note edit form and note detail display.
+  - Keep `활동 내용`, `다음 액션`, and next action date as the visible note format.
+  - Carry optional `scheduleId` through quick note creation when opened from a schedule link.
+- React schedule detail UI:
+  - Add an inline schedule-fixed `영업노트 작성` panel.
+  - Prefill activity type and activity date from the schedule.
+  - Submit through the React note create API and link the created note back to the schedule.
+- AI Workspace:
+  - Add all-department/global question support when no department is selected.
+  - Include recent `AIWorkspaceActionFeedback` in question context so newer “done/resolved/gave sample” feedback can override older action suggestions.
+  - Make answers longer and operational: direct judgment, why, next step, timing, and evidence.
+  - Use OpenAI Responses API web search when the user explicitly asks for latest/current/external information, with a fallback to the existing Chat Completions path and deterministic fallback.
+  - Avoid sending internal CRM details as web-search query instructions; CRM context remains the answer basis.
+
+**Validation plan**:
+
+- Add/update focused tests for:
+  - Creating a React note linked to a schedule.
+  - Blocking schedule-linked note creation when the schedule does not belong to the current user or does not match the selected followup.
+  - React note update clearing structured meeting fields while preserving simplified content/next action.
+  - AI question API accepting all-department scope.
+  - AI question context using recent AI feedback to avoid stale sample/action duplication.
+- Run:
+  - `python -m py_compile reporting\views.py reporting\tests.py`
+  - `python manage.py test reporting.tests.NotesSummaryApiTests reporting.tests.SchedulesSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+  - `python manage.py check`
+  - `python manage.py makemigrations --check --dry-run`
+  - `cd frontend && npx tsc --noEmit --pretty false`
+  - `cd frontend && npm run build`
+  - `cd frontend && node --check server.mjs`
+  - `git diff --check`

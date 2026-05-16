@@ -239,16 +239,12 @@ type NoteCreateFormState = {
   followupId: string;
   nextAction: string;
   nextActionDate: string;
+  scheduleId: string;
 };
 
 type NoteEditFormState = NoteCreateFormState & {
   deliveryAmount: string;
   deliveryItems: string;
-  meetingConfirmedFacts: string;
-  meetingNextAction: string;
-  meetingObstacles: string;
-  meetingResearcherQuote: string;
-  meetingSituation: string;
   serviceStatus: string;
 };
 
@@ -459,6 +455,7 @@ const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
   followupId: '',
   nextAction: '',
   nextActionDate: '',
+  scheduleId: '',
 });
 
 const makeNoteEditForm = (note: NoteDetailItem | null): NoteEditFormState => ({
@@ -468,14 +465,40 @@ const makeNoteEditForm = (note: NoteDetailItem | null): NoteEditFormState => ({
   deliveryAmount: note?.deliveryAmount ? String(note.deliveryAmount) : '',
   deliveryItems: note?.deliveryItems || '',
   followupId: note?.followupId ? String(note.followupId) : '',
-  meetingConfirmedFacts: note?.meetingConfirmedFacts || '',
-  meetingNextAction: note?.meetingNextAction || '',
-  meetingObstacles: note?.meetingObstacles || '',
-  meetingResearcherQuote: note?.meetingResearcherQuote || '',
-  meetingSituation: note?.meetingSituation || '',
   nextAction: note?.nextAction || '',
   nextActionDate: note?.nextActionDate || '',
+  scheduleId: note?.scheduleId ? String(note.scheduleId) : '',
   serviceStatus: note?.serviceStatus || 'received',
+});
+
+const scheduleActivityToNoteActionType = (activityType: string) => {
+  if (activityType === 'delivery') {
+    return 'delivery_schedule';
+  }
+  if (activityType === 'quote') {
+    return 'quote';
+  }
+  if (activityType === 'service') {
+    return 'service';
+  }
+  return 'customer_meeting';
+};
+
+const scheduleNoteActionTypeOptions = [
+  { value: 'customer_meeting', label: '고객 미팅' },
+  { value: 'quote', label: '견적' },
+  { value: 'delivery_schedule', label: '납품 일정' },
+  { value: 'service', label: '서비스' },
+];
+
+const makeScheduleNoteCreateForm = (schedule: ScheduleDetailItem | null): NoteCreateFormState => ({
+  actionType: scheduleActivityToNoteActionType(schedule?.activityType || ''),
+  activityDate: schedule?.date || localDateInputValue(),
+  content: '',
+  followupId: schedule?.followupId ? String(schedule.followupId) : '',
+  nextAction: '',
+  nextActionDate: '',
+  scheduleId: schedule?.id ? String(schedule.id) : '',
 });
 
 const makeEmptyScheduleCreateForm = (visitDate = localDateInputValue()): ScheduleCreateFormState => ({
@@ -1265,6 +1288,11 @@ function isWeeklyReportEditRoute(): boolean {
 
 function getCreateCustomerParam(): string {
   return new URLSearchParams(window.location.search).get('customer') || '';
+}
+
+function getCreateScheduleParam(): string {
+  const value = new URLSearchParams(window.location.search).get('schedule') || '';
+  return /^\d+$/.test(value) ? value : '';
 }
 
 function getCreateDateParam(): string {
@@ -3511,7 +3539,7 @@ function NoteDetailPage({
       setEditError('활동 유형을 선택하세요.');
       return;
     }
-    if (editForm.actionType !== 'customer_meeting' && !editForm.content.trim()) {
+    if (!editForm.content.trim()) {
       setEditError('활동 내용을 입력하세요.');
       return;
     }
@@ -3527,11 +3555,6 @@ function NoteDetailPage({
       deliveryAmount: editForm.deliveryAmount.trim() || undefined,
       deliveryItems: editForm.deliveryItems.trim() || undefined,
       followupId,
-      meetingConfirmedFacts: editForm.meetingConfirmedFacts.trim() || undefined,
-      meetingNextAction: editForm.meetingNextAction.trim() || undefined,
-      meetingObstacles: editForm.meetingObstacles.trim() || undefined,
-      meetingResearcherQuote: editForm.meetingResearcherQuote.trim() || undefined,
-      meetingSituation: editForm.meetingSituation.trim() || undefined,
       nextAction: editForm.nextAction.trim() || undefined,
       nextActionDate: editForm.nextActionDate || undefined,
       serviceStatus: editForm.actionType === 'service' ? editForm.serviceStatus : undefined,
@@ -3864,35 +3887,11 @@ function NoteDetailPage({
                 <span>활동 내용</span>
                 <textarea
                   onChange={(event) => handleEditFieldChange('content', event.target.value)}
-                  required={editForm.actionType !== 'customer_meeting'}
+                  required
                   rows={4}
                   value={editForm.content}
                 />
               </label>
-              {editForm.actionType === 'customer_meeting' ? (
-                <div className="note-edit-section-grid">
-                  <label>
-                    <span>오늘 상황</span>
-                    <textarea onChange={(event) => handleEditFieldChange('meetingSituation', event.target.value)} rows={3} value={editForm.meetingSituation} />
-                  </label>
-                  <label>
-                    <span>연구원 발언</span>
-                    <textarea onChange={(event) => handleEditFieldChange('meetingResearcherQuote', event.target.value)} rows={3} value={editForm.meetingResearcherQuote} />
-                  </label>
-                  <label>
-                    <span>확인한 사실</span>
-                    <textarea onChange={(event) => handleEditFieldChange('meetingConfirmedFacts', event.target.value)} rows={3} value={editForm.meetingConfirmedFacts} />
-                  </label>
-                  <label>
-                    <span>장애물/반대</span>
-                    <textarea onChange={(event) => handleEditFieldChange('meetingObstacles', event.target.value)} rows={3} value={editForm.meetingObstacles} />
-                  </label>
-                  <label>
-                    <span>미팅 다음 액션</span>
-                    <textarea onChange={(event) => handleEditFieldChange('meetingNextAction', event.target.value)} rows={3} value={editForm.meetingNextAction} />
-                  </label>
-                </div>
-              ) : null}
               {editForm.actionType === 'delivery_schedule' ? (
                 <label>
                   <span>납품 품목</span>
@@ -3938,24 +3937,6 @@ function NoteDetailPage({
           <div className="note-detail-content">
             {note.content ? <p>{note.content}</p> : <DashboardEmpty label="활동 내용이 없습니다" />}
           </div>
-          {note.actionType === 'customer_meeting' ? (
-            <div className="note-detail-field-grid">
-              {[
-                ['오늘 상황', note.meetingSituation],
-                ['연구원 발언', note.meetingResearcherQuote],
-                ['확인한 사실', note.meetingConfirmedFacts],
-                ['장애물/반대', note.meetingObstacles],
-                ['미팅 다음 액션', note.meetingNextAction],
-              ].map(([label, value]) => (
-                value ? (
-                  <div className="note-detail-field" key={label}>
-                    <span>{label}</span>
-                    <p>{value}</p>
-                  </div>
-                ) : null
-              ))}
-            </div>
-          ) : null}
           {note.actionType === 'delivery_schedule' ? (
             <div className="note-detail-field-grid">
               <div className="note-detail-field">
@@ -4563,11 +4544,6 @@ function buildScheduleCalendarDays(monthValue: string, schedules: ScheduleItem[]
 function getScheduleReportPreviewLines(report: NonNullable<ScheduleItem['reports']>[number]) {
   const lines = [
     report.content,
-    report.meetingSituation ? `상황: ${report.meetingSituation}` : '',
-    report.meetingResearcherQuote ? `발언: ${report.meetingResearcherQuote}` : '',
-    report.meetingConfirmedFacts ? `확인: ${report.meetingConfirmedFacts}` : '',
-    report.meetingObstacles ? `장애물: ${report.meetingObstacles}` : '',
-    report.meetingNextAction ? `미팅 다음 액션: ${report.meetingNextAction}` : '',
     report.deliveryItems ? `납품 품목: ${report.deliveryItems}` : '',
     report.deliveryAmount > 0 ? `납품 금액: ${formatWon(report.deliveryAmount)}` : '',
     report.nextAction ? `다음 액션: ${report.nextAction}` : '',
@@ -6191,6 +6167,12 @@ function ScheduleDetailPage({
   const [documentPreviewData, setDocumentPreviewData] = useState<ScheduleDocumentPreviewData | null>(null);
   const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
   const [documentPreviewError, setDocumentPreviewError] = useState('');
+  const [scheduleNoteOpen, setScheduleNoteOpen] = useState(false);
+  const [scheduleNoteForm, setScheduleNoteForm] = useState<NoteCreateFormState>(() => makeScheduleNoteCreateForm(currentSchedule));
+  const [scheduleNoteSaving, setScheduleNoteSaving] = useState(false);
+  const [scheduleNoteError, setScheduleNoteError] = useState('');
+  const [scheduleNoteMessage, setScheduleNoteMessage] = useState('');
+  const [scheduleNoteHref, setScheduleNoteHref] = useState('');
 
   useEffect(() => {
     setEditForm(makeScheduleEditForm(currentSchedule));
@@ -6228,6 +6210,12 @@ function ScheduleDetailPage({
     setDocumentPreviewData(null);
     setDocumentPreviewLoading(false);
     setDocumentPreviewError('');
+    setScheduleNoteOpen(false);
+    setScheduleNoteForm(makeScheduleNoteCreateForm(data?.schedule ?? null));
+    setScheduleNoteSaving(false);
+    setScheduleNoteError('');
+    setScheduleNoteMessage('');
+    setScheduleNoteHref('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -6346,6 +6334,85 @@ function ScheduleDetailPage({
     )));
     setEditError('');
     setEditMessage('');
+  };
+
+  const handleScheduleNoteFieldChange = (field: keyof NoteCreateFormState, value: string) => {
+    setScheduleNoteForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setScheduleNoteError('');
+    setScheduleNoteMessage('');
+    setScheduleNoteHref('');
+  };
+
+  const handleScheduleNoteToggle = () => {
+    if (!currentSchedule?.canEdit) {
+      setScheduleNoteError('영업노트 작성 권한이 없습니다.');
+      return;
+    }
+    setScheduleNoteForm((previous) => ({
+      ...makeScheduleNoteCreateForm(currentSchedule),
+      content: previous.content,
+      nextAction: previous.nextAction,
+      nextActionDate: previous.nextActionDate,
+    }));
+    setScheduleNoteOpen((open) => !open);
+    setScheduleNoteError('');
+    setScheduleNoteMessage('');
+    setScheduleNoteHref('');
+  };
+
+  const handleScheduleNoteSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!currentSchedule || scheduleNoteSaving) {
+      return;
+    }
+    if (!currentSchedule.canEdit) {
+      setScheduleNoteError('영업노트 작성 권한이 없습니다.');
+      return;
+    }
+    const followupId = Number(scheduleNoteForm.followupId);
+    const scheduleId = Number(scheduleNoteForm.scheduleId);
+    if (!followupId || !scheduleId) {
+      setScheduleNoteError('연결할 고객과 일정 정보가 없습니다.');
+      return;
+    }
+    if (!scheduleNoteForm.actionType) {
+      setScheduleNoteError('활동 유형을 선택하세요.');
+      return;
+    }
+    if (!scheduleNoteForm.content.trim()) {
+      setScheduleNoteError('활동 내용을 입력하세요.');
+      return;
+    }
+
+    const payload: NoteCreatePayload = {
+      actionType: scheduleNoteForm.actionType,
+      activityDate: scheduleNoteForm.activityDate || undefined,
+      content: scheduleNoteForm.content.trim(),
+      followupId,
+      nextAction: scheduleNoteForm.nextAction.trim() || undefined,
+      nextActionDate: scheduleNoteForm.nextActionDate || undefined,
+      scheduleId,
+    };
+
+    setScheduleNoteSaving(true);
+    setScheduleNoteError('');
+    setScheduleNoteMessage('');
+    setScheduleNoteHref('');
+    try {
+      const result = await createSalesNote(payload);
+      await onRefresh();
+      setScheduleNoteMessage(result.message || '일정에 영업노트를 연결했습니다.');
+      setScheduleNoteHref(result.reactHref || (result.historyId ? `/notes/${result.historyId}/` : ''));
+      setScheduleNoteForm(makeScheduleNoteCreateForm(currentSchedule));
+      setScheduleNoteOpen(false);
+    } catch (error) {
+      setScheduleNoteError(error instanceof Error ? error.message : '영업노트 저장에 실패했습니다.');
+    } finally {
+      setScheduleNoteSaving(false);
+    }
   };
 
   const handleDeliveryPrepaymentToggle = (selected: boolean) => {
@@ -7118,6 +7185,9 @@ function ScheduleDetailPage({
     { label: '예상 매출', value: schedule.expectedRevenue > 0 ? formatWon(schedule.expectedRevenue) : '없음', detail: schedule.probability ? `${schedule.probability}%` : '확률 미입력', icon: CircleDollarSign, tone: 'amber' as const },
     { label: '보고/파일', value: `${formatNumber(schedule.historyCount)} / ${formatNumber(schedule.fileCount)}`, detail: '보고 / 첨부', icon: MessageSquareText, tone: 'teal' as const },
   ];
+  const scheduleNoteActionOptions = schedule.activityType === 'service'
+    ? scheduleNoteActionTypeOptions
+    : scheduleNoteActionTypeOptions.filter((option) => option.value !== 'service');
 
   return (
     <section className="schedules-page schedule-detail-page">
@@ -7142,7 +7212,12 @@ function ScheduleDetailPage({
           <a className="route-secondary-action" href="/schedules/">목록</a>
           {data.links.customer ? <a className="route-secondary-action" href={data.links.customer}>고객</a> : null}
           <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
-          {data.links.createNote ? <a className="route-secondary-action" href={data.links.createNote}>보고 작성</a> : null}
+          {schedule.canEdit ? (
+            <button className="route-secondary-action" onClick={handleScheduleNoteToggle} type="button">
+              {scheduleNoteOpen ? '작성 닫기' : '영업노트 작성'}
+              <FileText size={16} />
+            </button>
+          ) : null}
           {data.edit.canEdit ? (
             <button className="route-primary-action" onClick={() => setEditOpen((open) => !open)} type="button">
               수정
@@ -7182,6 +7257,96 @@ function ScheduleDetailPage({
           />
         ))}
       </section>
+
+      {scheduleNoteOpen || scheduleNoteMessage || scheduleNoteError ? (
+        <section className="dashboard-panel notes-create-panel schedule-note-create-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Sales note</span>
+              <h2>일정 영업노트 작성</h2>
+            </div>
+            {scheduleNoteSaving ? <Loader2 className="spin-icon" size={18} /> : <FileText size={18} />}
+          </div>
+          {scheduleNoteError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{scheduleNoteError}</span></div> : null}
+          {scheduleNoteMessage ? (
+            <div className="dashboard-api-alert compact success">
+              <CheckCircle2 size={16} />
+              <span>{scheduleNoteMessage}</span>
+              {scheduleNoteHref ? <a href={scheduleNoteHref}>노트 보기</a> : null}
+            </div>
+          ) : null}
+          {scheduleNoteOpen ? (
+            <form className="notes-create-form schedule-note-create-form" onSubmit={handleScheduleNoteSubmit}>
+              <div className="notes-create-grid">
+                <label>
+                  <span>고객</span>
+                  <input
+                    readOnly
+                    value={[schedule.company, schedule.department, schedule.customer].filter(Boolean).join(' · ') || '고객 없음'}
+                  />
+                </label>
+                <label>
+                  <span>활동 유형</span>
+                  <select
+                    onChange={(event) => handleScheduleNoteFieldChange('actionType', event.target.value)}
+                    required
+                    value={scheduleNoteForm.actionType}
+                  >
+                    {scheduleNoteActionOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>활동일</span>
+                  <input
+                    onChange={(event) => handleScheduleNoteFieldChange('activityDate', event.target.value)}
+                    type="date"
+                    value={scheduleNoteForm.activityDate}
+                  />
+                </label>
+                <label>
+                  <span>다음 예정일</span>
+                  <input
+                    onChange={(event) => handleScheduleNoteFieldChange('nextActionDate', event.target.value)}
+                    type="date"
+                    value={scheduleNoteForm.nextActionDate}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>활동 내용</span>
+                <textarea
+                  onChange={(event) => handleScheduleNoteFieldChange('content', event.target.value)}
+                  required
+                  rows={4}
+                  value={scheduleNoteForm.content}
+                />
+              </label>
+              <label>
+                <span>다음 액션</span>
+                <textarea
+                  onChange={(event) => handleScheduleNoteFieldChange('nextAction', event.target.value)}
+                  rows={2}
+                  value={scheduleNoteForm.nextAction}
+                />
+              </label>
+              <div className="notes-create-actions">
+                {data.links.djangoCreateNote ? (
+                  <a className="route-secondary-action" href={data.links.djangoCreateNote}>
+                    Django 작성
+                    <MoveUpRight size={15} />
+                  </a>
+                ) : null}
+                <button className="route-primary-action" disabled={scheduleNoteSaving} type="submit">
+                  {scheduleNoteSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                  저장
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
 
       {editOpen || editMessage || editError ? (
         <section className="dashboard-panel notes-create-panel schedule-edit-panel">
@@ -12545,32 +12710,47 @@ function AIWorkspaceDepartmentQuestionPanel({
   error,
   loading,
   onQuestionChange,
+  onScopeModeChange,
   onSubmit,
   question,
   result,
+  scopeMode,
 }: {
   data: AIWorkspaceData;
   departmentId: number | null;
   error: string;
   loading: boolean;
   onQuestionChange: (value: string) => void;
+  onScopeModeChange: (value: 'all' | 'department') => void;
   onSubmit: () => void;
   question: string;
   result: AIWorkspaceDepartmentQuestionResponse | null;
+  scopeMode: 'all' | 'department';
 }) {
   const scope = data.feedbackHistory.scope;
-  if (!departmentId || !scope.departmentId) {
-    return null;
-  }
 
-  const departmentLabel = [
+  const selectedDepartmentLabel = [
     data.featuredDepartment?.companyName,
     scope.departmentName || data.featuredDepartment?.departmentName,
   ].filter(Boolean).join(' · ') || '선택 부서';
+  const canUseDepartmentScope = Boolean(departmentId);
+  const scopeLabel = scopeMode === 'all'
+    ? '전체 부서'
+    : selectedDepartmentLabel;
   const trimmedQuestion = question.trim();
   const canSubmit = trimmedQuestion.length >= 2 && !loading;
   const answer = result?.answer;
   const lastDelivery = result?.context.lastDelivery;
+  const allDepartmentCustomerCount = data.departments.reduce((total, department) => total + department.customerCount, 0);
+  const customerCount = result?.context.customerCount ?? (
+    scopeMode === 'all'
+      ? allDepartmentCustomerCount
+      : data.featuredDepartment?.customerCount ?? 0
+  );
+  const departmentCount = result?.context.departmentCount ?? data.metrics.departmentsWithCustomers;
+  const placeholder = scopeMode === 'all'
+    ? '예: 전체 부서 중 이번 주 다음 액션 할 만한 곳 찾아줘'
+    : '예: 해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?';
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -12584,19 +12764,38 @@ function AIWorkspaceDepartmentQuestionPanel({
       <div className="dashboard-panel-heading">
         <div>
           <span className="eyebrow">Department Q&A</span>
-          <h2>부서 상황 질문</h2>
+          <h2>{scopeMode === 'all' ? '전체 부서 질문' : '부서 상황 질문'}</h2>
         </div>
         <MessageSquareText size={18} />
       </div>
+      <div className="segmented-control ai-question-scope-toggle" aria-label="AI 질문 범위">
+        <button
+          className={scopeMode === 'all' ? 'active' : ''}
+          onClick={() => onScopeModeChange('all')}
+          type="button"
+        >
+          전체 부서
+        </button>
+        <button
+          className={scopeMode === 'department' ? 'active' : ''}
+          disabled={!canUseDepartmentScope}
+          onClick={() => onScopeModeChange('department')}
+          type="button"
+        >
+          선택 부서
+        </button>
+      </div>
       <div className="ai-department-question-scope">
-        <span>{departmentLabel}</span>
-        <small>고객 {formatNumber(result?.context.customerCount ?? data.featuredDepartment?.customerCount ?? 0)}명</small>
+        <span>{result?.scope?.label || scopeLabel}</span>
+        <small>고객 {formatNumber(customerCount)}명</small>
+        {scopeMode === 'all' ? <small>부서 {formatNumber(departmentCount)}개</small> : null}
+        {result?.webSearchUsed ? <small>웹 검색 사용</small> : null}
       </div>
       <form className="ai-department-question-form" onSubmit={handleSubmit}>
         <textarea
           maxLength={600}
           onChange={(event) => onQuestionChange(event.target.value)}
-          placeholder="예: 해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?"
+          placeholder={placeholder}
           rows={3}
           value={question}
         />
@@ -12613,7 +12812,7 @@ function AIWorkspaceDepartmentQuestionPanel({
         <article className="ai-department-question-answer">
           <div className="ai-department-question-answer-head">
             <strong>{answer.summary}</strong>
-            <span>{result.source === 'openai' ? 'AI 답변' : 'CRM 기반 답변'}</span>
+            <span>{result.source === 'openai' ? (result.webSearchUsed ? 'AI 답변 · 웹 검색' : 'AI 답변') : 'CRM 기반 답변'}</span>
           </div>
           {answer.bullets.length > 0 ? (
             <ul>
@@ -12628,6 +12827,15 @@ function AIWorkspaceDepartmentQuestionPanel({
               <strong>{formatDateLabel(lastDelivery.date) || lastDelivery.date}</strong>
               <small>
                 {[lastDelivery.customer, lastDelivery.amountLabel, lastDelivery.items].filter(Boolean).join(' · ')}
+              </small>
+            </div>
+          ) : null}
+          {scopeMode === 'all' && !lastDelivery ? (
+            <div className="ai-department-question-last-order">
+              <span>전체 범위</span>
+              <strong>{formatNumber(result?.context.recommendedActionCount ?? 0)}건</strong>
+              <small>
+                추천 액션 · 최근 현장 답변 {formatNumber(result?.context.recentFeedbackCount ?? 0)}건
               </small>
             </div>
           ) : null}
@@ -12927,15 +13135,17 @@ function AIWorkspacePage({
   const [actionFeedbackMessage, setActionFeedbackMessage] = useState('');
   const [actionFeedbackError, setActionFeedbackError] = useState('');
   const [departmentQuestion, setDepartmentQuestion] = useState('');
+  const [departmentQuestionScope, setDepartmentQuestionScope] = useState<'all' | 'department'>('all');
   const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
   const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
   const [departmentQuestionError, setDepartmentQuestionError] = useState('');
   const activeDepartmentId = data?.featuredDepartment?.departmentId ?? selectedDepartmentId ?? data?.selectedDepartmentId ?? null;
+  const activeQuestionDepartmentId = departmentQuestionScope === 'department' ? activeDepartmentId : null;
 
   useEffect(() => {
     setDepartmentQuestionResult(null);
     setDepartmentQuestionError('');
-  }, [activeDepartmentId]);
+  }, [activeQuestionDepartmentId, departmentQuestionScope]);
 
   const handleCopyPrompt = async (target: AIWorkspacePromptTarget) => {
     try {
@@ -13023,14 +13233,18 @@ function AIWorkspacePage({
 
   const handleAskDepartmentQuestion = async () => {
     const question = departmentQuestion.trim();
-    if (!question || !activeDepartmentId || departmentQuestionLoading) {
+    if (!question || departmentQuestionLoading) {
+      return;
+    }
+    if (departmentQuestionScope === 'department' && !activeDepartmentId) {
+      setDepartmentQuestionError('질문할 부서를 먼저 선택하세요.');
       return;
     }
 
     setDepartmentQuestionLoading(true);
     setDepartmentQuestionError('');
     try {
-      const result = await askAIWorkspaceDepartmentQuestion(activeDepartmentId, question);
+      const result = await askAIWorkspaceDepartmentQuestion(activeQuestionDepartmentId, question);
       setDepartmentQuestionResult(result);
     } catch (error) {
       setDepartmentQuestionError(error instanceof Error ? error.message : '부서 질문 답변에 실패했습니다.');
@@ -13125,7 +13339,9 @@ function AIWorkspacePage({
           loading={departmentQuestionLoading}
           question={departmentQuestion}
           result={departmentQuestionResult}
+          scopeMode={departmentQuestionScope}
           onQuestionChange={setDepartmentQuestion}
+          onScopeModeChange={setDepartmentQuestionScope}
           onSubmit={handleAskDepartmentQuestion}
         />
 
@@ -14423,12 +14639,14 @@ export function App() {
     const requestedCustomer = notesData.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
     const fallbackCustomerId = notesData.create.customers[0]?.id;
     const firstActionType = notesData.create.actionTypes[0]?.value || 'customer_meeting';
+    const requestedScheduleId = getCreateScheduleParam();
     setNoteCreateForm((previous) => ({
       ...previous,
       actionType: previous.actionType || firstActionType,
       followupId: requestedCustomer
         ? String(requestedCustomer.id)
         : previous.followupId || (fallbackCustomerId ? String(fallbackCustomerId) : ''),
+      scheduleId: requestedScheduleId || previous.scheduleId,
     }));
   }, [currentView, noteDetailId, notesData]);
 
@@ -15090,12 +15308,14 @@ export function App() {
     const nextForm = makeEmptyNoteCreateForm();
     nextForm.actionType = data?.create.actionTypes[0]?.value || nextForm.actionType;
     const requestedCustomerId = getCreateCustomerParam();
+    const requestedScheduleId = getCreateScheduleParam();
     const requestedCustomer = data?.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
     nextForm.followupId = requestedCustomer?.id
       ? String(requestedCustomer.id)
       : data?.create.customers[0]?.id
         ? String(data.create.customers[0].id)
         : '';
+    nextForm.scheduleId = requestedScheduleId;
     setNoteCreateForm(nextForm);
   };
   const handleCreateNoteSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -15128,6 +15348,7 @@ export function App() {
       followupId,
       nextAction: noteCreateForm.nextAction.trim() || undefined,
       nextActionDate: noteCreateForm.nextActionDate || undefined,
+      scheduleId: noteCreateForm.scheduleId ? Number(noteCreateForm.scheduleId) : undefined,
     };
 
     setNoteCreating(true);

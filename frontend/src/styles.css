@@ -4918,6 +4918,10 @@ h2 {
   background: #fbfcff;
 }
 
+.ai-question-scope-toggle {
+  justify-self: start;
+}
+
 .ai-department-question-scope {
   display: flex;
   flex-wrap: wrap;

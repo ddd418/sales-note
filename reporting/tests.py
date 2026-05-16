@@ -3108,6 +3108,63 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(created.next_action, '다음 주 견적 확인')
         self.assertEqual(created.meeting_date, timezone.localdate())
 
+    def test_notes_create_api_links_schedule_and_uses_schedule_date(self):
+        from datetime import time, timedelta
+        from reporting.models import History, Schedule
+
+        target = self._create_note(self.user, '일정연결작성')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 30),
+            activity_type='customer_meeting',
+        )
+        other_target = self._create_note(self.user, '다른일정')
+        other_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=other_target.followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(11, 0),
+            activity_type='customer_meeting',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'scheduleId': schedule.id,
+                'actionType': 'customer_meeting',
+                'content': '일정 상세에서 작성한 영업노트',
+                'nextAction': '샘플 반응 확인',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        created = History.objects.get(pk=payload['historyId'])
+        self.assertEqual(created.schedule_id, schedule.id)
+        self.assertEqual(created.followup_id, target.followup_id)
+        self.assertEqual(created.meeting_date, schedule.visit_date)
+        self.assertEqual(payload['reactHref'], f'/notes/{created.id}/')
+
+        mismatch_response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'scheduleId': other_schedule.id,
+                'actionType': 'customer_meeting',
+                'content': '잘못된 일정 연결',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(mismatch_response.status_code, 400)
+        self.assertIn('고객이 일치하지 않습니다', mismatch_response.json()['error'])
+
     def test_notes_create_api_blocks_manager_and_other_owner_customer(self):
         target = self._create_note(self.coworker, '동료작성차단')
 
@@ -3249,8 +3306,11 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(payload['message'], '영업노트를 수정했습니다.')
         target.refresh_from_db()
         self.assertEqual(target.content, 'React 상세에서 수정')
-        self.assertEqual(target.meeting_situation, '도입 검토')
-        self.assertEqual(target.meeting_next_action, '승인자 연락')
+        self.assertEqual(target.meeting_situation, '')
+        self.assertEqual(target.meeting_researcher_quote, '')
+        self.assertEqual(target.meeting_confirmed_facts, '')
+        self.assertEqual(target.meeting_obstacles, '')
+        self.assertEqual(target.meeting_next_action, '')
         self.assertEqual(target.next_action, '견적서 재발송')
         self.assertEqual(target.meeting_date, timezone.localdate())
 
@@ -7399,6 +7459,114 @@ class AIWorkspaceSummaryApiTests(TestCase):
         evidence_text = ' '.join(item['value'] for item in payload['answer']['evidence'])
         self.assertIn(latest_date, evidence_text)
         self.assertIn('qPCR Mix', evidence_text)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_question_answers_global_action_search_without_department(self, _mock_client):
+        from reporting.models import History
+
+        followup, department = self._create_customer(self.user, '전체액션질문')
+        other_followup, other_department = self._create_customer(self.user, '전체액션후보')
+        today = timezone.localdate()
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='전체 범위에서 먼저 볼 고객',
+            next_action='오늘 샘플 반응 확인',
+            next_action_date=today,
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=other_followup,
+            action_type='customer_meeting',
+            content='다른 부서 후속',
+            next_action='견적 사용 여부 확인',
+            next_action_date=today,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_api'),
+            data=json.dumps({
+                'question': '전체 부서 중 다음 액션 할만한 곳 찾아줘',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertIsNone(payload['department'])
+        self.assertEqual(payload['scope']['type'], 'all')
+        self.assertEqual(payload['context']['departmentCount'], 2)
+        self.assertEqual(payload['context']['customerCount'], 2)
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        self.assertIn('전체 부서', answer_text)
+        self.assertIn(department.name, answer_text)
+        self.assertIn(other_department.name, answer_text)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context(self, _mock_client):
+        from reporting.models import AIWorkspaceActionFeedback, History, Schedule
+
+        followup, department = self._create_customer(self.user, '샘플맥락')
+        Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type='customer_meeting',
+            notes='이다민 연구원에게 PCR 소모품 샘플 전달 필요',
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='샘플은 전달 예정이고 풀스커트 플레이트 사용 이유를 나중에 확인하기로 함',
+            next_action='샘플 전달',
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=followup,
+            action_id='followup:sample-context',
+            action_kind='customer_followup',
+            status='answered',
+            feedback='샘플 주고 왔습니다. 이다민 연구원 반응만 보면 됩니다.',
+            ai_result={
+                'summary': '샘플 제공 완료로 판단했습니다.',
+                'nextAction': '2-3영업일 뒤 사용 반응 확인',
+                'source': 'fallback',
+            },
+            action_snapshot={
+                'title': '샘플 전달',
+                'customer': followup.customer_name,
+                'company': followup.company.name,
+                'department': followup.department.name,
+            },
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '샘플 줬는데 반응을 기다릴까?',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['context']['recentFeedbackCount'], 1)
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        self.assertIn('완료', answer_text)
+        self.assertIn('2-3영업일', answer_text)
+        self.assertNotIn('먼저 샘플이 실제로 전달됐는지 확인', answer_text)
 
     def test_ai_workspace_department_question_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '질문권한없음')

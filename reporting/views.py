@@ -2779,7 +2779,8 @@ def _customers_schedule_payload(schedule):
         'notes': (schedule.notes or '').strip()[:100],
         'href': f'/schedules/{schedule.id}/',
         'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
-        'createHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
+        'createHistoryHref': f'/notes/?create=1&customer={followup.id}&schedule={schedule.id}',
+        'djangoCreateHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
     }
 
 
@@ -3512,6 +3513,24 @@ def customer_update_api(request, followup_id):
     })
 
 
+def _history_legacy_meeting_activity_text(history):
+    """Return old structured meeting text as a display-only fallback."""
+    parts = [
+        history.meeting_situation,
+        history.meeting_researcher_quote,
+        history.meeting_confirmed_facts,
+        history.meeting_obstacles,
+    ]
+    return '\n'.join(str(part).strip() for part in parts if str(part or '').strip())
+
+
+def _history_activity_content(history):
+    content = str(history.content or '').strip()
+    if content:
+        return content
+    return _history_legacy_meeting_activity_text(history)
+
+
 def _notes_history_payload(history, today, can_review=False):
     followup = history.followup
     activity_date = history.meeting_date or history.delivery_date
@@ -3529,6 +3548,7 @@ def _notes_history_payload(history, today, can_review=False):
     reviewed_at = history.reviewed_at
     reviewer = history.reviewer
     delivery_summary_text, _delivery_summary_amount = _history_effective_delivery_summary(history)
+    activity_content = _history_activity_content(history)
 
     return {
         'id': history.id,
@@ -3543,9 +3563,7 @@ def _notes_history_payload(history, today, can_review=False):
         'actionLabel': history.get_action_type_display(),
         'serviceStatus': history.service_status or '',
         'serviceStatusLabel': history.get_service_status_display() if history.service_status else '',
-        'summary': (
-            history.content or history.meeting_situation or history.meeting_next_action or delivery_summary_text or ''
-        ).strip()[:180],
+        'summary': (activity_content or delivery_summary_text or '').strip()[:180],
         'nextAction': next_action[:160],
         'nextActionDate': _date_or_none(next_action_date),
         'overdue': bool(next_action_date and next_action_date < today and not reviewed_at),
@@ -3871,7 +3889,7 @@ def _notes_detail_payload(request, history, user_profile):
 
     detail = {
         **note_payload,
-        'content': history.content or '',
+        'content': _history_activity_content(history),
         'createdBy': _user_display_name(history.created_by) if history.created_by else '',
         'followupId': history.followup_id,
         'scheduleId': history.schedule_id,
@@ -4039,7 +4057,7 @@ def notes_update_api(request, history_id):
         return JsonResponse({'success': False, 'error': '활동 유형을 선택하세요.'}, status=400)
 
     content = str(payload.get('content') or '').strip()
-    if action_type != 'customer_meeting' and not content:
+    if not content:
         return JsonResponse({'success': False, 'error': '활동 내용을 입력하세요.'}, status=400)
 
     activity_date = _parse_iso_date_or_none(payload.get('activityDate'))
@@ -4060,11 +4078,11 @@ def notes_update_api(request, history_id):
 
     if action_type == 'customer_meeting':
         history.meeting_date = activity_date
-        history.meeting_situation = str(payload.get('meetingSituation') or '').strip()
-        history.meeting_researcher_quote = str(payload.get('meetingResearcherQuote') or '').strip()
-        history.meeting_confirmed_facts = str(payload.get('meetingConfirmedFacts') or '').strip()
-        history.meeting_obstacles = str(payload.get('meetingObstacles') or '').strip()
-        history.meeting_next_action = str(payload.get('meetingNextAction') or '').strip()
+        history.meeting_situation = ''
+        history.meeting_researcher_quote = ''
+        history.meeting_confirmed_facts = ''
+        history.meeting_obstacles = ''
+        history.meeting_next_action = ''
         history.delivery_date = None
         history.delivery_amount = None
         history.delivery_items = ''
@@ -4341,6 +4359,22 @@ def notes_create_api(request):
     if not followup:
         return JsonResponse({'success': False, 'error': '작성 가능한 고객을 선택하세요.'}, status=403)
 
+    try:
+        schedule_id = int(payload.get('scheduleId') or payload.get('schedule_id') or 0)
+    except (TypeError, ValueError):
+        schedule_id = 0
+
+    linked_schedule = None
+    if schedule_id:
+        linked_schedule = Schedule.objects.filter(
+            id=schedule_id,
+            user=request.user,
+        ).select_related('followup').first()
+        if not linked_schedule:
+            return JsonResponse({'success': False, 'error': '연결할 수 있는 일정을 찾을 수 없습니다.'}, status=403)
+        if linked_schedule.followup_id != followup.id:
+            return JsonResponse({'success': False, 'error': '선택한 고객과 일정의 고객이 일치하지 않습니다.'}, status=400)
+
     allowed_action_types = {item['value'] for item in _notes_create_action_types(request)}
     action_type = str(payload.get('actionType') or '').strip()
     if action_type not in allowed_action_types:
@@ -4353,11 +4387,14 @@ def notes_create_api(request):
     next_action = str(payload.get('nextAction') or '').strip()
     next_action_date = _parse_iso_date_or_none(payload.get('nextActionDate'))
     activity_date = _parse_iso_date_or_none(payload.get('activityDate'))
+    if not activity_date and linked_schedule:
+        activity_date = linked_schedule.visit_date
 
     history_kwargs = {
         'user': request.user,
         'company': user_profile.company,
         'followup': followup,
+        'schedule': linked_schedule,
         'action_type': action_type,
         'content': content,
         'next_action': next_action,
@@ -4384,6 +4421,7 @@ def notes_create_api(request):
         'message': '영업노트를 저장했습니다.',
         'historyId': history.id,
         'href': reverse('reporting:history_detail', args=[history.id]),
+        'reactHref': f'/notes/{history.id}/',
         'note': _notes_history_payload(history, timezone.localdate(), False),
     }, status=201)
 
@@ -7451,7 +7489,8 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'djangoEdit': reverse('reporting:schedule_edit', args=[schedule.id]),
             'customer': f'/customers/{followup.id}/',
             'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
-            'createNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
+            'createNote': f'/notes/?create=1&customer={followup.id}&schedule={schedule.id}',
+            'djangoCreateNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
             'deleteSchedule': reverse('reporting:schedule_delete', args=[schedule.id]) if can_edit else '',
             'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
             'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
@@ -10376,6 +10415,40 @@ def _ai_workspace_question_department_for_user(user, department_id):
     ).select_related('company').distinct().first()
 
 
+def _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=8):
+    followup_ids = _ai_workspace_followup_ids(followup_ids)
+    if not user or not followup_ids:
+        return []
+
+    feedbacks = list(AIWorkspaceActionFeedback.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+    ).select_related(
+        'followup',
+        'followup__company',
+        'followup__department',
+    ).order_by('-updated_at')[:limit])
+
+    items = []
+    for feedback in feedbacks:
+        result = feedback.ai_result or {}
+        followup = feedback.followup
+        items.append({
+            'updatedAt': _datetime_or_none(feedback.updated_at),
+            'status': feedback.get_status_display(),
+            'kind': _ai_workspace_action_kind_label(feedback.action_kind),
+            'customer': followup.customer_name if followup else '',
+            'company': followup.company.name if followup and followup.company else '',
+            'department': followup.department.name if followup and followup.department else '',
+            'feedback': _ai_workspace_question_text(feedback.feedback, 420),
+            'summary': _ai_workspace_question_text(result.get('summary'), 360),
+            'nextAction': _ai_workspace_question_text(result.get('nextAction'), 260),
+            'intent': _ai_workspace_feedback_intent_label(result.get('intent')),
+            'crmSyncMessage': _ai_workspace_question_text((result.get('crmSync') or {}).get('message'), 260),
+        })
+    return items
+
+
 def _ai_workspace_question_text(value, limit=600):
     text = _ai_workspace_feedback_display_text(value)
     text = re.sub(r'\s+', ' ', text).strip()
@@ -10457,19 +10530,12 @@ def _ai_workspace_department_question_context(department, user):
     for history in history_qs:
         activity_date = history.meeting_date or history.delivery_date
         date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
-        body_parts = [
-            history.content,
-            history.meeting_situation,
-            history.meeting_confirmed_facts,
-            history.meeting_obstacles,
-            history.meeting_next_action,
-            history.next_action,
-        ]
         recent_histories.append({
             'date': date_label,
             'type': history.get_action_type_display(),
             'customer': history.followup.customer_name if history.followup else '',
-            'content': _ai_workspace_question_text(' / '.join(part for part in body_parts if part), 700),
+            'content': _ai_workspace_question_text(_history_activity_content(history), 700),
+            'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 260),
             'nextActionDate': _date_or_none(history.next_action_date),
         })
 
@@ -10491,6 +10557,14 @@ def _ai_workspace_department_question_context(department, user):
         })
 
     return {
+        'scope': {
+            'type': 'department',
+            'label': ' · '.join(_ai_prompt_context(
+                department.company.name if department.company else '',
+                department.name,
+            )),
+            'departmentId': department.id,
+        },
         'department': {
             'id': department.id,
             'name': department.name,
@@ -10527,19 +10601,323 @@ def _ai_workspace_department_question_context(department, user):
             for item in quotes[:8]
         ],
         'recentNotes': recent_histories,
+        'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids),
         'recentSchedules': recent_schedules,
     }
 
 
-def _ai_workspace_department_question_fallback(question, context):
+def _ai_workspace_question_action_payload(action):
+    return {
+        'id': action.get('id') or '',
+        'kind': action.get('kindLabel') or _ai_workspace_action_kind_label(action.get('kind')),
+        'title': _ai_workspace_question_text(action.get('title'), 180),
+        'company': _ai_workspace_question_text(action.get('company'), 120),
+        'department': _ai_workspace_question_text(action.get('department'), 120),
+        'customer': _ai_workspace_question_text(action.get('customer'), 120),
+        'recommendedAction': _ai_workspace_question_text(action.get('recommendedAction'), 360),
+        'priority': action.get('priorityLabel') or '',
+        'priorityScore': action.get('priorityScore') or 0,
+        'dueDate': action.get('dueDate') or None,
+        'moneyImpact': _money_int(action.get('moneyImpact') or 0),
+        'evidence': [
+            {
+                'label': _ai_workspace_question_text(item.get('label'), 80),
+                'value': _ai_workspace_question_text(item.get('value'), 240),
+            }
+            for item in _ai_json_list(action.get('evidence'))[:4]
+            if isinstance(item, dict)
+        ],
+    }
+
+
+def _ai_workspace_global_question_context(user):
+    from datetime import timedelta
+
+    today = timezone.localdate()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=4)
+    followups = list(FollowUp.objects.filter(
+        user=user,
+        department__isnull=False,
+    ).select_related(
+        'company',
+        'department',
+    ).order_by('-updated_at', '-ai_score')[:120])
+    followup_ids = [followup.id for followup in followups]
+
+    departments = {}
+    for followup in followups:
+        department = followup.department
+        if not department:
+            continue
+        row = departments.setdefault(department.id, {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+            'customerCount': 0,
+            'customers': [],
+            'urgentCustomers': 0,
+            'pipelineStages': {},
+        })
+        row['customerCount'] += 1
+        customer_name = followup.customer_name or followup.manager or '고객명 미정'
+        if len(row['customers']) < 5:
+            row['customers'].append(customer_name)
+        if followup.priority == 'urgent':
+            row['urgentCustomers'] += 1
+        stage_label = followup.get_pipeline_stage_display()
+        row['pipelineStages'][stage_label] = row['pipelineStages'].get(stage_label, 0) + 1
+
+    recent_histories = []
+    history_qs = History.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related(
+        'followup',
+        'followup__company',
+        'followup__department',
+    ).order_by('-created_at')[:18]
+    for history in history_qs:
+        activity_date = history.meeting_date or history.delivery_date
+        date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
+        followup = history.followup
+        recent_histories.append({
+            'date': date_label,
+            'type': history.get_action_type_display(),
+            'customer': followup.customer_name if followup else '',
+            'company': followup.company.name if followup and followup.company else '',
+            'department': followup.department.name if followup and followup.department else '',
+            'content': _ai_workspace_question_text(_history_activity_content(history), 560),
+            'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 240),
+            'nextActionDate': _date_or_none(history.next_action_date),
+        })
+
+    open_followups = []
+    open_history_qs = History.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        parent_history__isnull=True,
+        next_action_date__isnull=False,
+        reviewed_at__isnull=True,
+    ).select_related(
+        'followup',
+        'followup__company',
+        'followup__department',
+    ).order_by('next_action_date', '-created_at')[:12]
+    for history in open_history_qs:
+        followup = history.followup
+        open_followups.append({
+            'date': _date_or_none(history.next_action_date),
+            'overdue': bool(history.next_action_date and history.next_action_date < today),
+            'customer': followup.customer_name if followup else '',
+            'company': followup.company.name if followup and followup.company else '',
+            'department': followup.department.name if followup and followup.department else '',
+            'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 300),
+            'note': _ai_workspace_question_text(_history_activity_content(history), 360),
+        })
+
+    recent_schedules = []
+    schedule_qs = Schedule.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+    ).exclude(status='cancelled').select_related(
+        'followup',
+        'followup__company',
+        'followup__department',
+    ).order_by('-visit_date', '-visit_time')[:14]
+    for schedule in schedule_qs:
+        followup = schedule.followup
+        recent_schedules.append({
+            'date': _date_or_none(schedule.visit_date),
+            'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
+            'type': schedule.get_activity_type_display(),
+            'status': schedule.get_status_display(),
+            'customer': followup.customer_name if followup else '',
+            'company': followup.company.name if followup and followup.company else '',
+            'department': followup.department.name if followup and followup.department else '',
+            'notes': _ai_workspace_question_text(schedule.notes, 260),
+            'amount': _money_int(schedule.expected_revenue),
+        })
+
+    action_queue = _ai_workspace_build_action_queue(user, week_start, week_end, limit=14)
+
+    return {
+        'scope': {
+            'type': 'all',
+            'label': '전체 부서',
+            'departmentId': None,
+        },
+        'department': None,
+        'departments': sorted(
+            departments.values(),
+            key=lambda item: (item['urgentCustomers'], item['customerCount']),
+            reverse=True,
+        )[:30],
+        'customers': [
+            {
+                'id': followup.id,
+                'name': followup.customer_name or followup.manager or '고객명 미정',
+                'manager': followup.manager or '',
+                'company': followup.company.name if followup.company else '',
+                'department': followup.department.name if followup.department else '',
+                'priority': followup.get_priority_display(),
+                'grade': followup.customer_grade or '',
+                'pipelineStage': followup.get_pipeline_stage_display(),
+            }
+            for followup in followups[:40]
+        ],
+        'summary': {
+            'department_count': len(departments),
+            'customer_count': len(followups),
+            'open_followups': len(open_followups),
+            'recommended_actions': len(action_queue),
+        },
+        'lastDelivery': None,
+        'recentDeliveries': [],
+        'recentQuotes': [],
+        'recentNotes': recent_histories,
+        'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
+        'recentSchedules': recent_schedules,
+        'openFollowups': open_followups,
+        'recommendedActions': [
+            _ai_workspace_question_action_payload(action)
+            for action in action_queue[:10]
+        ],
+        'week': {
+            'start': week_start.isoformat(),
+            'end': week_end.isoformat(),
+        },
+    }
+
+
+def _ai_workspace_question_fallback(question, context):
     normalized = re.sub(r'\s+', '', str(question or '').lower())
+    scope = context.get('scope') or {}
+    scope_type = scope.get('type') or 'department'
+    scope_label = scope.get('label') or '전체 부서'
     department = context.get('department') or {}
     summary = context.get('summary') or {}
     latest_delivery = context.get('lastDelivery')
+    recent_feedbacks = context.get('recentFeedbacks') or []
+    recent_notes = context.get('recentNotes') or []
+    recommended_actions = context.get('recommendedActions') or []
+    open_followups = context.get('openFollowups') or []
     asks_last_order = (
         any(keyword in normalized for keyword in ['마지막', '최근', '최종', '마지막으로'])
         and any(keyword in normalized for keyword in ['주문', '납품', '구매', '수주', '오더'])
     )
+    asks_sample_wait = '샘플' in normalized and any(
+        keyword in normalized for keyword in ['기다', '대기', '반응', '어떻게', '어쩌', '할까']
+    )
+    asks_global_actions = scope_type == 'all' and any(
+        keyword in normalized for keyword in ['찾아', '어디', '우선', '다음액션', '다음할일', '할만한', '챙길', '연락']
+    )
+
+    if asks_sample_wait:
+        recent_text = ' '.join(
+            _ai_workspace_question_text(item.get('feedback') or item.get('summary') or '', 260)
+            for item in recent_feedbacks[:5]
+        )
+        note_text = ' '.join(
+            _ai_workspace_question_text(item.get('content') or item.get('nextAction') or '', 260)
+            for item in recent_notes[:5]
+        )
+        completion_text = re.sub(r'\s+', '', f'{recent_text} {note_text}'.lower())
+        delivered_signal = any(
+            keyword in completion_text
+            for keyword in [
+                '샘플드렸',
+                '샘플줬',
+                '샘플주고왔',
+                '샘플제공완료',
+                '샘플전달완료',
+                '전달완료',
+                '제공완료',
+                '주고왔',
+                '드리고왔',
+                '완료',
+            ]
+        )
+        if delivered_signal:
+            return {
+                'summary': (
+                    '샘플 제공은 이미 완료된 상태로 보는 것이 맞습니다. 지금은 같은 말을 다시 반복하기보다 '
+                    '반응 확인 시점을 정해 두고, 그 전까지는 고객이 실제로 써볼 수 있는 조건을 만들어 주는 쪽이 좋습니다. '
+                    '바로 독촉하면 부담이 될 수 있으니 2-3영업일 정도 사용 시간을 주고, 이후에는 "사용해 보셨는지"가 아니라 '
+                    '"풀스커트 플레이트를 쓰는 이유와 비교 기준을 확인하려고 한다"는 식으로 다음 대화를 열어야 합니다.'
+                ),
+                'bullets': [
+                    '판단: 샘플 전달 자체는 완료 이슈로 정리하고, 다음 액션은 반응 확인과 사용 이유 파악으로 바꿉니다.',
+                    '권장 타이밍: 샘플을 받은 직후라면 2-3영업일 뒤 짧게 확인하고, 급한 견적 일정이 있으면 그 전에 한 번만 확인합니다.',
+                    '확인 질문: 실제 사용 예정일, 기존 풀스커트 플레이트 사용 이유, 비교할 기준, 다음 견적에서 반영할 품목을 물어봅니다.',
+                    '주의: "샘플 드렸으니 기다림"으로 방치하지 말고 다음 연락일을 CRM에 잡아 두는 것이 좋습니다.',
+                ],
+                'evidence': [
+                    {'label': '최근 현장 답변', 'value': recent_feedbacks[0].get('feedback') if recent_feedbacks else '샘플 제공 완료 신호'},
+                    {'label': '최근 노트', 'value': recent_notes[0].get('content') if recent_notes else '샘플 관련 최근 활동'},
+                ],
+                'confidence': 'medium',
+            }
+        return {
+            'summary': (
+                '샘플 제공 여부가 아직 완료로 확인되지 않았습니다. 먼저 샘플이 실제로 전달됐는지 확인하고, '
+                '전달 전이면 담당 연구원에게 전달 일정을 확정하는 것이 우선입니다. 전달 후에는 무작정 기다리지 말고 '
+                '사용 예정일과 평가 기준을 물어볼 다음 연락일을 잡아야 합니다.'
+            ),
+            'bullets': [
+                '1순위: 샘플 전달 여부를 CRM에 완료/미완료로 명확히 남깁니다.',
+                '2순위: 전달 완료 후 사용 예정일을 기준으로 반응 확인 날짜를 잡습니다.',
+                '3순위: 고객이 비교할 기존 제품, 플레이트 타입, 가격/납기 기준을 확인합니다.',
+            ],
+            'evidence': [
+                {'label': '최근 현장 답변', 'value': recent_feedbacks[0].get('feedback') if recent_feedbacks else '최근 AI 답변 기록 없음'},
+                {'label': '최근 노트', 'value': recent_notes[0].get('content') if recent_notes else '최근 노트 없음'},
+            ],
+            'confidence': 'low',
+        }
+
+    if asks_global_actions:
+        candidates = recommended_actions or open_followups
+        if candidates:
+            top = candidates[:3]
+            bullets = []
+            evidence = []
+            for index, item in enumerate(top, start=1):
+                label = ' · '.join(_ai_prompt_context(
+                    item.get('company'),
+                    item.get('department'),
+                    item.get('customer'),
+                )) or item.get('title') or f'후보 {index}'
+                action_text = item.get('recommendedAction') or item.get('nextAction') or '다음 액션 확인'
+                due = item.get('dueDate') or item.get('date') or ''
+                bullets.append(f"{index}. {label}: {action_text}{f' (기한 {due})' if due else ''}")
+                evidence.append({'label': f'후보 {index}', 'value': f"{label} / {action_text}"})
+            return {
+                'summary': (
+                    f"{scope_label} 기준으로는 추천 액션과 미완료 후속조치가 있는 곳부터 보는 것이 좋습니다. "
+                    '우선순위는 긴급도, 예정일 경과 여부, 금액 영향, 최근 고객 반응이 있는지를 함께 보고 잡았습니다.'
+                ),
+                'bullets': bullets,
+                'evidence': evidence,
+                'confidence': 'medium',
+            }
+        return {
+            'summary': (
+                f"{scope_label} 기준으로 당장 노출된 추천 액션이나 기한이 지난 후속조치는 없습니다. "
+                '다만 최근 노트가 있는 부서 중 다음 예정일이 비어 있는 고객은 후속 누락 가능성이 있으니 별도 점검이 필요합니다.'
+            ),
+            'bullets': [
+                f"전체 고객: {len(context.get('customers') or [])}명",
+                f"전체 부서: {summary.get('department_count', len(context.get('departments') or []))}개",
+                f"최근 영업노트: {len(recent_notes)}건",
+            ],
+            'evidence': [
+                {'label': '추천 액션', 'value': '현재 action queue 없음'},
+                {'label': '미완료 후속', 'value': f"{len(open_followups)}건"},
+            ],
+            'confidence': 'low',
+        }
 
     if asks_last_order:
         if latest_delivery:
@@ -10570,7 +10948,10 @@ def _ai_workspace_department_question_fallback(question, context):
                 'confidence': 'medium',
             }
         return {
-            'summary': f"기록상 {department.get('name') or '선택 부서'}의 주문/납품 내역을 찾지 못했습니다.",
+            'summary': (
+                f"기록상 {department.get('name') or scope_label or '선택 범위'}의 주문/납품 내역을 찾지 못했습니다. "
+                '이 경우에는 견적만 진행 중인지, 납품 품목이 일정에 아직 입력되지 않았는지, 또는 고객명이 다른 후속 고객으로 분리되어 있는지 확인해야 합니다.'
+            ),
             'bullets': [
                 f"연결 고객 {len(context.get('customers') or [])}명 기준으로 확인했습니다.",
                 '견적만 있고 납품 기록이 없을 수 있으니 견적/일정 기록도 함께 확인해야 합니다.',
@@ -10583,17 +10964,40 @@ def _ai_workspace_department_question_fallback(question, context):
         }
 
     last_delivery_label = latest_delivery['date'] if latest_delivery else '납품 기록 없음'
+    if scope_type == 'all':
+        return {
+            'summary': (
+                f"{scope_label} 기준으로 고객 {len(context.get('customers') or [])}명, "
+                f"부서 {summary.get('department_count', len(context.get('departments') or []))}개, "
+                f"미완료 후속 {len(open_followups)}건, 추천 액션 {len(recommended_actions)}건이 보입니다. "
+                '질문이 특정 고객을 지정하지 않았으므로, 우선은 기한이 있는 후속조치와 AI 추천 액션을 먼저 정리하는 것이 현실적입니다.'
+            ),
+            'bullets': [
+                f"가장 먼저 볼 항목: {recommended_actions[0].get('title') if recommended_actions else '추천 액션 없음'}",
+                f"최근 현장 답변: {len(recent_feedbacks)}건",
+                f"최근 영업노트: {len(recent_notes)}건",
+                '필요하면 부서명이나 고객명을 붙여 다시 물으면 더 좁혀서 답할 수 있습니다.',
+            ],
+            'evidence': [
+                {'label': '전체 고객', 'value': f"{len(context.get('customers') or [])}명"},
+                {'label': '추천 액션', 'value': f"{len(recommended_actions)}건"},
+                {'label': '미완료 후속', 'value': f"{len(open_followups)}건"},
+            ],
+            'confidence': 'low',
+        }
+
     return {
         'summary': (
             f"{department.get('company') or ''} {department.get('name') or '선택 부서'} 기준으로 "
             f"고객 {len(context.get('customers') or [])}명, 견적 {summary.get('total_quotes', 0)}건, "
-            f"납품 {summary.get('total_deliveries', 0)}건이 기록되어 있습니다. "
-            f"마지막 주문/납품일은 {last_delivery_label}입니다."
+            f"납품 {summary.get('total_deliveries', 0)}건이 기록되어 있습니다. 마지막 주문/납품일은 {last_delivery_label}입니다. "
+            '최근 현장 답변과 최신 노트를 먼저 보고, 이전 일정에 남은 계획성 문구가 이미 완료된 일인지 구분해서 다음 액션을 잡아야 합니다.'
         ).strip(),
         'bullets': [
             f"총 견적 금액: {_ai_workspace_money(summary.get('total_quote_amount', 0))}",
             f"총 납품 금액: {_ai_workspace_money(summary.get('total_delivery_amount', 0))}",
             f"최근 영업노트: {len(context.get('recentNotes') or [])}건",
+            f"최근 AI 현장 답변: {len(recent_feedbacks)}건",
         ],
         'evidence': [
             {'label': '고객 수', 'value': f"{len(context.get('customers') or [])}명"},
@@ -10613,21 +11017,21 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
         or data.get('directAnswer')
         or ''
     )
-    answer = _ai_workspace_question_text(answer_text, 1400)
+    answer = _ai_workspace_question_text(answer_text, 2200)
     bullets = [
-        _ai_workspace_question_text(item, 300)
-        for item in _ai_json_list(data.get('bullets') or data.get('keyPoints'))[:8]
-        if _ai_workspace_question_text(item, 300)
+        _ai_workspace_question_text(item, 420)
+        for item in _ai_json_list(data.get('bullets') or data.get('keyPoints'))[:10]
+        if _ai_workspace_question_text(item, 420)
     ]
     evidence = []
     evidence_items = data.get('evidence') or data.get('sourceNotes') or data.get('sources')
-    for item in _ai_json_list(evidence_items)[:8]:
+    for item in _ai_json_list(evidence_items)[:10]:
         if isinstance(item, dict):
             label = _ai_workspace_question_text(item.get('label') or item.get('title') or '근거', 80)
-            value = _ai_workspace_question_text(item.get('value') or item.get('text') or item.get('detail'), 300)
+            value = _ai_workspace_question_text(item.get('value') or item.get('text') or item.get('detail'), 420)
         else:
             label = '근거'
-            value = _ai_workspace_question_text(item, 300)
+            value = _ai_workspace_question_text(item, 420)
         if label and value:
             evidence.append({'label': label, 'value': value})
 
@@ -10645,51 +11049,116 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
     }
 
 
+def _ai_workspace_question_needs_web_search(question):
+    normalized = re.sub(r'\s+', '', str(question or '').lower())
+    if not normalized:
+        return False
+    explicit_search = ['웹검색', '인터넷검색', '검색해', '찾아봐', '최신정보', '최신논문', '최신뉴스']
+    external_topics = ['논문', '뉴스', '규정', '정책', '시장', '가격', '환율', '트렌드', '업데이트', '출시', 'pubmed', 'fda']
+    if any(keyword in normalized for keyword in explicit_search):
+        return True
+    return '최신' in normalized and any(keyword in normalized for keyword in external_topics)
+
+
+def _ai_workspace_response_output_text(response):
+    output_text = getattr(response, 'output_text', None)
+    if output_text:
+        return output_text
+    parts = []
+    for item in getattr(response, 'output', []) or []:
+        for content in getattr(item, 'content', []) or []:
+            text = getattr(content, 'text', None)
+            if text:
+                parts.append(text)
+    return '\n'.join(parts).strip()
+
+
+def _ai_workspace_json_from_text(text):
+    text = str(text or '').strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r'\{.*\}', text, flags=re.S)
+        if match:
+            return json.loads(match.group(0))
+        raise
+
+
 def _ai_workspace_generate_department_question_answer(question, context):
-    fallback = _ai_workspace_department_question_fallback(question, context)
+    fallback = _ai_workspace_question_fallback(question, context)
+    use_web_search = _ai_workspace_question_needs_web_search(question)
     try:
         from ai_chat.services import get_openai_client
 
         client = get_openai_client()
-        model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+        model = os.environ.get('OPENAI_MODEL_AI_WORKSPACE') or os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
         prompt_payload = {
             'question': question,
             'crmContext': context,
+            'webSearchAllowed': use_web_search,
             'rules': [
                 '제공된 crmContext에 있는 사실만 사용한다.',
+                'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
+                '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
+                '질문이 전체 부서 범위라면 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
                 '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
+                'webSearchAllowed가 true이고 최신 외부 정보가 필요한 질문에서만 웹 검색 결과를 보조 근거로 사용한다. 내부 CRM 고객명/영업내용을 웹 검색어로 노출하지 않는다.',
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',
-                '답변은 짧고 현장 담당자가 바로 이해할 수 있게 쓴다.',
+                '답변은 너무 짧게 쓰지 말고, 직접 판단, 이유, 다음 액션, 확인 타이밍, CRM 근거를 포함한다.',
             ],
         }
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    'role': 'system',
-                    'content': (
-                        '너는 내부 영업 CRM의 부서별 상황 질의응답 AI다. '
-                        '반드시 입력된 CRM 컨텍스트만 근거로 답하고, 없는 사실은 만들지 않는다. '
-                        '반드시 JSON으로 {"answer": string, "bullets": string[], '
-                        '"evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"}만 반환한다.'
-                    ),
-                },
-                {
-                    'role': 'user',
-                    'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder),
-                },
-            ],
-            temperature=0.15,
-            max_tokens=900,
-            response_format={'type': 'json_object'},
+        system_prompt = (
+            '너는 내부 영업 CRM의 질문 답변 AI다. '
+            'CRM 컨텍스트의 최신성, 완료/미완료 상태, 후속조치 우선순위를 판단한다. '
+            '답변은 한국어로 쓰고, 단답형을 피한다. '
+            '반드시 JSON으로 {"answer": string, "bullets": string[], '
+            '"evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"}만 반환한다.'
         )
-        data = json.loads(response.choices[0].message.content)
+        data = None
+        if use_web_search and hasattr(client, 'responses'):
+            response = client.responses.create(
+                model=model,
+                input=[
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder)},
+                ],
+                tools=[{'type': 'web_search'}],
+                tool_choice='auto',
+                include=['web_search_call.action.sources'],
+                max_output_tokens=1400,
+            )
+            data = _ai_workspace_json_from_text(_ai_workspace_response_output_text(response))
+            web_search_used = any(
+                (item.get('type') if isinstance(item, dict) else getattr(item, 'type', '')) == 'web_search_call'
+                for item in getattr(response, 'output', []) or []
+            )
+        else:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': system_prompt,
+                    },
+                    {
+                        'role': 'user',
+                        'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder),
+                    },
+                ],
+                temperature=0.2,
+                max_tokens=1400,
+                response_format={'type': 'json_object'},
+            )
+            data = _ai_workspace_json_from_text(response.choices[0].message.content)
+            web_search_used = False
         answer = _ai_workspace_normalize_department_question_answer(data, fallback)
-        return answer, 'openai'
+        return answer, 'openai', web_search_used
     except Exception as exc:
         logger.warning('AI workspace department question fallback used: %s', exc)
-        return fallback, 'fallback'
+        return fallback, 'fallback', False
 
 
 @never_cache
@@ -11117,7 +11586,7 @@ def ai_workspace_summary_api(request):
 @never_cache
 @require_POST
 def ai_workspace_department_question_api(request):
-    """Answer a short user question using one accessible department's CRM context."""
+    """Answer a user question using accessible department or all-department CRM context."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -11141,12 +11610,6 @@ def ai_workspace_department_question_api(request):
 
     department_id = payload.get('departmentId') or payload.get('department_id')
     question = _ai_workspace_question_text(payload.get('question'), AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH)
-    if not department_id:
-        return JsonResponse({
-            'success': False,
-            'error': 'missing_department_id',
-            'message': 'departmentId가 필요합니다.',
-        }, status=400)
     if len(question) < 2:
         return JsonResponse({
             'success': False,
@@ -11154,27 +11617,35 @@ def ai_workspace_department_question_api(request):
             'message': '질문을 입력하세요.',
         }, status=400)
 
-    department = _ai_workspace_question_department_for_user(request.user, department_id)
-    if not department:
-        return JsonResponse({
-            'success': False,
-            'error': 'department_not_found',
-            'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
-        }, status=404)
+    if department_id:
+        department = _ai_workspace_question_department_for_user(request.user, department_id)
+        if not department:
+            return JsonResponse({
+                'success': False,
+                'error': 'department_not_found',
+                'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
+            }, status=404)
+        context = _ai_workspace_department_question_context(department, request.user)
+    else:
+        context = _ai_workspace_global_question_context(request.user)
 
-    context = _ai_workspace_department_question_context(department, request.user)
-    answer, source = _ai_workspace_generate_department_question_answer(question, context)
+    answer, source, web_search_used = _ai_workspace_generate_department_question_answer(question, context)
     return JsonResponse({
         'success': True,
         'source': source,
+        'webSearchUsed': web_search_used,
         'generatedAt': timezone.now().isoformat(),
-        'department': context['department'],
+        'scope': context.get('scope') or {},
+        'department': context.get('department'),
         'question': question,
         'answer': answer,
         'context': {
             'customerCount': len(context.get('customers') or []),
+            'departmentCount': len(context.get('departments') or []) or (1 if context.get('department') else 0),
             'summary': context.get('summary') or {},
             'lastDelivery': context.get('lastDelivery'),
+            'recommendedActionCount': len(context.get('recommendedActions') or []),
+            'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
         },
         'requiresHumanReview': True,
     })

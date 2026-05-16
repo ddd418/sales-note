@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-16 — Schedule Note Compose And AI Question Upgrade
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+React 일정 상세에서 바로 영업노트를 작성할 수 있게 했고, 작성된 노트는 해당 일정에 연결됩니다. 영업노트 수정/상세 화면의 기존 미팅 구조화 필드 5개는 제거하고 `활동 내용`과 `다음 액션` 중심으로 단순화했습니다.
+
+AI Workspace 질문은 선택 부서뿐 아니라 전체 부서 범위에서도 질문할 수 있게 확장했습니다. 최근 AI 실행 피드백을 질문 컨텍스트에 포함해 “샘플 전달 예정”과 “샘플 주고 왔다”처럼 과거 계획과 최신 완료 답변이 충돌할 때 최신 완료 상태를 우선하도록 조정했습니다. 최신 외부 정보가 필요한 질문은 OpenAI Responses API `web_search` 도구를 사용할 수 있도록 분기했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 일정 연결 노트 생성, 노트 구조화 필드 정리, AI 전체 범위 질문 컨텍스트/답변 생성/web search 분기 추가.
+- `reporting/urls.py`: `/reporting/api/ai-workspace/question/` 별칭 추가.
+- `reporting/tests.py`: 일정 연결 노트 생성, 노트 수정 필드 정리, AI 전체 질문/최신 피드백 맥락 회귀 테스트 추가.
+- `frontend/src/api.ts`: 일정 연결 노트 payload, AI 전역 질문 응답 타입, 새 AI 질문 API 경로 반영.
+- `frontend/src/App.tsx`: 일정 상세 영업노트 작성 폼, 영업노트 수정 단순화, AI 전체/선택 부서 질문 UI 추가.
+- `frontend/src/styles.css`: AI 질문 범위 토글 보조 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 일정 상세(`/schedules/<id>/`)에서 `영업노트 작성` 버튼으로 즉시 활동 내용과 다음 액션을 남길 수 있습니다.
+- 일정에서 작성한 노트는 related notes에 바로 연결되어 일정 이력 추적이 쉬워집니다.
+- 영업노트 화면은 오래된 구조화 미팅 항목 대신 실제 사용 필드인 `활동 내용`, `다음 액션` 중심으로 정리됩니다.
+- AI 질문은 전체 부서를 대상으로 다음 액션 후보를 찾아주는 비서 역할을 수행할 수 있습니다.
+- AI 답변은 단답형을 피하고 판단, 이유, 다음 액션, 확인 타이밍, CRM 근거를 포함하도록 강화했습니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `reporting` 앱과 `/reporting/*` route는 유지했습니다.
+- 기존 legacy Django 일정 기반 영업노트 작성 링크는 `djangoCreateNote` fallback으로 보존했습니다.
+- legacy 구조화 미팅 데이터는 삭제하지 않고, content가 비어 있는 과거 노트의 표시 fallback으로만 사용합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests
+→ Ran 20 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_answers_global_action_search_without_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_answers_last_order_from_delivery_context
+→ Ran 1 test, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npm run build
+→ OK, Vite chunk-size warning only
+
+Local Playwright CLI smoke on http://127.0.0.1:5173
+→ 일정 상세에서 영업노트 작성 폼 표시/저장/related notes 연결 확인
+→ 영업노트 수정 화면에서 활동 내용/다음 액션만 표시되는 것 확인
+→ AI Workspace에서 전체 부서 질문 패널과 답변 표시 확인
+```
+
+### 알려진 제한
+
+- 운영 실제 AI 답변 품질은 운영 OpenAI 키/모델 설정과 실제 CRM 데이터에 따라 달라집니다.
+- web search는 “최신/논문/뉴스/시장/규정/검색”류 질문에서만 보조로 사용하며, 내부 CRM 고객명과 영업 내용을 검색어로 노출하지 않도록 프롬프트로 제한했습니다.
+- 운영 배포와 운영 수동 검수는 아직 진행 전입니다.
+
+### 운영 배포 상태
+
+- 아직 배포 전입니다. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 smoke 확인이 필요합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 `https://sales-note-frontend-production.up.railway.app/schedules/907/`에 로그인해 들어갑니다.
+2. 상단 `영업노트 작성` 버튼을 눌러 `활동 내용`과 `다음 액션`만 입력한 뒤 저장합니다.
+3. 같은 일정 상세의 `이 일정의 보고 기록`에 방금 저장한 노트가 표시되는지 확인합니다.
+4. 해당 노트 상세에서 `수정`을 눌렀을 때 `오늘 상황`, `연구원 발언`, `확인한 사실`, `장애물/반대`, `미팅 다음 액션` 필드가 보이지 않는지 확인합니다.
+5. 운영 `/ai-workspace/`에서 `전체 부서` 상태로 “전체 부서 중 다음 액션 할만한 곳 찾아줘”를 질문합니다.
+6. 답변이 특정 후보, 판단 이유, 다음 액션, CRM 근거를 포함하는지 확인합니다.
+7. 필요하면 `선택 부서`로 바꿔 샘플 전달 후속 질문을 던지고, 최신 완료 피드백이 과거 계획보다 우선 반영되는지 확인합니다.
+
+### 권장 다음 작업
+
+- 운영 검수 후 실제 샘플/견적 사례에 맞춰 AI 답변 프롬프트 예시와 평가 케이스를 더 축적합니다.
+
+---
+
 ## 2026-05-15 — Next Worker Handoff Refresh
 
 **상태**: 문서 갱신 완료, 커밋/푸시 예정
