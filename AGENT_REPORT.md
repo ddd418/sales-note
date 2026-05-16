@@ -2,7 +2,7 @@
 
 ## 2026-05-16 — Schedule Note Compose And AI Question Upgrade
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -53,21 +53,57 @@ python manage.py check
 cd frontend; npm run build
 → OK, Vite chunk-size warning only
 
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "feat: add schedule notes and broaden AI questions"
+git push origin main
+→ pushed 4b4d764 to origin/main
+
 Local Playwright CLI smoke on http://127.0.0.1:5173
 → 일정 상세에서 영업노트 작성 폼 표시/저장/related notes 연결 확인
 → 영업노트 수정 화면에서 활동 내용/다음 액션만 표시되는 것 확인
 → AI Workspace에서 전체 부서 질문 패널과 답변 표시 확인
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy schedule notes and AI question upgrade 4b4d764"
+railway deployment list --service web --limit 1 --json
+→ 80deff19-74e4-4285-9705-dc68580f2c6e SUCCESS, commit 4b4d764
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+→ 27f3892c-87c7-4d51-ac43-777fd235f0b2 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/schedules/907/
+→ 200, assets/index-DYtQe_Hl.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-DYtQe_Hl.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DYtQe_Hl.js
+→ 200, `일정 영업노트 작성`, `전체 부서 질문`, `/reporting/api/ai-workspace/question/` strings present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/907/ -SkipHttpErrorCheck
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/ -SkipHttpErrorCheck
+→ 401 login_required JSON
 ```
 
 ### 알려진 제한
 
 - 운영 실제 AI 답변 품질은 운영 OpenAI 키/모델 설정과 실제 CRM 데이터에 따라 달라집니다.
 - web search는 “최신/논문/뉴스/시장/규정/검색”류 질문에서만 보조로 사용하며, 내부 CRM 고객명과 영업 내용을 검색어로 노출하지 않도록 프롬프트로 제한했습니다.
-- 운영 배포와 운영 수동 검수는 아직 진행 전입니다.
+- 운영 실제 화면 검수는 로그인 세션과 `/schedules/907/` 실제 데이터가 필요해 사용자 확인이 필요합니다.
 
 ### 운영 배포 상태
 
-- 아직 배포 전입니다. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 smoke 확인이 필요합니다.
+- GitHub: `4b4d764 feat: add schedule notes and broaden AI questions` pushed to `origin/main`.
+- Railway `web`: `80deff19-74e4-4285-9705-dc68580f2c6e` SUCCESS.
+- Railway `sales-note-frontend`: `27f3892c-87c7-4d51-ac43-777fd235f0b2` SUCCESS.
+- 운영 smoke OK:
+  - `/schedules/907/` 200, latest frontend asset `assets/index-DYtQe_Hl.js` loaded.
+  - `/ai-workspace/` 200, same latest frontend asset loaded.
+  - deployed JS contains schedule note form label, all-department question label, and new AI question API path.
+  - anonymous schedule detail API and AI workspace API return `401 login_required` JSON.
 
 ### 운영 수동 검수 절차
 

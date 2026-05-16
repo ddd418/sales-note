@@ -41,7 +41,10 @@
 - 백엔드 일정 연결 노트 생성, 노트 구조화 필드 정리, AI 전역 질문/최신 피드백 컨텍스트 구현 완료.
 - React 일정 상세 노트 작성 폼, 노트 수정 단순화, AI 전체/선택 부서 질문 UI 구현 완료.
 - 로컬 테스트와 빌드, Playwright CLI smoke 통과.
-- 커밋/푸시/배포 진행 중.
+- 커밋/푸시 완료: `4b4d764 feat: add schedule notes and broaden AI questions`.
+- Railway `web` 배포 완료: `80deff19-74e4-4285-9705-dc68580f2c6e` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `27f3892c-87c7-4d51-ac43-777fd235f0b2` SUCCESS.
+- 운영 smoke 완료: `/schedules/907/`, `/ai-workspace/` 최신 번들 반영 및 API 로그인 보호 확인.
 
 ---
 
