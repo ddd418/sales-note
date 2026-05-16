@@ -74,11 +74,18 @@ git push origin main
 → pushed 9043770 to origin/main
 
 railway deployment list --service web --limit 5 --json
-→ 1fd19774-f7f2-43b8-b35f-b00e12610e5a SUCCESS, commit 9043770
+→ latest main auto-deploy verified SUCCESS
 
 railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy structured AI action answers 9043770"
 railway deployment list --service sales-note-frontend --limit 3 --json
 → fd0ac57d-bfa6-4f1c-a673-bbe7a7a01c98 SUCCESS
+
+git commit -m "docs: record ai answer production deploy"
+git push origin main
+→ pushed a9c2227 to origin/main
+
+railway deployment list --service web --limit 3 --json
+→ latest docs-only main auto-deploy verified SUCCESS
 
 Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
 → 200, assets/index-C4GJE0Pe.js and assets/index-xu5Ye0bW.css loaded
@@ -100,8 +107,8 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 
 ### 운영 배포 상태
 
-- GitHub: `7b21380 feat: structure ai workspace action answers` and `9043770 docs: record ai answer deployment status` pushed to `origin/main`.
-- Railway `web`: `1fd19774-f7f2-43b8-b35f-b00e12610e5a` SUCCESS, commit `9043770`.
+- GitHub: `7b21380 feat: structure ai workspace action answers`, `9043770 docs: record ai answer deployment status`, and `a9c2227 docs: record ai answer production deploy` pushed to `origin/main`.
+- Railway `web`: latest main auto-deploy verified SUCCESS after the docs-only status push.
 - Railway `sales-note-frontend`: `fd0ac57d-bfa6-4f1c-a673-bbe7a7a01c98` SUCCESS.
 - 운영 smoke OK:
   - `/ai-workspace/` 200, latest frontend asset `assets/index-C4GJE0Pe.js` loaded.
