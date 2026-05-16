@@ -2,7 +2,7 @@
 
 ## 2026-05-16 — AI Workspace Structured Action Answers
 
-**상태**: 구현/로컬 검증/커밋/푸시 완료, Railway 인증 만료로 배포 대기
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -68,6 +68,29 @@ git push origin main
 railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy structured AI action answers 7b21380"
 railway deployment list --service web --limit 3 --json
 → blocked: Railway CLI OAuth token refresh failed with invalid_grant; `railway login` required
+
+git commit -m "docs: record ai answer deployment status"
+git push origin main
+→ pushed 9043770 to origin/main
+
+railway deployment list --service web --limit 5 --json
+→ 1fd19774-f7f2-43b8-b35f-b00e12610e5a SUCCESS, commit 9043770
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy structured AI action answers 9043770"
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ fd0ac57d-bfa6-4f1c-a673-bbe7a7a01c98 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-C4GJE0Pe.js and assets/index-xu5Ye0bW.css loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-C4GJE0Pe.js
+→ 200, `판단 이유`, `다음 액션`, `확인 시점`, `ai-department-question-action-item` strings present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/ -SkipHttpErrorCheck
+→ 401 login_required JSON
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/question/ -Method POST -SkipHttpErrorCheck
+→ 403 CSRF protection without browser session/referrer
 ```
 
 ### 알려진 제한
@@ -77,8 +100,14 @@ railway deployment list --service web --limit 3 --json
 
 ### 운영 배포 상태
 
-- GitHub: `7b21380 feat: structure ai workspace action answers` pushed to `origin/main`.
-- Railway 배포: CLI 인증 만료로 대기 중. `railway login` 후 `web`과 `sales-note-frontend` 배포 재시도가 필요합니다.
+- GitHub: `7b21380 feat: structure ai workspace action answers` and `9043770 docs: record ai answer deployment status` pushed to `origin/main`.
+- Railway `web`: `1fd19774-f7f2-43b8-b35f-b00e12610e5a` SUCCESS, commit `9043770`.
+- Railway `sales-note-frontend`: `fd0ac57d-bfa6-4f1c-a673-bbe7a7a01c98` SUCCESS.
+- 운영 smoke OK:
+  - `/ai-workspace/` 200, latest frontend asset `assets/index-C4GJE0Pe.js` loaded.
+  - deployed JS contains structured answer labels and `ai-department-question-action-item`.
+  - anonymous AI workspace summary API returns `401 login_required` JSON.
+  - anonymous AI question POST remains protected by CSRF without a browser session/referrer.
 
 ### 운영 수동 검수 절차
 

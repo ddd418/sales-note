@@ -38,7 +38,10 @@
 - 로컬 집중 테스트, Django checks, frontend 타입체크/빌드 통과.
 - 전체 `AIWorkspaceSummaryApiTests` 실행 중 기존 날짜 의존 `weekly_report` 기대값 실패 1건 확인.
 - 커밋/푸시 완료: `7b21380 feat: structure ai workspace action answers`.
-- Railway CLI 인증 만료로 운영 배포는 `railway login` 이후 재시도 필요.
+- 문서 상태 커밋/푸시 완료: `9043770 docs: record ai answer deployment status`.
+- Railway `web` 배포 완료: `1fd19774-f7f2-43b8-b35f-b00e12610e5a` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `fd0ac57d-bfa6-4f1c-a673-bbe7a7a01c98` SUCCESS.
+- 운영 smoke 완료: `/ai-workspace/` 최신 번들 반영 및 API 로그인 보호 확인.
 
 ---
 
