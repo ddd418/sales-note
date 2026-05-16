@@ -37,6 +37,10 @@
 - React 부서 검색 필터가 `searchText`를 사용하도록 타입/UI 문구 수정 완료.
 - 사용자 소유 PI/담당자명만 검색 텍스트에 포함되는 집중 테스트 통과.
 - Django checks, migration dry-run, frontend 타입체크/빌드 통과.
+- 커밋/푸시 완료: `2ab4f06 feat: search AI departments by PI name`.
+- Railway `web` 배포 완료: `76e8a75e-4932-42cb-96a5-5d868f396c0e` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `d37621b2-596d-462a-b335-e517f0d55333` SUCCESS.
+- 운영 smoke 완료: `/ai-workspace/` 최신 번들 반영 및 AI Workspace API 로그인 보호 확인.
 
 ---
 

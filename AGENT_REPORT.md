@@ -2,7 +2,7 @@
 
 ## 2026-05-16 — AI Workspace PI/담당자 부서 검색
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -53,6 +53,32 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+Select-String frontend\dist\assets\index-DqDh-R3g.js -Pattern "PI/담당자|searchText"
+→ OK, built bundle contains new search text and field access
+
+git commit -m "feat: search AI departments by PI name"
+git push origin main
+→ pushed 2ab4f06 to origin/main
+
+railway deployment list --service web --limit 3 --json
+→ 76e8a75e-4932-42cb-96a5-5d868f396c0e SUCCESS, commit 2ab4f06
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI department PI search 2ab4f06"
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ d37621b2-596d-462a-b335-e517f0d55333 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-DqDh-R3g.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DqDh-R3g.js
+→ 200, `PI/담당자` and `searchText` strings present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/ -SkipHttpErrorCheck
+→ 401 login_required JSON
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/ -SkipHttpErrorCheck
+→ 401 login_required JSON
 ```
 
 ### 알려진 제한
@@ -62,8 +88,13 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 로컬 검증 완료.
-- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 진행 예정.
+- GitHub: `2ab4f06 feat: search AI departments by PI name` pushed to `origin/main`.
+- Railway `web`: `76e8a75e-4932-42cb-96a5-5d868f396c0e` SUCCESS.
+- Railway `sales-note-frontend`: `d37621b2-596d-462a-b335-e517f0d55333` SUCCESS.
+- 운영 smoke OK:
+  - `/ai-workspace/` 200, latest frontend asset `assets/index-DqDh-R3g.js` loaded.
+  - deployed JS contains `PI/담당자` and `searchText`.
+  - anonymous AI Workspace summary API returns `401 login_required` JSON through both frontend proxy and direct backend URL.
 
 ### 운영 수동 검수 절차
 
