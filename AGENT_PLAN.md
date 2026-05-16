@@ -39,6 +39,10 @@
 - React 추천 목표 카드에 `최근 현장 답변 기반` 출처 표시 추가 완료.
 - 새 집중 테스트 2건과 기존 AI Workspace 핵심 테스트 4건 통과.
 - Django checks, migration dry-run, frontend 타입체크/빌드 통과.
+- 커밋/푸시 완료: `38d474e feat: use field feedback in AI goals`.
+- Railway `web` 배포 완료: `284c9f4f-8e26-4d3c-8ff6-13704e940a55` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `709404e3-1662-44fc-9a50-6a44b7e984b4` SUCCESS.
+- 운영 smoke 완료: `/ai-workspace/` 최신 번들 반영 및 AI Workspace API 로그인 보호 확인.
 
 ---
 

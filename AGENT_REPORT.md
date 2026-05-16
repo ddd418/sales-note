@@ -2,7 +2,7 @@
 
 ## 2026-05-16 — AI Workspace Field Feedback Goals
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -58,8 +58,31 @@ cd frontend; node --check server.mjs
 git diff --check
 → OK, CRLF normalization warnings only
 
-Select-String frontend\dist\assets\index-jGWPtASK.js -Pattern "최근 현장 답변 기반|sourceLabel"
-→ OK, built bundle contains new source label and field access
+Select-String frontend\dist\assets\index-jGWPtASK.js -Pattern "sourceLabel"
+→ OK, built bundle contains new source label field access
+
+git commit -m "feat: use field feedback in AI goals"
+git push origin main
+→ pushed 38d474e to origin/main
+
+railway deployment list --service web --limit 3 --json
+→ 284c9f4f-8e26-4d3c-8ff6-13704e940a55 SUCCESS, commit 38d474e
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI feedback goals 38d474e"
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 709404e3-1662-44fc-9a50-6a44b7e984b4 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-jGWPtASK.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-jGWPtASK.js
+→ 200, `sourceLabel` field access present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/ -SkipHttpErrorCheck
+→ 401 login_required JSON
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/ -SkipHttpErrorCheck
+→ 401 login_required JSON
 ```
 
 ### 알려진 제한
@@ -70,8 +93,13 @@ Select-String frontend\dist\assets\index-jGWPtASK.js -Pattern "최근 현장 답
 
 ### 운영 배포 상태
 
-- 로컬 검증 완료.
-- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 진행 예정.
+- GitHub: `38d474e feat: use field feedback in AI goals` pushed to `origin/main`.
+- Railway `web`: `284c9f4f-8e26-4d3c-8ff6-13704e940a55` SUCCESS.
+- Railway `sales-note-frontend`: `709404e3-1662-44fc-9a50-6a44b7e984b4` SUCCESS.
+- 운영 smoke OK:
+  - `/ai-workspace/` 200, latest frontend asset `assets/index-jGWPtASK.js` loaded.
+  - deployed JS contains `sourceLabel` field access.
+  - anonymous AI Workspace summary API returns `401 login_required` JSON through both frontend proxy and direct backend URL.
 
 ### 운영 수동 검수 절차
 
