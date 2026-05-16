@@ -1,8 +1,95 @@
 # AGENT_REPORT.md
 
+## 2026-05-16 — AI Workspace Field Feedback Goals
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+AI Workspace 추천 액션에 남긴 최근 현장 답변을 추천 목표와 추천 질문 프롬프트 맥락에 반영했습니다. 최근 30일 이내의 `next_action` 또는 후속 의도가 명확한 `answered`만 사용하고, 종료/제외/구매 의사 없음 답변은 추천에서 제외합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 현장 답변 적합성 판정, 추천 목표 생성, 목표 병합, prompt context 반영 추가.
+- `reporting/tests.py`: 현장 답변 목표 승격과 부서 상세 스코프 회귀 테스트 추가.
+- `frontend/src/api.ts`: 추천 목표 타입에 `source`, `sourceLabel`, `updatedAt` 추가.
+- `frontend/src/App.tsx`: 추천 목표 카드에 `최근 현장 답변 기반` 출처 표시 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 사용자가 AI 추천 작업에 남긴 최신 현장 답변이 다음 추천 목표에 즉시 반영됩니다.
+- “이미 종료/제외한 작업”은 다시 추천 목표로 올라오지 않습니다.
+- 부서 상세 화면에서는 선택 부서의 현장 답변만 추천과 프롬프트에 반영됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `reporting` 앱, `/reporting/*` route, AI 권한, 로그인 보호는 유지했습니다.
+- 현장 답변은 추천과 프롬프트 맥락만 보강하며, 자동 메일 발송이나 추가 CRM 상태 변경은 하지 않습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_promotes_recent_field_feedback_to_recommended_goals reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_feedback_goals_and_prompts_scope_to_requested_department --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_lists_own_ai_operational_data reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_scopes_prompt_targets_to_requested_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_includes_feedback_history_for_owner_scope reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-jGWPtASK.js / assets/index-xu5Ye0bW.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Select-String frontend\dist\assets\index-jGWPtASK.js -Pattern "최근 현장 답변 기반|sourceLabel"
+→ OK, built bundle contains new source label and field access
+```
+
+### 알려진 제한
+
+- 추천 반영 기간은 최근 30일로 고정했습니다.
+- `needs_human_review`처럼 의도가 애매한 답변은 v1 추천 목표에서 제외합니다.
+- 현장 답변 내용이 부정확하면 추천 목표에도 부정확한 신호가 섞일 수 있어 출처를 명확히 표시합니다.
+
+### 운영 배포 상태
+
+- 로컬 검증 완료.
+- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영 `/ai-workspace/`에 로그인합니다.
+2. 추천 작업 중 하나에 “후속 필요”가 명확한 답변을 남깁니다.
+3. AI Workspace를 새로고침하고 `추천 목표`에 `최근 현장 답변 기반` 카드가 표시되는지 확인합니다.
+4. 같은 부서를 선택했을 때 추천 질문 프롬프트에 최근 현장 답변 내용이 들어가는지 확인합니다.
+5. 종료/제외 처리한 작업은 추천 목표에 다시 뜨지 않는지 확인합니다.
+
+### 권장 다음 작업
+
+- 실제 운영 답변 예시를 모아 현장 답변 의도 판정 기준을 더 세밀하게 조정합니다.
+
+---
+
 ## 2026-05-16 — AI Workspace PI/담당자 부서 검색
 
-**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke/운영 수동검수 완료
 
 ### 요약
 

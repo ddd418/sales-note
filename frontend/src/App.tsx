@@ -13486,10 +13486,11 @@ function AIWorkspacePage({
                 <div className="ai-goal-grid">
                   {data.recommendedGoals.map((goal) => (
                     <article className="ai-goal-card" key={goal.title}>
-                      {goal.customer || goal.priorityLabel ? (
+                      {goal.customer || goal.priorityLabel || goal.sourceLabel ? (
                         <div className="ai-goal-card-meta">
                           {goal.customer ? <em>{goal.customer}</em> : null}
                           {goal.priorityLabel ? <span>{goal.priorityLabel}</span> : null}
+                          {goal.sourceLabel ? <span>{goal.sourceLabel}</span> : null}
                         </div>
                       ) : null}
                       <strong>{goal.title}</strong>

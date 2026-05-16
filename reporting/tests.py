@@ -7082,6 +7082,82 @@ class AIWorkspaceSummaryApiTests(TestCase):
         recent_ids = {item['actionId'] for item in feedback_history['recent']}
         self.assertNotIn('quote:feedback-coworker', recent_ids)
 
+    def test_ai_workspace_summary_promotes_recent_field_feedback_to_recommended_goals(self):
+        from datetime import timedelta
+        from reporting.models import AIWorkspaceActionFeedback
+
+        followup, department = self._create_customer(self.user, '현장목표')
+        self._create_department_analysis(self.user, department)
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=followup,
+            action_id='quote:field-goal',
+            action_kind='quote_followup',
+            status='next_action',
+            feedback='고객이 추가 피드백을 요청했고 월요일 오후에 회신 필요',
+            ai_result={
+                'intent': 'follow_up_needed',
+                'summary': '추가 피드백 요청이 확인되었습니다.',
+                'nextAction': '추가 피드백 회수 및 장점 정리',
+                'reason': '현장 답변에서 후속 필요가 명확합니다.',
+                'prioritySignal': 'high',
+                'source': 'fallback',
+            },
+            action_snapshot={'title': '현장목표 견적 후속'},
+        )
+        resolved_followup, _resolved_department = self._create_customer(self.user, '종료목표')
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=resolved_followup,
+            action_id='quote:resolved-goal',
+            action_kind='quote_followup',
+            status='resolved',
+            feedback='구매 의사 없음으로 정리',
+            ai_result={'intent': 'resolved_no_purchase', 'summary': '종료됨'},
+            action_snapshot={'title': '종료된 후속'},
+        )
+        stale_followup, _stale_department = self._create_customer(self.user, '오래된목표')
+        stale_feedback = AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=stale_followup,
+            action_id='quote:stale-goal',
+            action_kind='quote_followup',
+            status='next_action',
+            feedback='오래된 후속',
+            ai_result={'intent': 'follow_up_needed', 'nextAction': '오래된 후속'},
+            action_snapshot={'title': '오래된 후속'},
+        )
+        AIWorkspaceActionFeedback.objects.filter(id=stale_feedback.id).update(
+            updated_at=timezone.now() - timedelta(days=45)
+        )
+        coworker_followup, _coworker_department = self._create_customer(self.coworker, '동료현장목표')
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.coworker,
+            followup=coworker_followup,
+            action_id='quote:coworker-goal',
+            action_kind='quote_followup',
+            status='next_action',
+            feedback='동료 후속',
+            ai_result={'intent': 'follow_up_needed', 'nextAction': '동료 후속'},
+            action_snapshot={'title': '동료 후속'},
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        first_goal = payload['recommendedGoals'][0]
+        self.assertEqual(first_goal['source'], 'field_feedback')
+        self.assertEqual(first_goal['sourceLabel'], '최근 현장 답변 기반')
+        self.assertEqual(first_goal['customer'], '현장목표 담당자')
+        self.assertIn('추가 피드백 회수', first_goal['title'])
+        self.assertIn('현장 답변', first_goal['reason'])
+        goals_text = json.dumps(payload['recommendedGoals'], ensure_ascii=False)
+        self.assertNotIn('구매 의사 없음', goals_text)
+        self.assertNotIn('오래된 후속', goals_text)
+        self.assertNotIn('동료 후속', goals_text)
+
     def test_ai_workspace_summary_api_feedback_history_uses_manager_company_scope(self):
         from reporting.models import AIWorkspaceActionFeedback
 
@@ -7250,6 +7326,56 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn('다른추천', prompt_text)
         self.assertNotIn(other_department.name, prompt_text)
         self.assertEqual({target['department'] for target in payload['followupTargets']}, {selected_department.name})
+
+    def test_ai_workspace_detail_feedback_goals_and_prompts_scope_to_requested_department(self):
+        from reporting.models import AIWorkspaceActionFeedback
+
+        selected_followup, selected_department = self._create_customer(self.user, '현장상세')
+        other_followup, other_department = self._create_customer(self.user, '다른현장')
+        self._create_department_analysis(self.user, selected_department)
+        self._create_department_analysis(self.user, other_department)
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=selected_followup,
+            action_id='followup:selected-feedback',
+            action_kind='customer_followup',
+            status='next_action',
+            feedback='선택 부서 담당자가 샘플 사용 후 장점 정리를 요청',
+            ai_result={
+                'intent': 'follow_up_needed',
+                'summary': '선택 부서의 샘플 피드백 회수가 필요합니다.',
+                'nextAction': '선택 부서 샘플 피드백 회수',
+                'reason': '선택 부서 현장 답변에서 다음 액션이 확인되었습니다.',
+            },
+            action_snapshot={'title': '선택 부서 현장 답변'},
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=other_followup,
+            action_id='followup:other-feedback',
+            action_kind='customer_followup',
+            status='next_action',
+            feedback='다른 부서 담당자가 견적 재전송을 요청',
+            ai_result={
+                'intent': 'follow_up_needed',
+                'summary': '다른 부서 후속 필요',
+                'nextAction': '다른 부서 견적 재전송',
+            },
+            action_snapshot={'title': '다른 부서 현장 답변'},
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': selected_department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        goals_text = json.dumps(payload['recommendedGoals'], ensure_ascii=False)
+        prompt_text = '\n'.join(item['prompt'] for item in payload['promptTargets'])
+        self.assertIn('선택 부서 샘플 피드백 회수', goals_text)
+        self.assertIn('최근 현장 답변', prompt_text)
+        self.assertIn('선택 부서 담당자가 샘플 사용 후 장점 정리를 요청', prompt_text)
+        self.assertNotIn('다른 부서 견적 재전송', goals_text)
+        self.assertNotIn('다른 부서 담당자가 견적 재전송을 요청', prompt_text)
 
     def test_ai_workspace_prompt_targets_keep_full_recent_note_text(self):
         from reporting.models import History

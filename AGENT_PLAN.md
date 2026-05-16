@@ -1,5 +1,47 @@
 # AGENT_PLAN.md
 
+## Current task — AI Workspace 현장 답변 기반 추천 목표 보강
+
+**목표**: AI Workspace 추천 액션에 남긴 최근 현장 답변을 `recommendedGoals`와 추천 질문 프롬프트 맥락에 보수적으로 반영해, 오래된 분석보다 최신 영업 상황을 더 잘 따르게 한다.
+
+### 확인된 상태
+
+- `AIWorkspaceActionFeedback`은 추천 액션 답변, AI 판단 결과, 연결 고객, 상태, 생성된 영업노트를 이미 저장한다.
+- 현재 답변은 액션 숨김/이력/질문 컨텍스트에는 쓰이지만, `/reporting/api/ai-workspace/`의 `recommendedGoals`와 prompt target에는 충분히 반영되지 않는다.
+- React 추천 목표 카드는 title/description/reason/customer/priorityLabel 중심으로 표시된다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 최근 30일 이내의 사용자 소유 `AIWorkspaceActionFeedback`만 추천 신호로 사용한다.
+- `next_action` 상태와, `answered` 중 `follow_up_needed`, `positive_buying_signal`, `email_waiting` 의도만 추천 목표로 승격한다.
+- `resolved`, `dismissed`, `resolved_no_purchase`, `shouldHide`, `decision=hide`는 추천 목표와 프롬프트 맥락에서 제외한다.
+- 현장 답변 기반 목표는 `최근 현장 답변 기반`으로 표시하고 기존 분석 기반 추천을 완전히 대체하지 않고 앞쪽에 보강한다.
+- 부서 상세 모드에서는 해당 부서의 고객 답변만, 전체 모드에서는 현재 사용자 소유 고객 답변만 사용한다.
+- 부서/고객/PainPoint 추천 프롬프트의 context에도 최근 현장 답변을 짧게 포함한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_promotes_recent_field_feedback_to_recommended_goals reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_detail_feedback_goals_and_prompts_scope_to_requested_department --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke 확인.
+
+### 현재 상태
+
+- 현장 답변 추천 적합성 판정 helper 추가 완료.
+- 최근 현장 답변 기반 `recommendedGoals` 보강과 prompt context 반영 완료.
+- React 추천 목표 카드에 `최근 현장 답변 기반` 출처 표시 추가 완료.
+- 새 집중 테스트 2건과 기존 AI Workspace 핵심 테스트 4건 통과.
+- Django checks, migration dry-run, frontend 타입체크/빌드 통과.
+
+---
+
 ## Current task — AI Workspace PI/담당자 이름 기반 부서 검색
 
 **목표**: React AI Workspace의 분석 대상 부서 검색에서 회사/부서/고객/요약뿐 아니라 기존 FollowUp의 `manager`(PI/담당자) 이름으로도 부서를 찾을 수 있게 한다.
@@ -41,6 +83,7 @@
 - Railway `web` 배포 완료: `76e8a75e-4932-42cb-96a5-5d868f396c0e` SUCCESS.
 - Railway `sales-note-frontend` 배포 완료: `d37621b2-596d-462a-b335-e517f0d55333` SUCCESS.
 - 운영 smoke 완료: `/ai-workspace/` 최신 번들 반영 및 AI Workspace API 로그인 보호 확인.
+- 운영 수동검수 완료.
 
 ---
 

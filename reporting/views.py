@@ -7831,6 +7831,146 @@ def _ai_workspace_followup_ids(followup_ids):
     return [followup_id for followup_id in dict.fromkeys(followup_ids) if followup_id]
 
 
+AI_WORKSPACE_FEEDBACK_GOAL_DAYS = 30
+AI_WORKSPACE_FEEDBACK_GOAL_INTENTS = {
+    'follow_up_needed',
+    'positive_buying_signal',
+    'email_waiting',
+}
+
+
+def _ai_workspace_feedback_goal_is_eligible(feedback):
+    result = feedback.ai_result or {}
+    intent = result.get('intent') or ''
+    if feedback.status in {'resolved', 'dismissed'}:
+        return False
+    if intent == 'resolved_no_purchase':
+        return False
+    if result.get('shouldHide') is True or result.get('decision') == 'hide':
+        return False
+    if feedback.status == 'next_action':
+        return bool(_ai_workspace_feedback_display_text(result.get('nextAction') or feedback.feedback))
+    return feedback.status == 'answered' and intent in AI_WORKSPACE_FEEDBACK_GOAL_INTENTS
+
+
+def _ai_workspace_recent_feedback_queryset(user, followup_ids=None, department_id=None, days=AI_WORKSPACE_FEEDBACK_GOAL_DAYS):
+    followup_ids = _ai_workspace_followup_ids(followup_ids)
+    recent_start = timezone.now() - timedelta(days=days)
+    feedback_qs = AIWorkspaceActionFeedback.objects.filter(
+        user=user,
+        followup__isnull=False,
+        status__in=['answered', 'next_action'],
+        updated_at__gte=recent_start,
+    ).select_related(
+        'followup',
+        'followup__company',
+        'followup__department',
+    ).order_by('-updated_at')
+    if followup_ids:
+        feedback_qs = feedback_qs.filter(followup_id__in=followup_ids)
+    if department_id:
+        feedback_qs = feedback_qs.filter(followup__department_id=department_id)
+    return feedback_qs
+
+
+def _ai_workspace_recent_feedback_context(user, followup_ids, limit=3):
+    followup_ids = _ai_workspace_followup_ids(followup_ids)
+    if not user or not followup_ids:
+        return []
+
+    context = []
+    for feedback in _ai_workspace_recent_feedback_queryset(user, followup_ids=followup_ids)[:12]:
+        if not _ai_workspace_feedback_goal_is_eligible(feedback):
+            continue
+        result = feedback.ai_result or {}
+        identity = _ai_workspace_feedback_identity(feedback)
+        updated_date = timezone.localtime(feedback.updated_at).date().isoformat()
+        customer = identity.get('customer') or ''
+        title_parts = _ai_prompt_context(
+            f"최근 현장 답변 {len(context) + 1}: {updated_date}",
+            customer,
+            identity.get('company') or '',
+            identity.get('department') or '',
+            _ai_workspace_feedback_intent_label(result.get('intent')),
+        )
+        detail_parts = _ai_prompt_context(
+            f"답변: {_ai_workspace_prompt_excerpt(feedback.feedback, 220)}",
+            f"요약: {_ai_workspace_prompt_excerpt(result.get('summary'), 180)}" if result.get('summary') else '',
+            f"다음 액션: {_ai_workspace_prompt_excerpt(result.get('nextAction'), 180)}" if result.get('nextAction') else '',
+        )
+        context.append(' / '.join([*title_parts, *detail_parts]))
+        if len(context) >= limit:
+            break
+    return context
+
+
+def _ai_workspace_recent_feedback_goals(user, followup_ids=None, department_id=None, limit=3):
+    goals = []
+    seen_followups = set()
+    for feedback in _ai_workspace_recent_feedback_queryset(
+        user,
+        followup_ids=followup_ids,
+        department_id=department_id,
+    )[:24]:
+        if not _ai_workspace_feedback_goal_is_eligible(feedback):
+            continue
+        if feedback.followup_id in seen_followups:
+            continue
+        result = feedback.ai_result or {}
+        identity = _ai_workspace_feedback_identity(feedback)
+        customer = identity.get('customer') or '고객명 미정'
+        next_action = _ai_workspace_feedback_display_text(result.get('nextAction'))
+        summary = _ai_workspace_feedback_display_text(result.get('summary'))
+        feedback_text = _ai_workspace_feedback_display_text(feedback.feedback)
+        title_action = (
+            next_action
+            or _ai_workspace_feedback_display_text((feedback.action_snapshot or {}).get('recommendedAction'))
+            or _ai_workspace_feedback_title(feedback)
+            or '현장 답변 후속 조치'
+        )
+        updated_date = timezone.localtime(feedback.updated_at).date().isoformat()
+        intent_label = _ai_workspace_feedback_intent_label(result.get('intent'))
+        reason = _ai_workspace_feedback_display_text(result.get('reason')) or (
+            f"최근 현장 답변({updated_date})에서 {intent_label} 신호가 확인되었습니다."
+        )
+        goals.append({
+            'title': f"{customer} - {_ai_workspace_prompt_excerpt(title_action, 80)}",
+            'description': (
+                _ai_workspace_prompt_excerpt(summary, 180)
+                or _ai_workspace_prompt_excerpt(feedback_text, 180)
+                or '최근 현장 답변 기준으로 다음 후속 조치를 정리합니다.'
+            ),
+            'reason': reason,
+            'customer': customer,
+            'priority': result.get('prioritySignal') or feedback.status,
+            'priorityLabel': intent_label,
+            'source': 'field_feedback',
+            'sourceLabel': '최근 현장 답변 기반',
+            'updatedAt': _datetime_or_none(feedback.updated_at),
+            'followupId': feedback.followup_id,
+        })
+        seen_followups.add(feedback.followup_id)
+        if len(goals) >= limit:
+            break
+    return goals
+
+
+def _ai_workspace_merge_recommended_goals(primary_goals, secondary_goals, limit=6):
+    merged = []
+    seen = set()
+    for goal in [*(primary_goals or []), *(secondary_goals or [])]:
+        customer = _ai_workspace_feedback_display_text(goal.get('customer')).lower()
+        title = _ai_workspace_feedback_display_text(goal.get('title')).lower()
+        key = f'{customer}|{title}'
+        if not title or key in seen:
+            continue
+        seen.add(key)
+        merged.append(goal)
+        if len(merged) >= limit:
+            break
+    return merged
+
+
 def _ai_workspace_recent_note_context(user, followup_ids, limit=3):
     followup_ids = _ai_workspace_followup_ids(followup_ids)
     if not user or not followup_ids:
@@ -7940,6 +8080,7 @@ def _ai_workspace_department_prompt(
     summary = _ai_workspace_analysis_summary(analysis) if analysis else ''
     amount_context = _ai_workspace_sales_amount_context(user, followup_ids)
     recent_note_context = _ai_workspace_recent_note_context(user, followup_ids)
+    recent_feedback_context = _ai_workspace_recent_feedback_context(user, followup_ids)
     context = _ai_prompt_context(
         f"업체/학교: {company_name}" if company_name else '',
         f"부서/연구실: {department.name}",
@@ -7947,6 +8088,7 @@ def _ai_workspace_department_prompt(
         f"미팅 {analysis.meeting_count}건 / 견적 {analysis.quote_count}건 / 납품 {analysis.delivery_count}건" if analysis else '아직 부서 분석이 없습니다.',
         f"PainPoint {painpoint_count}건 / 미검증 {unverified_count}건" if analysis else '',
         amount_context,
+        *recent_feedback_context,
         *recent_note_context,
         f"요약: {summary}" if summary else '',
     )
@@ -7970,6 +8112,7 @@ def _ai_workspace_followup_prompt(followup, analysis, user=None):
     customer_name = followup.customer_name or followup.manager or '고객명 미정'
     amount_context = _ai_workspace_sales_amount_context(user or followup.user, [followup.id])
     recent_note_context = _ai_workspace_recent_note_context(user or followup.user, [followup.id])
+    recent_feedback_context = _ai_workspace_recent_feedback_context(user or followup.user, [followup.id])
     context = _ai_prompt_context(
         f"업체/학교: {company_name}" if company_name else '',
         f"부서/연구실: {department_name}" if department_name else '',
@@ -7978,6 +8121,7 @@ def _ai_workspace_followup_prompt(followup, analysis, user=None):
         f"고객 등급: {followup.customer_grade}" if followup.customer_grade else '',
         f"AI 점수: {float(followup.get_combined_score()):.0f}",
         amount_context,
+        *recent_feedback_context,
         *recent_note_context,
         f"분석 요약: {summary}" if summary else '아직 고객 분석이 없습니다.',
     )
@@ -8005,6 +8149,7 @@ def _ai_workspace_painpoint_prompt(card, user=None, followup_ids=None):
         ).values_list('id', flat=True)
     amount_context = _ai_workspace_sales_amount_context(prompt_user, followup_ids)
     recent_note_context = _ai_workspace_recent_note_context(prompt_user, followup_ids)
+    recent_feedback_context = _ai_workspace_recent_feedback_context(prompt_user, followup_ids)
     context = _ai_prompt_context(
         f"업체/학교: {company_name}" if company_name else '',
         f"부서/연구실: {department.name}",
@@ -8013,6 +8158,7 @@ def _ai_workspace_painpoint_prompt(card, user=None, followup_ids=None):
         f"신뢰도: {card.get_confidence_display()} / {card.confidence_score}",
         f"검증 질문: {card.verification_question}",
         amount_context,
+        *recent_feedback_context,
         *recent_note_context,
     )
     prompt = "\n".join([
@@ -11553,14 +11699,21 @@ def ai_workspace_summary_api(request):
         })
 
     recommended_goals = []
+    feedback_goals = _ai_workspace_recent_feedback_goals(
+        request.user,
+        department_id=detail_department.id if detail_department else None,
+    )
     latest_analysis = analyses[0] if analyses else None
     selected_analysis = analysis_map.get(selected_department.id) if selected_department else None
     goals_source_analysis = selected_analysis if selected_department else latest_analysis
     if goals_source_analysis:
-        recommended_goals = suggest_goals_from_department_analysis(
+        analysis_goals = suggest_goals_from_department_analysis(
             goals_source_analysis,
             customer_names=customer_names_by_department.get(goals_source_analysis.department_id, []),
         )[:6]
+        recommended_goals = _ai_workspace_merge_recommended_goals(feedback_goals, analysis_goals, limit=6)
+    else:
+        recommended_goals = feedback_goals[:6]
 
     featured_department = None
     if selected_department:
@@ -11725,6 +11878,9 @@ def ai_workspace_summary_api(request):
                 'customer': goal.get('customer', ''),
                 'priority': goal.get('priority', ''),
                 'priorityLabel': goal.get('priorityLabel', ''),
+                'source': goal.get('source', ''),
+                'sourceLabel': goal.get('sourceLabel', ''),
+                'updatedAt': goal.get('updatedAt'),
             }
             for goal in recommended_goals
         ],

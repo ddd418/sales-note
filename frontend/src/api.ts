@@ -2777,6 +2777,9 @@ export type AIWorkspaceData = {
     customer?: string;
     priority?: string;
     priorityLabel?: string;
+    source?: string;
+    sourceLabel?: string;
+    updatedAt?: string | null;
   }>;
 };
 
