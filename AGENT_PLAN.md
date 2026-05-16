@@ -37,7 +37,8 @@
 - React AI 질문 답변 상세 블록과 타입/스타일 추가 완료.
 - 로컬 집중 테스트, Django checks, frontend 타입체크/빌드 통과.
 - 전체 `AIWorkspaceSummaryApiTests` 실행 중 기존 날짜 의존 `weekly_report` 기대값 실패 1건 확인.
-- 커밋/푸시 및 Railway 배포 진행 예정.
+- 커밋/푸시 완료: `7b21380 feat: structure ai workspace action answers`.
+- Railway CLI 인증 만료로 운영 배포는 `railway login` 이후 재시도 필요.
 
 ---
 

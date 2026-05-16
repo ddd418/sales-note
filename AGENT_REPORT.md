@@ -2,7 +2,7 @@
 
 ## 2026-05-16 — AI Workspace Structured Action Answers
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시 완료, Railway 인증 만료로 배포 대기
 
 ### 요약
 
@@ -60,6 +60,14 @@ Select-String frontend\dist\assets\index-C4GJE0Pe.js -Pattern "판단 이유|다
 
 python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
 → Ran 41 tests, FAILED 1 existing date-sensitive weekly_report expectation
+
+git commit -m "feat: structure ai workspace action answers"
+git push origin main
+→ pushed 7b21380 to origin/main
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy structured AI action answers 7b21380"
+railway deployment list --service web --limit 3 --json
+→ blocked: Railway CLI OAuth token refresh failed with invalid_grant; `railway login` required
 ```
 
 ### 알려진 제한
@@ -69,7 +77,8 @@ python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
 
 ### 운영 배포 상태
 
-- 커밋/푸시 및 Railway 배포 예정.
+- GitHub: `7b21380 feat: structure ai workspace action answers` pushed to `origin/main`.
+- Railway 배포: CLI 인증 만료로 대기 중. `railway login` 후 `web`과 `sales-note-frontend` 배포 재시도가 필요합니다.
 
 ### 운영 수동 검수 절차
 
