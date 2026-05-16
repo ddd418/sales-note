@@ -11382,16 +11382,22 @@ def ai_workspace_summary_api(request):
     followup_rows = list(FollowUp.objects.filter(
         user=request.user,
         department__isnull=False,
-    ).values('id', 'department_id', 'customer_name').order_by('department_id', 'customer_name'))
+    ).values('id', 'department_id', 'customer_name', 'manager').order_by('department_id', 'customer_name'))
     customer_names_by_department = {}
     followup_counts_by_department = {}
     followup_ids_by_department = {}
+    search_terms_by_department = {}
     for row in followup_rows:
         department_id = row['department_id']
         followup_counts_by_department[department_id] = followup_counts_by_department.get(department_id, 0) + 1
         followup_ids_by_department.setdefault(department_id, []).append(row['id'])
         if row['customer_name']:
             customer_names_by_department.setdefault(department_id, []).append(row['customer_name'])
+        search_terms = search_terms_by_department.setdefault(department_id, [])
+        for key in ('customer_name', 'manager'):
+            value = (row.get(key) or '').strip()
+            if value and value not in search_terms:
+                search_terms.append(value)
 
     department_ids = list(followup_counts_by_department.keys())
     departments = list(Department.objects.filter(
@@ -11440,6 +11446,7 @@ def ai_workspace_summary_api(request):
             'company': department.company.name if department.company else '',
             'customerCount': followup_counts_by_department.get(department.id, 0),
             'customerPreview': customer_names[:4],
+            'searchText': ' '.join(search_terms_by_department.get(department.id, [])),
             'hasAnalysis': analysis is not None,
             'meetingCount': analysis.meeting_count if analysis else 0,
             'quoteCount': analysis.quote_count if analysis else 0,

@@ -9624,6 +9624,7 @@ function AIWorkspaceDepartmentList({
         department.company,
         department.name,
         department.summary,
+        department.searchText || '',
         ...department.customerPreview,
       ].join(' ').toLowerCase();
       return searchableText.includes(normalizedQuery);
@@ -9641,7 +9642,7 @@ function AIWorkspaceDepartmentList({
         <Search size={16} />
         <input
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="회사, 부서, 고객, 요약 검색"
+          placeholder="회사, 부서, 고객, PI/담당자 검색"
           value={query}
         />
       </label>
@@ -9654,7 +9655,7 @@ function AIWorkspaceDepartmentList({
       </div>
       {!hasSearchQuery ? (
         <p className="ai-department-list-hint">
-          회사, 부서, 고객명, 분석 요약을 검색하면 결과가 표시됩니다.
+          회사, 부서, 고객명, PI/담당자 이름, 분석 요약을 검색하면 결과가 표시됩니다.
         </p>
       ) : visibleDepartments.length === 0 ? (
         <DashboardEmpty label="검색 결과가 없습니다" />

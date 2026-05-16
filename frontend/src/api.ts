@@ -2361,6 +2361,7 @@ export type AIWorkspaceDepartment = {
   company: string;
   customerCount: number;
   customerPreview: string[];
+  searchText?: string;
   hasAnalysis: boolean;
   meetingCount: number;
   quoteCount: number;

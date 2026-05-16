@@ -1,5 +1,45 @@
 # AGENT_PLAN.md
 
+## Current task — AI Workspace PI/담당자 이름 기반 부서 검색
+
+**목표**: React AI Workspace의 분석 대상 부서 검색에서 회사/부서/고객/요약뿐 아니라 기존 FollowUp의 `manager`(PI/담당자) 이름으로도 부서를 찾을 수 있게 한다.
+
+### 확인된 상태
+
+- `/reporting/api/ai-workspace/`는 현재 로그인 사용자의 FollowUp만 대상으로 부서 payload를 만든다.
+- 부서별 검색 후보는 `customer_name` 중심으로만 구성되어 `manager` 필드가 React 검색 대상에 포함되지 않는다.
+- React `AIWorkspaceDepartmentList`는 `company`, `name`, `summary`, `customerPreview`만 검색한다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- AI Workspace summary API에서 부서별 `searchText` optional 필드를 추가한다.
+- `searchText`에는 현재 사용자 소유 FollowUp의 고객명과 `manager` 값을 중복 제거해 포함한다.
+- React `AIWorkspaceDepartment` 타입에 `searchText`를 추가하고 부서 검색 필터에 반영한다.
+- 검색 placeholder와 안내 문구를 PI/담당자 검색 가능 상태로 갱신한다.
+- 기존 `/reporting/*`, AI 권한, 로그인 보호, legacy Django templates는 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_department_search_text_includes_own_manager_names_only --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke 확인.
+
+### 현재 상태
+
+- 백엔드 AI Workspace 부서 payload에 `searchText` optional 필드 추가 완료.
+- React 부서 검색 필터가 `searchText`를 사용하도록 타입/UI 문구 수정 완료.
+- 사용자 소유 PI/담당자명만 검색 텍스트에 포함되는 집중 테스트 통과.
+- Django checks, migration dry-run, frontend 타입체크/빌드 통과.
+
+---
+
 ## Current task — AI Workspace 작업별 상세 답변 개선
 
 **목표**: AI Workspace 질문 답변이 짧은 요약/불릿으로 잘려 보이지 않도록, 고객별 추천 작업의 판단 이유, 다음 액션, 확인 시점, CRM 근거를 구조화해서 보여준다.

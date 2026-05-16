@@ -7396,6 +7396,25 @@ class AIWorkspaceSummaryApiTests(TestCase):
         department_ids = {department['id'] for department in payload['departments']}
         self.assertNotIn(coworker_department.id, department_ids)
 
+    def test_ai_workspace_summary_department_search_text_includes_own_manager_names_only(self):
+        own_followup, own_department = self._create_customer(self.user, 'PI검색')
+        own_followup.manager = '김피아이'
+        own_followup.save(update_fields=['manager'])
+        coworker_followup, _coworker_department = self._create_customer(self.coworker, '동료PI')
+        coworker_followup.manager = '외부피아이'
+        coworker_followup.save(update_fields=['manager'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        department_payload = next(department for department in payload['departments'] if department['id'] == own_department.id)
+        self.assertIn('PI검색 담당자', department_payload['searchText'])
+        self.assertIn('김피아이', department_payload['searchText'])
+        all_search_text = '\n'.join(department.get('searchText', '') for department in payload['departments'])
+        self.assertNotIn('외부피아이', all_search_text)
+
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_department_question_answers_last_order_from_delivery_context(self, _mock_client):
         from datetime import time, timedelta

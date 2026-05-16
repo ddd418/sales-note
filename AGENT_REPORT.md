@@ -1,5 +1,84 @@
 # AGENT_REPORT.md
 
+## 2026-05-16 — AI Workspace PI/담당자 부서 검색
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+AI Workspace의 분석 대상 부서 검색에서 기존 회사/부서/고객/요약뿐 아니라 FollowUp의 `manager`(PI/담당자) 이름으로도 부서를 찾을 수 있게 했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI Workspace department payload에 사용자 소유 고객명/PI 담당자명 기반 `searchText` 추가.
+- `reporting/tests.py`: 내 담당자명은 포함되고 동료 담당자명은 제외되는 회귀 테스트 추가.
+- `frontend/src/api.ts`: `AIWorkspaceDepartment.searchText` optional 타입 추가.
+- `frontend/src/App.tsx`: 부서 검색 필터와 안내 문구에 PI/담당자 검색 반영.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- `/ai-workspace/`에서 PI/담당자 이름만 알고 있어도 관련 부서를 빠르게 찾을 수 있습니다.
+- 검색용 데이터는 기존 로그인 사용자 소유 FollowUp 범위에서만 구성됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `reporting` 앱, `/reporting/*` route, AI 권한, 로그인 보호는 유지했습니다.
+- 기존 회사/부서/고객/요약 검색도 그대로 동작합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_department_search_text_includes_own_manager_names_only --verbosity=1
+→ Ran 1 test, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-DqDh-R3g.js / assets/index-xu5Ye0bW.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- PI/담당자 검색은 현재 FollowUp의 `manager` 필드 기준입니다.
+- 검색 결과는 기존 UX와 동일하게 최대 5개만 먼저 표시됩니다.
+
+### 운영 배포 상태
+
+- 로컬 검증 완료.
+- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 진행 예정.
+
+### 운영 수동 검수 절차
+
+1. 운영 `/ai-workspace/`에 로그인합니다.
+2. 분석 대상 부서 검색 입력창에서 기존 고객명이 아닌 PI/담당자 이름을 입력합니다.
+3. 관련 회사/부서가 검색 결과에 표시되는지 확인합니다.
+4. 검색 결과를 선택한 뒤 URL의 `department_id`와 추천 작업/질문 패널이 해당 부서 기준으로 유지되는지 확인합니다.
+5. 다른 사용자 담당자명이 검색 결과에 노출되지 않는지 가능한 범위에서 확인합니다.
+
+### 권장 다음 작업
+
+- AI Workspace의 `AIWorkspaceActionFeedback` 현장 답변을 `recommendedGoals`와 Prompt goals에 반영해 추천 목표 품질을 높입니다.
+
+---
+
 ## 2026-05-16 — AI Workspace Structured Action Answers
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기
