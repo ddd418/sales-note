@@ -2,7 +2,7 @@
 
 ## 2026-05-17 — AI Workspace Customer Perspective Answers
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 전
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기
 
 ### 요약
 
@@ -61,6 +61,29 @@ git diff --check
 
 Playwright local smoke on http://127.0.0.1:4173/ai-workspace/ with mocked AI Workspace API
 → 고객 입장 추정/영업 판단/말문 예시 렌더링 OK, console errors 0
+
+git commit -m "feat: add customer perspective to ai workspace answers"
+git push origin main
+→ pushed 1046222 to origin/main
+
+railway deployment list --service web --limit 5 --json
+→ 46c28289-582f-44c8-be31-ff9e03af260c SUCCESS, commit 1046222
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI customer perspective answers 1046222"
+railway deployment list --service sales-note-frontend --limit 1 --json
+→ c02dfa17-3d05-474a-b0c0-79558dfb7e9b SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-CpBRlepD.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-CpBRlepD.js
+→ 200, `고객 입장 추정` and `말문 예시` present
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/
+→ 401 login protection OK
+
+POST https://web-production-5096.up.railway.app/reporting/api/ai-workspace/question/ without authenticated CSRF session
+→ 403 protection OK
 ```
 
 ### 알려진 제한
@@ -74,7 +97,10 @@ Playwright local smoke on http://127.0.0.1:4173/ai-workspace/ with mocked AI Wor
 
 ### 운영 배포 상태
 
-- 아직 커밋/푸시 및 Railway 배포 전입니다.
+- Runtime commit: `1046222 feat: add customer perspective to ai workspace answers`
+- Railway `web`: `46c28289-582f-44c8-be31-ff9e03af260c` SUCCESS
+- Railway `sales-note-frontend`: `c02dfa17-3d05-474a-b0c0-79558dfb7e9b` SUCCESS
+- Production smoke: `/ai-workspace/` 최신 번들 로드 및 AI Workspace API 보호 확인 완료
 
 ### 사용자 수동 테스트 절차
 

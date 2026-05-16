@@ -39,6 +39,10 @@
 - React AI Workspace 답변 카드에 고객 관점 섹션 표시 완료.
 - AI Workspace 전체 테스트 클래스 47건 통과. Django check, migration dry-run, frontend 타입체크/빌드, node syntax check, diff check 통과.
 - 로컬 Playwright smoke에서 모킹된 AI Workspace 질문 응답의 `고객 입장 추정`/`영업 판단`/`말문 예시` 렌더링과 콘솔 오류 없음 확인.
+- 런타임 커밋/푸시 완료: `1046222 feat: add customer perspective to ai workspace answers`.
+- Railway `web` 배포 완료: `46c28289-582f-44c8-be31-ff9e03af260c` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `c02dfa17-3d05-474a-b0c0-79558dfb7e9b` SUCCESS.
+- 운영 smoke 완료: `/ai-workspace/` 최신 번들 반영, 번들 내 `고객 입장 추정`/`말문 예시` 포함, AI Workspace API 로그인/CSRF 보호 확인.
 
 ---
 
