@@ -1,5 +1,47 @@
 # AGENT_PLAN.md
 
+## Current task — AI Workspace 고객 관점 답변 구조화
+
+**목표**: AI Workspace 질문 답변이 CRM 사실 요약에 머물지 않고, CRM 근거 기반 `고객 입장 추정`과 `영업 판단`, 자연스러운 말문 예시를 함께 제공하게 한다.
+
+### 확인된 상태
+
+- `/reporting/api/ai-workspace/question/`는 부서 또는 전체 범위 CRM 컨텍스트를 모아 OpenAI JSON 답변 또는 서버 fallback을 반환한다.
+- 현재 프롬프트는 “CRM 사실만 사용”, “데이터가 없으면 추측하지 않음”을 강하게 요구해 고객 관점 추론보다 CRM 브리핑이 앞선다.
+- React 답변 카드는 `summary`, `actionItems`, `bullets`, `evidence`, 마지막 주문/납품을 표시한다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 질문 답변 JSON 계약에 optional `perspective` 객체를 추가한다.
+- `perspective`에는 `customerPerspective`, `salesJudgment`, `recommendedApproach`, `talkTrack`, `caution`을 담는다.
+- OpenAI 프롬프트는 근거 없는 단정을 금지하되, CRM 근거 기반 고객 입장 추정은 명확히 라벨링해 허용한다.
+- 서버 fallback은 샘플/재견적/피드백 질문과 스케일업 질문에서 고객 입장 추정과 영업 판단을 생성한다.
+- React API 타입과 답변 카드에 고객 관점 섹션을 추가하고 기존 표시 구조는 유지한다.
+- 기존 `/reporting/*`, AI 권한, 로그인 보호, 데이터 스코프는 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_requote_sample_feedback_uses_customer_perspective reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_scale_up_uses_customer_perspective reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_perspective --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke 확인.
+
+### 현재 상태
+
+- 백엔드 질문 답변 `perspective` 정규화 및 OpenAI 프롬프트 규칙 추가 완료.
+- 샘플/재견적/피드백 질문과 스케일업 질문 fallback에 고객 입장 추정, 영업 판단, 추천 접근, 말문 예시, 주의점 추가 완료.
+- React AI Workspace 답변 카드에 고객 관점 섹션 표시 완료.
+- AI Workspace 전체 테스트 클래스 47건 통과. Django check, migration dry-run, frontend 타입체크/빌드, node syntax check, diff check 통과.
+- 로컬 Playwright smoke에서 모킹된 AI Workspace 질문 응답의 `고객 입장 추정`/`영업 판단`/`말문 예시` 렌더링과 콘솔 오류 없음 확인.
+
+---
+
 ## Current task — AI Workspace 현장 답변 기반 추천 목표 보강
 
 **목표**: AI Workspace 추천 액션에 남긴 최근 현장 답변을 `recommendedGoals`와 추천 질문 프롬프트 맥락에 보수적으로 반영해, 오래된 분석보다 최신 영업 상황을 더 잘 따르게 한다.

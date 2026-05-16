@@ -10656,6 +10656,91 @@ def _ai_workspace_question_evidence_payload(items, limit=10, value_limit=700):
     return evidence
 
 
+def _ai_workspace_question_perspective_payload(data, fallback=None):
+    if isinstance(data, dict) and isinstance(data.get('perspective'), dict):
+        source = data.get('perspective') or {}
+    elif isinstance(data, dict):
+        source = data
+    else:
+        source = {}
+
+    fallback_source = fallback if isinstance(fallback, dict) else {}
+
+    def pick(limit, *keys):
+        for key in keys:
+            value = _ai_workspace_question_text(source.get(key), limit)
+            if value:
+                return value
+        for key in keys:
+            value = _ai_workspace_question_text(fallback_source.get(key), limit)
+            if value:
+                return value
+        return ''
+
+    payload = {
+        'customerPerspective': pick(
+            900,
+            'customerPerspective',
+            'customer_perspective',
+            'customerView',
+            'customer_view',
+            'customerMind',
+        ),
+        'salesJudgment': pick(
+            900,
+            'salesJudgment',
+            'sales_judgment',
+            'judgment',
+            'salesInterpretation',
+        ),
+        'recommendedApproach': pick(
+            900,
+            'recommendedApproach',
+            'recommended_approach',
+            'approach',
+            'recommendation',
+        ),
+        'talkTrack': pick(
+            1000,
+            'talkTrack',
+            'talk_track',
+            'messageExample',
+            'suggestedMessage',
+            'sampleScript',
+        ),
+        'caution': pick(
+            800,
+            'caution',
+            'risk',
+            'warning',
+            'cautionaryNote',
+        ),
+    }
+    return payload if any(payload.values()) else None
+
+
+def _ai_workspace_question_context_text(*collections, limit=6):
+    parts = []
+    keys = (
+        'feedback',
+        'summary',
+        'content',
+        'nextAction',
+        'notes',
+        'recommendedAction',
+        'title',
+    )
+    for collection in collections:
+        for item in _ai_json_list(collection)[:limit]:
+            if not isinstance(item, dict):
+                continue
+            for key in keys:
+                value = _ai_workspace_question_text(item.get(key), 260)
+                if value:
+                    parts.append(value)
+    return ' '.join(parts)
+
+
 def _ai_workspace_question_latest_delivery(deliveries):
     today_label = timezone.localdate().isoformat()
     payloads = [
@@ -11045,18 +11130,94 @@ def _ai_workspace_question_fallback(question, context):
     latest_delivery = context.get('lastDelivery')
     recent_feedbacks = context.get('recentFeedbacks') or []
     recent_notes = context.get('recentNotes') or []
+    recent_schedules = context.get('recentSchedules') or []
     recommended_actions = context.get('recommendedActions') or []
     open_followups = context.get('openFollowups') or []
+    context_text = _ai_workspace_question_context_text(
+        recent_feedbacks,
+        recent_notes,
+        recent_schedules,
+        recommended_actions,
+        open_followups,
+    )
+    compact_context_text = re.sub(r'\s+', '', context_text.lower())
     asks_last_order = (
         any(keyword in normalized for keyword in ['마지막', '최근', '최종', '마지막으로'])
         and any(keyword in normalized for keyword in ['주문', '납품', '구매', '수주', '오더'])
     )
+    asks_requote_sample_feedback = '샘플' in normalized and any(
+        keyword in normalized
+        for keyword in ['재견적', '견적', '피드백', '물어', '요청', '받아', '굳이', '좋을까', '좋나요']
+    )
     asks_sample_wait = '샘플' in normalized and any(
         keyword in normalized for keyword in ['기다', '대기', '반응', '어떻게', '어쩌', '할까']
+    )
+    asks_scale_up = any(
+        keyword in normalized
+        for keyword in ['스케일업', 'scaleup', 'scale-up', '확대', '늘리고싶', '늘리고싶어', '주문물품']
+    ) and any(
+        keyword in normalized
+        for keyword in ['주문', '물품', '품목', '제품', '구매', '매출', '스케일']
     )
     asks_global_actions = scope_type == 'all' and any(
         keyword in normalized for keyword in ['찾아', '어디', '우선', '다음액션', '다음할일', '할만한', '챙길', '연락']
     )
+
+    if asks_requote_sample_feedback:
+        has_prior_feedback = any(
+            keyword in compact_context_text
+            for keyword in ['사용감차이', '차이를느끼지못', '피드백', '기존제품', '샘플']
+        )
+        evidence = []
+        if recent_feedbacks:
+            evidence.append({
+                'label': '최근 피드백',
+                'value': recent_feedbacks[0].get('feedback') or recent_feedbacks[0].get('summary') or '',
+            })
+        if recent_notes:
+            evidence.append({
+                'label': '최근 노트',
+                'value': recent_notes[0].get('content') or recent_notes[0].get('nextAction') or '',
+            })
+        if not evidence:
+            evidence.append({'label': 'CRM 맥락', 'value': '샘플/재견적 관련 질문'})
+
+        summary = (
+            '굳이 같은 샘플 피드백을 다시 캐묻기보다, 재견적을 전달하면서 가격/조건에 반영할 추가 요구사항만 자연스럽게 확인하는 쪽이 좋습니다. '
+            'CRM 기록상 이미 샘플 사용감에 대한 반응이 남아 있으므로, 대화의 목적은 피드백 회수가 아니라 구매 판단 기준과 견적 조건 확인으로 잡는 편이 안전합니다.'
+            if has_prior_feedback else
+            '재견적을 전달할 때 샘플 피드백을 바로 독립 질문으로 꺼내기보다, 견적 조건을 맞추기 위한 확인 질문으로 짧게 연결하는 것이 좋습니다. '
+            '샘플 사용 여부가 충분히 확인되지 않았다면 먼저 실제 사용 여부와 평가 기준을 낮은 부담으로 확인해야 합니다.'
+        )
+        return {
+            'summary': summary,
+            'bullets': [
+                '판단: 샘플 평가를 다시 요구하기보다 지난 피드백을 인정하고 재견적 조건 확인으로 전환합니다.',
+                '권장 흐름: 재견적 핵심 조건을 먼저 설명한 뒤, 추가로 반영할 불편점이나 필수 조건만 묻습니다.',
+                '주의: 고객이 이미 답한 내용을 반복 확인하는 느낌을 주면 재견적 대화의 온도가 낮아질 수 있습니다.',
+            ],
+            'evidence': _ai_workspace_question_evidence_payload(evidence, limit=3, value_limit=620),
+            'perspective': {
+                'customerPerspective': (
+                    '고객 입장에서는 이미 샘플 사용감 차이를 말했는데 같은 평가를 다시 묻는다고 느낄 수 있습니다. '
+                    '특히 재견적을 기다리는 상황이라면 샘플 질문보다 가격, 납기, 조건이 먼저 궁금할 가능성이 큽니다.'
+                    if has_prior_feedback else
+                    '고객 입장에서는 재견적을 받는 대화에서 샘플 질문이 길어지면 본론이 흐려진다고 느낄 수 있습니다.'
+                ),
+                'salesJudgment': (
+                    '영업 판단상 샘플 피드백은 “지난번 말씀 주신 내용”으로 처리하고, 지금은 재견적 수용 조건과 추가 조정 여지를 확인하는 편이 낫습니다.'
+                ),
+                'recommendedApproach': (
+                    '재견적을 먼저 제시하고, 마지막에 “혹시 실제 사용하시면서 견적에 반영해야 할 조건이 더 있었는지”만 짧게 확인합니다.'
+                ),
+                'talkTrack': (
+                    '지난번 샘플은 기존 제품과 큰 차이를 못 느끼셨다고 하셔서, 이번 재견적은 가격 조건 중심으로 정리했습니다. '
+                    '실제 사용하시면서 추가로 불편했던 점이나 꼭 맞춰야 하는 조건이 있으면 같이 반영하겠습니다.'
+                ),
+                'caution': '“샘플 어떠셨어요?”를 다시 큰 질문으로 던지거나 피드백을 독촉하는 톤은 피하는 것이 좋습니다.',
+            },
+            'confidence': 'medium' if has_prior_feedback else 'low',
+        }
 
     if asks_sample_wait:
         recent_text = ' '.join(
@@ -11101,6 +11262,13 @@ def _ai_workspace_question_fallback(question, context):
                     {'label': '최근 현장 답변', 'value': recent_feedbacks[0].get('feedback') if recent_feedbacks else '샘플 제공 완료 신호'},
                     {'label': '최근 노트', 'value': recent_notes[0].get('content') if recent_notes else '샘플 관련 최근 활동'},
                 ],
+                'perspective': {
+                    'customerPerspective': '고객 입장에서는 샘플을 받은 직후 바로 평가를 요구받으면 충분히 써보지 못했다는 부담을 느낄 수 있습니다.',
+                    'salesJudgment': '샘플 제공은 완료 이슈로 닫고, 다음 대화는 실제 사용 조건과 비교 기준을 확인하는 쪽으로 바꾸는 것이 좋습니다.',
+                    'recommendedApproach': '2-3영업일 정도 사용 시간을 준 뒤, 샘플 평가가 아니라 기존 제품과 비교하는 기준을 묻습니다.',
+                    'talkTrack': '며칠 사용해 보실 시간은 필요하실 것 같아서요. 써보신 뒤 기존 제품과 비교하실 때 가장 중요하게 보시는 기준만 알려주시면 다음 제안에 맞춰 반영하겠습니다.',
+                    'caution': '샘플 전달 직후 반복 확인하거나 독촉하는 느낌은 피합니다.',
+                },
                 'confidence': 'medium',
             }
         return {
@@ -11118,7 +11286,80 @@ def _ai_workspace_question_fallback(question, context):
                 {'label': '최근 현장 답변', 'value': recent_feedbacks[0].get('feedback') if recent_feedbacks else '최근 AI 답변 기록 없음'},
                 {'label': '최근 노트', 'value': recent_notes[0].get('content') if recent_notes else '최근 노트 없음'},
             ],
+            'perspective': {
+                'customerPerspective': '고객 입장에서는 샘플을 받지 않았거나 아직 써보지 못했다면 평가를 요청받아도 답하기 어렵습니다.',
+                'salesJudgment': '영업 판단상 지금은 반응 요청보다 샘플 전달 완료 여부와 실제 사용 예정일 확인이 먼저입니다.',
+                'recommendedApproach': '전달 상태를 확인한 뒤 사용 예정일 기준으로 다음 연락일을 잡습니다.',
+                'talkTrack': '샘플이 잘 전달됐는지 먼저 확인드리고 싶었습니다. 실제로 사용해 보실 예정일이 있으면 그 이후에 짧게 비교 기준만 여쭤보겠습니다.',
+                'caution': '전달 여부가 불명확한 상태에서 샘플 평가를 전제로 말하지 않습니다.',
+            },
             'confidence': 'low',
+        }
+
+    if asks_scale_up:
+        has_inventory_room = any(
+            keyword in compact_context_text
+            for keyword in ['재고여유', '재고가충분', '아직여유', '여유있', '재고충분']
+        )
+        latest_item_text = latest_delivery.get('items') if latest_delivery else ''
+        evidence = []
+        if recent_notes:
+            evidence.append({
+                'label': '최근 노트',
+                'value': recent_notes[0].get('content') or recent_notes[0].get('nextAction') or '',
+            })
+        if latest_delivery:
+            evidence.append({
+                'label': '마지막 주문/납품',
+                'value': ' · '.join(
+                    item for item in [
+                        latest_delivery.get('date'),
+                        latest_delivery.get('customer'),
+                        latest_delivery.get('amountLabel'),
+                        latest_item_text,
+                    ] if item
+                ),
+            })
+        if recent_schedules:
+            evidence.append({
+                'label': '최근 일정',
+                'value': recent_schedules[0].get('notes') or recent_schedules[0].get('status') or '',
+            })
+
+        return {
+            'summary': (
+                '바로 주문 확대를 요구하기보다, 현재 품목의 소모 속도와 다음 실험 계획을 확인하면서 확장 후보를 찾는 접근이 좋습니다. '
+                'CRM 기록상 재고 여유 신호가 있으므로 같은 품목 추가 구매 압박은 낮게 보고, 다른 반복 소모품이나 다음 주문 시점을 찾는 쪽이 현실적입니다.'
+                if has_inventory_room else
+                '주문 물품을 스케일업하려면 먼저 최근 납품 품목의 소모 속도, 다음 실험 규모, 같은 연구실 내 추가 사용자 여부를 확인해야 합니다. '
+                'CRM 기록만으로는 구매 압박을 단정하기 어려우므로 탐색 질문 중심으로 접근하는 것이 안전합니다.'
+            ),
+            'bullets': [
+                '판단: 스케일업은 “더 주문하세요”가 아니라 사용량 증가 조건을 찾는 대화로 시작합니다.',
+                '확인할 것: 현재 재고, 월 소모량, 다음 실험 일정, 같은 연구실 내 추가 사용자, 함께 쓰는 반복 소모품입니다.',
+                '다음 액션: 기존 주문 품목을 기준으로 소진 예상 시점과 대체/동반 구매 품목을 짧게 확인합니다.',
+            ],
+            'evidence': _ai_workspace_question_evidence_payload(evidence, limit=4, value_limit=620),
+            'perspective': {
+                'customerPerspective': (
+                    '고객 입장에서는 재고가 충분한 품목을 다시 제안받으면 당장 필요 없는 영업 제안으로 느낄 수 있습니다. '
+                    '대신 다음 실험이나 소모 속도를 물으면 본인 업무 맥락을 이해하려는 질문으로 받아들일 가능성이 높습니다.'
+                    if has_inventory_room else
+                    '고객 입장에서는 주문 확대 제안보다 실제 실험 일정과 재고 상황을 먼저 묻는 접근이 부담이 낮습니다.'
+                ),
+                'salesJudgment': (
+                    '영업 판단상 현재 품목의 즉시 업셀보다, 소모량 변화와 동반 구매 품목을 확인해 다음 견적/방문 소재를 만드는 편이 낫습니다.'
+                ),
+                'recommendedApproach': (
+                    '최근 주문 품목을 언급하되 구매 요청으로 시작하지 말고, 재고 소진 시점과 다음 실험에서 함께 필요한 품목을 확인합니다.'
+                ),
+                'talkTrack': (
+                    '지난번 주문하신 품목은 아직 여유가 있으실 수 있어서 바로 추가 주문을 여쭤보려는 건 아닙니다. '
+                    '다음 실험 일정이나 소모량이 늘어날 계획이 있으면, 같이 준비해야 할 품목을 미리 맞춰드리려고 확인드립니다.'
+                ),
+                'caution': '재고가 충분하다는 기록이 있으면 같은 품목 구매를 바로 압박하지 않습니다.',
+            },
+            'confidence': 'medium' if evidence else 'low',
         }
 
     if asks_global_actions:
@@ -11253,6 +11494,13 @@ def _ai_workspace_question_fallback(question, context):
             {'label': '견적/납품', 'value': f"{summary.get('total_quotes', 0)}건 / {summary.get('total_deliveries', 0)}건"},
             {'label': '마지막 주문/납품', 'value': last_delivery_label},
         ],
+        'perspective': {
+            'customerPerspective': '질문이 특정 상황을 지정하지 않아 고객 마음을 강하게 추정하기는 어렵습니다. 최근 반응이나 주문 공백이 있으면 그 기록을 기준으로 다시 좁혀 보는 것이 좋습니다.',
+            'salesJudgment': '현재는 CRM 현황을 기준으로 미완료 액션과 최신 노트를 먼저 확인하는 단계입니다.',
+            'recommendedApproach': '고객명, 품목, 견적/샘플/재고 같은 상황을 포함해 다시 물으면 더 구체적인 영업 판단을 낼 수 있습니다.',
+            'talkTrack': '',
+            'caution': '근거가 부족한 고객 심리 단정은 피합니다.',
+        },
         'confidence': 'low',
     }
 
@@ -11275,6 +11523,7 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
     ]
     evidence_items = data.get('evidence') or data.get('sourceNotes') or data.get('sources')
     evidence = _ai_workspace_question_evidence_payload(evidence_items, limit=10, value_limit=700)
+    perspective = _ai_workspace_question_perspective_payload(data, fallback.get('perspective'))
 
     action_items = []
     raw_action_items = data.get('actionItems') or data.get('actions') or data.get('recommendedActions')
@@ -11319,13 +11568,16 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
     if not answer:
         fallback.setdefault('actionItems', [])
         return fallback
-    return {
+    result = {
         'summary': answer,
         'bullets': bullets or fallback.get('bullets', []),
         'evidence': evidence or fallback.get('evidence', []),
         'actionItems': action_items or fallback.get('actionItems', []),
         'confidence': confidence,
     }
+    if perspective:
+        result['perspective'] = perspective
+    return result
 
 
 def _ai_workspace_question_needs_web_search(question):
@@ -11386,6 +11638,9 @@ def _ai_workspace_generate_department_question_answer(question, context):
                 '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
                 'webSearchAllowed가 true이고 최신 외부 정보가 필요한 질문에서만 웹 검색 결과를 보조 근거로 사용한다. 내부 CRM 고객명/영업내용을 웹 검색어로 노출하지 않는다.',
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',
+                '단, CRM 근거가 있는 고객 심리/구매 의도 해석은 perspective.customerPerspective에 "고객 입장에서는", "가능성이 있습니다"처럼 추정임을 표시해 쓴다.',
+                '고객 마음을 단정하지 말고, CRM 사실과 추정을 분리한다.',
+                '질문이 영업 판단을 요구하면 perspective에 고객 입장 추정, 영업 판단, 추천 접근, 실제 말문 예시, 주의점을 채운다.',
                 'answer는 2-4문장으로 결론과 우선순위 판단을 설명한다.',
                 '실행해야 할 작업이 있으면 actionItems에 최대 5개를 우선순위 순서로 넣는다.',
                 '각 actionItems 항목은 title, customer, company, department, priority, reason, nextAction, timing, crmEvidence를 채운다.',
@@ -11398,6 +11653,8 @@ def _ai_workspace_generate_department_question_answer(question, context):
             'CRM 컨텍스트의 최신성, 완료/미완료 상태, 후속조치 우선순위를 판단한다. '
             '답변은 한국어로 쓰고, 단답형을 피한다. '
             '반드시 JSON으로 {"answer": string, "bullets": string[], '
+            '"perspective": {"customerPerspective": string, "salesJudgment": string, '
+            '"recommendedApproach": string, "talkTrack": string, "caution": string}, '
             '"actionItems": [{"rank": number, "title": string, "customer": string, "company": string, '
             '"department": string, "priority": string, "reason": string, "nextAction": string, '
             '"timing": string, "crmEvidence": [{"label": string, "value": string}]}], '

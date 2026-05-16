@@ -1,5 +1,91 @@
 # AGENT_REPORT.md
 
+## 2026-05-17 — AI Workspace Customer Perspective Answers
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 전
+
+### 요약
+
+AI Workspace 질문 답변이 CRM 사실 브리핑에 머물지 않도록 `perspective` 응답 구조를 추가했습니다. 답변은 기존 CRM 근거와 실행 항목을 유지하면서, 고객 입장 추정, 영업 판단, 추천 접근, 실제 말문 예시, 주의점을 분리해 보여줍니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 질문 답변 `perspective` 정규화, OpenAI 프롬프트 규칙, 샘플/재견적 및 스케일업 fallback 판단 추가.
+- `reporting/tests.py`: 고객 관점 응답 정규화와 샘플/재견적, 스케일업 fallback 회귀 테스트 추가. 날짜 의존적 주간보고 액션큐 테스트 데이터 안정화.
+- `frontend/src/api.ts`: AI Workspace 질문 답변 타입에 optional `perspective` 추가.
+- `frontend/src/App.tsx`: Department Q&A 답변 카드에 고객 관점 섹션 표시.
+- `frontend/src/styles.css`: 고객 관점 섹션 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 이다민 샘플/재견적 같은 질문에서 “피드백을 또 받아내라”보다 “이미 받은 피드백을 인정하고 재견적 조건 확인으로 전환”하는 답변을 제공합니다.
+- 스케일업 질문에서 단순 주문/노트 브리핑 대신 재고 여유, 구매 압박, 소모 속도, 동반 구매 품목 관점으로 판단합니다.
+- 고객 마음을 단정하지 않고 CRM 근거 기반 추정으로 분리해 표시합니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/*` route, AI 권한, 로그인 보호, 사용자별 데이터 스코프는 유지했습니다.
+- 기존 `summary`, `actionItems`, `bullets`, `evidence`, 마지막 주문/납품 표시 구조는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_requote_sample_feedback_uses_customer_perspective reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_scale_up_uses_customer_perspective reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_perspective --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 47 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-CpBRlepD.js / assets/index-DvkrPywz.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Playwright local smoke on http://127.0.0.1:4173/ai-workspace/ with mocked AI Workspace API
+→ 고객 입장 추정/영업 판단/말문 예시 렌더링 OK, console errors 0
+```
+
+### 알려진 제한
+
+- 실제 OpenAI 응답 품질은 운영 데이터와 모델 응답에 따라 달라질 수 있습니다. 프롬프트와 fallback은 고객 관점 추정을 구조화하지만, 최종 판단은 사용자가 확인해야 합니다.
+- 로컬 브라우저 검증은 인증 세션 없이 API를 mock해서 UI 렌더링만 확인했습니다.
+
+### 추천 다음 작업
+
+- 운영 배포 후 사용자가 `/ai-workspace/?department_id=14`, `/ai-workspace/?department_id=10`에서 같은 질문을 직접 확인하고, 답변 톤이 실제 영업 판단에 맞는지 피드백합니다.
+
+### 운영 배포 상태
+
+- 아직 커밋/푸시 및 Railway 배포 전입니다.
+
+### 사용자 수동 테스트 절차
+
+1. 운영 배포 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=14`에 접속합니다.
+2. “재견적을 줄 때 이다민 연구원에게 샘플드린거 피드백을 자연스럽게 받아내는 것이 좋을까? 아니면 이다민 연구원이 피드백을 주지 않으면 굳이 물어보지 않을까?”를 질문합니다.
+3. 답변에 `고객 입장 추정`, `영업 판단`, `추천 접근`, `말문 예시`, `주의점`이 보이는지 확인합니다.
+4. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10`에서 “해당 연구실의 주문 물품을 스케일업 하고싶어”를 질문합니다.
+5. 답변이 단순 CRM 브리핑이 아니라 재고 여유, 구매 압박, 소모 속도, 동반 구매 품목 관점으로 판단하는지 확인합니다.
+
+---
+
 ## 2026-05-16 — AI Workspace Field Feedback Goals
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기

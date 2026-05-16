@@ -12742,6 +12742,13 @@ function AIWorkspaceDepartmentQuestionPanel({
   const canSubmit = trimmedQuestion.length >= 2 && !loading;
   const answer = result?.answer;
   const actionItems = answer?.actionItems ?? [];
+  const perspectiveRows = answer?.perspective ? [
+    { label: '고객 입장 추정', value: answer.perspective.customerPerspective },
+    { label: '영업 판단', value: answer.perspective.salesJudgment },
+    { label: '추천 접근', value: answer.perspective.recommendedApproach },
+    { label: '말문 예시', value: answer.perspective.talkTrack },
+    { label: '주의점', value: answer.perspective.caution },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
   const lastDelivery = result?.context.lastDelivery;
   const allDepartmentCustomerCount = data.departments.reduce((total, department) => total + department.customerCount, 0);
   const customerCount = result?.context.customerCount ?? (
@@ -12816,6 +12823,16 @@ function AIWorkspaceDepartmentQuestionPanel({
             <p>{answer.summary}</p>
             <span>{result.source === 'openai' ? (result.webSearchUsed ? 'AI 답변 · 웹 검색' : 'AI 답변') : 'CRM 기반 답변'}</span>
           </div>
+          {perspectiveRows.length > 0 ? (
+            <dl className="ai-department-question-perspective">
+              {perspectiveRows.map((item) => (
+                <div key={item.label}>
+                  <dt>{item.label}</dt>
+                  <dd>{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
           {actionItems.length > 0 ? (
             <div className="ai-department-question-actions">
               {actionItems.map((item, index) => {

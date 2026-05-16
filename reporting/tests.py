@@ -7696,6 +7696,35 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('월요일 오후', result['actionItems'][0]['timing'])
         self.assertEqual(result['actionItems'][0]['crmEvidence'][0]['label'], '추천 작업')
 
+    def test_ai_workspace_department_question_normalizes_perspective(self):
+        from reporting.views import _ai_workspace_normalize_department_question_answer
+
+        result = _ai_workspace_normalize_department_question_answer({
+            'answer': '재견적은 가격 조건 중심으로 전달하고 샘플 평가는 짧게 확인합니다.',
+            'perspective': {
+                'customerPerspective': '고객 입장에서는 이미 답한 샘플 평가를 다시 묻는다고 느낄 수 있습니다.',
+                'salesJudgment': '지난 피드백은 인정하고 구매 판단 기준 확인으로 전환합니다.',
+                'recommendedApproach': '재견적 조건을 먼저 설명한 뒤 추가 반영 조건만 묻습니다.',
+                'talkTrack': '지난번 말씀 주신 샘플 의견을 반영해 가격 조건 중심으로 정리했습니다.',
+                'caution': '샘플 피드백을 독촉하는 톤은 피합니다.',
+            },
+            'confidence': 'high',
+        }, {
+            'summary': 'fallback',
+            'bullets': [],
+            'evidence': [],
+            'actionItems': [],
+            'confidence': 'low',
+        })
+
+        self.assertEqual(result['confidence'], 'high')
+        self.assertEqual(
+            result['perspective']['customerPerspective'],
+            '고객 입장에서는 이미 답한 샘플 평가를 다시 묻는다고 느낄 수 있습니다.',
+        )
+        self.assertIn('가격 조건', result['perspective']['talkTrack'])
+        self.assertIn('독촉', result['perspective']['caution'])
+
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context(self, _mock_client):
         from reporting.models import AIWorkspaceActionFeedback, History, Schedule
@@ -7756,6 +7785,118 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('완료', answer_text)
         self.assertIn('2-3영업일', answer_text)
         self.assertNotIn('먼저 샘플이 실제로 전달됐는지 확인', answer_text)
+        self.assertIn('perspective', payload['answer'])
+        self.assertIn('고객 입장', payload['answer']['perspective']['customerPerspective'])
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_question_requote_sample_feedback_uses_customer_perspective(self, _mock_client):
+        from reporting.models import AIWorkspaceActionFeedback, History
+
+        followup, department = self._create_customer(self.user, '이다민')
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='quote',
+            content='가격 협상 완료 후 이다민 연구원에게 재견적 제공 예정',
+            next_action='재견적 제공',
+        )
+        AIWorkspaceActionFeedback.objects.create(
+            user=self.user,
+            followup=followup,
+            action_id='followup:sample-requote-perspective',
+            action_kind='customer_followup',
+            status='answered',
+            feedback='고객이 제공된 샘플과 기존 제품의 사용감 차이를 느끼지 못했다고 피드백함.',
+            ai_result={
+                'summary': '샘플 사용감 피드백 수집 완료',
+                'nextAction': '재견적 제공 시 조건 확인',
+                'source': 'fallback',
+            },
+            action_snapshot={
+                'title': '재견적 제공 및 샘플 피드백 요청',
+                'customer': followup.customer_name,
+                'company': followup.company.name,
+                'department': followup.department.name,
+            },
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '재견적을 줄 때 이다민 연구원에게 샘플드린거 피드백을 자연스럽게 받아내는 것이 좋을까? 아니면 굳이 물어보지 않을까?',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        perspective = payload['answer']['perspective']
+        self.assertIn('재견적', answer_text)
+        self.assertIn('다시 캐묻기보다', answer_text)
+        self.assertIn('구매 판단 기준', answer_text)
+        self.assertIn('고객 입장', perspective['customerPerspective'])
+        self.assertIn('이미 샘플 사용감 차이를 말했는데', perspective['customerPerspective'])
+        self.assertIn('지난번 샘플', perspective['talkTrack'])
+        self.assertIn('독촉', perspective['caution'])
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_question_scale_up_uses_customer_perspective(self, _mock_client):
+        from reporting.models import DeliveryItem, History, Schedule
+        from decimal import Decimal
+
+        followup, department = self._create_customer(self.user, '면역제어')
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type='delivery',
+            status='completed',
+            expected_revenue=Decimal('906400'),
+            purchase_confirmed=True,
+            notes='최근 팁 납품 완료',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='P4235N00',
+            quantity=10,
+            unit_price=Decimal('41360'),
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='팁류 저희한테 주문하시는데 아직 팁 재고 여유 있는지 여쭤보니 아직 여유 있다고 함',
+            next_action='다른 제품 필요성 확인',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '해당 연구실의 주문 물품을 스케일업 하고싶어',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        perspective = payload['answer']['perspective']
+        self.assertIn('소모 속도', answer_text)
+        self.assertIn('구매 압박', answer_text)
+        self.assertIn('재고가 충분한 품목', perspective['customerPerspective'])
+        self.assertIn('동반 구매 품목', perspective['salesJudgment'])
+        self.assertIn('바로 추가 주문', perspective['talkTrack'])
 
     def test_ai_workspace_department_question_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '질문권한없음')
@@ -7882,12 +8023,15 @@ class AIWorkspaceSummaryApiTests(TestCase):
         followup, department = self._create_customer(self.user, '액션큐')
         self._create_department_analysis(self.user, department)
         today = timezone.localdate()
+        week_start = today - timedelta(days=today.weekday())
+        in_report_week = week_start + timedelta(days=1)
+        week_end = week_start + timedelta(days=4)
 
         quote_schedule = Schedule.objects.create(
             user=self.user,
             company=self.company,
             followup=followup,
-            visit_date=today,
+            visit_date=in_report_week,
             visit_time=time(9, 0),
             status='scheduled',
             activity_type='quote',
@@ -7898,7 +8042,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             schedule=quote_schedule,
             followup=followup,
             user=self.user,
-            valid_until=today + timedelta(days=2),
+            valid_until=week_end,
             stage='sent',
             subtotal=Decimal('2000000'),
             probability=75,
@@ -7916,7 +8060,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             user=self.user,
             company=self.company,
             followup=followup,
-            visit_date=today + timedelta(days=1),
+            visit_date=week_end,
             visit_time=time(13, 0),
             status='scheduled',
             activity_type='delivery',

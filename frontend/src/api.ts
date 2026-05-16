@@ -2625,6 +2625,13 @@ export type AIWorkspaceDepartmentQuestionResponse = {
   answer: {
     summary: string;
     bullets: string[];
+    perspective?: {
+      customerPerspective?: string;
+      salesJudgment?: string;
+      recommendedApproach?: string;
+      talkTrack?: string;
+      caution?: string;
+    };
     evidence: AIWorkspaceActionEvidence[];
     actionItems?: {
       rank: number;
