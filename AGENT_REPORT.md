@@ -19586,12 +19586,19 @@ Official OpenAI API pricing checked on 2026-05-17:
 
 ### 8. Production Deployment Status
 
-- Runtime commit: pending
-- GitHub push: pending
-- Railway `web`: pending
-- Railway `sales-note-frontend`: pending
+- Runtime commit: `2d5bb90 feat: apply CRM strategy prompt to AI workspace`
+- GitHub: `main` pushed.
+- Railway `web`: `f408bc01-7c2c-4043-b123-78571bd42b74` SUCCESS, instance RUNNING.
+- Railway `sales-note-frontend`: `1c27ca25-de31-4be5-a3ee-cec4f6861dad` SUCCESS, instance RUNNING.
 - DB migration: none
-- Production smoke: pending
+- Production smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/ai-workspace/` returned 200.
+  - Latest frontend JS: `assets/index-RCg0RTwK.js`.
+  - Latest bundle contains `CRM 전략가 관점` and `effectiveDirection`.
+  - `GET https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/` returned expected anonymous `401 login_required`.
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200 with title `로그인 - 영업 보고 시스템`.
+  - Railway `web` logs show migrations no-op and gunicorn startup OK.
+  - Railway service status shows `web`, `sales-note-frontend`, and `Postgres` running.
 
 ### 9. Recommended Next Task
 
