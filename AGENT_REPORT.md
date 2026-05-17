@@ -19614,3 +19614,103 @@ Official OpenAI API pricing checked on 2026-05-17:
 4. 원하는 조정 방향을 입력하고 `방향 저장`을 누릅니다.
 5. 저장 후 현재 방향 문장에 사용자 요청이 반영되어 명시되는지 확인합니다.
 6. GPT-5.5 또는 GPT-5.4 mini를 선택해 질문을 실행하고 답변이 CRM 전략 판단 형식으로 나오는지 확인합니다.
+
+---
+
+## 2026-05-17 AI Workspace fixed prompt and answer direction removal
+
+### 1. Summary
+
+- AI Workspace 부서 질문의 시스템 프롬프트를 사용자 확정 CRM strategy architect 프롬프트로 고정했습니다.
+- `현재 답변 방향` 자유 입력 UI, 저장 API, 프론트 API 클라이언트, 프롬프트 context 반영을 제거했습니다.
+- JSON 응답 계약은 시스템 프롬프트에 덧붙이지 않고 user payload `rules`에만 넣어 파싱 안정성을 유지했습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- 사용자가 답변 방향을 별도로 관리할 필요 없이 고정 CRM 전략가 프롬프트로 일관된 답변을 받습니다.
+- 부서 선택, GPT-5.5 / GPT-5.4 mini 선택, 질문 실행, 질문/답변 기록 흐름만 남겨 AI Workspace 조작 부담을 줄였습니다.
+- 답변 방향 저장값은 기존 DB에는 보존하지만 신규 질문 context에는 섞지 않습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 AI 추천 실행/피드백/목표 관련 backend 데이터/API는 유지했습니다.
+- `/reporting/*`, React `/ai-workspace/`, AI 권한 체크, 질문/답변 기록, 페이지네이션은 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 56 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, dist/assets/index-De7YPBWq.js / dist/assets/index-B2MUKZEr.css generated
+→ Vite chunk-size warning only
+
+Local Playwright smoke
+→ /ai-workspace/?department_id=224 rendered `부서 상황 질문`, `GPT-5.5`, `GPT-5.4 mini`, `질문/답변 기록`.
+→ `현재 답변 방향`, `방향 저장`, `원하는 조정 방향` 문구 없음.
+→ Browser console errors 0, bad responses 0.
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- 기존 `AIWorkspaceAnswerDirection` 테이블과 저장 데이터는 보존되어 있지만 현재 화면/API에서는 사용하지 않습니다.
+- 답변 본문 품질은 운영 실제 부서 질문으로 별도 샘플 확인이 필요합니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `9136642 fix: lock AI workspace prompt and remove direction controls`
+- GitHub: `main` pushed.
+- Railway `web`: `bd3e244b-228e-4779-867e-b3587a50a5b4` SUCCESS.
+- Railway `sales-note-frontend`: `267462e0-577e-4a35-aa8e-c46a91f25ca5` SUCCESS.
+- DB migration: none.
+- Production smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/ai-workspace/` returned 200.
+  - Latest frontend JS: `assets/index-De7YPBWq.js`.
+  - Latest JS contains `GPT-5.5`, `GPT-5.4 mini`, `질문/답변 기록`.
+  - Latest JS does not contain `현재 답변 방향`, `방향 저장`, `원하는 조정 방향`.
+  - Anonymous `GET /reporting/api/ai-workspace/` returned expected `401 login_required`.
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - Railway `web` logs show migrations no-op and gunicorn startup OK.
+
+### 8. Recommended Next Task
+
+수동 확인이 끝나면 큐에 남겨둔 `질문/답변 기록 클릭 → 질문/답변 풀 상세페이지` 작업을 진행합니다.
+
+### 9. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 부서를 선택합니다.
+3. `현재 답변 방향`, `방향 저장`, 답변 방향 입력창이 보이지 않는지 확인합니다.
+4. `GPT-5.5`, `GPT-5.4 mini` 선택이 되는지 확인합니다.
+5. 질문을 실행하고 답변이 CRM 전략 판단 형식으로 나오는지 확인합니다.
+6. `질문/답변 기록`에 새 질문이 쌓이는지 확인합니다.
