@@ -1,6 +1,6 @@
 # AGENT_PLAN.md
 
-## Current task — AI Workspace 선택지형 질문 결론 강화
+## Completed task — AI Workspace 선택지형 질문 결론 강화
 
 **목표**: AI Workspace 질문이 “할까/말까”, “A가 좋을까 B가 좋을까”처럼 선택지형일 때, CRM 브리핑보다 먼저 추천 선택을 명확히 제시하고 버릴 선택과 예외 조건을 함께 보여준다.
 
@@ -47,7 +47,7 @@
 - Railway `web` 배포 완료: `270c242e-b5ce-4006-9fbf-74a87bdcc09d` SUCCESS.
 - Railway `sales-note-frontend` 배포 완료: `8cc2ad82-4610-4b59-8448-0cf5aa808d07` SUCCESS.
 - 운영 smoke 완료: `/ai-workspace/` 200, latest bundle `assets/index-6cgphG4x.js`에 `추천 판단`/`버릴 선택` 포함, AI Workspace API 로그인/CSRF 보호 확인.
-- 사용자 운영 계정 수동검수 대기.
+- 사용자 운영 계정 수동검수 완료. 현재 답변 품질은 사용자가 만족한다고 확인함.
 
 ---
 

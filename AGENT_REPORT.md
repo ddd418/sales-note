@@ -2,7 +2,7 @@
 
 ## 2026-05-17 — AI Workspace Decisive Choice Answers
 
-**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke/사용자 수동검수 완료
 
 ### 요약
 
@@ -101,6 +101,7 @@ POST https://sales-note-frontend-production.up.railway.app/reporting/api/ai-work
 - Railway `web`: `270c242e-b5ce-4006-9fbf-74a87bdcc09d` SUCCESS
 - Railway `sales-note-frontend`: `8cc2ad82-4610-4b59-8448-0cf5aa808d07` SUCCESS
 - Production smoke: `/ai-workspace/` 200, latest bundle `assets/index-6cgphG4x.js` contains `추천 판단`/`버릴 선택`, AI Workspace API login/CSRF protection confirmed
+- User manual test: 2026-05-17 완료. 사용자가 “지금까지는 만족스럽습니다”라고 확인함.
 
 ### 사용자 수동 테스트 절차
 
