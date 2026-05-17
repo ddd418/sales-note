@@ -7704,6 +7704,35 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('월요일 오후', result['actionItems'][0]['timing'])
         self.assertEqual(result['actionItems'][0]['crmEvidence'][0]['label'], '추천 작업')
 
+    def test_ai_workspace_department_question_normalizes_decision(self):
+        from reporting.views import _ai_workspace_normalize_department_question_answer
+
+        result = _ai_workspace_normalize_department_question_answer({
+            'answer': '굳이 다시 묻지 말고 재견적 조건 확인으로 짧게 연결합니다.',
+            'decision': {
+                'recommendedChoice': '재견적 설명 끝에 조건 확인처럼 짧게만 묻습니다.',
+                'rejectedChoice': '샘플 피드백을 별도 질문으로 다시 받으려는 접근은 버립니다.',
+                'reason': '이미 답한 내용을 반복하면 고객 부담이 커집니다.',
+                'exception': '고객이 샘플 얘기를 먼저 꺼내면 구체적으로 물어봅니다.',
+            },
+            'confidence': 'high',
+        }, {
+            'summary': 'fallback',
+            'bullets': [],
+            'evidence': [],
+            'actionItems': [],
+            'confidence': 'low',
+        })
+
+        self.assertEqual(result['confidence'], 'high')
+        self.assertEqual(
+            result['decision']['recommendedChoice'],
+            '재견적 설명 끝에 조건 확인처럼 짧게만 묻습니다.',
+        )
+        self.assertIn('별도 질문', result['decision']['rejectedChoice'])
+        self.assertIn('고객 부담', result['decision']['reason'])
+        self.assertIn('먼저 꺼내면', result['decision']['exception'])
+
     def test_ai_workspace_department_question_normalizes_perspective(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 
@@ -7843,10 +7872,15 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['source'], 'fallback')
         answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        decision = payload['answer']['decision']
         perspective = payload['answer']['perspective']
         self.assertIn('재견적', answer_text)
         self.assertIn('다시 캐묻기보다', answer_text)
         self.assertIn('구매 판단 기준', answer_text)
+        self.assertIn('다시 캐묻지 말고', decision['recommendedChoice'])
+        self.assertIn('버립니다', decision['rejectedChoice'])
+        self.assertIn('같은 질문 반복', decision['reason'])
+        self.assertIn('고객이 먼저', decision['exception'])
         self.assertIn('고객 입장', perspective['customerPerspective'])
         self.assertIn('이미 샘플 사용감 차이를 말했는데', perspective['customerPerspective'])
         self.assertIn('지난번 샘플', perspective['talkTrack'])
@@ -7899,9 +7933,13 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['source'], 'fallback')
         answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        decision = payload['answer']['decision']
         perspective = payload['answer']['perspective']
         self.assertIn('소모 속도', answer_text)
         self.assertIn('구매 압박', answer_text)
+        self.assertIn('같은 품목 추가 주문을 바로 밀지 말고', decision['recommendedChoice'])
+        self.assertIn('즉시 업셀', decision['rejectedChoice'])
+        self.assertIn('구매 압박은 낮으므로', decision['reason'])
         self.assertIn('재고가 충분한 품목', perspective['customerPerspective'])
         self.assertIn('동반 구매 품목', perspective['salesJudgment'])
         self.assertIn('바로 추가 주문', perspective['talkTrack'])

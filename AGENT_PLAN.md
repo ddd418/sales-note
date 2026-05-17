@@ -1,6 +1,53 @@
 # AGENT_PLAN.md
 
-## Current task — Customers API 500 긴급 복구
+## Current task — AI Workspace 선택지형 질문 결론 강화
+
+**목표**: AI Workspace 질문이 “할까/말까”, “A가 좋을까 B가 좋을까”처럼 선택지형일 때, CRM 브리핑보다 먼저 추천 선택을 명확히 제시하고 버릴 선택과 예외 조건을 함께 보여준다.
+
+### 확인된 상태
+
+- 질문 답변 API는 `summary`, `actionItems`, `perspective`, `evidence`를 반환한다.
+- 직전 작업으로 고객 입장 추정은 표시되지만, 선택지형 질문에서 결론이 여전히 부드럽게 보일 수 있다.
+- React Department Q&A 답변 카드는 `summary` 아래에 고객 관점 섹션을 표시한다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- 질문 답변 JSON 계약에 optional `decision` 객체를 추가한다.
+- `decision`에는 `recommendedChoice`, `rejectedChoice`, `reason`, `exception`을 담는다.
+- OpenAI 프롬프트에 “선택지형 질문이면 반드시 하나를 고르고 decision을 채운다” 규칙을 추가한다.
+- 샘플/재견적/피드백 fallback은 “샘플 피드백을 다시 캐묻지 말고, 재견적 설명 끝에 조건 확인처럼 짧게 묻기”를 추천 판단으로 반환한다.
+- 스케일업 fallback은 “같은 품목 업셀보다 소모 속도/다음 실험/동반 소모품 확인”을 추천 판단으로 반환한다.
+- React 답변 카드 최상단에 `추천 판단` 박스를 추가한다.
+- 기존 `/reporting/*`, AI 권한, 로그인 보호, 데이터 스코프는 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_decision reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_requote_sample_feedback_uses_customer_perspective reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_scale_up_uses_customer_perspective --verbosity=1`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke 확인.
+
+### 현재 상태
+
+- 백엔드/프론트 구현은 긴급 고객 API 핫픽스 전 작업본에서 복구 완료.
+- 핫픽스 commit `6026cf4`, docs commit `631010b` 이후 main 위에서 충돌 정리 완료.
+- 백엔드 `decision` 정규화, OpenAI 프롬프트 규칙, 샘플/재견적/스케일업 fallback 추천 판단 구현 완료.
+- React AI Workspace 질문 답변 카드에 `추천 판단` 박스와 `버릴 선택`/`판단 이유`/`예외 조건` 표시 완료.
+- 질문 응답 context가 비어도 UI가 깨지지 않도록 React context 접근을 방어적으로 보강 완료.
+- 집중 테스트 3건, AI Workspace 전체 테스트 48건, Django check, migration dry-run, frontend 타입체크/빌드, diff check 통과.
+- 로컬 Playwright smoke에서 모킹된 AI Workspace 질문 응답의 `추천 판단`/`버릴 선택`/`판단 이유`/`예외 조건`/`고객 입장 추정`/`말문 예시` 렌더링과 콘솔 오류 없음 확인.
+- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 대기.
+
+---
+
+## Completed task — Customers API 500 긴급 복구
 
 **목표**: 운영 React 고객 목록(`/customers/`)에서 `/reporting/api/customers/`가 500을 반환해 `Customers API unavailable: 500`이 뜨는 문제를 즉시 복구한다.
 
@@ -12,22 +59,6 @@
 - 인증/권한/CSRF 문제가 아니라 서버 코드 예외다.
 - DB 모델 변경과 migration은 필요 없다.
 
-### 구현 계획
-
-- `_customers_schedule_payload()`에서 존재하지 않는 지역 변수 `followup` 대신 `schedule.followup_id`를 사용한다.
-- 고객 API 일정 snapshot 테스트에 `createHistoryHref`와 `djangoCreateHistoryHref` 검증을 추가한다.
-- 기존 `/reporting/*`, 로그인 보호, 고객 데이터 스코프, React 고객 화면 구조는 유지한다.
-
-### 검증 계획
-
-- `python -m py_compile reporting\views.py reporting\tests.py`
-- `python manage.py test reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_includes_activity_and_schedule_snapshot --verbosity=1`
-- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
-- `python manage.py check`
-- `python manage.py makemigrations --check --dry-run`
-- `git diff --check`
-- 커밋/푸시 후 Railway `web` 배포 및 운영 `/customers/`, `/reporting/api/customers/` smoke 확인.
-
 ### 현재 상태
 
 - 운영 로그에서 `NameError: name 'followup' is not defined` 원인 확인 완료.
@@ -35,9 +66,9 @@
 - 고객 API 일정 snapshot 테스트에 React 보고 링크와 Django 보고 생성 링크 검증 추가 완료.
 - `CustomersSummaryApiTests` 22건, Django check, migration dry-run, diff check 통과.
 - 커밋/푸시 완료: `6026cf4 fix: repair customers schedule payload`.
-- Railway `web` 배포 완료: `fbf7f011-28fb-4436-a205-edb47d6b4112` SUCCESS.
+- Railway `web` 최종 배포 완료: `e54ed6f9-51c0-46d7-b64c-8eb5aa7611c4` SUCCESS.
 - 운영 smoke 완료: `/customers/` 200, anonymous `/reporting/api/customers/` 401 login_required, latest `web` logs clean.
-- 사용자 운영 계정 수동검수 대기.
+- 사용자 운영 계정 수동검수 완료.
 
 ---
 

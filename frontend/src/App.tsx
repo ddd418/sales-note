@@ -12742,6 +12742,12 @@ function AIWorkspaceDepartmentQuestionPanel({
   const canSubmit = trimmedQuestion.length >= 2 && !loading;
   const answer = result?.answer;
   const actionItems = answer?.actionItems ?? [];
+  const decision = answer?.decision;
+  const decisionDetailRows = decision ? [
+    { label: '버릴 선택', value: decision.rejectedChoice },
+    { label: '판단 이유', value: decision.reason },
+    { label: '예외 조건', value: decision.exception },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
   const perspectiveRows = answer?.perspective ? [
     { label: '고객 입장 추정', value: answer.perspective.customerPerspective },
     { label: '영업 판단', value: answer.perspective.salesJudgment },
@@ -12749,14 +12755,14 @@ function AIWorkspaceDepartmentQuestionPanel({
     { label: '말문 예시', value: answer.perspective.talkTrack },
     { label: '주의점', value: answer.perspective.caution },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
-  const lastDelivery = result?.context.lastDelivery;
+  const lastDelivery = result?.context?.lastDelivery;
   const allDepartmentCustomerCount = data.departments.reduce((total, department) => total + department.customerCount, 0);
-  const customerCount = result?.context.customerCount ?? (
+  const customerCount = result?.context?.customerCount ?? (
     scopeMode === 'all'
       ? allDepartmentCustomerCount
       : data.featuredDepartment?.customerCount ?? 0
   );
-  const departmentCount = result?.context.departmentCount ?? data.metrics.departmentsWithCustomers;
+  const departmentCount = result?.context?.departmentCount ?? data.metrics.departmentsWithCustomers;
   const placeholder = scopeMode === 'all'
     ? '예: 전체 부서 중 이번 주 다음 액션 할 만한 곳 찾아줘'
     : '예: 해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?';
@@ -12823,6 +12829,22 @@ function AIWorkspaceDepartmentQuestionPanel({
             <p>{answer.summary}</p>
             <span>{result.source === 'openai' ? (result.webSearchUsed ? 'AI 답변 · 웹 검색' : 'AI 답변') : 'CRM 기반 답변'}</span>
           </div>
+          {decision?.recommendedChoice ? (
+            <section className="ai-department-question-decision">
+              <span>추천 판단</span>
+              <strong>{decision.recommendedChoice}</strong>
+              {decisionDetailRows.length > 0 ? (
+                <dl>
+                  {decisionDetailRows.map((item) => (
+                    <div key={item.label}>
+                      <dt>{item.label}</dt>
+                      <dd>{item.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+            </section>
+          ) : null}
           {perspectiveRows.length > 0 ? (
             <dl className="ai-department-question-perspective">
               {perspectiveRows.map((item) => (

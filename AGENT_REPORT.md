@@ -1,8 +1,94 @@
 # AGENT_REPORT.md
 
+## 2026-05-17 — AI Workspace Decisive Choice Answers
+
+**상태**: 구현/로컬 검증 완료, 커밋/운영 배포 진행 예정
+
+### 요약
+
+AI Workspace 질문이 “할까/말까”, “A 또는 B”, “굳이”처럼 선택지형일 때 CRM 브리핑보다 먼저 명확한 추천 선택을 보여주도록 `decision` 응답 구조를 추가했습니다. 답변 카드에는 `추천 판단`, `버릴 선택`, `판단 이유`, `예외 조건`이 표시됩니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 질문 답변 `decision` 정규화, 선택지형 OpenAI 프롬프트 규칙, 샘플/재견적/스케일업 fallback 추천 판단 추가.
+- `reporting/tests.py`: `decision` 정규화와 샘플/재견적, 스케일업 fallback 회귀 테스트 추가.
+- `frontend/src/api.ts`: AI Workspace 질문 답변 타입에 optional `decision` 추가.
+- `frontend/src/App.tsx`: 답변 카드 최상단 `추천 판단` 섹션 추가, 질문 응답 context 방어 처리.
+- `frontend/src/styles.css`: 추천 판단 섹션 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 이다민 샘플/재견적 질문에서 “다시 캐묻기”보다 “재견적 설명 끝에 조건 확인처럼 짧게 묻기”를 먼저 제안합니다.
+- 스케일업 질문에서 재고가 충분한 품목을 즉시 업셀하지 않고 소모 속도, 다음 실험, 동반 소모품 확인으로 대화를 전환합니다.
+- AI 답변이 사용자 입장 브리핑에 머물지 않고, 버릴 선택과 예외 조건을 함께 제시합니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/*` route, AI 권한, 로그인 보호, 사용자별 데이터 스코프는 유지했습니다.
+- 기존 `summary`, `actionItems`, `perspective`, `bullets`, `evidence`, 마지막 주문/납품 표시 구조는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_decision reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_requote_sample_feedback_uses_customer_perspective reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_scale_up_uses_customer_perspective --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 48 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-6cgphG4x.js / assets/index-B2DQvNEm.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Playwright CLI local smoke on http://127.0.0.1:4173/ai-workspace/ with mocked AI Workspace API
+→ 추천 판단/버릴 선택/판단 이유/예외 조건/고객 입장 추정/말문 예시 렌더링 OK, console errors 0
+```
+
+### 알려진 제한
+
+- 실제 OpenAI 응답 품질은 운영 데이터와 모델 응답에 따라 달라질 수 있습니다.
+- 로컬 브라우저 검증은 인증 세션 없이 API를 mock해서 UI 렌더링을 확인했습니다.
+
+### 추천 다음 작업
+
+- 운영에서 실제 이다민 재견적 질문과 면역제어시스템연구실 스케일업 질문으로 답변 톤을 수동 확인합니다.
+
+### 운영 배포 상태
+
+- 배포 전. 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 예정.
+
+### 사용자 수동 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=14`에 접속합니다.
+2. “재견적을 줄 때 이다민 연구원에게 샘플드린거 피드백을 자연스럽게 받아내는 것이 좋을까? 아니면 이다민 연구원이 피드백을 주지 않으면 굳이 물어보지 않을까?”를 질문합니다.
+3. 답변 상단에 `추천 판단`, `버릴 선택`, `판단 이유`, `예외 조건`이 보이는지 확인합니다.
+4. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10`에서 “해당 연구실의 주문 물품을 스케일업 하고싶어”를 질문합니다.
+5. 답변이 즉시 업셀보다 소모 속도, 다음 실험, 동반 소모품 확인을 우선하는지 확인합니다.
+
+---
+
 ## 2026-05-17 — Customers API 500 Hotfix
 
-**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke/사용자 수동검수 완료
 
 ### 요약
 

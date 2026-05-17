@@ -10720,6 +10720,67 @@ def _ai_workspace_question_perspective_payload(data, fallback=None):
     return payload if any(payload.values()) else None
 
 
+def _ai_workspace_question_decision_payload(data, fallback=None):
+    if isinstance(data, dict) and isinstance(data.get('decision'), dict):
+        source = data.get('decision') or {}
+    elif isinstance(data, dict):
+        source = data
+    else:
+        source = {}
+
+    fallback_source = fallback if isinstance(fallback, dict) else {}
+
+    def pick(limit, *keys):
+        for key in keys:
+            value = _ai_workspace_question_text(source.get(key), limit)
+            if value:
+                return value
+        for key in keys:
+            value = _ai_workspace_question_text(fallback_source.get(key), limit)
+            if value:
+                return value
+        return ''
+
+    payload = {
+        'recommendedChoice': pick(
+            520,
+            'recommendedChoice',
+            'recommended_choice',
+            'recommendation',
+            'choice',
+            'selectedChoice',
+            'selected_choice',
+            'verdict',
+        ),
+        'rejectedChoice': pick(
+            520,
+            'rejectedChoice',
+            'rejected_choice',
+            'avoid',
+            'avoidChoice',
+            'discardedChoice',
+            'discarded_choice',
+        ),
+        'reason': pick(
+            760,
+            'reason',
+            'why',
+            'rationale',
+            'decisionReason',
+            'decision_reason',
+        ),
+        'exception': pick(
+            760,
+            'exception',
+            'exceptions',
+            'whenToReconsider',
+            'when_to_reconsider',
+            'caveat',
+        ),
+    }
+    return payload if any(payload.values()) else None
+
+
 def _ai_workspace_question_context_text(*collections, limit=6):
     parts = []
     keys = (
@@ -11198,6 +11259,12 @@ def _ai_workspace_question_fallback(question, context):
                 '주의: 고객이 이미 답한 내용을 반복 확인하는 느낌을 주면 재견적 대화의 온도가 낮아질 수 있습니다.',
             ],
             'evidence': _ai_workspace_question_evidence_payload(evidence, limit=3, value_limit=620),
+            'decision': {
+                'recommendedChoice': '샘플 피드백을 다시 캐묻지 말고, 재견적 설명 끝에 조건 확인처럼 짧게만 묻습니다.',
+                'rejectedChoice': '“샘플 어떠셨나요?”를 별도 주제로 다시 꺼내 피드백을 받아내려는 접근은 버립니다.',
+                'reason': '이미 샘플 사용감 피드백이 남아 있는 상황에서는 같은 질문 반복보다 재견적 수용 조건을 확인하는 편이 고객 부담이 낮고 영업 목적에도 더 직접적입니다.',
+                'exception': '고객이 먼저 샘플 사용 결과를 다시 꺼내거나, 재견적 조건이 샘플 성능 평가에 직접 좌우되는 경우에는 추가 피드백을 구체적으로 물어봅니다.',
+            },
             'perspective': {
                 'customerPerspective': (
                     '고객 입장에서는 이미 샘플 사용감 차이를 말했는데 같은 평가를 다시 묻는다고 느낄 수 있습니다. '
@@ -11263,6 +11330,12 @@ def _ai_workspace_question_fallback(question, context):
                     {'label': '최근 현장 답변', 'value': recent_feedbacks[0].get('feedback') if recent_feedbacks else '샘플 제공 완료 신호'},
                     {'label': '최근 노트', 'value': recent_notes[0].get('content') if recent_notes else '샘플 관련 최근 활동'},
                 ],
+                'decision': {
+                    'recommendedChoice': '기다리기만 하지 말고, 2-3영업일 뒤 비교 기준을 확인하는 후속을 잡습니다.',
+                    'rejectedChoice': '샘플을 줬으니 고객이 먼저 말할 때까지 완전히 기다리는 선택은 버립니다.',
+                    'reason': '샘플 제공은 완료됐지만 사용 시간이 필요하므로 즉시 독촉하지 않고, 정해진 시점에 평가 기준을 확인해야 후속이 끊기지 않습니다.',
+                    'exception': '고객이 사용 일정이 늦다고 명확히 말한 경우에는 그 일정 이후로 확인 시점을 늦춥니다.',
+                },
                 'perspective': {
                     'customerPerspective': '고객 입장에서는 샘플을 받은 직후 바로 평가를 요구받으면 충분히 써보지 못했다는 부담을 느낄 수 있습니다.',
                     'salesJudgment': '샘플 제공은 완료 이슈로 닫고, 다음 대화는 실제 사용 조건과 비교 기준을 확인하는 쪽으로 바꾸는 것이 좋습니다.',
@@ -11287,6 +11360,12 @@ def _ai_workspace_question_fallback(question, context):
                 {'label': '최근 현장 답변', 'value': recent_feedbacks[0].get('feedback') if recent_feedbacks else '최근 AI 답변 기록 없음'},
                 {'label': '최근 노트', 'value': recent_notes[0].get('content') if recent_notes else '최근 노트 없음'},
             ],
+            'decision': {
+                'recommendedChoice': '피드백 요청보다 샘플 전달 완료 여부와 실제 사용 예정일을 먼저 확인합니다.',
+                'rejectedChoice': '샘플이 전달됐다고 전제하고 평가를 요구하는 선택은 버립니다.',
+                'reason': '전달 여부가 불명확하면 고객은 평가 질문에 답하기 어렵고, CRM에도 완료/미완료 상태가 흐려집니다.',
+                'exception': '샘플 전달 완료가 다른 기록에서 확인되면 2-3영업일 뒤 비교 기준 확인으로 전환합니다.',
+            },
             'perspective': {
                 'customerPerspective': '고객 입장에서는 샘플을 받지 않았거나 아직 써보지 못했다면 평가를 요청받아도 답하기 어렵습니다.',
                 'salesJudgment': '영업 판단상 지금은 반응 요청보다 샘플 전달 완료 여부와 실제 사용 예정일 확인이 먼저입니다.',
@@ -11341,6 +11420,12 @@ def _ai_workspace_question_fallback(question, context):
                 '다음 액션: 기존 주문 품목을 기준으로 소진 예상 시점과 대체/동반 구매 품목을 짧게 확인합니다.',
             ],
             'evidence': _ai_workspace_question_evidence_payload(evidence, limit=4, value_limit=620),
+            'decision': {
+                'recommendedChoice': '같은 품목 추가 주문을 바로 밀지 말고, 소모 속도·다음 실험·동반 소모품을 확인해 확장 후보를 찾습니다.',
+                'rejectedChoice': '재고가 충분한 품목을 즉시 업셀하거나 추가 주문을 요구하는 접근은 버립니다.',
+                'reason': '재고 여유 신호가 있으면 현재 품목의 구매 압박은 낮으므로, 고객의 다음 사용 맥락을 찾아야 스케일업 대화가 자연스럽습니다.',
+                'exception': '고객이 재고 부족, 대형 실험, 공동 사용자 증가를 먼저 언급하면 같은 품목의 수량 확대 견적을 바로 제안할 수 있습니다.',
+            },
             'perspective': {
                 'customerPerspective': (
                     '고객 입장에서는 재고가 충분한 품목을 다시 제안받으면 당장 필요 없는 영업 제안으로 느낄 수 있습니다. '
@@ -11524,6 +11609,7 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
     ]
     evidence_items = data.get('evidence') or data.get('sourceNotes') or data.get('sources')
     evidence = _ai_workspace_question_evidence_payload(evidence_items, limit=10, value_limit=700)
+    decision = _ai_workspace_question_decision_payload(data, fallback.get('decision'))
     perspective = _ai_workspace_question_perspective_payload(data, fallback.get('perspective'))
 
     action_items = []
@@ -11576,6 +11662,8 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
         'actionItems': action_items or fallback.get('actionItems', []),
         'confidence': confidence,
     }
+    if decision:
+        result['decision'] = decision
     if perspective:
         result['perspective'] = perspective
     return result
@@ -11641,6 +11729,9 @@ def _ai_workspace_generate_department_question_answer(question, context):
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',
                 '단, CRM 근거가 있는 고객 심리/구매 의도 해석은 perspective.customerPerspective에 "고객 입장에서는", "가능성이 있습니다"처럼 추정임을 표시해 쓴다.',
                 '고객 마음을 단정하지 말고, CRM 사실과 추정을 분리한다.',
+                '질문이 "할까/말까", "A가 좋을까 B가 좋을까", "아니면", "굳이"처럼 선택지형이면 반드시 하나를 골라 decision.recommendedChoice에 쓴다.',
+                '선택지형 질문에서는 버릴 선택지를 decision.rejectedChoice에 쓰고, 왜 버리는지와 예외 조건을 각각 reason/exception에 쓴다.',
+                '선택지형 질문의 answer 첫 문장은 추천 선택을 먼저 말하고, CRM 브리핑으로 시작하지 않는다.',
                 '질문이 영업 판단을 요구하면 perspective에 고객 입장 추정, 영업 판단, 추천 접근, 실제 말문 예시, 주의점을 채운다.',
                 'answer는 2-4문장으로 결론과 우선순위 판단을 설명한다.',
                 '실행해야 할 작업이 있으면 actionItems에 최대 5개를 우선순위 순서로 넣는다.',
@@ -11654,6 +11745,8 @@ def _ai_workspace_generate_department_question_answer(question, context):
             'CRM 컨텍스트의 최신성, 완료/미완료 상태, 후속조치 우선순위를 판단한다. '
             '답변은 한국어로 쓰고, 단답형을 피한다. '
             '반드시 JSON으로 {"answer": string, "bullets": string[], '
+            '"decision": {"recommendedChoice": string, "rejectedChoice": string, '
+            '"reason": string, "exception": string}, '
             '"perspective": {"customerPerspective": string, "salesJudgment": string, '
             '"recommendedApproach": string, "talkTrack": string, "caution": string}, '
             '"actionItems": [{"rank": number, "title": string, "customer": string, "company": string, '
