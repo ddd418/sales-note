@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 AI Workspace email CRM context fix plan
+
+**Background**:
+
+- User reported that `/ai-workspace/?department_id=146` does not use email history even when explicitly asked to reference mail.
+- Current AI Workspace action queue can surface `email_waiting`, but department/all-scope question context does not include recent `EmailLog` subjects or bodies.
+- AI answers must be able to reference mail as part of CRM evidence, while still staying inside the authenticated user's CRM scope.
+
+**DB change required**: No.
+
+- Reuse existing `EmailLog` links to `FollowUp` and `Schedule`.
+- No model or migration changes.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a scoped recent-email context payload for AI Workspace questions.
+  - Include sent/received date, subject, body excerpt, contact, customer/company/department, thread link, and attachment filenames.
+  - Add `recentEmails` to both selected-department and all-department question contexts.
+  - Update prompt rules so explicit mail/email requests must use `crmContext.recentEmails` or state that no matching email exists.
+  - Return `recentEmailCount` in the question response context for verification/debugging.
+- Tests:
+  - Add focused tests proving department-scope question prompts include recent email body/subject.
+  - Add a fallback test proving explicit mail questions can answer from recent email context when OpenAI is unavailable.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused AI Workspace email-context tests.
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+**Current status**:
+
+- Implemented and locally verified. Ready for commit, push, and Railway backend deployment.
+
 ## 2026-05-18 CRM global benchmark gap analysis plan
 
 **Background**:

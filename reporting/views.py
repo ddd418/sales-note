@@ -11312,6 +11312,10 @@ def _ai_workspace_question_context_text(*collections, limit=6):
         'notes',
         'recommendedAction',
         'title',
+        'subject',
+        'body',
+        'preview',
+        'directionLabel',
     )
     for collection in collections:
         for item in _ai_json_list(collection)[:limit]:
@@ -11335,6 +11339,96 @@ def _ai_workspace_question_latest_delivery(deliveries):
         return None
     past_or_today = [item for item in payloads if item['date'] <= today_label]
     return (past_or_today or payloads)[0]
+
+
+def _ai_workspace_email_happened_at(email):
+    return email.received_at or email.sent_at or email.created_at
+
+
+def _ai_workspace_email_followup(email):
+    if email.followup_id:
+        return email.followup
+    if email.schedule_id and getattr(email.schedule, 'followup_id', None):
+        return email.schedule.followup
+    return None
+
+
+def _ai_workspace_email_context_payload(email):
+    try:
+        from reporting.gmail_views import _email_body_text, _email_text_preview, _email_thread_identifier
+        body_text = _email_body_text(email, limit=1600)
+        preview = _email_text_preview(email, limit=220)
+        thread_id = _email_thread_identifier(email)
+    except Exception:
+        body_text = email.body or email.body_html or ''
+        preview = body_text[:220]
+        thread_id = email.gmail_thread_id or email.thread_id or email.gmail_message_id or email.message_id or str(email.id)
+
+    followup = _ai_workspace_email_followup(email)
+    happened_at = _ai_workspace_email_happened_at(email)
+    attachments = []
+    for attachment in (email.attachments_info or [])[:4]:
+        if isinstance(attachment, dict) and attachment.get('filename'):
+            attachments.append(_ai_workspace_question_text(attachment.get('filename'), 120))
+
+    direction_label = '보낸 메일' if email.email_type == 'sent' else '받은 메일'
+    contact = (
+        email.recipient_name or email.to_name or email.recipient_email or email.to_email
+        if email.email_type == 'sent'
+        else email.from_name or email.sender_email or email.from_email
+    )
+    return {
+        'id': email.id,
+        'type': email.email_type,
+        'directionLabel': direction_label,
+        'date': happened_at.isoformat() if happened_at else None,
+        'subject': _ai_workspace_question_text(email.subject, 220),
+        'contact': _ai_workspace_question_text(contact, 160),
+        'sender': _ai_workspace_question_text(email.sender_email or email.from_email, 160),
+        'recipient': _ai_workspace_question_text(email.recipient_email or email.to_email, 160),
+        'cc': _ai_workspace_question_text(email.cc_emails, 220),
+        'preview': _ai_workspace_question_text(preview, 260),
+        'body': _ai_workspace_question_text(body_text, 1600),
+        'customer': _ai_workspace_question_text(followup.customer_name if followup else '', 120),
+        'company': _ai_workspace_question_text(followup.company.name if followup and followup.company else '', 120),
+        'department': _ai_workspace_question_text(followup.department.name if followup and followup.department else '', 120),
+        'threadHref': f'/mailbox/thread/{thread_id}/' if thread_id else '',
+        'attachments': [item for item in attachments if item],
+    }
+
+
+def _ai_workspace_recent_email_context(user, followup_ids=None, department_id=None, limit=10):
+    followup_ids = [item for item in (followup_ids or []) if item]
+    owned_q = Q(user=user) | Q(sender=user) | Q(followup__user=user) | Q(schedule__user=user)
+    queryset = EmailLog.objects.filter(owned_q, is_trashed=False)
+
+    if followup_ids:
+        queryset = queryset.filter(
+            Q(followup_id__in=followup_ids) |
+            Q(schedule__followup_id__in=followup_ids)
+        )
+    elif department_id:
+        queryset = queryset.filter(
+            Q(followup__department_id=department_id) |
+            Q(schedule__followup__department_id=department_id)
+        )
+
+    emails = list(
+        queryset.select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+            'schedule',
+            'schedule__followup',
+            'schedule__followup__company',
+            'schedule__followup__department',
+        ).distinct().order_by('-received_at', '-sent_at', '-created_at')[:max(limit * 3, limit)]
+    )
+    emails.sort(key=lambda email: _ai_workspace_email_happened_at(email), reverse=True)
+    return [
+        _ai_workspace_email_context_payload(email)
+        for email in emails[:limit]
+    ]
 
 
 def _ai_workspace_department_question_context(department, user):
@@ -11434,6 +11528,7 @@ def _ai_workspace_department_question_context(department, user):
             for item in quotes[:8]
         ],
         'recentNotes': recent_histories,
+        'recentEmails': _ai_workspace_recent_email_context(user, followup_ids=followup_ids, department_id=department.id, limit=10),
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user, department_id=department.id),
         'recentSchedules': recent_schedules,
@@ -11692,6 +11787,7 @@ def _ai_workspace_global_question_context(user):
         'recentDeliveries': [],
         'recentQuotes': [],
         'recentNotes': recent_histories,
+        'recentEmails': _ai_workspace_recent_email_context(user, followup_ids=followup_ids, limit=16),
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user),
         'recentSchedules': recent_schedules,
@@ -11717,12 +11813,14 @@ def _ai_workspace_question_fallback(question, context):
     latest_delivery = context.get('lastDelivery')
     recent_feedbacks = context.get('recentFeedbacks') or []
     recent_notes = context.get('recentNotes') or []
+    recent_emails = context.get('recentEmails') or []
     recent_schedules = context.get('recentSchedules') or []
     recommended_actions = context.get('recommendedActions') or []
     open_followups = context.get('openFollowups') or []
     context_text = _ai_workspace_question_context_text(
         recent_feedbacks,
         recent_notes,
+        recent_emails,
         recent_schedules,
         recommended_actions,
         open_followups,
@@ -11749,6 +11847,75 @@ def _ai_workspace_question_fallback(question, context):
     asks_global_actions = scope_type == 'all' and any(
         keyword in normalized for keyword in ['찾아', '어디', '우선', '다음액션', '다음할일', '할만한', '챙길', '연락']
     )
+    asks_email_context = any(
+        keyword in normalized
+        for keyword in ['메일', '이메일', '회신', '답장', '인박스', '받은편지', '보낸메일', 'mail', 'email']
+    )
+
+    if asks_email_context:
+        if recent_emails:
+            latest_email = recent_emails[0]
+            email_evidence = []
+            for index, email_item in enumerate(recent_emails[:5], start=1):
+                subject = email_item.get('subject') or '제목 없음'
+                body = email_item.get('body') or email_item.get('preview') or ''
+                identity = ' · '.join(_ai_prompt_context(
+                    email_item.get('company'),
+                    email_item.get('department'),
+                    email_item.get('customer'),
+                ))
+                label = f"메일 {index}: {email_item.get('directionLabel') or email_item.get('type') or '메일'}"
+                value = ' / '.join(_ai_prompt_context(
+                    email_item.get('date'),
+                    identity,
+                    subject,
+                    body,
+                ))
+                email_evidence.append({'label': label, 'value': value})
+
+            latest_body = latest_email.get('body') or latest_email.get('preview') or ''
+            latest_subject = latest_email.get('subject') or '제목 없음'
+            latest_direction = latest_email.get('directionLabel') or '메일'
+            if latest_email.get('type') == 'received':
+                next_step = '고객이 보낸 메일 내용을 기준으로 필요한 자료, 견적 조건, 일정 확인 항목을 바로 정리해 회신합니다.'
+            else:
+                next_step = '우리가 보낸 메일 이후 고객 회신이 있는지 확인하고, 없으면 짧은 리마인드나 전화 확인으로 이어갑니다.'
+            return {
+                'summary': (
+                    f"메일 기록을 보면 최근 {latest_direction} '{latest_subject}'에서 "
+                    f"{_ai_workspace_question_text(latest_body, 260) or '본문 요약은 비어 있습니다'} 내용이 확인됩니다. "
+                    f"따라서 이 질문은 메일 맥락을 우선 근거로 보고, {next_step}"
+                ),
+                'bullets': [
+                    f"최근 메일: {latest_email.get('date') or '날짜 없음'} · {latest_direction} · {latest_subject}",
+                    f"연결 고객: {' · '.join(_ai_prompt_context(latest_email.get('company'), latest_email.get('department'), latest_email.get('customer'))) or '고객 연결 없음'}",
+                    f"메일 근거 수: {len(recent_emails)}건",
+                ],
+                'evidence': _ai_workspace_question_evidence_payload(email_evidence, limit=5, value_limit=700),
+                'actionItems': _ai_workspace_question_action_items_from_candidates(recommended_actions or open_followups, limit=3),
+                'perspective': {
+                    'customerPerspective': '고객 입장에서는 최근 메일에 적은 요청이나 회신 내용을 기준으로 다음 대응을 기대할 가능성이 큽니다.',
+                    'salesJudgment': '영업 판단상 최신 노트보다 명시적인 메일 본문이 있으면 메일 내용을 우선 근거로 삼아야 합니다.',
+                    'recommendedApproach': next_step,
+                    'talkTrack': '메일로 남겨주신 내용 기준으로 먼저 확인했습니다. 필요한 조건만 정리해서 바로 이어서 안내드리겠습니다.',
+                    'caution': '메일에 없는 구매 의도나 확정 일정을 단정하지 말고, 본문에 남은 요청과 회신 상태만 근거로 삼습니다.',
+                },
+                'confidence': 'medium',
+            }
+        return {
+            'summary': (
+                f"{scope_label} 기준으로 접근 가능한 최근 메일 기록을 찾지 못했습니다. "
+                '메일을 참고해야 하는 질문이라면 고객 메일이 해당 고객/일정에 연결되어 있는지, 또는 메일 동기화가 완료됐는지 먼저 확인해야 합니다.'
+            ),
+            'bullets': [
+                '최근 메일 근거: 0건',
+                '고객/일정에 연결되지 않은 메일은 AI 질문 컨텍스트에 들어오지 않을 수 있습니다.',
+                '메일함에서 해당 스레드를 고객 또는 일정과 연결한 뒤 다시 질문하면 더 정확합니다.',
+            ],
+            'evidence': [{'label': '메일 기록', 'value': '접근 가능한 연결 메일 없음'}],
+            'actionItems': [],
+            'confidence': 'low',
+        }
 
     if asks_requote_sample_feedback:
         has_prior_feedback = any(
@@ -12246,6 +12413,9 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
             'rules': [
                 '제공된 crmContext에 있는 사실만 사용한다.',
                 'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
+                'crmContext.recentEmails는 CRM에 연결된 최근 메일 이력이다. 메일/이메일/회신/답장을 참고하라는 질문에서는 recentEmails의 subject, body, directionLabel, date를 우선 근거로 사용한다.',
+                'recentEmails가 있는데 "메일 기록을 볼 수 없다"고 답하지 않는다. recentEmails가 비어 있을 때만 연결된 메일 기록이 없다고 말한다.',
+                '메일은 보낸 메일과 받은 메일을 구분하고, 본문에 없는 구매 의도/확정 일정/회신 여부를 추측하지 않는다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
                 'crmContext.productFacts는 제품 코드별 제품 마스터 설명/규격/단위다. 제품 코드의 품목 성격은 productFacts와 CRM 품목 메모를 우선 근거로 삼는다.',
@@ -12969,6 +13139,7 @@ def ai_workspace_department_question_api(request):
             'summary': context.get('summary') or {},
             'lastDelivery': context.get('lastDelivery'),
             'recommendedActionCount': len(context.get('recommendedActions') or []),
+            'recentEmailCount': len(context.get('recentEmails') or []),
             'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
             'questionFeedbackCount': len(context.get('questionFeedbacks') or []),
         },

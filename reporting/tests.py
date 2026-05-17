@@ -7987,6 +7987,127 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('P4345N00', context['recentDeliveries'][0]['items'])
         self.assertIn('Low Retention Paradigm Refills', context['recentDeliveries'][0]['items'])
 
+    def test_ai_workspace_question_context_includes_recent_email_history(self):
+        from reporting.models import EmailLog
+        from reporting.views import _ai_workspace_department_question_context
+
+        followup, department = self._create_customer(self.user, '메일컨텍스트')
+        EmailLog.objects.create(
+            user=self.user,
+            followup=followup,
+            email_type='received',
+            status='received',
+            from_email='customer@example.com',
+            sender_email='customer@example.com',
+            to_email='sales@example.com',
+            recipient_email='sales@example.com',
+            subject='샘플 사용 후 추가 견적 요청',
+            body='메일 본문: 고객이 팁 샘플은 괜찮고 다음 견적에 10박스를 포함해 달라고 요청했습니다.',
+            received_at=timezone.now(),
+        )
+
+        context = _ai_workspace_department_question_context(department, self.user)
+
+        self.assertEqual(len(context['recentEmails']), 1)
+        self.assertEqual(context['recentEmails'][0]['directionLabel'], '받은 메일')
+        self.assertIn('추가 견적 요청', context['recentEmails'][0]['subject'])
+        self.assertIn('10박스', context['recentEmails'][0]['body'])
+        self.assertEqual(context['recentEmails'][0]['customer'], followup.customer_name)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_department_question_fallback_uses_recent_email_when_requested(self, _mock_client):
+        from reporting.models import EmailLog
+
+        followup, department = self._create_customer(self.user, '메일질문')
+        EmailLog.objects.create(
+            user=self.user,
+            followup=followup,
+            email_type='received',
+            status='received',
+            from_email='customer@example.com',
+            sender_email='customer@example.com',
+            to_email='sales@example.com',
+            recipient_email='sales@example.com',
+            subject='견적서 회신',
+            body='메일 본문: 고객이 ResinTech 수지 납기와 견적 유효기간을 다시 확인해 달라고 했습니다.',
+            received_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '메일 참고해서 다음 액션을 알려줘',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['context']['recentEmailCount'], 1)
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        self.assertIn('견적서 회신', answer_text)
+        self.assertIn('납기', answer_text)
+        evidence_text = ' '.join(item['value'] for item in payload['answer']['evidence'])
+        self.assertIn('ResinTech 수지', evidence_text)
+
+    @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_department_question_prompt_includes_recent_email_history(self, mock_client):
+        from types import SimpleNamespace
+        from reporting.models import EmailLog
+
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                content = json.dumps({
+                    'answer': '최근 메일 기준으로 납기와 견적 유효기간 회신이 우선입니다.',
+                    'bullets': ['메일 본문을 근거로 회신합니다.'],
+                    'evidence': [{'label': '메일', 'value': '납기 확인 요청'}],
+                    'confidence': 'high',
+                })
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+        mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+        followup, department = self._create_customer(self.user, '메일프롬프트')
+        EmailLog.objects.create(
+            user=self.user,
+            followup=followup,
+            email_type='received',
+            status='received',
+            from_email='customer@example.com',
+            sender_email='customer@example.com',
+            to_email='sales@example.com',
+            recipient_email='sales@example.com',
+            subject='AI가 반드시 봐야 하는 메일',
+            body='메일 본문: 고객이 교정 성적서와 납품 가능일을 먼저 알려달라고 했습니다.',
+            received_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '메일 참고해서 어떻게 답할지 알려줘',
+                'model': 'gpt-5.4-mini',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['source'], 'openai')
+        prompt_payload = json.loads(captured['messages'][1]['content'])
+        self.assertEqual(len(prompt_payload['crmContext']['recentEmails']), 1)
+        self.assertIn('반드시 봐야 하는 메일', prompt_payload['crmContext']['recentEmails'][0]['subject'])
+        self.assertIn('교정 성적서', prompt_payload['crmContext']['recentEmails'][0]['body'])
+        rules_text = '\n'.join(prompt_payload['rules'])
+        self.assertIn('crmContext.recentEmails', rules_text)
+        self.assertIn('메일/이메일/회신/답장', rules_text)
+
     def test_ai_workspace_department_question_product_guard_replaces_unsupported_label(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 

@@ -1,5 +1,76 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — AI Workspace Email CRM Context Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+AI Workspace 부서/전체 질문 컨텍스트에 최근 메일 이력을 추가했습니다. 이제 사용자가 “메일 참고”를 명령하면 `EmailLog`의 제목, 본문, 수발신 방향, 날짜, 연결 고객/부서, 첨부 파일명을 근거로 답변할 수 있습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI Workspace 질문 컨텍스트에 `recentEmails` 추가, 메일 질문 fallback 및 프롬프트 규칙 추가.
+- `reporting/tests.py`: 메일 컨텍스트 포함, fallback 메일 답변, OpenAI 프롬프트 payload 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- AI 질문 컨텍스트가 영업노트/일정/견적/납품/피드백에 더해 메일까지 포함합니다.
+- 부서 범위와 전체 부서 범위 모두 최근 메일 이력을 볼 수 있습니다.
+- 질문 응답 context에 `recentEmailCount`를 추가해 메일 근거 포함 여부를 확인할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 AI Workspace 질문, 기록, 삭제, 모델 선택, product fact guard, 전체 부서 질문 흐름을 유지했습니다.
+- `/reporting/*` 라우트와 로그인/AI 권한 체크를 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_recent_email_history reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_fallback_uses_recent_email_when_requested reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_includes_recent_email_history --verbosity=2
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 68 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- AI가 참조하는 메일은 현재 사용자에게 접근 권한이 있고 고객 또는 일정에 연결된 `EmailLog` 기준입니다.
+- 고객/일정에 연결되지 않은 독립 메일은 안전한 CRM 스코프를 확정하기 어려워 질문 컨텍스트에 넣지 않습니다.
+
+### 운영 배포 상태
+
+- Pending commit/push/deploy.
+
+### 권장 다음 작업
+
+운영에서 department_id=146으로 “메일 참고해서…” 질문을 실행해 최근 메일 제목/본문이 답변 근거에 반영되는지 확인합니다. 이후 중단했던 고객 보유 장비 + 서비스/교정 v1 작업을 재개합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=146`에 접속합니다.
+2. 질문에 `메일 참고해서 이 부서 다음 액션 알려줘`처럼 입력합니다.
+3. 답변의 근거/evidence 또는 본문에 최근 메일 제목, 수발신 방향, 본문 요지가 포함되는지 확인합니다.
+4. 메일 기록이 없다면 “연결된 메일 기록 없음”으로 답하는지 확인합니다.
+5. 기존 부서 질문 기록 저장/상세/삭제가 그대로 동작하는지 확인합니다.
+
+---
+
 ## 2026-05-17 — AI Workspace Product-Code Grounding Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
