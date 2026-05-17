@@ -2,7 +2,7 @@
 
 ## 2026-05-17 — Customers API 500 Hotfix
 
-**상태**: 구현/로컬 검증 완료, 커밋/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -45,12 +45,31 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: repair customers schedule payload"
+git push origin main
+→ pushed 6026cf4 to origin/main
+
+railway deployment list --service web --limit 5 --json
+→ fbf7f011-28fb-4436-a205-edb47d6b4112 SUCCESS, commit 6026cf4
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/
+→ 200
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/customers/
+→ 401 login_required JSON, anonymous access remains protected
+
+railway logs --service web --tail 80
+→ latest deployment boot/migration OK, no new customers API NameError in latest logs
+
+railway run --service web --environment production -- python manage.py shell ...
+→ Not usable from local machine because DATABASE_URL points to Railway internal hostname `postgres.railway.internal`
 ```
 
 ### 알려진 제한
 
-- 운영 smoke는 Railway `web` 배포 후 로그인 보호와 프론트 proxy 기준으로 추가 확인해야 합니다.
 - 실제 로그인 세션의 고객 데이터 payload 200 확인은 사용자 운영 계정에서 수동 검수가 필요합니다.
+- Railway internal PostgreSQL hostname은 로컬에서 resolve되지 않아 `railway run` 기반 운영 DB read-only smoke는 수행하지 못했습니다.
 
 ### 추천 다음 작업
 
@@ -58,7 +77,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전. 커밋/푸시 후 Railway `web` 배포 예정.
+- Runtime commit: `6026cf4 fix: repair customers schedule payload`
+- Railway `web`: `fbf7f011-28fb-4436-a205-edb47d6b4112` SUCCESS
+- Railway `sales-note-frontend`: 변경 없음, 기존 프론트가 백엔드 proxy를 통해 수정된 API를 사용
+- Production smoke: `/customers/` 200, anonymous `/reporting/api/customers/` 401 login_required, latest `web` logs clean
 
 ### 사용자 수동 테스트 절차
 

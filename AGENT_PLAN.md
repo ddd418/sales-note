@@ -34,7 +34,10 @@
 - `_customers_schedule_payload()`가 `schedule.followup_id`로 보고 작성 링크를 생성하도록 수정 완료.
 - 고객 API 일정 snapshot 테스트에 React 보고 링크와 Django 보고 생성 링크 검증 추가 완료.
 - `CustomersSummaryApiTests` 22건, Django check, migration dry-run, diff check 통과.
-- 커밋/푸시 및 Railway `web` 배포 대기.
+- 커밋/푸시 완료: `6026cf4 fix: repair customers schedule payload`.
+- Railway `web` 배포 완료: `fbf7f011-28fb-4436-a205-edb47d6b4112` SUCCESS.
+- 운영 smoke 완료: `/customers/` 200, anonymous `/reporting/api/customers/` 401 login_required, latest `web` logs clean.
+- 사용자 운영 계정 수동검수 대기.
 
 ---
 
