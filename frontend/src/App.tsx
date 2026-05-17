@@ -146,6 +146,7 @@ import {
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
   deleteNoteReply,
+  deleteAIWorkspaceQuestionLog,
   deleteSchedule,
   deleteScheduleFile,
   deleteGeneratedDocument,
@@ -12722,9 +12723,13 @@ function AIWorkspaceDepartmentActionSummary({ data }: { data: AIWorkspaceData })
 function AIWorkspaceDepartmentQuestionPanel({
   data,
   departmentId,
+  deletingHistoryId,
+  deleteHistoryError,
+  deleteHistoryMessage,
   error,
   loading,
   model,
+  onDeleteHistory,
   onHistoryPageChange,
   onModelChange,
   onQuestionChange,
@@ -12734,9 +12739,13 @@ function AIWorkspaceDepartmentQuestionPanel({
 }: {
   data: AIWorkspaceData;
   departmentId: number | null;
+  deletingHistoryId: number | null;
+  deleteHistoryError: string;
+  deleteHistoryMessage: string;
   error: string;
   loading: boolean;
   model: AIWorkspaceQuestionModel | string;
+  onDeleteHistory: (item: AIWorkspaceQuestionLog) => void;
   onHistoryPageChange: (page: number) => void;
   onModelChange: (value: AIWorkspaceQuestionModel | string) => void;
   onQuestionChange: (value: string) => void;
@@ -12943,21 +12952,39 @@ function AIWorkspaceDepartmentQuestionPanel({
           <strong>질문/답변 기록</strong>
           <span>{formatNumber(history.total)}건</span>
         </div>
+        {deleteHistoryMessage ? <div className="ai-question-history-message success">{deleteHistoryMessage}</div> : null}
+        {deleteHistoryError ? <div className="ai-question-history-message error">{deleteHistoryError}</div> : null}
         {history.items.length > 0 ? (
           <div className="ai-question-history-list">
             {history.items.map((item) => (
-              <a className="ai-question-history-card" href={`/ai-workspace/questions/${item.id}/`} key={item.id}>
-                <div className="ai-question-history-meta">
-                  <span>{formatDateLabel(item.createdAt || '')}</span>
-                  {item.modelLabel ? <small>{item.modelLabel}</small> : null}
-                  <MoveUpRight size={13} />
-                </div>
-                <strong>{item.question}</strong>
-                <p>{item.answerSummary}</p>
-                {item.decision?.recommendedChoice ? (
-                  <em>{item.decision.recommendedChoice}</em>
-                ) : null}
-              </a>
+              <article className="ai-question-history-card" key={item.id}>
+                <a className="ai-question-history-main" href={`/ai-workspace/questions/${item.id}/`}>
+                  <div className="ai-question-history-meta">
+                    <span>{formatDateLabel(item.createdAt || '')}</span>
+                    {item.modelLabel ? <small>{item.modelLabel}</small> : null}
+                    <MoveUpRight size={13} />
+                  </div>
+                  <strong>{item.question}</strong>
+                  <p>{item.answerSummary}</p>
+                  {item.decision?.recommendedChoice ? (
+                    <em>{item.decision.recommendedChoice}</em>
+                  ) : null}
+                </a>
+                <button
+                  aria-label="질문/답변 기록 삭제"
+                  className="ai-question-history-delete"
+                  disabled={deletingHistoryId === item.id}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onDeleteHistory(item);
+                  }}
+                  title="삭제"
+                  type="button"
+                >
+                  {deletingHistoryId === item.id ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
+                </button>
+              </article>
             ))}
           </div>
         ) : (
@@ -13463,12 +13490,17 @@ function AIWorkspacePage({
   const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
   const [departmentQuestionError, setDepartmentQuestionError] = useState('');
   const [questionHistoryPage, setQuestionHistoryPage] = useState(1);
+  const [deletingQuestionLogId, setDeletingQuestionLogId] = useState<number | null>(null);
+  const [deleteQuestionLogMessage, setDeleteQuestionLogMessage] = useState('');
+  const [deleteQuestionLogError, setDeleteQuestionLogError] = useState('');
   const activeDepartmentId = data?.featuredDepartment?.departmentId ?? selectedDepartmentId ?? data?.selectedDepartmentId ?? null;
 
   useEffect(() => {
     setDepartmentQuestionResult(null);
     setDepartmentQuestionError('');
     setQuestionHistoryPage(1);
+    setDeleteQuestionLogMessage('');
+    setDeleteQuestionLogError('');
   }, [activeDepartmentId]);
 
   useEffect(() => {
@@ -13597,6 +13629,34 @@ function AIWorkspacePage({
     await onRefresh({ departmentId: activeDepartmentId, questionPage: page });
   };
 
+  const handleDeleteQuestionHistory = async (item: AIWorkspaceQuestionLog) => {
+    if (deletingQuestionLogId) {
+      return;
+    }
+    const confirmed = window.confirm('이 질문/답변 기록을 삭제할까요? 삭제 후에는 복구할 수 없습니다.');
+    if (!confirmed) {
+      return;
+    }
+    setDeletingQuestionLogId(item.id);
+    setDeleteQuestionLogMessage('');
+    setDeleteQuestionLogError('');
+    try {
+      const result = await deleteAIWorkspaceQuestionLog(item.id);
+      const currentHistory = data?.questionHistory;
+      const currentPage = currentHistory?.page ?? questionHistoryPage;
+      const nextPage = currentHistory && currentHistory.items.length <= 1 && currentPage > 1
+        ? currentPage - 1
+        : currentPage;
+      setQuestionHistoryPage(nextPage);
+      await onRefresh({ departmentId: activeDepartmentId, questionPage: nextPage });
+      setDeleteQuestionLogMessage(result.message || '질문/답변 기록을 삭제했습니다.');
+    } catch (error) {
+      setDeleteQuestionLogError(error instanceof Error ? error.message : '질문/답변 기록 삭제에 실패했습니다.');
+    } finally {
+      setDeletingQuestionLogId(null);
+    }
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -13673,9 +13733,13 @@ function AIWorkspacePage({
             <AIWorkspaceDepartmentQuestionPanel
               data={data}
               departmentId={activeDepartmentId}
+              deletingHistoryId={deletingQuestionLogId}
+              deleteHistoryError={deleteQuestionLogError}
+              deleteHistoryMessage={deleteQuestionLogMessage}
               error={departmentQuestionError}
               loading={departmentQuestionLoading}
               model={departmentQuestionModel}
+              onDeleteHistory={handleDeleteQuestionHistory}
               onHistoryPageChange={handleQuestionHistoryPageChange}
               onModelChange={setDepartmentQuestionModel}
               onQuestionChange={setDepartmentQuestion}

@@ -12823,6 +12823,49 @@ def ai_workspace_question_log_detail_api(request, question_log_id):
 
 @never_cache
 @require_POST
+def ai_workspace_question_log_delete_api(request, question_log_id):
+    """Delete one AI Workspace question/answer history item owned by the current user."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    question_log = AIWorkspaceQuestionLog.objects.filter(
+        id=question_log_id,
+        user=request.user,
+    ).select_related(
+        'department',
+    ).first()
+    if not question_log:
+        return JsonResponse({
+            'success': False,
+            'error': 'question_log_not_found',
+            'message': '질문/답변 기록을 찾을 수 없습니다.',
+        }, status=404)
+
+    deleted_id = question_log.id
+    ai_workspace_link = _ai_workspace_question_log_detail_link(question_log)
+    question_log.delete()
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'deletedId': deleted_id,
+        'message': '질문/답변 기록을 삭제했습니다.',
+        'links': {
+            'aiWorkspace': ai_workspace_link,
+        },
+    })
+
+
+@never_cache
+@require_POST
 def ai_workspace_department_question_api(request):
     """Answer a user question using accessible department or all-department CRM context."""
     auth_response = _api_login_required_response(request)

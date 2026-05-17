@@ -2898,6 +2898,17 @@ export type AIWorkspaceQuestionLogDetailData = {
   message?: string;
 };
 
+export type AIWorkspaceQuestionLogDeleteResponse = {
+  success?: boolean;
+  source: 'django';
+  deletedId: number;
+  message?: string;
+  links?: {
+    aiWorkspace?: string;
+  };
+  error?: string;
+};
+
 export type WeeklyReportUser = {
   id: number;
   name: string;
@@ -6822,6 +6833,29 @@ export async function loadAIWorkspaceQuestionLogDetailData(questionLogId: number
       error: error instanceof Error ? error.message : 'AI question detail unavailable',
     };
   }
+}
+
+export async function deleteAIWorkspaceQuestionLog(questionLogId: number): Promise<AIWorkspaceQuestionLogDeleteResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(`/reporting/api/ai-workspace/questions/${questionLogId}/delete/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI question history delete API unavailable: ${response.status}`);
+  }
+  const payload = (await response.json()) as AIWorkspaceQuestionLogDeleteResponse;
+  redirectIfLoginRequired(response, payload);
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || payload.message || `AI question history delete failed: ${response.status}`);
+  }
+  return payload;
 }
 
 export async function generateAIWorkspaceActionDraft(

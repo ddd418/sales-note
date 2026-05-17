@@ -8169,6 +8169,69 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()['error'], 'question_log_not_found')
 
+    def test_ai_workspace_question_log_delete_api_deletes_owner_log(self):
+        from reporting.models import AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.user, '질문삭제')
+        log = AIWorkspaceQuestionLog.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            question='삭제할 질문',
+            answer_snapshot={'summary': '삭제할 답변'},
+            source='fallback',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:ai_workspace_question_log_delete_api', args=[log.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['deletedId'], log.id)
+        self.assertIn(f'department_id={department.id}', payload['links']['aiWorkspace'])
+        self.assertFalse(AIWorkspaceQuestionLog.objects.filter(id=log.id).exists())
+
+    def test_ai_workspace_question_log_delete_api_blocks_other_users_log(self):
+        from reporting.models import AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.coworker, '질문삭제동료')
+        log = AIWorkspaceQuestionLog.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            question='동료 삭제 시도',
+            answer_snapshot={'summary': '동료 답변'},
+            source='fallback',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:ai_workspace_question_log_delete_api', args=[log.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['error'], 'question_log_not_found')
+        self.assertTrue(AIWorkspaceQuestionLog.objects.filter(id=log.id).exists())
+
+    def test_ai_workspace_question_log_delete_api_requires_ai_permission(self):
+        from reporting.models import AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.no_ai_user, '질문삭제권한없음')
+        log = AIWorkspaceQuestionLog.objects.create(
+            user=self.no_ai_user,
+            department=department,
+            scope_type='department',
+            question='권한 없는 사용자 기록',
+            answer_snapshot={'summary': '권한 없는 사용자 답변'},
+            source='fallback',
+        )
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.post(reverse('reporting:ai_workspace_question_log_delete_api', args=[log.id]))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+        self.assertTrue(AIWorkspaceQuestionLog.objects.filter(id=log.id).exists())
+
     @patch('ai_chat.services.get_openai_client')
     def test_ai_workspace_department_question_uses_crm_strategy_system_prompt(self, mock_client):
         from types import SimpleNamespace

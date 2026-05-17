@@ -191,6 +191,7 @@ urlpatterns = [
     path('api/personal-schedules/<int:pk>/delete/', personal_schedule_views.personal_schedules_delete_api, name='personal_schedules_delete_api'),
     path('api/ai-workspace/', views.ai_workspace_summary_api, name='ai_workspace_summary_api'),
     path('api/ai-workspace/questions/<int:question_log_id>/', views.ai_workspace_question_log_detail_api, name='ai_workspace_question_log_detail_api'),
+    path('api/ai-workspace/questions/<int:question_log_id>/delete/', views.ai_workspace_question_log_delete_api, name='ai_workspace_question_log_delete_api'),
     path('api/ai-workspace/question/', views.ai_workspace_department_question_api, name='ai_workspace_question_api'),
     path('api/ai-workspace/department-question/', views.ai_workspace_department_question_api, name='ai_workspace_department_question_api'),
     path('api/ai-workspace/question/feedback/', views.ai_workspace_question_feedback_api, name='ai_workspace_question_feedback_api'),

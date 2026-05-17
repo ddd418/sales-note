@@ -5455,24 +5455,63 @@ h2 {
 }
 
 .ai-question-history-card {
+  position: relative;
   display: grid;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
+  align-items: start;
   min-width: 0;
-  padding: 10px;
+  padding: 10px 8px 10px 10px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
   background: #ffffff;
   color: inherit;
-  text-decoration: none;
   transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
 .ai-question-history-card:hover,
-.ai-question-history-card:focus-visible {
+.ai-question-history-card:focus-within {
   border-color: rgba(37, 99, 235, 0.42);
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
   outline: none;
   transform: translateY(-1px);
+}
+
+.ai-question-history-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.ai-question-history-main:focus-visible {
+  outline: none;
+}
+
+.ai-question-history-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  background: #fff7f7;
+  color: #dc2626;
+}
+
+.ai-question-history-delete:hover:not(:disabled),
+.ai-question-history-delete:focus-visible {
+  border-color: rgba(220, 38, 38, 0.38);
+  background: #fee2e2;
+  outline: none;
+}
+
+.ai-question-history-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .ai-question-history-meta {
@@ -5512,6 +5551,25 @@ h2 {
   font-weight: 900;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.ai-question-history-message {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-question-history-message.success {
+  border: 1px solid rgba(5, 150, 105, 0.22);
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.ai-question-history-message.error {
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  background: #fff7f7;
+  color: #b91c1c;
 }
 
 .ai-question-history-pagination button {

@@ -19907,3 +19907,95 @@ git diff --check
 6. 화면에 `질문` 섹션과 `답변` 섹션이 각각 보이는지 확인합니다.
 7. `답변`에서 목록 요약이 아니라 본문, 핵심 포인트, 추천 판단, 액션/근거가 함께 보이는지 확인합니다.
 8. `목록으로`를 눌렀을 때 해당 부서의 AI Workspace 목록으로 돌아오는지 확인합니다.
+
+---
+
+## 2026-05-17 AI Workspace question history delete
+
+### 1. Summary
+
+- AI Workspace `질문/답변 기록` 리스트에 개별 삭제 기능을 추가했습니다.
+- 삭제 API는 로그인, AI 사용 권한, 현재 사용자 소유 기록을 모두 확인합니다.
+- React 리스트 카드에는 상세 링크와 분리된 삭제 아이콘 버튼, 확인창, 삭제 중 상태, 성공/실패 메시지를 추가했습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- 잘못 생성했거나 더 이상 필요 없는 AI 질문/답변 기록을 사용자가 직접 정리할 수 있습니다.
+- 기록 상세 이동은 유지하면서 삭제 버튼은 별도 액션으로 분리해 오작동을 줄였습니다.
+- 다른 사용자의 질문 기록은 삭제 시도해도 404로 처리되어 내부 CRM 데이터 경계를 유지합니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 질문 실행, GPT-5.5 / GPT-5.4 mini 선택, 질문/답변 기록 상세 페이지, 페이지네이션은 유지했습니다.
+- `/reporting/*` 라우트와 기존 AI Workspace API 흐름은 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_log_delete_api_deletes_owner_log reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_log_delete_api_blocks_other_users_log reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_log_delete_api_requires_ai_permission --verbosity=1
+→ Ran 3 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-TsEkeiYd.js / dist/assets/index-B9_wxif7.css generated
+→ Vite chunk-size warning only
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 63 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local Playwright smoke
+→ Mocked `/ai-workspace/?department_id=10` with one question-history row.
+→ Confirmed the delete button rendered, accepted the confirmation dialog, posted to the delete API, refreshed the list, and showed `질문/답변 기록을 삭제했습니다.`
+→ Browser page errors 0.
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- 이번 변경은 hard delete입니다. 삭제한 질문/답변 기록은 복구할 수 없습니다.
+- 삭제 범위는 현재 사용자 소유 기록으로 제한했습니다. 관리자 일괄 정리 기능은 별도 작업입니다.
+
+### 7. Production Deployment Status
+
+- Pending. The user queued the next AI Workspace scope task, so this change will be deployed with the next runtime deployment unless explicitly separated.
+
+### 8. Recommended Next Task
+
+사용자가 이어서 요청한 `전체 부서 질문`을 추가합니다. 저장은 하는 편이 좋고, 기존 `AIWorkspaceQuestionLog`에 `scope_type='all'`, `department=NULL`로 저장하는 방식이 가장 단순하고 감사 추적에도 맞습니다.
+
+### 9. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10`에 접속합니다.
+2. `질문/답변 기록` 리스트에서 삭제할 기록의 휴지통 아이콘을 누릅니다.
+3. 확인창에서 취소하면 기록이 그대로 남는지 확인합니다.
+4. 다시 휴지통 아이콘을 누르고 확인을 선택합니다.
+5. 성공 메시지가 보이고 해당 기록이 목록에서 사라지는지 확인합니다.
+6. 남은 기록 카드를 클릭하면 기존처럼 `/ai-workspace/questions/<id>/` 상세 페이지로 이동하는지 확인합니다.

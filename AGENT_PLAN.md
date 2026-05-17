@@ -1,5 +1,44 @@
 # AGENT_PLAN.md
 
+## 2026-05-17 AI Workspace question history delete plan
+
+**Background**:
+
+- 운영 `/ai-workspace/?department_id=10` 수동 검수 후, 사용자가 질문/답변 기록 리스트에서 개별 기록 삭제 기능을 요청했다.
+- 현재 질문 기록은 `AIWorkspaceQuestionLog`에 저장되고, React 리스트 항목은 `/ai-workspace/questions/<id>/` 상세 링크로만 동작한다.
+
+**DB change required**: No.
+
+- 기존 `AIWorkspaceQuestionLog` row를 삭제한다.
+- 새 필드, migration, soft-delete 상태는 이번 범위에 추가하지 않는다.
+
+**Implementation scope**:
+
+- Backend:
+  - 현재 사용자 소유 + `can_use_ai` 권한을 확인하는 질문 로그 삭제 API를 추가한다.
+  - 다른 사용자 기록은 404로 차단한다.
+  - 삭제 성공 시 삭제된 기록 id와 돌아갈 AI Workspace 링크를 JSON으로 반환한다.
+- Frontend:
+  - 질문/답변 기록 리스트 카드에 아이콘 삭제 버튼을 추가한다.
+  - 삭제 버튼 클릭은 상세 링크 이동과 충돌하지 않도록 이벤트 전파를 막는다.
+  - 삭제 중 상태, confirm, 성공/실패 메시지, 삭제 후 현재 페이지 refresh를 처리한다.
+- Existing behavior:
+  - 질문 기록 상세 페이지, 질문 실행, 페이지네이션, 기존 AI 권한/로그인 보호는 유지한다.
+
+**Validation plan**:
+
+- 소유자 삭제 성공, 다른 사용자 기록 삭제 차단, AI 권한 없는 사용자 삭제 차단 테스트 추가.
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_log_delete_api_deletes_owner_log reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_log_delete_api_blocks_other_users_log reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_log_delete_api_requires_ai_permission --verbosity=1`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- Local browser smoke for AI Workspace question history delete UI.
+- `git diff --check`
+
 ## 2026-05-17 AI Workspace product-code grounding fix plan
 
 **Background**:
