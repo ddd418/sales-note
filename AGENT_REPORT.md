@@ -19985,7 +19985,20 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending. The user queued the next AI Workspace scope task, so this change will be deployed with the next runtime deployment unless explicitly separated.
+- Runtime commit: `cabfa48 feat: add AI question history deletion`
+- Deployed together with follow-up runtime commit `6f1171b feat: support all-department AI questions`.
+- GitHub: `main` pushed.
+- Railway `web`: `f94cd83a-be4a-4b46-8563-9a14a8efd287` SUCCESS.
+- Railway `sales-note-frontend`: `93fe69d6-d268-4abe-85da-50e47ae35ac3` SUCCESS.
+- DB migration: none.
+- Production smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10&question_scope=all` returned 200.
+  - Latest frontend JS: `assets/index-DvR-cyx0.js`.
+  - Latest JS contains `질문/답변 기록 삭제`.
+  - Anonymous `GET /reporting/api/ai-workspace/?question_scope=all` returned expected `401 login_required`.
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - Railway `web` logs show migrations no-op and gunicorn startup OK.
+  - Railway `sales-note-frontend` logs show frontend server listening and proxy setup OK.
 
 ### 8. Recommended Next Task
 
@@ -20077,7 +20090,20 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending. This section will be updated after the runtime deployment and production smoke checks.
+- Runtime commit: `6f1171b feat: support all-department AI questions`
+- GitHub: `main` pushed.
+- Railway `web`: `f94cd83a-be4a-4b46-8563-9a14a8efd287` SUCCESS.
+- Railway `sales-note-frontend`: `93fe69d6-d268-4abe-85da-50e47ae35ac3` SUCCESS.
+- DB migration: none.
+- Production smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10&question_scope=all` returned 200.
+  - Latest frontend JS: `assets/index-DvR-cyx0.js`.
+  - Latest JS contains `전체 부서`, `question_scope`, `GPT-5.4 mini`, and `질문/답변 기록 삭제`.
+  - Anonymous `GET /reporting/api/ai-workspace/?question_scope=all` returned expected `401 login_required`.
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - Railway service status shows `web`, `sales-note-frontend`, and `Postgres` online.
+  - Railway `web` logs show migrations no-op and gunicorn startup OK.
+  - Railway `sales-note-frontend` logs show frontend server listening and proxy setup OK.
 
 ### 8. Recommended Next Task
 
