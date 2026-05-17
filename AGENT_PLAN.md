@@ -32,6 +32,12 @@
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 
+**Current status**:
+
+- 구현, 로컬 검증, 커밋/푸시 완료: `2045f77 fix: ground AI product code labels`.
+- Railway `web` GitHub 자동 배포 완료: `f6bc2817-10a8-4291-8d69-64504029dc86` SUCCESS.
+- 운영 smoke 완료: backend login 200, AI Workspace API anonymous 401, logs startup OK.
+
 ## Current task — AI Workspace 질문 중심 단순화와 부서별 Q&A 기록
 
 **목표**: AI Workspace의 과도한 추천/분석 섹션을 화면에서 줄이고, 부서 선택 기반의 질문 흐름과 부서별 질문/답변 기록, 현재 답변 방향만 남겨 사용자가 판단에 집중할 수 있게 한다.

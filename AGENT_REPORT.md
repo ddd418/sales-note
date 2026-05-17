@@ -2,7 +2,7 @@
 
 ## 2026-05-17 — AI Workspace Product-Code Grounding Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 전
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -65,8 +65,15 @@ git diff --check
 
 - Runtime change: yes
 - DB migration: none
-- Commit/push: pending
-- Railway deployment: pending
+- Runtime commit: `2045f77 fix: ground AI product code labels`
+- GitHub: `main` pushed.
+- Railway `web`: GitHub 연동 자동 배포 `f6bc2817-10a8-4291-8d69-64504029dc86` SUCCESS, commit `2045f779f4ed32a0942b7ab7c2f1edcb1f02b6c0`.
+- Railway `sales-note-frontend`: 변경 없음, 배포 불필요.
+- CLI `railway up --service web --detach` 재시도 2건은 업로드 연결 오류 후 code snapshot 생성 실패로 FAILED 처리됨. 성공한 GitHub 자동 배포가 현재 적용 대상입니다.
+- Production smoke:
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - Anonymous `GET https://web-production-5096.up.railway.app/reporting/api/ai-workspace/` returned expected 401.
+  - Railway `web` logs show migrations no-op, gunicorn startup OK, and expected anonymous API unauthorized log only.
 
 ### 추천 다음 작업
 
