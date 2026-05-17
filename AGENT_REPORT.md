@@ -19714,3 +19714,106 @@ git diff --check
 4. `GPT-5.5`, `GPT-5.4 mini` 선택이 되는지 확인합니다.
 5. 질문을 실행하고 답변이 CRM 전략 판단 형식으로 나오는지 확인합니다.
 6. `질문/답변 기록`에 새 질문이 쌓이는지 확인합니다.
+
+---
+
+## 2026-05-17 AI Workspace question history detail page
+
+### 1. Summary
+
+- AI Workspace `질문/답변 기록` 항목을 클릭하면 `/ai-workspace/questions/<id>/` 상세 페이지로 이동하도록 했습니다.
+- 상세 페이지는 `질문` / `답변` 두 섹션 중심으로 풀 답변 내용을 보여줍니다.
+- 단일 질문 기록 상세 API를 추가했고, 현재 사용자 소유 기록만 조회되도록 막았습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- 목록에서는 짧은 요약을 유지하고, 클릭 후 상세에서 질문과 답변 전체 맥락을 확인할 수 있습니다.
+- 새 질문 기록은 기존 JSON 컬럼에 답변 본문, 핵심 포인트, 추천 판단, 고객/영업 관점, 추천 액션, 근거를 더 풍부하게 보존합니다.
+- 상세 API는 로그인/AI 권한/소유자 범위를 모두 확인해 내부 CRM 데이터 노출을 막습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 질문 실행, 질문/답변 기록 페이지네이션, GPT-5.5 / GPT-5.4 mini 선택은 유지했습니다.
+- `/reporting/*` 및 기존 AI Workspace summary/question/feedback API는 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 58 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, dist/assets/index-BdC8gRfc.js / dist/assets/index-Csr9mRK0.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local Playwright smoke
+→ Created a local question log and opened `/ai-workspace/?department_id=225`.
+→ Clicked the history item and landed on `/ai-workspace/questions/1/`.
+→ `질문`, `답변`, full answer body, and decision text rendered.
+→ Browser console errors 0, bad responses 0.
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- 기존에 이미 저장된 과거 질문 기록은 당시 저장된 `answer_snapshot` 범위 안에서만 상세 표시됩니다.
+- 새로 생성되는 질문 기록부터 더 풍부한 답변 스냅샷이 저장됩니다.
+
+### 7. Production Deployment Status
+
+- Runtime commit: `4a3847c feat: add AI question history detail page`
+- GitHub: `main` pushed.
+- Railway `web`: `6e9a93c8-b115-4d08-828e-d5f27b5e831a` SUCCESS.
+- Railway `sales-note-frontend`: `0007da38-9527-43d2-b057-4449cb1674e6` SUCCESS.
+- DB migration: none.
+- Production smoke:
+  - `GET https://sales-note-frontend-production.up.railway.app/ai-workspace/questions/1/` returned 200.
+  - Latest frontend JS: `assets/index-BdC8gRfc.js`.
+  - Latest JS contains `/ai-workspace/questions/`, `Question detail`, `질문`, `답변`, `질문/답변 기록`.
+  - Anonymous `GET /reporting/api/ai-workspace/questions/1/` returned expected `401 login_required`.
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - Railway `web` logs show migrations no-op and gunicorn startup OK.
+  - Railway `sales-note-frontend` logs show frontend server listening on 8080 and proxy setup OK.
+
+### 8. Recommended Next Task
+
+운영 수동 확인 후, 실제 답변 상세에서 추가로 필요한 표시 항목이 있으면 `추천 액션`, `근거`, `고객/영업 관점`의 표시 순서를 조정합니다.
+
+### 9. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 부서를 선택합니다.
+3. 질문을 하나 실행하거나 기존 `질문/답변 기록` 항목을 확인합니다.
+4. 기록 항목을 클릭합니다.
+5. `/ai-workspace/questions/<id>/` 상세 페이지로 이동하는지 확인합니다.
+6. 화면에 `질문` 섹션과 `답변` 섹션이 각각 보이는지 확인합니다.
+7. `답변`에서 목록 요약이 아니라 본문, 핵심 포인트, 추천 판단, 액션/근거가 함께 보이는지 확인합니다.
+8. `목록으로`를 눌렀을 때 해당 부서의 AI Workspace 목록으로 돌아오는지 확인합니다.
