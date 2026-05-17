@@ -4985,6 +4985,19 @@ h2 {
   font-weight: 900;
 }
 
+.ai-answer-direction-current {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.06);
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .ai-answer-direction-box textarea {
   width: 100%;
   min-width: 0;

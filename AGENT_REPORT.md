@@ -19496,3 +19496,114 @@ git diff --check
 3. `SO825.0002`, `SO320.336W` 행의 할인단가가 빈칸인지 확인합니다.
 4. 선결제를 선택하고 `전체 차감` 또는 직접 금액 입력 후 저장합니다.
 5. `납품 품목을 저장하고 ... 선결제를 차감했습니다.` 메시지가 표시되고 500 오류가 나오지 않는지 확인합니다.
+
+---
+
+## 2026-05-17 AI Workspace CRM strategy prompt and answer direction
+
+### 1. Summary
+
+- AI Workspace 부서 상황 질문에 기본 CRM 전략가 시스템 프롬프트를 적용했습니다.
+- 기존 JSON 응답 계약은 유지하면서 상황 진단, 가정, 전략 방향, 우선순위, KPI/테스트, 리스크 대응 기준이 답변에 반영되도록 했습니다.
+- `현재 답변 방향`은 저장값이 없어도 기본 방향을 명시하고, 사용자가 방향을 저장하면 기본 전략가 분석에 사용자 요청을 반영한 현재 방향을 별도로 표시합니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- 부서 질문 답변이 단순 Q&A가 아니라 CRM 전략 판단 형식으로 정리됩니다.
+- 사용자는 현재 적용 중인 답변 방향을 바로 확인할 수 있습니다.
+- 답변 방향 입력창은 사용자 조정 요청을 남기는 용도로 분리되어, 기본 방향과 저장된 조정 방향이 혼동되지 않습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 AI 추천 실행/피드백/목표 관련 backend 데이터/API는 유지했습니다.
+- `/reporting/*`, `/ai/*`, React `/ai-workspace/` 라우트와 권한 체크는 유지했습니다.
+- GPT-5.5 / GPT-5.4 mini 선택, 질문/답변 기록, 페이지네이션은 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 59 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, dist/assets/index-RCg0RTwK.js / dist/assets/index-cmX7v65Z.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local Playwright smoke
+→ Logged in with a local AI smoke user.
+→ /ai-workspace/?department_id=224 rendered the default current answer direction.
+→ Saving "고객 입장 추정과 추천 판단을 먼저 보여줘" updated the current direction statement.
+→ Browser console had 0 errors.
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. GPT-5.5 vs GPT-5.4 mini Cost Check
+
+Official OpenAI API pricing checked on 2026-05-17:
+
+| Model | Input / 1M | Cached input / 1M | Output / 1M |
+| --- | ---: | ---: | ---: |
+| GPT-5.5 | $5.00 | $0.50 | $30.00 |
+| GPT-5.4 mini | $0.75 | $0.075 | $4.50 |
+
+- Same-token workload 기준 GPT-5.5는 GPT-5.4 mini보다 input/output/cached input 모두 약 6.67배 비쌉니다.
+- AI Workspace 부서 질문은 기본값을 GPT-5.5로 유지하되, 일반 확인/짧은 질문은 GPT-5.4 mini를 선택하면 비용을 크게 줄일 수 있습니다.
+- OpenAI pricing source: https://openai.com/api/pricing/
+
+### 7. Known Limitations
+
+- `effectiveDirection`은 deterministic 문장 조합입니다. 별도 AI 요약 호출로 방향 문구를 재작성하지는 않습니다.
+- 기본 프롬프트가 길어져 GPT-5.5 사용 시 입력 토큰 비용이 소폭 증가합니다. 비용 민감한 질문은 GPT-5.4 mini 사용을 권장합니다.
+- 로컬 스모크를 위해 생성한 `ai_smoke_user`는 로컬 SQLite에만 존재합니다.
+
+### 8. Production Deployment Status
+
+- Runtime commit: pending
+- GitHub push: pending
+- Railway `web`: pending
+- Railway `sales-note-frontend`: pending
+- DB migration: none
+- Production smoke: pending
+
+### 9. Recommended Next Task
+
+1. 운영 수동 확인 후, 질문 답변 품질을 실제 부서 데이터 기준으로 3-5개 샘플 비교합니다.
+2. GPT-5.5와 GPT-5.4 mini의 실제 평균 토큰 사용량을 로그/응답 시간 기준으로 샘플링해 기본 모델 유지 여부를 결정합니다.
+3. 필요하면 답변 방향을 부서별 preset으로 확장합니다.
+
+### 10. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 부서를 선택합니다.
+3. `현재 답변 방향` 아래에 기본 방향 문장이 보이는지 확인합니다.
+4. 원하는 조정 방향을 입력하고 `방향 저장`을 누릅니다.
+5. 저장 후 현재 방향 문장에 사용자 요청이 반영되어 명시되는지 확인합니다.
+6. GPT-5.5 또는 GPT-5.4 mini를 선택해 질문을 실행하고 답변이 CRM 전략 판단 형식으로 나오는지 확인합니다.

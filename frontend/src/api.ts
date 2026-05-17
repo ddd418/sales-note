@@ -2688,6 +2688,7 @@ export type AIWorkspaceAnswerDirection = {
     company: string;
   } | null;
   direction: string;
+  effectiveDirection: string;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -4063,6 +4064,7 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     departmentId: null,
     department: null,
     direction: '',
+    effectiveDirection: '기본 방향: CRM 전략가 관점으로 상황 진단, 핵심 가정, 전략 방향, 우선순위 액션, KPI/테스트 계획, 리스크 대응을 한국어로 구체적으로 제안합니다.',
     createdAt: null,
     updatedAt: null,
   },
@@ -6786,7 +6788,12 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
       actionQueue: payload.actionQueue ?? [],
       feedbackHistory: payload.feedbackHistory ?? emptyAIWorkspaceData.feedbackHistory,
       questionHistory: payload.questionHistory ?? emptyAIWorkspaceData.questionHistory,
-      answerDirection: payload.answerDirection ?? emptyAIWorkspaceData.answerDirection,
+      answerDirection: {
+        ...emptyAIWorkspaceData.answerDirection,
+        ...(payload.answerDirection ?? {}),
+        effectiveDirection: payload.answerDirection?.effectiveDirection
+          || emptyAIWorkspaceData.answerDirection.effectiveDirection,
+      },
       questionModelChoices: payload.questionModelChoices ?? emptyAIWorkspaceData.questionModelChoices,
       defaultQuestionModel: payload.defaultQuestionModel ?? emptyAIWorkspaceData.defaultQuestionModel,
     };

@@ -5460,3 +5460,48 @@ python pre_deployment_check.py
   - `cd frontend && npm run build`
   - `cd frontend && node --check server.mjs`
   - `git diff --check`
+
+## 2026-05-17 AI Workspace CRM strategy prompt and answer direction plan
+
+**Background**:
+
+- The previous AI Workspace deployment was manually verified in production.
+- The user provided a default CRM strategy architect prompt that should guide department Q&A answers.
+- The `현재 답변 방향` UI currently stores only the user's free-form direction and is blank when no direction has been saved.
+- The desired behavior is that the current answer direction is always stated briefly: default direction when no user preference exists, and a modified/current direction when the user saves a preference.
+
+**DB change required**: No.
+
+- Reuse `AIWorkspaceAnswerDirection.direction` for the user's saved direction text.
+- Add computed API fields only, such as an effective/current direction label, without migrations.
+
+**Implementation scope**:
+
+- Backend AI Workspace question generation:
+  - Add the provided CRM strategy architect prompt as the default role/process/style guidance for department Q&A.
+  - Preserve the existing JSON-only response contract so React parsing and history snapshots remain stable.
+  - Keep existing CRM-data-only safety rules and permission boundaries.
+- Answer direction API payload:
+  - Return a default `effectiveDirection` when no saved direction exists.
+  - Return an `effectiveDirection` that explicitly incorporates the saved user direction when one exists.
+  - Include this effective direction in the prompt context so the model sees the exact current direction.
+- React AI Workspace:
+  - Display the effective/current answer direction as a short read-only statement above the editable direction textarea.
+  - Keep the textarea for the user's desired adjustment, not as the only source of the current direction.
+  - After saving, refresh and show the updated effective direction.
+
+**Validation plan**:
+
+- Add/update focused tests for:
+  - Default answer direction payload includes a non-empty effective direction.
+  - Saved direction payload includes both the raw saved direction and the computed current direction.
+  - OpenAI department Q&A system prompt includes the CRM strategy architect guidance while preserving JSON output.
+- Run:
+  - `python -m py_compile reporting\views.py reporting\tests.py`
+  - `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+  - `python manage.py check`
+  - `python manage.py makemigrations --check --dry-run`
+  - `cd frontend && npx tsc --noEmit --pretty false`
+  - `cd frontend && npm run build`
+  - `cd frontend && node --check server.mjs`
+  - `git diff --check`

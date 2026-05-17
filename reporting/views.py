@@ -10552,6 +10552,40 @@ AI_WORKSPACE_QUESTION_FEEDBACK_COMMENT_MAX_LENGTH = 1000
 AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT = 6
 AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE = 5
 AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH = 1200
+AI_WORKSPACE_DEFAULT_ANSWER_DIRECTION = (
+    '기본 방향: CRM 전략가 관점으로 상황 진단, 핵심 가정, 전략 방향, 우선순위 액션, '
+    'KPI/테스트 계획, 리스크 대응을 한국어로 구체적으로 제안합니다.'
+)
+AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT = """
+Act like a CRM strategy architect, senior growth consultant, and Zhuge Liang-level tactician who analyzes CRM programs, customer data, operational constraints, and business goals to recommend the most effective CRM strategy.
+
+Your goal is to help the user diagnose their CRM situation, identify the highest-leverage opportunities, and recommend optimal conditions, priorities, execution directions, and decision criteria.
+
+Task: When the user asks a question or provides CRM-related variables, analyze the CRM context and produce a practical strategic recommendation.
+
+Follow this step-by-step process:
+1) Identify the user's CRM objective: acquisition, retention, reactivation, upsell, cross-sell, churn reduction, automation, segmentation, personalization, campaign performance, customer lifecycle design, or operational efficiency.
+2) Extract all available variables, including industry, target customers, customer journey stage, CRM tool, available data, campaign history, budget, team capacity, KPIs, constraints, and timeline.
+3) If key information is missing, state assumptions clearly and proceed with a best-effort recommendation rather than stopping.
+4) Investigate the CRM problem from multiple angles: customer behavior, data quality, segmentation, channel strategy, automation flow, content strategy, sales process, retention loop, measurement system, and implementation feasibility.
+5) Recommend the optimal strategy, explaining why it fits the user's variables and what trade-offs exist.
+6) Provide specific next actions, prioritized by expected impact, difficulty, speed, and risk.
+7) Include measurement guidance: KPIs, success criteria, tracking setup, testing plan, and review cadence.
+
+Output planning format to reflect inside the JSON fields:
+- Situation diagnosis
+- Key assumptions
+- Strategic direction
+- Recommended CRM actions
+- Optimal conditions and constraints
+- Priority roadmap
+- KPI and testing plan
+- Risks and countermeasures
+
+Style: Use clear, practical Korean. Be strategic but concrete. Avoid vague advice. Use tables only when comparing options conceptually inside text fields. Do not over-explain theory unless it directly supports the recommendation.
+
+Before finalizing, check whether the answer is specific, actionable, logically prioritized, and tailored to the variables provided.
+""".strip()
 AI_WORKSPACE_QUESTION_MODELS = {
     'gpt-5.5': 'GPT-5.5',
     'gpt-5.4-mini': 'GPT-5.4 mini',
@@ -10759,6 +10793,16 @@ def _ai_workspace_empty_question_history(page=1):
     }
 
 
+def _ai_workspace_effective_answer_direction(direction_text=''):
+    direction_text = _ai_workspace_question_text(direction_text, AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH)
+    if not direction_text:
+        return AI_WORKSPACE_DEFAULT_ANSWER_DIRECTION
+    return _ai_workspace_question_text(
+        f"현재 방향: 기본 CRM 전략가 분석을 유지하면서 사용자 요청을 우선 반영합니다. 사용자 요청: {direction_text}",
+        AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
+    )
+
+
 def _ai_workspace_question_history_payload(user, department, page=1):
     try:
         page_number = int(page or 1)
@@ -10802,6 +10846,10 @@ def _ai_workspace_question_history_payload(user, department, page=1):
 def _ai_workspace_answer_direction_payload(direction=None, department=None):
     if direction:
         department = direction.department
+    saved_direction = _ai_workspace_question_text(
+        direction.direction if direction else '',
+        AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
+    )
     return {
         'id': direction.id if direction else None,
         'scopeType': 'department',
@@ -10811,10 +10859,8 @@ def _ai_workspace_answer_direction_payload(direction=None, department=None):
             'name': department.name,
             'company': department.company.name if department.company else '',
         } if department else None,
-        'direction': _ai_workspace_question_text(
-            direction.direction if direction else '',
-            AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
-        ),
+        'direction': saved_direction,
+        'effectiveDirection': _ai_workspace_effective_answer_direction(saved_direction),
         'createdAt': _datetime_or_none(direction.created_at) if direction else None,
         'updatedAt': _datetime_or_none(direction.updated_at) if direction else None,
     }
@@ -11977,7 +12023,8 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
                 'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
-                'crmContext.answerDirection.direction은 현재 사용자가 이 부서 답변에 원하는 방향성이다. CRM 사실이 아니라 답변 관점/톤/판단 기준 선호로만 적용한다.',
+                'crmContext.answerDirection.effectiveDirection은 현재 적용 중인 답변 방향이다. CRM 사실이 아니라 답변 관점/톤/판단 기준 선호로만 적용한다.',
+                'crmContext.answerDirection.direction이 있으면 사용자가 직접 저장한 추가 요청이다. 기본 CRM 전략가 분석을 유지하되 이 요청을 우선 반영한다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 전체 부서 범위라면 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
@@ -11998,9 +12045,11 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
             ],
         }
         system_prompt = (
+            f"{AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT}\n\n"
             '너는 내부 영업 CRM의 질문 답변 AI다. '
             'CRM 컨텍스트의 최신성, 완료/미완료 상태, 후속조치 우선순위를 판단한다. '
             '답변은 한국어로 쓰고, 단답형을 피한다. '
+            '위 전략가 프로세스와 출력 구성은 JSON 필드 내부 내용에 반영하고, JSON 바깥의 Markdown 본문은 쓰지 않는다. '
             '반드시 JSON으로 {"answer": string, "bullets": string[], '
             '"decision": {"recommendedChoice": string, "rejectedChoice": string, '
             '"reason": string, "exception": string}, '

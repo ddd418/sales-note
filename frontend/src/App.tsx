@@ -12773,6 +12773,8 @@ function AIWorkspaceDepartmentQuestionPanel({
   const customerCount = result?.context?.customerCount ?? data.featuredDepartment?.customerCount ?? 0;
   const history = data.questionHistory;
   const directionLength = directionDraft.trim().length;
+  const effectiveDirection = data.answerDirection.effectiveDirection
+    || '기본 방향: CRM 전략가 관점으로 상황 진단, 핵심 가정, 전략 방향, 우선순위 액션, KPI/테스트 계획, 리스크 대응을 한국어로 구체적으로 제안합니다.';
   const modelChoices = data.questionModelChoices.length > 0
     ? data.questionModelChoices
     : [
@@ -12835,11 +12837,12 @@ function AIWorkspaceDepartmentQuestionPanel({
           <strong>현재 답변 방향</strong>
           {data.answerDirection.updatedAt ? <span>{formatDateLabel(data.answerDirection.updatedAt)}</span> : null}
         </div>
+        <p className="ai-answer-direction-current">{effectiveDirection}</p>
         <textarea
           disabled={!canUseDepartmentScope || directionSaving}
           maxLength={1200}
           onChange={(event) => onDirectionChange(event.target.value)}
-          placeholder="예: CRM 브리핑보다 고객 입장 추정과 추천 판단을 먼저 보여줘"
+          placeholder="원하는 조정 방향을 입력하세요. 예: CRM 브리핑보다 고객 입장 추정과 추천 판단을 먼저 보여줘"
           rows={3}
           value={directionDraft}
         />

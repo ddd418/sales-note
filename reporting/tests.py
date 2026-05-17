@@ -8009,6 +8009,48 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(log.question, '마지막 주문일 알려줘')
         self.assertIn('summary', log.answer_snapshot)
 
+    @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_department_question_uses_crm_strategy_system_prompt(self, mock_client):
+        from types import SimpleNamespace
+
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                content = json.dumps({
+                    'answer': '상황 진단: 견적 후속과 고객 반응 확인이 우선입니다.',
+                    'bullets': ['KPI는 다음 연락 완료율과 견적 회신율로 봅니다.'],
+                    'evidence': [{'label': 'CRM', 'value': '테스트 근거'}],
+                    'confidence': 'high',
+                })
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+        mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+        _followup, department = self._create_customer(self.user, '전략프롬프트')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '이 부서 CRM 전략 방향을 정리해줘',
+                'model': 'gpt-5.4-mini',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['source'], 'openai')
+        system_prompt = captured['messages'][0]['content']
+        self.assertIn('CRM strategy architect', system_prompt)
+        self.assertIn('Situation diagnosis', system_prompt)
+        self.assertIn('KPI and testing plan', system_prompt)
+        self.assertIn('반드시 JSON', system_prompt)
+        prompt_payload = json.loads(captured['messages'][1]['content'])
+        self.assertIn('effectiveDirection', prompt_payload['crmContext']['answerDirection'])
+        self.assertIn('기본 방향', prompt_payload['crmContext']['answerDirection']['effectiveDirection'])
+
     def test_ai_workspace_department_question_rejects_unsupported_model(self):
         from reporting.models import AIWorkspaceQuestionLog
 
@@ -8091,6 +8133,20 @@ class AIWorkspaceSummaryApiTests(TestCase):
             payload['answerDirection']['direction'],
             'CRM 요약보다 고객 입장 추정을 먼저 보여줘.',
         )
+        self.assertIn('기본 CRM 전략가 분석', payload['answerDirection']['effectiveDirection'])
+        self.assertIn('CRM 요약보다 고객 입장 추정을 먼저 보여줘.', payload['answerDirection']['effectiveDirection'])
+
+    def test_ai_workspace_summary_includes_default_answer_direction_when_empty(self):
+        _followup, department = self._create_customer(self.user, '기본방향')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['answerDirection']['direction'], '')
+        self.assertIn('기본 방향', payload['answerDirection']['effectiveDirection'])
+        self.assertIn('CRM 전략가', payload['answerDirection']['effectiveDirection'])
 
     def test_ai_workspace_answer_direction_api_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '방향권한없음')
@@ -8139,6 +8195,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
             response.json()['answerDirection']['direction'],
             'CRM 브리핑보다 추천 판단을 먼저 보여줘.',
         )
+        self.assertIn('기본 CRM 전략가 분석', response.json()['answerDirection']['effectiveDirection'])
+        self.assertIn('CRM 브리핑보다 추천 판단을 먼저 보여줘.', response.json()['answerDirection']['effectiveDirection'])
 
         second_response = self.client.post(
             reverse('reporting:ai_workspace_answer_direction_api'),
@@ -8153,6 +8211,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(AIWorkspaceAnswerDirection.objects.count(), 1)
         direction = AIWorkspaceAnswerDirection.objects.get(user=self.user, department=department)
         self.assertEqual(direction.direction, '고객 입장 추정과 실제 말문을 더 앞에 둬.')
+        self.assertIn('고객 입장 추정과 실제 말문을 더 앞에 둬.', second_response.json()['answerDirection']['effectiveDirection'])
 
     def test_ai_workspace_question_feedback_api_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '질문피드백권한없음')
