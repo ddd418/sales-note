@@ -36,7 +36,9 @@
 
 **Current status**:
 
-- Implemented and locally verified. Ready for commit, push, and Railway backend deployment.
+- Implemented, locally verified, committed, pushed, and deployed to Railway `web`.
+- Railway `web` deployment `f06d55db-ece2-4146-8ab9-327b639ece5e` is SUCCESS.
+- Production smoke passed: backend login 200, AI Workspace API anonymous 401, frontend AI Workspace page 200.
 
 ## 2026-05-18 CRM global benchmark gap analysis plan
 

@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — AI Workspace Email CRM Context Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료
 
 ### 요약
 
@@ -46,6 +46,27 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: include email history in AI workspace questions"
+→ fe99cdf
+
+git push
+→ main pushed to origin
+
+railway deployment up --service web --detach --message "Deploy AI email context fe99cdf"
+→ deployment f06d55db-ece2-4146-8ab9-327b639ece5e created
+
+railway deployment list --service web --limit 3 --json
+→ f06d55db-ece2-4146-8ab9-327b639ece5e SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200, title `로그인 - 영업 보고 시스템`
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/api/ai-workspace/?department_id=146 -SkipHttpErrorCheck
+→ expected anonymous 401 `login_required`
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=146
+→ 200
 ```
 
 ### 알려진 제한
@@ -55,7 +76,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending commit/push/deploy.
+- Git commit: `fe99cdf` (`fix: include email history in AI workspace questions`)
+- Railway `web`: `f06d55db-ece2-4146-8ab9-327b639ece5e` SUCCESS.
+- Railway `sales-note-frontend`: frontend code change 없음, 재배포 없음.
+- 운영 smoke 완료: backend login 200, AI Workspace API anonymous 401, frontend AI Workspace page 200.
 
 ### 권장 다음 작업
 
