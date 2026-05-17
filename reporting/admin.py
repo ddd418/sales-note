@@ -3,8 +3,9 @@ from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
+    CalibrationRecord, CustomerAsset,
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
-    Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage,
+    Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage, ServiceCase,
     Company, Department, DocumentTemplate, EmailLog, BusinessCard, CustomerCategory
 )
 
@@ -204,6 +205,36 @@ class ScheduleFileAdmin(admin.ModelAdmin):
     def file_size_display(self, obj):
         return obj.get_file_size_display()
     file_size_display.short_description = '파일 크기'
+
+
+@admin.register(CustomerAsset)
+class CustomerAssetAdmin(admin.ModelAdmin):
+    list_display = ('asset_name', 'model_name', 'serial_number', 'company', 'department', 'primary_followup', 'status', 'updated_at')
+    list_filter = ('status', 'company', 'created_by', 'updated_at')
+    search_fields = ('asset_name', 'model_name', 'serial_number', 'company__name', 'department__name', 'primary_followup__customer_name')
+    autocomplete_fields = ['company', 'department', 'primary_followup', 'product', 'created_by']
+    date_hierarchy = 'updated_at'
+    list_per_page = 30
+
+
+@admin.register(ServiceCase)
+class ServiceCaseAdmin(admin.ModelAdmin):
+    list_display = ('asset', 'case_type', 'status', 'priority', 'received_date', 'due_date', 'completed_date', 'assigned_to')
+    list_filter = ('case_type', 'status', 'priority', 'received_date', 'assigned_to')
+    search_fields = ('asset__asset_name', 'asset__serial_number', 'followup__customer_name', 'symptom', 'resolution')
+    autocomplete_fields = ['asset', 'followup', 'assigned_to', 'created_by']
+    date_hierarchy = 'received_date'
+    list_per_page = 30
+
+
+@admin.register(CalibrationRecord)
+class CalibrationRecordAdmin(admin.ModelAdmin):
+    list_display = ('asset', 'calibration_date', 'next_due_date', 'result', 'performed_by')
+    list_filter = ('result', 'calibration_date', 'next_due_date', 'performed_by')
+    search_fields = ('asset__asset_name', 'asset__serial_number', 'followup__customer_name', 'notes')
+    autocomplete_fields = ['asset', 'followup', 'performed_by', 'created_by']
+    date_hierarchy = 'calibration_date'
+    list_per_page = 30
 
 # DeliveryItem 모델 관리자 설정
 @admin.register(DeliveryItem)

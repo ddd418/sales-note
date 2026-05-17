@@ -4207,6 +4207,232 @@ h2 {
   gap: 8px;
 }
 
+.customer-assets-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.customer-assets-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.customer-assets-metrics span {
+  display: grid;
+  gap: 4px;
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-assets-metrics strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.customer-assets-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.customer-assets-actions .route-secondary-action {
+  gap: 7px;
+}
+
+.customer-asset-form {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.customer-asset-editor-heading {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.customer-asset-editor-heading h3 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.customer-asset-list {
+  display: grid;
+  gap: 10px;
+}
+
+.customer-asset-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.customer-asset-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.customer-asset-card-heading > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.customer-asset-card-heading strong,
+.customer-asset-card-heading span,
+.customer-asset-card-meta strong,
+.customer-asset-card-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-asset-card-heading strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.customer-asset-card-heading span,
+.customer-asset-card p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.customer-asset-status {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--primary-strong);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.customer-asset-status.disposed,
+.customer-asset-status.inactive {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.customer-asset-card-meta,
+.customer-asset-latest-grid,
+.customer-asset-history-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-asset-card-meta {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.customer-asset-card-meta span,
+.customer-asset-latest-grid > div {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.customer-asset-card-meta strong,
+.customer-asset-latest-grid strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.customer-asset-latest-grid,
+.customer-asset-history-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.customer-asset-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.customer-asset-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-asset-card-actions .customer-row-action {
+  margin-top: 0;
+  border: 1px solid #bfdbfe;
+  cursor: pointer;
+  font: inherit;
+}
+
+.customer-asset-history-grid > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.customer-asset-history-grid h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.customer-asset-history-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.customer-asset-history-row:disabled {
+  cursor: default;
+}
+
+.customer-asset-history-row span,
+.customer-asset-history-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-asset-history-row span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-asset-history-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .customer-ai-card {
   display: grid;
   gap: 10px;
@@ -7532,6 +7758,10 @@ tbody tr:hover {
   .customers-layout,
   .customers-filter-bar,
   .customer-inline-create-grid,
+  .customer-assets-metrics,
+  .customer-asset-card-meta,
+  .customer-asset-latest-grid,
+  .customer-asset-history-grid,
   .notes-create-grid,
   .notes-layout,
   .notes-filter-bar,

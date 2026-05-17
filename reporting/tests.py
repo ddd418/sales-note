@@ -2144,6 +2144,140 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn(second.id, prepayment_ids)
         self.assertNotIn(coworker_prepayment.id, prepayment_ids)
 
+    def test_customer_detail_summary_api_includes_asset_service_calibration_summary(self):
+        from django.utils import timezone
+        from reporting.models import CalibrationRecord, CustomerAsset, ServiceCase
+
+        target = self._create_customer(self.user, '상세장비', priority='urgent')
+        asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='Pipette Set',
+            model_name='P-1000',
+            serial_number='SN-001',
+            warranty_until=timezone.localdate(),
+            created_by=self.user,
+        )
+        coworker_asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='동료 장비',
+            created_by=self.coworker,
+        )
+        ServiceCase.objects.create(
+            asset=asset,
+            followup=target,
+            case_type='repair',
+            status='in_progress',
+            priority='high',
+            received_date=timezone.localdate(),
+            due_date=timezone.localdate(),
+            symptom='버튼 불량',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        CalibrationRecord.objects.create(
+            asset=asset,
+            followup=target,
+            calibration_date=timezone.localdate(),
+            next_due_date=timezone.localdate(),
+            result='pass',
+            created_by=self.user,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()['assetSummary']
+        self.assertTrue(summary['canManage'])
+        self.assertEqual(summary['metrics']['assetCount'], 1)
+        self.assertEqual(summary['metrics']['activeAssetCount'], 1)
+        self.assertEqual(summary['metrics']['openServiceCaseCount'], 1)
+        self.assertEqual(summary['metrics']['dueCalibrationCount'], 1)
+        asset_ids = {item['id'] for item in summary['assets']}
+        self.assertIn(asset.id, asset_ids)
+        self.assertNotIn(coworker_asset.id, asset_ids)
+        first_asset = summary['assets'][0]
+        self.assertEqual(first_asset['assetName'], 'Pipette Set')
+        self.assertEqual(first_asset['latestServiceCase']['caseType'], 'repair')
+        self.assertEqual(first_asset['latestCalibration']['result'], 'pass')
+
+    def test_customer_asset_service_calibration_apis_create_records(self):
+        from django.utils import timezone
+        from reporting.models import CalibrationRecord, CustomerAsset, ServiceCase
+
+        target = self._create_customer(self.user, '장비등록', priority='urgent')
+        self.client.force_login(self.user)
+
+        asset_response = self.client.post(reverse('reporting:customer_asset_create_api', args=[target.id]), {
+            'asset_name': '등록 장비',
+            'model_name': 'M-100',
+            'serial_number': 'SN-100',
+            'purchase_date': timezone.localdate().isoformat(),
+            'install_location': '407호',
+            'warranty_until': timezone.localdate().isoformat(),
+            'status': 'active',
+            'notes': '초기 등록',
+        })
+
+        self.assertEqual(asset_response.status_code, 200)
+        asset_payload = asset_response.json()['asset']
+        asset = CustomerAsset.objects.get(id=asset_payload['id'])
+        self.assertEqual(asset.company, target.company)
+        self.assertEqual(asset.department, target.department)
+        self.assertEqual(asset.primary_followup, target)
+        self.assertEqual(asset.created_by, self.user)
+
+        service_response = self.client.post(reverse('reporting:customer_service_case_create_api', args=[target.id]), {
+            'asset_id': str(asset.id),
+            'case_type': 'service',
+            'status': 'received',
+            'priority': 'urgent',
+            'received_date': timezone.localdate().isoformat(),
+            'due_date': timezone.localdate().isoformat(),
+            'symptom': '점검 요청',
+        })
+        self.assertEqual(service_response.status_code, 200)
+        service_case = ServiceCase.objects.get(id=service_response.json()['serviceCase']['id'])
+        self.assertEqual(service_case.asset, asset)
+        self.assertEqual(service_case.followup, target)
+        self.assertEqual(service_case.priority, 'urgent')
+
+        calibration_response = self.client.post(reverse('reporting:customer_calibration_create_api', args=[target.id]), {
+            'asset_id': str(asset.id),
+            'calibration_date': timezone.localdate().isoformat(),
+            'next_due_date': timezone.localdate().isoformat(),
+            'result': 'adjusted',
+            'notes': '조정 완료',
+        })
+        self.assertEqual(calibration_response.status_code, 200)
+        calibration = CalibrationRecord.objects.get(id=calibration_response.json()['calibration']['id'])
+        self.assertEqual(calibration.asset, asset)
+        self.assertEqual(calibration.followup, target)
+        self.assertEqual(calibration.result, 'adjusted')
+
+    def test_customer_asset_mutation_blocks_manager_and_other_company(self):
+        target = self._create_customer(self.user, '장비권한')
+        other_target = self._create_customer(self.other_user, '타사장비')
+        payload = {
+            'asset_name': '권한 장비',
+            'status': 'active',
+        }
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(reverse('reporting:customer_asset_create_api', args=[target.id]), payload)
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertFalse(manager_response.json()['success'])
+
+        self.client.force_login(self.user)
+        other_response = self.client.post(reverse('reporting:customer_asset_create_api', args=[other_target.id]), payload)
+        self.assertEqual(other_response.status_code, 403)
+        self.assertFalse(other_response.json()['success'])
+
     def test_customer_detail_summary_api_includes_department_ai_action(self):
         from datetime import date
         from ai_chat.models import AIDepartmentAnalysis, PainPointCard

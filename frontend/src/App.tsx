@@ -54,11 +54,18 @@ import {
   DashboardData,
   DashboardHistoryItem,
   DashboardScheduleItem,
+  CustomerAssetSummary,
+  CustomerAssetItem,
+  CustomerAssetPayload,
+  CustomerCalibrationRecord,
+  CustomerCalibrationPayload,
   CustomerDetailData,
   CustomerAiDepartment,
   CustomerAiPainpoint,
   CustomerEditPayload,
   CustomerCreatePayload,
+  CustomerServiceCase,
+  CustomerServiceCasePayload,
   CustomersData,
   CustomerItem,
   DocumentTemplateItem,
@@ -188,6 +195,9 @@ import {
   runAiDepartmentAnalysis,
   runMailboxAction,
   runMailboxSync,
+  saveCustomerAsset,
+  saveCustomerCalibration,
+  saveCustomerServiceCase,
   sendMailboxEmail,
   submitAIWorkspaceActionFeedback,
   toggleNoteReviewed,
@@ -381,6 +391,41 @@ type CustomerEditFormState = {
   pipelineStage: string;
   priority: string;
   status: string;
+};
+
+type CustomerAssetEditorMode = '' | 'asset' | 'service' | 'calibration';
+
+type CustomerAssetFormState = {
+  assetName: string;
+  installLocation: string;
+  modelName: string;
+  notes: string;
+  purchaseDate: string;
+  serialNumber: string;
+  status: string;
+  warrantyUntil: string;
+};
+
+type CustomerServiceCaseFormState = {
+  assetId: string;
+  caseType: string;
+  completedDate: string;
+  dueDate: string;
+  priority: string;
+  receivedDate: string;
+  resolution: string;
+  serviceReport: File | null;
+  status: string;
+  symptom: string;
+};
+
+type CustomerCalibrationFormState = {
+  assetId: string;
+  calibrationDate: string;
+  certificateFile: File | null;
+  nextDueDate: string;
+  notes: string;
+  result: string;
 };
 
 type SearchableSelectOption = {
@@ -1027,6 +1072,147 @@ const makeCustomerEditForm = (customer: CustomerItem | null): CustomerEditFormSt
   priority: customer?.priority || 'scheduled',
   status: customer?.status || 'active',
 });
+
+const getOptionValue = (options: Array<{ value: string }>, fallback: string) => options[0]?.value || fallback;
+
+const getDefaultCustomerAssetId = (summary?: CustomerAssetSummary | null) => (
+  summary?.assets[0]?.id ? String(summary.assets[0].id) : ''
+);
+
+const makeCustomerAssetForm = (
+  asset?: CustomerAssetItem | null,
+  status = 'active',
+): CustomerAssetFormState => ({
+  assetName: asset?.assetName || '',
+  installLocation: asset?.installLocation || '',
+  modelName: asset?.modelName || '',
+  notes: asset?.notes || '',
+  purchaseDate: asset?.purchaseDate || '',
+  serialNumber: asset?.serialNumber || '',
+  status: asset?.status || status,
+  warrantyUntil: asset?.warrantyUntil || '',
+});
+
+const makeCustomerServiceCaseForm = (
+  summary?: CustomerAssetSummary | null,
+  assetId = getDefaultCustomerAssetId(summary),
+  serviceCase?: CustomerServiceCase | null,
+): CustomerServiceCaseFormState => ({
+  assetId: serviceCase?.assetId ? String(serviceCase.assetId) : assetId,
+  caseType: serviceCase?.caseType || getOptionValue(summary?.options.serviceCaseTypes ?? [], 'repair'),
+  completedDate: serviceCase?.completedDate || '',
+  dueDate: serviceCase?.dueDate || '',
+  priority: serviceCase?.priority || getOptionValue(summary?.options.servicePriorities ?? [], 'normal'),
+  receivedDate: serviceCase?.receivedDate || localDateInputValue(),
+  resolution: serviceCase?.resolution || '',
+  serviceReport: null,
+  status: serviceCase?.status || getOptionValue(summary?.options.serviceStatuses ?? [], 'received'),
+  symptom: serviceCase?.symptom || '',
+});
+
+const makeCustomerCalibrationForm = (
+  summary?: CustomerAssetSummary | null,
+  assetId = getDefaultCustomerAssetId(summary),
+  calibration?: CustomerCalibrationRecord | null,
+): CustomerCalibrationFormState => ({
+  assetId: calibration?.assetId ? String(calibration.assetId) : assetId,
+  calibrationDate: calibration?.calibrationDate || localDateInputValue(),
+  certificateFile: null,
+  nextDueDate: calibration?.nextDueDate || '',
+  notes: calibration?.notes || '',
+  result: calibration?.result || getOptionValue(summary?.options.calibrationResults ?? [], 'pass'),
+});
+
+const customerAssetFormToPayload = (form: CustomerAssetFormState): { payload?: CustomerAssetPayload; error?: string } => {
+  if (!form.assetName.trim()) {
+    return { error: '장비/자산명을 입력하세요.' };
+  }
+  if (!form.status) {
+    return { error: '장비 상태를 선택하세요.' };
+  }
+  return {
+    payload: {
+      assetName: form.assetName.trim(),
+      installLocation: form.installLocation.trim() || undefined,
+      modelName: form.modelName.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      purchaseDate: form.purchaseDate || undefined,
+      serialNumber: form.serialNumber.trim() || undefined,
+      status: form.status,
+      warrantyUntil: form.warrantyUntil || undefined,
+    },
+  };
+};
+
+const customerServiceCaseFormToPayload = (form: CustomerServiceCaseFormState): { payload?: CustomerServiceCasePayload; error?: string } => {
+  const assetId = Number(form.assetId);
+  if (!assetId) {
+    return { error: '서비스 대상 장비를 선택하세요.' };
+  }
+  if (!form.caseType) {
+    return { error: '서비스 유형을 선택하세요.' };
+  }
+  if (!form.status) {
+    return { error: '서비스 상태를 선택하세요.' };
+  }
+  if (!form.priority) {
+    return { error: '서비스 우선순위를 선택하세요.' };
+  }
+  if (!form.receivedDate) {
+    return { error: '접수일을 입력하세요.' };
+  }
+  return {
+    payload: {
+      assetId,
+      caseType: form.caseType,
+      completedDate: form.completedDate || undefined,
+      dueDate: form.dueDate || undefined,
+      priority: form.priority,
+      receivedDate: form.receivedDate,
+      resolution: form.resolution.trim() || undefined,
+      serviceReport: form.serviceReport,
+      status: form.status,
+      symptom: form.symptom.trim() || undefined,
+    },
+  };
+};
+
+const customerCalibrationFormToPayload = (form: CustomerCalibrationFormState): { payload?: CustomerCalibrationPayload; error?: string } => {
+  const assetId = Number(form.assetId);
+  if (!assetId) {
+    return { error: '교정 대상 장비를 선택하세요.' };
+  }
+  if (!form.calibrationDate) {
+    return { error: '교정일을 입력하세요.' };
+  }
+  if (!form.result) {
+    return { error: '교정 결과를 선택하세요.' };
+  }
+  return {
+    payload: {
+      assetId,
+      calibrationDate: form.calibrationDate,
+      certificateFile: form.certificateFile,
+      nextDueDate: form.nextDueDate || undefined,
+      notes: form.notes.trim() || undefined,
+      result: form.result,
+    },
+  };
+};
+
+const findCustomerServiceCase = (summary: CustomerAssetSummary | undefined, serviceCaseId: number | null) => {
+  if (!summary || !serviceCaseId) {
+    return null;
+  }
+  return summary.assets.flatMap((asset) => asset.serviceCases).find((serviceCase) => serviceCase.id === serviceCaseId) || null;
+};
+
+const findCustomerCalibration = (summary: CustomerAssetSummary | undefined, calibrationId: number | null) => {
+  if (!summary || !calibrationId) {
+    return null;
+  }
+  return summary.assets.flatMap((asset) => asset.calibrations).find((calibration) => calibration.id === calibrationId) || null;
+};
 
 const routeMeta: Record<
   MainView,
@@ -2453,6 +2639,16 @@ function CustomerDetailPage({
   const [aiResultOpen, setAiResultOpen] = useState(false);
   const [aiVerificationNotes, setAiVerificationNotes] = useState<Record<number, string>>({});
   const [aiVerifyingId, setAiVerifyingId] = useState<number | null>(null);
+  const [assetEditor, setAssetEditor] = useState<CustomerAssetEditorMode>('');
+  const [assetForm, setAssetForm] = useState<CustomerAssetFormState>(() => makeCustomerAssetForm());
+  const [serviceCaseForm, setServiceCaseForm] = useState<CustomerServiceCaseFormState>(() => makeCustomerServiceCaseForm());
+  const [calibrationForm, setCalibrationForm] = useState<CustomerCalibrationFormState>(() => makeCustomerCalibrationForm());
+  const [editingAssetId, setEditingAssetId] = useState<number | null>(null);
+  const [editingServiceCaseId, setEditingServiceCaseId] = useState<number | null>(null);
+  const [editingCalibrationId, setEditingCalibrationId] = useState<number | null>(null);
+  const [assetSaving, setAssetSaving] = useState(false);
+  const [assetError, setAssetError] = useState('');
+  const [assetMessage, setAssetMessage] = useState('');
 
   useEffect(() => {
     setEditForm(makeCustomerEditForm(customer));
@@ -2465,6 +2661,16 @@ function CustomerDetailPage({
     setAiResultOpen(false);
     setAiVerificationNotes({});
     setAiVerifyingId(null);
+    setAssetEditor('');
+    setAssetForm(makeCustomerAssetForm(null, getOptionValue(data?.assetSummary.options.assetStatuses ?? [], 'active')));
+    setServiceCaseForm(makeCustomerServiceCaseForm(data?.assetSummary));
+    setCalibrationForm(makeCustomerCalibrationForm(data?.assetSummary));
+    setEditingAssetId(null);
+    setEditingServiceCaseId(null);
+    setEditingCalibrationId(null);
+    setAssetSaving(false);
+    setAssetError('');
+    setAssetMessage('');
   }, [customer?.id]);
 
   useEffect(() => {
@@ -2605,6 +2811,215 @@ function CustomerDetailPage({
     }
   };
 
+  const resetAssetFeedback = () => {
+    setAssetError('');
+    setAssetMessage('');
+  };
+
+  const openAssetEditor = (mode: CustomerAssetEditorMode) => {
+    setAssetEditor(mode);
+    resetAssetFeedback();
+  };
+
+  const handleAssetCreateOpen = () => {
+    const summary = data?.assetSummary;
+    setEditingAssetId(null);
+    setEditingServiceCaseId(null);
+    setEditingCalibrationId(null);
+    setAssetForm(makeCustomerAssetForm(null, getOptionValue(summary?.options.assetStatuses ?? [], 'active')));
+    openAssetEditor('asset');
+  };
+
+  const handleAssetEditOpen = (asset: CustomerAssetItem) => {
+    const summary = data?.assetSummary;
+    setEditingAssetId(asset.id);
+    setEditingServiceCaseId(null);
+    setEditingCalibrationId(null);
+    setAssetForm(makeCustomerAssetForm(asset, getOptionValue(summary?.options.assetStatuses ?? [], 'active')));
+    openAssetEditor('asset');
+  };
+
+  const handleServiceCaseCreateOpen = (asset?: CustomerAssetItem) => {
+    const summary = data?.assetSummary;
+    if (!summary?.assets.length) {
+      setAssetError('서비스를 등록하려면 먼저 장비를 등록하세요.');
+      setAssetMessage('');
+      return;
+    }
+    setEditingAssetId(null);
+    setEditingServiceCaseId(null);
+    setEditingCalibrationId(null);
+    setServiceCaseForm(makeCustomerServiceCaseForm(summary, asset?.id ? String(asset.id) : getDefaultCustomerAssetId(summary)));
+    openAssetEditor('service');
+  };
+
+  const handleServiceCaseEditOpen = (serviceCase: CustomerServiceCase) => {
+    const summary = data?.assetSummary;
+    setEditingAssetId(null);
+    setEditingServiceCaseId(serviceCase.id);
+    setEditingCalibrationId(null);
+    setServiceCaseForm(makeCustomerServiceCaseForm(summary, String(serviceCase.assetId), serviceCase));
+    openAssetEditor('service');
+  };
+
+  const handleCalibrationCreateOpen = (asset?: CustomerAssetItem) => {
+    const summary = data?.assetSummary;
+    if (!summary?.assets.length) {
+      setAssetError('교정 기록을 등록하려면 먼저 장비를 등록하세요.');
+      setAssetMessage('');
+      return;
+    }
+    setEditingAssetId(null);
+    setEditingServiceCaseId(null);
+    setEditingCalibrationId(null);
+    setCalibrationForm(makeCustomerCalibrationForm(summary, asset?.id ? String(asset.id) : getDefaultCustomerAssetId(summary)));
+    openAssetEditor('calibration');
+  };
+
+  const handleCalibrationEditOpen = (calibration: CustomerCalibrationRecord) => {
+    const summary = data?.assetSummary;
+    setEditingAssetId(null);
+    setEditingServiceCaseId(null);
+    setEditingCalibrationId(calibration.id);
+    setCalibrationForm(makeCustomerCalibrationForm(summary, String(calibration.assetId), calibration));
+    openAssetEditor('calibration');
+  };
+
+  const handleAssetFieldChange = (field: keyof CustomerAssetFormState, value: string) => {
+    setAssetForm((previous) => ({ ...previous, [field]: value }));
+    resetAssetFeedback();
+  };
+
+  const handleServiceCaseFieldChange = (
+    field: Exclude<keyof CustomerServiceCaseFormState, 'serviceReport'>,
+    value: string,
+  ) => {
+    setServiceCaseForm((previous) => ({ ...previous, [field]: value }));
+    resetAssetFeedback();
+  };
+
+  const handleCalibrationFieldChange = (
+    field: Exclude<keyof CustomerCalibrationFormState, 'certificateFile'>,
+    value: string,
+  ) => {
+    setCalibrationForm((previous) => ({ ...previous, [field]: value }));
+    resetAssetFeedback();
+  };
+
+  const handleAssetSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const summary = data?.assetSummary;
+    if (!summary?.canManage || assetSaving) {
+      setAssetError(summary?.message || '장비 정보를 저장할 권한이 없습니다.');
+      setAssetMessage('');
+      return;
+    }
+    const { payload, error } = customerAssetFormToPayload(assetForm);
+    if (!payload || error) {
+      setAssetError(error || '장비 정보를 확인하세요.');
+      setAssetMessage('');
+      return;
+    }
+    const submitUrl = editingAssetId
+      ? summary.assets.find((asset) => asset.id === editingAssetId)?.updateUrl
+      : summary.links.createAsset;
+    if (!submitUrl) {
+      setAssetError('장비 저장 API가 준비되지 않았습니다.');
+      setAssetMessage('');
+      return;
+    }
+
+    setAssetSaving(true);
+    resetAssetFeedback();
+    try {
+      const result = await saveCustomerAsset(payload, submitUrl);
+      await onRefresh();
+      setAssetMessage(result.message || '장비 정보를 저장했습니다.');
+      setAssetEditor('');
+      setEditingAssetId(null);
+    } catch (error) {
+      setAssetError(error instanceof Error ? error.message : '장비 정보 저장에 실패했습니다.');
+    } finally {
+      setAssetSaving(false);
+    }
+  };
+
+  const handleServiceCaseSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const summary = data?.assetSummary;
+    if (!summary?.canManage || assetSaving) {
+      setAssetError(summary?.message || '서비스 케이스를 저장할 권한이 없습니다.');
+      setAssetMessage('');
+      return;
+    }
+    const { payload, error } = customerServiceCaseFormToPayload(serviceCaseForm);
+    if (!payload || error) {
+      setAssetError(error || '서비스 케이스 정보를 확인하세요.');
+      setAssetMessage('');
+      return;
+    }
+    const submitUrl = editingServiceCaseId
+      ? findCustomerServiceCase(summary, editingServiceCaseId)?.updateUrl
+      : summary.links.createServiceCase;
+    if (!submitUrl) {
+      setAssetError('서비스 저장 API가 준비되지 않았습니다.');
+      setAssetMessage('');
+      return;
+    }
+
+    setAssetSaving(true);
+    resetAssetFeedback();
+    try {
+      const result = await saveCustomerServiceCase(payload, submitUrl);
+      await onRefresh();
+      setAssetMessage(result.message || '서비스 케이스를 저장했습니다.');
+      setAssetEditor('');
+      setEditingServiceCaseId(null);
+    } catch (error) {
+      setAssetError(error instanceof Error ? error.message : '서비스 케이스 저장에 실패했습니다.');
+    } finally {
+      setAssetSaving(false);
+    }
+  };
+
+  const handleCalibrationSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const summary = data?.assetSummary;
+    if (!summary?.canManage || assetSaving) {
+      setAssetError(summary?.message || '교정 기록을 저장할 권한이 없습니다.');
+      setAssetMessage('');
+      return;
+    }
+    const { payload, error } = customerCalibrationFormToPayload(calibrationForm);
+    if (!payload || error) {
+      setAssetError(error || '교정 기록 정보를 확인하세요.');
+      setAssetMessage('');
+      return;
+    }
+    const submitUrl = editingCalibrationId
+      ? findCustomerCalibration(summary, editingCalibrationId)?.updateUrl
+      : summary.links.createCalibration;
+    if (!submitUrl) {
+      setAssetError('교정 저장 API가 준비되지 않았습니다.');
+      setAssetMessage('');
+      return;
+    }
+
+    setAssetSaving(true);
+    resetAssetFeedback();
+    try {
+      const result = await saveCustomerCalibration(payload, submitUrl);
+      await onRefresh();
+      setAssetMessage(result.message || '교정 기록을 저장했습니다.');
+      setAssetEditor('');
+      setEditingCalibrationId(null);
+    } catch (error) {
+      setAssetError(error instanceof Error ? error.message : '교정 기록 저장에 실패했습니다.');
+    } finally {
+      setAssetSaving(false);
+    }
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -2632,11 +3047,18 @@ function CustomerDetailPage({
   const customerDetail = data.customer;
   const aiDepartment = data.aiDepartment;
   const prepaymentSummary = data.prepaymentSummary;
+  const assetSummary = data.assetSummary;
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
     { label: '지연 후속', value: `${formatNumber(data.metrics.overdueActions)}건`, detail: '확인 필요', icon: AlertTriangle, tone: 'red' as const },
     { label: '14일 내 후속', value: `${formatNumber(data.metrics.upcomingActions)}건`, detail: '예정 액션', icon: Clock, tone: 'teal' as const },
+  ];
+  const assetMetrics = [
+    { label: '등록 장비', value: `${formatNumber(assetSummary.metrics.assetCount)}건` },
+    { label: '운영 장비', value: `${formatNumber(assetSummary.metrics.activeAssetCount)}건` },
+    { label: '진행 서비스', value: `${formatNumber(assetSummary.metrics.openServiceCaseCount)}건` },
+    { label: '교정 예정', value: `${formatNumber(assetSummary.metrics.dueCalibrationCount)}건` },
   ];
 
   return (
@@ -2688,6 +3110,470 @@ function CustomerDetailPage({
             value={metric.value}
           />
         ))}
+      </section>
+
+      <section className="dashboard-panel customer-assets-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Assets & service</span>
+            <h2>장비/교정/서비스</h2>
+          </div>
+          <Archive size={18} />
+        </div>
+        <div className="customer-assets-metrics">
+          {assetMetrics.map((metric) => (
+            <span key={metric.label}>
+              {metric.label}
+              <strong>{metric.value}</strong>
+            </span>
+          ))}
+        </div>
+        {!assetSummary.canManage && assetSummary.message ? (
+          <div className="dashboard-api-alert compact">
+            <AlertTriangle size={16} />
+            <span>{assetSummary.message}</span>
+          </div>
+        ) : null}
+        {assetError ? (
+          <div className="dashboard-api-alert compact">
+            <AlertTriangle size={16} />
+            <span>{assetError}</span>
+          </div>
+        ) : null}
+        {assetMessage ? (
+          <div className="dashboard-api-alert compact success">
+            <CheckCircle2 size={16} />
+            <span>{assetMessage}</span>
+          </div>
+        ) : null}
+        <div className="customer-assets-actions">
+          {assetSummary.canManage ? (
+            <>
+              <button className="route-secondary-action" onClick={handleAssetCreateOpen} type="button">
+                <Plus size={15} />
+                장비 등록
+              </button>
+              <button
+                className="route-secondary-action"
+                disabled={assetSummary.assets.length === 0}
+                onClick={() => handleServiceCaseCreateOpen()}
+                type="button"
+              >
+                <ListChecks size={15} />
+                서비스 접수
+              </button>
+              <button
+                className="route-secondary-action"
+                disabled={assetSummary.assets.length === 0}
+                onClick={() => handleCalibrationCreateOpen()}
+                type="button"
+              >
+                <CheckCircle2 size={15} />
+                교정 기록
+              </button>
+            </>
+          ) : null}
+        </div>
+
+        {assetEditor === 'asset' ? (
+          <form className="notes-create-form customer-asset-form" onSubmit={handleAssetSubmit}>
+            <div className="dashboard-panel-heading customer-asset-editor-heading">
+              <div>
+                <span className="eyebrow">{editingAssetId ? 'Edit asset' : 'New asset'}</span>
+                <h3>{editingAssetId ? '장비 정보 수정' : '장비 등록'}</h3>
+              </div>
+            </div>
+            <div className="notes-create-grid">
+              <label>
+                <span>장비/자산명</span>
+                <input
+                  onChange={(event) => handleAssetFieldChange('assetName', event.target.value)}
+                  required
+                  value={assetForm.assetName}
+                />
+              </label>
+              <label>
+                <span>상태</span>
+                <select
+                  onChange={(event) => handleAssetFieldChange('status', event.target.value)}
+                  required
+                  value={assetForm.status}
+                >
+                  {assetSummary.options.assetStatuses.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>모델명</span>
+                <input
+                  onChange={(event) => handleAssetFieldChange('modelName', event.target.value)}
+                  value={assetForm.modelName}
+                />
+              </label>
+              <label>
+                <span>시리얼번호</span>
+                <input
+                  onChange={(event) => handleAssetFieldChange('serialNumber', event.target.value)}
+                  value={assetForm.serialNumber}
+                />
+              </label>
+              <label>
+                <span>구매일</span>
+                <input
+                  onChange={(event) => handleAssetFieldChange('purchaseDate', event.target.value)}
+                  type="date"
+                  value={assetForm.purchaseDate}
+                />
+              </label>
+              <label>
+                <span>보증 만료일</span>
+                <input
+                  onChange={(event) => handleAssetFieldChange('warrantyUntil', event.target.value)}
+                  type="date"
+                  value={assetForm.warrantyUntil}
+                />
+              </label>
+              <label>
+                <span>설치 위치</span>
+                <input
+                  onChange={(event) => handleAssetFieldChange('installLocation', event.target.value)}
+                  value={assetForm.installLocation}
+                />
+              </label>
+            </div>
+            <label>
+              <span>메모</span>
+              <textarea
+                onChange={(event) => handleAssetFieldChange('notes', event.target.value)}
+                rows={3}
+                value={assetForm.notes}
+              />
+            </label>
+            <div className="notes-create-actions">
+              <button className="route-secondary-action" onClick={() => setAssetEditor('')} type="button">
+                취소
+              </button>
+              <button className="route-primary-action" disabled={assetSaving} type="submit">
+                {assetSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                저장
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {assetEditor === 'service' ? (
+          <form className="notes-create-form customer-asset-form" onSubmit={handleServiceCaseSubmit}>
+            <div className="dashboard-panel-heading customer-asset-editor-heading">
+              <div>
+                <span className="eyebrow">{editingServiceCaseId ? 'Edit service' : 'New service'}</span>
+                <h3>{editingServiceCaseId ? '서비스 케이스 수정' : '서비스 접수'}</h3>
+              </div>
+            </div>
+            <div className="notes-create-grid">
+              <label>
+                <span>대상 장비</span>
+                <select
+                  onChange={(event) => handleServiceCaseFieldChange('assetId', event.target.value)}
+                  required
+                  value={serviceCaseForm.assetId}
+                >
+                  {assetSummary.assets.map((asset) => (
+                    <option key={asset.id} value={asset.id}>
+                      {[asset.assetName, asset.modelName, asset.serialNumber ? `SN ${asset.serialNumber}` : ''].filter(Boolean).join(' · ')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>유형</span>
+                <select
+                  onChange={(event) => handleServiceCaseFieldChange('caseType', event.target.value)}
+                  required
+                  value={serviceCaseForm.caseType}
+                >
+                  {assetSummary.options.serviceCaseTypes.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>상태</span>
+                <select
+                  onChange={(event) => handleServiceCaseFieldChange('status', event.target.value)}
+                  required
+                  value={serviceCaseForm.status}
+                >
+                  {assetSummary.options.serviceStatuses.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>우선순위</span>
+                <select
+                  onChange={(event) => handleServiceCaseFieldChange('priority', event.target.value)}
+                  required
+                  value={serviceCaseForm.priority}
+                >
+                  {assetSummary.options.servicePriorities.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>접수일</span>
+                <input
+                  onChange={(event) => handleServiceCaseFieldChange('receivedDate', event.target.value)}
+                  required
+                  type="date"
+                  value={serviceCaseForm.receivedDate}
+                />
+              </label>
+              <label>
+                <span>처리 기한</span>
+                <input
+                  onChange={(event) => handleServiceCaseFieldChange('dueDate', event.target.value)}
+                  type="date"
+                  value={serviceCaseForm.dueDate}
+                />
+              </label>
+              <label>
+                <span>완료일</span>
+                <input
+                  onChange={(event) => handleServiceCaseFieldChange('completedDate', event.target.value)}
+                  type="date"
+                  value={serviceCaseForm.completedDate}
+                />
+              </label>
+              <label>
+                <span>서비스 리포트</span>
+                <input
+                  onChange={(event) => {
+                    setServiceCaseForm((previous) => ({
+                      ...previous,
+                      serviceReport: event.target.files?.[0] ?? null,
+                    }));
+                    resetAssetFeedback();
+                  }}
+                  type="file"
+                />
+              </label>
+            </div>
+            <label>
+              <span>증상/요청</span>
+              <textarea
+                onChange={(event) => handleServiceCaseFieldChange('symptom', event.target.value)}
+                rows={3}
+                value={serviceCaseForm.symptom}
+              />
+            </label>
+            <label>
+              <span>처리 내용</span>
+              <textarea
+                onChange={(event) => handleServiceCaseFieldChange('resolution', event.target.value)}
+                rows={3}
+                value={serviceCaseForm.resolution}
+              />
+            </label>
+            <div className="notes-create-actions">
+              <button className="route-secondary-action" onClick={() => setAssetEditor('')} type="button">
+                취소
+              </button>
+              <button className="route-primary-action" disabled={assetSaving} type="submit">
+                {assetSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                저장
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {assetEditor === 'calibration' ? (
+          <form className="notes-create-form customer-asset-form" onSubmit={handleCalibrationSubmit}>
+            <div className="dashboard-panel-heading customer-asset-editor-heading">
+              <div>
+                <span className="eyebrow">{editingCalibrationId ? 'Edit calibration' : 'New calibration'}</span>
+                <h3>{editingCalibrationId ? '교정 기록 수정' : '교정 기록'}</h3>
+              </div>
+            </div>
+            <div className="notes-create-grid">
+              <label>
+                <span>대상 장비</span>
+                <select
+                  onChange={(event) => handleCalibrationFieldChange('assetId', event.target.value)}
+                  required
+                  value={calibrationForm.assetId}
+                >
+                  {assetSummary.assets.map((asset) => (
+                    <option key={asset.id} value={asset.id}>
+                      {[asset.assetName, asset.modelName, asset.serialNumber ? `SN ${asset.serialNumber}` : ''].filter(Boolean).join(' · ')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>교정일</span>
+                <input
+                  onChange={(event) => handleCalibrationFieldChange('calibrationDate', event.target.value)}
+                  required
+                  type="date"
+                  value={calibrationForm.calibrationDate}
+                />
+              </label>
+              <label>
+                <span>다음 교정일</span>
+                <input
+                  onChange={(event) => handleCalibrationFieldChange('nextDueDate', event.target.value)}
+                  type="date"
+                  value={calibrationForm.nextDueDate}
+                />
+              </label>
+              <label>
+                <span>결과</span>
+                <select
+                  onChange={(event) => handleCalibrationFieldChange('result', event.target.value)}
+                  required
+                  value={calibrationForm.result}
+                >
+                  {assetSummary.options.calibrationResults.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>성적서</span>
+                <input
+                  onChange={(event) => {
+                    setCalibrationForm((previous) => ({
+                      ...previous,
+                      certificateFile: event.target.files?.[0] ?? null,
+                    }));
+                    resetAssetFeedback();
+                  }}
+                  type="file"
+                />
+              </label>
+            </div>
+            <label>
+              <span>메모</span>
+              <textarea
+                onChange={(event) => handleCalibrationFieldChange('notes', event.target.value)}
+                rows={3}
+                value={calibrationForm.notes}
+              />
+            </label>
+            <div className="notes-create-actions">
+              <button className="route-secondary-action" onClick={() => setAssetEditor('')} type="button">
+                취소
+              </button>
+              <button className="route-primary-action" disabled={assetSaving} type="submit">
+                {assetSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                저장
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {assetSummary.assets.length > 0 ? (
+          <div className="customer-asset-list">
+            {assetSummary.assets.map((asset) => (
+              <article className="customer-asset-card" key={asset.id}>
+                <div className="customer-asset-card-heading">
+                  <div>
+                    <strong>{asset.assetName}</strong>
+                    <span>
+                      {[asset.modelName, asset.serialNumber ? `SN ${asset.serialNumber}` : '', asset.installLocation].filter(Boolean).join(' · ') || '상세 정보 없음'}
+                    </span>
+                  </div>
+                  <span className={`customer-asset-status ${asset.status}`}>{asset.statusLabel}</span>
+                </div>
+                <div className="customer-asset-card-meta">
+                  <span>구매 <strong>{formatDateLabel(asset.purchaseDate) || '-'}</strong></span>
+                  <span>보증 <strong>{formatDateLabel(asset.warrantyUntil) || '-'}</strong></span>
+                  <span>소유 <strong>{asset.primaryFollowupName || asset.createdBy || '-'}</strong></span>
+                  <span>수정 <strong>{formatDateTimeLabel(asset.updatedAt) || '-'}</strong></span>
+                </div>
+                <div className="customer-asset-latest-grid">
+                  <div>
+                    <span>최근 서비스</span>
+                    {asset.latestServiceCase ? (
+                      <strong>
+                        {asset.latestServiceCase.statusLabel}
+                        {asset.latestServiceCase.receivedDate ? ` · ${formatDateLabel(asset.latestServiceCase.receivedDate)}` : ''}
+                      </strong>
+                    ) : (
+                      <strong>기록 없음</strong>
+                    )}
+                  </div>
+                  <div>
+                    <span>최근 교정</span>
+                    {asset.latestCalibration ? (
+                      <strong>
+                        {asset.latestCalibration.resultLabel}
+                        {asset.latestCalibration.nextDueDate ? ` · 다음 ${formatDateLabel(asset.latestCalibration.nextDueDate)}` : ''}
+                      </strong>
+                    ) : (
+                      <strong>기록 없음</strong>
+                    )}
+                  </div>
+                </div>
+                {asset.notes ? <p>{asset.notes}</p> : null}
+                {assetSummary.canManage ? (
+                  <div className="customer-asset-card-actions">
+                    <button className="customer-row-action" onClick={() => handleAssetEditOpen(asset)} type="button">
+                      장비 수정
+                    </button>
+                    <button className="customer-row-action" onClick={() => handleServiceCaseCreateOpen(asset)} type="button">
+                      서비스
+                    </button>
+                    <button className="customer-row-action" onClick={() => handleCalibrationCreateOpen(asset)} type="button">
+                      교정
+                    </button>
+                  </div>
+                ) : null}
+                {asset.serviceCases.length > 0 || asset.calibrations.length > 0 ? (
+                  <div className="customer-asset-history-grid">
+                    <div>
+                      <h4>서비스 이력</h4>
+                      {asset.serviceCases.slice(0, 3).map((serviceCase) => (
+                        <button
+                          className="customer-asset-history-row"
+                          disabled={!assetSummary.canManage}
+                          key={serviceCase.id}
+                          onClick={() => handleServiceCaseEditOpen(serviceCase)}
+                          type="button"
+                        >
+                          <span>{serviceCase.caseTypeLabel} · {serviceCase.statusLabel}</span>
+                          <small>{serviceCase.receivedDate ? formatDateLabel(serviceCase.receivedDate) : '접수일 없음'}</small>
+                        </button>
+                      ))}
+                    </div>
+                    <div>
+                      <h4>교정 이력</h4>
+                      {asset.calibrations.slice(0, 3).map((calibration) => (
+                        <button
+                          className="customer-asset-history-row"
+                          disabled={!assetSummary.canManage}
+                          key={calibration.id}
+                          onClick={() => handleCalibrationEditOpen(calibration)}
+                          type="button"
+                        >
+                          <span>{calibration.resultLabel}</span>
+                          <small>
+                            {calibration.calibrationDate ? formatDateLabel(calibration.calibrationDate) : '교정일 없음'}
+                            {calibration.nextDueDate ? ` · 다음 ${formatDateLabel(calibration.nextDueDate)}` : ''}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <DashboardEmpty label="등록된 장비/교정/서비스 이력이 없습니다" />
+        )}
       </section>
 
       {editOpen || editMessage || editError ? (

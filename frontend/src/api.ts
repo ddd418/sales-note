@@ -538,6 +538,134 @@ export type CustomerPrepaymentSummary = {
   recentPrepayments: PrepaymentListItem[];
 };
 
+export type CustomerServiceCase = {
+  id: number;
+  assetId: number;
+  followupId: number | null;
+  caseType: string;
+  caseTypeLabel: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  priorityLabel: string;
+  receivedDate: string | null;
+  dueDate: string | null;
+  completedDate: string | null;
+  symptom: string;
+  resolution: string;
+  assignedTo: string;
+  hasReport: boolean;
+  updateUrl: string;
+  updatedAt: string | null;
+};
+
+export type CustomerCalibrationRecord = {
+  id: number;
+  assetId: number;
+  followupId: number | null;
+  calibrationDate: string | null;
+  nextDueDate: string | null;
+  result: string;
+  resultLabel: string;
+  notes: string;
+  performedBy: string;
+  hasCertificate: boolean;
+  updateUrl: string;
+  updatedAt: string | null;
+};
+
+export type CustomerAssetItem = {
+  id: number;
+  companyId: number;
+  departmentId: number;
+  primaryFollowupId: number | null;
+  primaryFollowupName: string;
+  productId: number | null;
+  productCode: string;
+  assetName: string;
+  modelName: string;
+  serialNumber: string;
+  purchaseDate: string | null;
+  installLocation: string;
+  warrantyUntil: string | null;
+  status: string;
+  statusLabel: string;
+  notes: string;
+  createdBy: string;
+  updatedAt: string | null;
+  updateUrl: string;
+  latestServiceCase: CustomerServiceCase | null;
+  latestCalibration: CustomerCalibrationRecord | null;
+  serviceCases: CustomerServiceCase[];
+  calibrations: CustomerCalibrationRecord[];
+};
+
+export type CustomerAssetSummary = {
+  canManage: boolean;
+  message: string;
+  metrics: {
+    assetCount: number;
+    activeAssetCount: number;
+    openServiceCaseCount: number;
+    dueCalibrationCount: number;
+  };
+  links: {
+    createAsset: string;
+    createServiceCase: string;
+    createCalibration: string;
+  };
+  options: {
+    assetStatuses: Array<{ value: string; label: string }>;
+    serviceCaseTypes: Array<{ value: string; label: string }>;
+    serviceStatuses: Array<{ value: string; label: string }>;
+    servicePriorities: Array<{ value: string; label: string }>;
+    calibrationResults: Array<{ value: string; label: string }>;
+  };
+  assets: CustomerAssetItem[];
+};
+
+export type CustomerAssetPayload = {
+  assetName: string;
+  modelName?: string;
+  serialNumber?: string;
+  purchaseDate?: string;
+  installLocation?: string;
+  warrantyUntil?: string;
+  status: string;
+  notes?: string;
+};
+
+export type CustomerServiceCasePayload = {
+  assetId: number;
+  caseType: string;
+  status: string;
+  priority: string;
+  receivedDate: string;
+  dueDate?: string;
+  completedDate?: string;
+  symptom?: string;
+  resolution?: string;
+  serviceReport?: File | null;
+};
+
+export type CustomerCalibrationPayload = {
+  assetId: number;
+  calibrationDate: string;
+  nextDueDate?: string;
+  result: string;
+  notes?: string;
+  certificateFile?: File | null;
+};
+
+export type CustomerAssetMutationResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  asset?: CustomerAssetItem;
+  serviceCase?: CustomerServiceCase;
+  calibration?: CustomerCalibrationRecord;
+};
+
 export type CustomerDetailData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -565,6 +693,7 @@ export type CustomerDetailData = {
     createNote: string;
   };
   prepaymentSummary: CustomerPrepaymentSummary;
+  assetSummary: CustomerAssetSummary;
   aiDepartment: CustomerAiDepartment;
   edit: {
     canEdit: boolean;
@@ -3342,6 +3471,29 @@ const emptyCustomerDetailData: CustomerDetailData = {
     },
     recentPrepayments: [],
   },
+  assetSummary: {
+    canManage: false,
+    message: '',
+    metrics: {
+      assetCount: 0,
+      activeAssetCount: 0,
+      openServiceCaseCount: 0,
+      dueCalibrationCount: 0,
+    },
+    links: {
+      createAsset: '',
+      createServiceCase: '',
+      createCalibration: '',
+    },
+    options: {
+      assetStatuses: [],
+      serviceCaseTypes: [],
+      serviceStatuses: [],
+      servicePriorities: [],
+      calibrationResults: [],
+    },
+    assets: [],
+  },
   aiDepartment: {
     departmentId: null,
     departmentName: '',
@@ -4677,6 +4829,78 @@ export async function updateCustomer(
   return data;
 }
 
+async function submitCustomerAssetForm(form: FormData, submitUrl: string): Promise<CustomerAssetMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: form,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Customer asset API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CustomerAssetMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Customer asset mutation failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function saveCustomerAsset(
+  payload: CustomerAssetPayload,
+  submitUrl: string,
+): Promise<CustomerAssetMutationResponse> {
+  const form = new FormData();
+  form.set('asset_name', payload.assetName);
+  form.set('status', payload.status);
+  if (payload.modelName) form.set('model_name', payload.modelName);
+  if (payload.serialNumber) form.set('serial_number', payload.serialNumber);
+  if (payload.purchaseDate) form.set('purchase_date', payload.purchaseDate);
+  if (payload.installLocation) form.set('install_location', payload.installLocation);
+  if (payload.warrantyUntil) form.set('warranty_until', payload.warrantyUntil);
+  if (payload.notes) form.set('notes', payload.notes);
+  return submitCustomerAssetForm(form, submitUrl);
+}
+
+export async function saveCustomerServiceCase(
+  payload: CustomerServiceCasePayload,
+  submitUrl: string,
+): Promise<CustomerAssetMutationResponse> {
+  const form = new FormData();
+  form.set('asset_id', String(payload.assetId));
+  form.set('case_type', payload.caseType);
+  form.set('status', payload.status);
+  form.set('priority', payload.priority);
+  form.set('received_date', payload.receivedDate);
+  if (payload.dueDate) form.set('due_date', payload.dueDate);
+  if (payload.completedDate) form.set('completed_date', payload.completedDate);
+  if (payload.symptom) form.set('symptom', payload.symptom);
+  if (payload.resolution) form.set('resolution', payload.resolution);
+  if (payload.serviceReport) form.set('service_report', payload.serviceReport);
+  return submitCustomerAssetForm(form, submitUrl);
+}
+
+export async function saveCustomerCalibration(
+  payload: CustomerCalibrationPayload,
+  submitUrl: string,
+): Promise<CustomerAssetMutationResponse> {
+  const form = new FormData();
+  form.set('asset_id', String(payload.assetId));
+  form.set('calibration_date', payload.calibrationDate);
+  form.set('result', payload.result);
+  if (payload.nextDueDate) form.set('next_due_date', payload.nextDueDate);
+  if (payload.notes) form.set('notes', payload.notes);
+  if (payload.certificateFile) form.set('certificate_file', payload.certificateFile);
+  return submitCustomerAssetForm(form, submitUrl);
+}
+
 export async function createCompany(name: string, submitUrl = '/reporting/api/companies/create/'): Promise<CompanyCreateResponse> {
   const csrfToken = getCookie('csrftoken');
   const body = new URLSearchParams();
@@ -4783,6 +5007,23 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
           ...(payload.prepaymentSummary?.links ?? {}),
         },
         recentPrepayments: payload.prepaymentSummary?.recentPrepayments ?? emptyCustomerDetailData.prepaymentSummary.recentPrepayments,
+      },
+      assetSummary: {
+        ...emptyCustomerDetailData.assetSummary,
+        ...(payload.assetSummary ?? {}),
+        metrics: {
+          ...emptyCustomerDetailData.assetSummary.metrics,
+          ...(payload.assetSummary?.metrics ?? {}),
+        },
+        links: {
+          ...emptyCustomerDetailData.assetSummary.links,
+          ...(payload.assetSummary?.links ?? {}),
+        },
+        options: {
+          ...emptyCustomerDetailData.assetSummary.options,
+          ...(payload.assetSummary?.options ?? {}),
+        },
+        assets: payload.assetSummary?.assets ?? emptyCustomerDetailData.assetSummary.assets,
       },
       aiDepartment: normalizeCustomerAiDepartment(payload.aiDepartment),
       edit: {

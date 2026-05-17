@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -3259,6 +3259,170 @@ def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
     }
 
 
+def _parse_asset_date(value, field_label):
+    value = (value or '').strip()
+    if not value:
+        return None, None
+    try:
+        from datetime import datetime
+        return datetime.strptime(value, '%Y-%m-%d').date(), None
+    except ValueError:
+        return None, f'{field_label} 형식이 올바르지 않습니다.'
+
+
+def _service_case_payload(case, followup_id=None):
+    return {
+        'id': case.id,
+        'assetId': case.asset_id,
+        'followupId': case.followup_id,
+        'caseType': case.case_type,
+        'caseTypeLabel': case.get_case_type_display(),
+        'status': case.status,
+        'statusLabel': case.get_status_display(),
+        'priority': case.priority,
+        'priorityLabel': case.get_priority_display(),
+        'receivedDate': _date_or_none(case.received_date),
+        'dueDate': _date_or_none(case.due_date),
+        'completedDate': _date_or_none(case.completed_date),
+        'symptom': case.symptom or '',
+        'resolution': case.resolution or '',
+        'assignedTo': _user_display_name(case.assigned_to) if case.assigned_to else '',
+        'hasReport': bool(case.service_report),
+        'updateUrl': reverse('reporting:customer_service_case_update_api', args=[followup_id, case.id]) if followup_id else '',
+        'updatedAt': _datetime_or_none(case.updated_at),
+    }
+
+
+def _calibration_record_payload(record, followup_id=None):
+    return {
+        'id': record.id,
+        'assetId': record.asset_id,
+        'followupId': record.followup_id,
+        'calibrationDate': _date_or_none(record.calibration_date),
+        'nextDueDate': _date_or_none(record.next_due_date),
+        'result': record.result,
+        'resultLabel': record.get_result_display(),
+        'notes': record.notes or '',
+        'performedBy': _user_display_name(record.performed_by) if record.performed_by else '',
+        'hasCertificate': bool(record.certificate_file),
+        'updateUrl': reverse('reporting:customer_calibration_update_api', args=[followup_id, record.id]) if followup_id else '',
+        'updatedAt': _datetime_or_none(record.updated_at),
+    }
+
+
+def _customer_asset_payload(asset, service_cases=None, calibration_records=None, followup_id=None):
+    service_cases = service_cases if service_cases is not None else list(asset.service_cases.all()[:3])
+    calibration_records = calibration_records if calibration_records is not None else list(asset.calibration_records.all()[:3])
+    latest_service = service_cases[0] if service_cases else None
+    latest_calibration = calibration_records[0] if calibration_records else None
+    return {
+        'id': asset.id,
+        'companyId': asset.company_id,
+        'departmentId': asset.department_id,
+        'primaryFollowupId': asset.primary_followup_id,
+        'primaryFollowupName': asset.primary_followup.customer_name if asset.primary_followup else '',
+        'productId': asset.product_id,
+        'productCode': asset.product.product_code if asset.product else '',
+        'assetName': asset.asset_name,
+        'modelName': asset.model_name or '',
+        'serialNumber': asset.serial_number or '',
+        'purchaseDate': _date_or_none(asset.purchase_date),
+        'installLocation': asset.install_location or '',
+        'warrantyUntil': _date_or_none(asset.warranty_until),
+        'status': asset.status,
+        'statusLabel': asset.get_status_display(),
+        'notes': asset.notes or '',
+        'createdBy': _user_display_name(asset.created_by) if asset.created_by else '',
+        'updatedAt': _datetime_or_none(asset.updated_at),
+        'updateUrl': reverse('reporting:customer_asset_update_api', args=[followup_id, asset.id]) if followup_id else '',
+        'latestServiceCase': _service_case_payload(latest_service, followup_id) if latest_service else None,
+        'latestCalibration': _calibration_record_payload(latest_calibration, followup_id) if latest_calibration else None,
+        'serviceCases': [_service_case_payload(case, followup_id) for case in service_cases],
+        'calibrations': [_calibration_record_payload(record, followup_id) for record in calibration_records],
+    }
+
+
+def _customer_assets_queryset(followup, scope_users):
+    return CustomerAsset.objects.filter(
+        company=followup.company,
+        department=followup.department,
+        created_by__in=scope_users,
+    ).select_related(
+        'company', 'department', 'primary_followup', 'product', 'created_by'
+    ).prefetch_related(
+        'service_cases', 'calibration_records'
+    )
+
+
+def _customer_asset_summary_payload(request, followup, scope_users, can_edit):
+    today = timezone.localdate()
+    assets = list(
+        _customer_assets_queryset(followup, scope_users).order_by('-updated_at', '-created_at', '-id')[:20]
+    )
+    asset_ids = [asset.id for asset in assets]
+    service_cases = list(
+        ServiceCase.objects.filter(asset_id__in=asset_ids).select_related(
+            'asset', 'followup', 'assigned_to'
+        ).order_by('-received_date', '-created_at')[:80]
+    )
+    calibrations = list(
+        CalibrationRecord.objects.filter(asset_id__in=asset_ids).select_related(
+            'asset', 'followup', 'performed_by'
+        ).order_by('-calibration_date', '-created_at')[:80]
+    )
+    service_by_asset = {}
+    for case in service_cases:
+        service_by_asset.setdefault(case.asset_id, []).append(case)
+    calibration_by_asset = {}
+    for record in calibrations:
+        calibration_by_asset.setdefault(record.asset_id, []).append(record)
+
+    open_service_count = sum(1 for case in service_cases if case.status not in ['completed', 'cancelled'])
+    due_calibration_count = sum(
+        1 for record in calibrations
+        if record.next_due_date and record.next_due_date <= today + timedelta(days=30)
+    )
+
+    return {
+        'canManage': bool(can_edit),
+        'message': '' if can_edit else '장비/A/S/교정 정보는 읽기 전용입니다.',
+        'metrics': {
+            'assetCount': len(assets),
+            'activeAssetCount': sum(1 for asset in assets if asset.status == 'active'),
+            'openServiceCaseCount': open_service_count,
+            'dueCalibrationCount': due_calibration_count,
+        },
+        'links': {
+            'createAsset': reverse('reporting:customer_asset_create_api', args=[followup.id]),
+            'createServiceCase': reverse('reporting:customer_service_case_create_api', args=[followup.id]),
+            'createCalibration': reverse('reporting:customer_calibration_create_api', args=[followup.id]),
+        },
+        'options': {
+            'assetStatuses': [{'value': value, 'label': label} for value, label in CustomerAsset.STATUS_CHOICES],
+            'serviceCaseTypes': [{'value': value, 'label': label} for value, label in ServiceCase.CASE_TYPE_CHOICES],
+            'serviceStatuses': [{'value': value, 'label': label} for value, label in ServiceCase.STATUS_CHOICES],
+            'servicePriorities': [{'value': value, 'label': label} for value, label in ServiceCase.PRIORITY_CHOICES],
+            'calibrationResults': [{'value': value, 'label': label} for value, label in CalibrationRecord.RESULT_CHOICES],
+        },
+        'assets': [
+            _customer_asset_payload(
+                asset,
+                service_by_asset.get(asset.id, [])[:3],
+                calibration_by_asset.get(asset.id, [])[:3],
+                followup.id,
+            )
+            for asset in assets[:8]
+        ],
+    }
+
+
+def _get_customer_asset_for_mutation(request, followup, asset_id):
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    asset = get_object_or_404(_customer_assets_queryset(followup, scope_users), pk=asset_id)
+    return asset
+
+
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
@@ -3388,6 +3552,7 @@ def customer_detail_summary_api(request, followup_id):
             'createNote': f'/notes/?create=1&customer={followup.id}',
         },
         'prepaymentSummary': _customer_detail_prepayment_summary_payload(followup, scope_users, request.user),
+        'assetSummary': _customer_asset_summary_payload(request, followup, scope_users, can_edit_customer),
         'aiDepartment': _customers_department_ai_payload(request, followup, user_profile),
         'edit': _customers_edit_config(request, user_profile, followup, can_edit_customer),
         'recentNotes': [
@@ -3511,6 +3676,214 @@ def customer_update_api(request, followup_id):
         'href': f'/customers/{followup.id}/',
         'django_href': reverse('reporting:followup_detail', args=[followup.id]),
         'message': '고객 정보가 수정되었습니다.',
+    })
+
+
+def _customer_mutation_followup_or_response(request, followup_id):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return None, auth_response
+    followup = get_object_or_404(
+        FollowUp.objects.select_related('user', 'company', 'department'),
+        pk=followup_id,
+    )
+    if not can_access_followup(request.user, followup):
+        return None, JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    if not can_modify_user_data(request.user, followup.user):
+        return None, JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'}, status=403)
+    return followup, None
+
+
+@never_cache
+@require_POST
+def customer_asset_save_api(request, followup_id, asset_id=None):
+    """React 고객 상세 장비 등록/수정 API."""
+    followup, error_response = _customer_mutation_followup_or_response(request, followup_id)
+    if error_response:
+        return error_response
+
+    asset_name = request.POST.get('asset_name', '').strip()
+    if not asset_name:
+        return JsonResponse({'success': False, 'error': '장비명을 입력해주세요.'}, status=400)
+
+    status = request.POST.get('status', 'active').strip() or 'active'
+    if status not in {value for value, _label in CustomerAsset.STATUS_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 장비 상태를 선택해주세요.'}, status=400)
+
+    purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
+    if purchase_error:
+        return JsonResponse({'success': False, 'error': purchase_error}, status=400)
+    warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
+    if warranty_error:
+        return JsonResponse({'success': False, 'error': warranty_error}, status=400)
+
+    product = None
+    product_id = request.POST.get('product_id', '').strip()
+    if product_id:
+        try:
+            from .models import Product
+            product = Product.objects.get(id=int(product_id))
+        except (Product.DoesNotExist, ValueError):
+            return JsonResponse({'success': False, 'error': '선택한 제품을 찾을 수 없습니다.'}, status=400)
+
+    if asset_id:
+        asset = _get_customer_asset_for_mutation(request, followup, asset_id)
+    else:
+        asset = CustomerAsset(
+            company=followup.company,
+            department=followup.department,
+            primary_followup=followup,
+            created_by=request.user,
+        )
+
+    asset.asset_name = asset_name
+    asset.model_name = request.POST.get('model_name', '').strip()
+    asset.serial_number = request.POST.get('serial_number', '').strip()
+    asset.purchase_date = purchase_date
+    asset.install_location = request.POST.get('install_location', '').strip()
+    asset.warranty_until = warranty_until
+    asset.status = status
+    asset.notes = request.POST.get('notes', '').strip()
+    asset.product = product
+    asset.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': '장비 정보를 저장했습니다.',
+        'asset': _customer_asset_payload(asset, [], [], followup.id),
+    })
+
+
+@never_cache
+@require_POST
+def customer_service_case_save_api(request, followup_id, case_id=None):
+    """React 고객 상세 서비스 케이스 등록/수정 API."""
+    followup, error_response = _customer_mutation_followup_or_response(request, followup_id)
+    if error_response:
+        return error_response
+
+    if case_id:
+        user_profile = get_user_profile(request.user)
+        scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+        service_case = get_object_or_404(
+            ServiceCase.objects.select_related('asset', 'followup', 'assigned_to'),
+            pk=case_id,
+            asset__company=followup.company,
+            asset__department=followup.department,
+            created_by__in=scope_users,
+        )
+        asset = service_case.asset
+    else:
+        asset_id = request.POST.get('asset_id', '').strip()
+        if not asset_id:
+            return JsonResponse({'success': False, 'error': '장비를 선택해주세요.'}, status=400)
+        asset = _get_customer_asset_for_mutation(request, followup, asset_id)
+        service_case = ServiceCase(asset=asset, followup=followup, created_by=request.user, assigned_to=request.user)
+
+    case_type = request.POST.get('case_type', 'service').strip() or 'service'
+    status = request.POST.get('status', 'received').strip() or 'received'
+    priority = request.POST.get('priority', 'normal').strip() or 'normal'
+    if case_type not in {value for value, _label in ServiceCase.CASE_TYPE_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 케이스 유형을 선택해주세요.'}, status=400)
+    if status not in {value for value, _label in ServiceCase.STATUS_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 서비스 상태를 선택해주세요.'}, status=400)
+    if priority not in {value for value, _label in ServiceCase.PRIORITY_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 우선순위를 선택해주세요.'}, status=400)
+
+    received_date, received_error = _parse_asset_date(request.POST.get('received_date'), '접수일')
+    if received_error or not received_date:
+        return JsonResponse({'success': False, 'error': received_error or '접수일을 입력해주세요.'}, status=400)
+    due_date, due_error = _parse_asset_date(request.POST.get('due_date'), '처리 예정일')
+    if due_error:
+        return JsonResponse({'success': False, 'error': due_error}, status=400)
+    completed_date, completed_error = _parse_asset_date(request.POST.get('completed_date'), '완료일')
+    if completed_error:
+        return JsonResponse({'success': False, 'error': completed_error}, status=400)
+
+    service_report = request.FILES.get('service_report')
+    if service_report:
+        is_valid, message = validate_file_upload(service_report)
+        if not is_valid:
+            return JsonResponse({'success': False, 'error': message}, status=400)
+        service_case.service_report = service_report
+
+    service_case.asset = asset
+    service_case.followup = followup
+    service_case.case_type = case_type
+    service_case.status = status
+    service_case.priority = priority
+    service_case.received_date = received_date
+    service_case.due_date = due_date
+    service_case.completed_date = completed_date
+    service_case.symptom = request.POST.get('symptom', '').strip()
+    service_case.resolution = request.POST.get('resolution', '').strip()
+    service_case.assigned_to = request.user
+    service_case.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': '서비스 케이스를 저장했습니다.',
+        'serviceCase': _service_case_payload(service_case, followup.id),
+    })
+
+
+@never_cache
+@require_POST
+def customer_calibration_save_api(request, followup_id, record_id=None):
+    """React 고객 상세 교정 기록 등록/수정 API."""
+    followup, error_response = _customer_mutation_followup_or_response(request, followup_id)
+    if error_response:
+        return error_response
+
+    if record_id:
+        user_profile = get_user_profile(request.user)
+        scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+        record = get_object_or_404(
+            CalibrationRecord.objects.select_related('asset', 'followup', 'performed_by'),
+            pk=record_id,
+            asset__company=followup.company,
+            asset__department=followup.department,
+            created_by__in=scope_users,
+        )
+        asset = record.asset
+    else:
+        asset_id = request.POST.get('asset_id', '').strip()
+        if not asset_id:
+            return JsonResponse({'success': False, 'error': '장비를 선택해주세요.'}, status=400)
+        asset = _get_customer_asset_for_mutation(request, followup, asset_id)
+        record = CalibrationRecord(asset=asset, followup=followup, created_by=request.user, performed_by=request.user)
+
+    calibration_date, calibration_error = _parse_asset_date(request.POST.get('calibration_date'), '교정일')
+    if calibration_error or not calibration_date:
+        return JsonResponse({'success': False, 'error': calibration_error or '교정일을 입력해주세요.'}, status=400)
+    next_due_date, next_error = _parse_asset_date(request.POST.get('next_due_date'), '다음 교정 예정일')
+    if next_error:
+        return JsonResponse({'success': False, 'error': next_error}, status=400)
+
+    result = request.POST.get('result', 'pass').strip() or 'pass'
+    if result not in {value for value, _label in CalibrationRecord.RESULT_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 교정 결과를 선택해주세요.'}, status=400)
+
+    certificate_file = request.FILES.get('certificate_file')
+    if certificate_file:
+        is_valid, message = validate_file_upload(certificate_file)
+        if not is_valid:
+            return JsonResponse({'success': False, 'error': message}, status=400)
+        record.certificate_file = certificate_file
+
+    record.asset = asset
+    record.followup = followup
+    record.calibration_date = calibration_date
+    record.next_due_date = next_due_date
+    record.result = result
+    record.notes = request.POST.get('notes', '').strip()
+    record.performed_by = request.user
+    record.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': '교정 기록을 저장했습니다.',
+        'calibration': _calibration_record_payload(record, followup.id),
     })
 
 

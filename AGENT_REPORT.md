@@ -1,5 +1,101 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Customer Asset / Service / Calibration V1
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+글로벌 CRM 벤치마크에서 확인한 핵심 공백인 고객 보유 장비, A/S/서비스 케이스, 교정 이력을 React 고객 상세 화면에 v1로 추가했습니다. 장비는 업체/부서/담당 고객에 연결되고, 서비스 케이스와 교정 기록은 장비 단위로 누적됩니다.
+
+### 변경된 파일
+
+- `reporting/models.py`: `CustomerAsset`, `ServiceCase`, `CalibrationRecord` 모델 추가.
+- `reporting/migrations/0103_customerasset_calibrationrecord_servicecase_and_more.py`: 신규 모델/인덱스 migration 추가.
+- `reporting/admin.py`: 장비/서비스/교정 admin 등록.
+- `reporting/views.py`, `reporting/urls.py`: 고객 상세 asset summary와 생성/수정 JSON API 추가.
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: React 고객 상세 `장비/교정/서비스` 섹션과 inline form 추가.
+- `reporting/tests.py`: 요약 payload, 생성 API, 권한 차단 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 고객 상세에서 등록 장비, 운영 장비, 진행 서비스, 교정 예정 건수를 바로 볼 수 있습니다.
+- 장비별 모델명, 시리얼번호, 보증일, 설치 위치, 최근 서비스, 최근 교정, 서비스/교정 이력을 표시합니다.
+- 고객 상세 화면에서 장비, 서비스 케이스, 교정 기록을 바로 등록/수정할 수 있습니다.
+- 기존 영업노트/일정/선결제/AI 고객 상세 흐름은 유지했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` legacy route와 Django template fallback은 제거하지 않았습니다.
+- 고객 수정 권한과 기존 manager read-only 정책을 장비/서비스/교정 API에도 적용했습니다.
+- AI Workspace 메일 컨텍스트 hotfix의 `recentEmails`/`recentEmailCount` 변경도 병합 후 재검증했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_asset_service_calibration_summary reporting.tests.CustomersSummaryApiTests.test_customer_asset_service_calibration_apis_create_records reporting.tests.CustomersSummaryApiTests.test_customer_asset_mutation_blocks_manager_and_other_company reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_recent_email_history reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_fallback_uses_recent_email_when_requested reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_includes_recent_email_history --verbosity=2
+→ Ran 6 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 25 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK
+
+Local browser smoke:
+→ Django 127.0.0.1:8000 + Vite 127.0.0.1:5173, local smoke customer.
+→ `/customers/285/` rendered `장비/교정/서비스`, 1 asset, 1 service, 1 calibration.
+→ `장비 등록` form opened and console reported 0 errors after backend was running.
+→ Local smoke data and temporary servers were cleaned up.
+```
+
+### 알려진 제한
+
+- v1은 고객 상세에 붙는 React-first workflow이며, 별도 장비 전용 목록/검색 화면은 아직 없습니다.
+- 서비스 리포트/교정 성적서 파일 필드는 백엔드에서 수용하지만 React form의 파일 입력 UI는 다음 단계로 남겨두었습니다.
+- AI 추천과 장비/교정 이력 연결은 아직 하지 않았습니다.
+
+### 운영 배포 상태
+
+- Pending commit/push/deploy.
+- DB migration이 있으므로 Railway `web` 배포 시 migration 적용 확인이 필요합니다.
+- Frontend bundle 변경이 있으므로 Railway `sales-note-frontend` 배포가 필요합니다.
+
+### 권장 다음 작업
+
+운영 배포 후 실제 고객 상세에서 장비 등록, 서비스 접수, 교정 기록 저장을 수동 검수합니다. 이후 장비 전용 검색/필터 또는 AI 추천 연계 중 하나를 다음 범위로 잡는 것이 적절합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/customers/`에 접속합니다.
+2. 테스트 가능한 고객 상세로 들어가 `장비/교정/서비스` 섹션이 보이는지 확인합니다.
+3. `장비 등록`으로 장비명, 모델명, 시리얼번호, 보증 만료일을 저장합니다.
+4. 등록된 장비 카드에서 `서비스`를 눌러 접수일/유형/상태/우선순위/증상을 저장합니다.
+5. 같은 장비 카드에서 `교정`을 눌러 교정일/다음 교정일/결과를 저장합니다.
+6. 페이지 새로고침 후 장비 카드, 최근 서비스, 최근 교정, 이력 버튼이 유지되는지 확인합니다.
+7. manager 계정에서는 섹션이 읽기 전용으로 표시되고 저장 버튼이 노출되지 않는지 확인합니다.
+
+---
+
 ## 2026-05-18 — AI Workspace Email CRM Context Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료

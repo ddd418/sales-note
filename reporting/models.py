@@ -976,6 +976,155 @@ class ScheduleFile(models.Model):
         verbose_name_plural = "일정 첨부파일 목록"
         ordering = ['-uploaded_at']
 
+
+class CustomerAsset(models.Model):
+    """고객 부서/연구실 보유 장비."""
+
+    STATUS_CHOICES = [
+        ('active', '사용중'),
+        ('inactive', '미사용'),
+        ('disposed', '폐기'),
+        ('unknown', '미확인'),
+    ]
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='customer_assets', verbose_name="업체/학교")
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='customer_assets', verbose_name="부서/연구실")
+    primary_followup = models.ForeignKey(
+        FollowUp,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='customer_assets',
+        verbose_name="주 담당 고객",
+    )
+    product = models.ForeignKey(
+        'Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='customer_assets',
+        verbose_name="연결 제품",
+    )
+    asset_name = models.CharField(max_length=200, verbose_name="장비명")
+    model_name = models.CharField(max_length=200, blank=True, verbose_name="모델명")
+    serial_number = models.CharField(max_length=120, blank=True, verbose_name="시리얼번호")
+    purchase_date = models.DateField(null=True, blank=True, verbose_name="구매일")
+    install_location = models.CharField(max_length=200, blank=True, verbose_name="설치장소")
+    warranty_until = models.DateField(null=True, blank=True, verbose_name="보증 종료일")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="상태")
+    notes = models.TextField(blank=True, verbose_name="메모")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_customer_assets', verbose_name="등록자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.asset_name} ({self.department})"
+
+    class Meta:
+        verbose_name = "고객 보유 장비"
+        verbose_name_plural = "고객 보유 장비 목록"
+        ordering = ['-updated_at', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'department'], name='asset_company_dept_idx'),
+            models.Index(fields=['primary_followup', '-updated_at'], name='asset_followup_updated_idx'),
+            models.Index(fields=['created_by', '-updated_at'], name='asset_creator_updated_idx'),
+            models.Index(fields=['serial_number'], name='asset_serial_idx'),
+        ]
+
+
+class ServiceCase(models.Model):
+    """고객 장비 A/S, 클레임, 수리 케이스."""
+
+    CASE_TYPE_CHOICES = [
+        ('service', 'A/S'),
+        ('repair', '수리'),
+        ('claim', '클레임'),
+        ('exchange', '교환'),
+        ('return', '반품'),
+        ('inspection', '점검'),
+        ('other', '기타'),
+    ]
+    STATUS_CHOICES = [
+        ('received', '접수'),
+        ('in_progress', '진행중'),
+        ('waiting', '대기'),
+        ('completed', '완료'),
+        ('cancelled', '취소'),
+    ]
+    PRIORITY_CHOICES = [
+        ('low', '낮음'),
+        ('normal', '보통'),
+        ('high', '높음'),
+        ('urgent', '긴급'),
+    ]
+
+    asset = models.ForeignKey(CustomerAsset, on_delete=models.CASCADE, related_name='service_cases', verbose_name="장비")
+    followup = models.ForeignKey(FollowUp, on_delete=models.SET_NULL, null=True, blank=True, related_name='service_cases', verbose_name="관련 고객")
+    case_type = models.CharField(max_length=30, choices=CASE_TYPE_CHOICES, default='service', verbose_name="케이스 유형")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='received', verbose_name="상태")
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='normal', verbose_name="우선순위")
+    received_date = models.DateField(verbose_name="접수일")
+    due_date = models.DateField(null=True, blank=True, verbose_name="처리 예정일")
+    completed_date = models.DateField(null=True, blank=True, verbose_name="완료일")
+    symptom = models.TextField(blank=True, verbose_name="증상/요청")
+    resolution = models.TextField(blank=True, verbose_name="처리 내용")
+    service_report = models.FileField(upload_to='service_reports/%Y/%m/', null=True, blank=True, verbose_name="서비스 리포트")
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_service_cases', verbose_name="담당자")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_service_cases', verbose_name="등록자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.asset.asset_name} - {self.get_case_type_display()} ({self.get_status_display()})"
+
+    class Meta:
+        verbose_name = "서비스 케이스"
+        verbose_name_plural = "서비스 케이스 목록"
+        ordering = ['-received_date', '-created_at']
+        indexes = [
+            models.Index(fields=['asset', 'status'], name='svc_asset_status_idx'),
+            models.Index(fields=['followup', '-received_date'], name='svc_followup_date_idx'),
+            models.Index(fields=['created_by', '-received_date'], name='svc_creator_date_idx'),
+            models.Index(fields=['status', 'due_date'], name='svc_status_due_idx'),
+        ]
+
+
+class CalibrationRecord(models.Model):
+    """고객 장비 교정 이력."""
+
+    RESULT_CHOICES = [
+        ('pass', '적합'),
+        ('fail', '부적합'),
+        ('adjusted', '조정 완료'),
+        ('pending', '확인중'),
+    ]
+
+    asset = models.ForeignKey(CustomerAsset, on_delete=models.CASCADE, related_name='calibration_records', verbose_name="장비")
+    followup = models.ForeignKey(FollowUp, on_delete=models.SET_NULL, null=True, blank=True, related_name='calibration_records', verbose_name="관련 고객")
+    calibration_date = models.DateField(verbose_name="교정일")
+    next_due_date = models.DateField(null=True, blank=True, verbose_name="다음 교정 예정일")
+    result = models.CharField(max_length=20, choices=RESULT_CHOICES, default='pass', verbose_name="결과")
+    certificate_file = models.FileField(upload_to='calibration_certificates/%Y/%m/', null=True, blank=True, verbose_name="교정 성적서")
+    notes = models.TextField(blank=True, verbose_name="메모")
+    performed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='performed_calibrations', verbose_name="교정 담당자")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_calibration_records', verbose_name="등록자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.asset.asset_name} - {self.calibration_date}"
+
+    class Meta:
+        verbose_name = "교정 이력"
+        verbose_name_plural = "교정 이력 목록"
+        ordering = ['-calibration_date', '-created_at']
+        indexes = [
+            models.Index(fields=['asset', '-calibration_date'], name='cal_asset_date_idx'),
+            models.Index(fields=['followup', '-calibration_date'], name='cal_followup_date_idx'),
+            models.Index(fields=['next_due_date'], name='cal_next_due_idx'),
+            models.Index(fields=['created_by', '-calibration_date'], name='cal_creator_date_idx'),
+        ]
+
 # 납품 품목 (DeliveryItem) 모델
 class DeliveryItem(models.Model):
     schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, related_name='delivery_items_set', verbose_name="일정", blank=True, null=True)

@@ -1,29 +1,79 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Customer asset / service / calibration v1 plan
+
+**Background**:
+
+- User chose the hybrid direction: keep React migration moving, but start the global CRM expansion as a React-first workflow.
+- The benchmark gap analysis identified customer-owned equipment, A/S cases, and calibration records as the largest life-science CRM gap.
+- Current React customer detail already has customer summary, notes, schedules, prepayments, and AI context, so v1 should attach the new workflow there instead of creating a separate menu first.
+
+**DB change required**: Yes.
+
+- Add `CustomerAsset`, `ServiceCase`, and `CalibrationRecord` models in `reporting`.
+- Ownership model:
+  - Asset belongs to `Company` and `Department`.
+  - Optional primary `FollowUp` links the asset to a specific 담당자/customer detail.
+  - Records keep `created_by` and timestamps for permission scope and traceability.
+- v1 intentionally does not force serial-number uniqueness because legacy/field data can be incomplete or duplicated.
+
+**Implementation scope**:
+
+- Backend:
+  - Add models, admin registration, and migration.
+  - Add customer-detail asset summary payload.
+  - Add JSON APIs for creating/updating assets, service cases, and calibration records from React.
+  - Reuse existing login, company/user scope, and manager read-only rules.
+- Frontend:
+  - Extend React customer detail API types and normalization.
+  - Add a customer-detail `장비/A/S/교정` section with empty state, compact metrics, recent assets, and inline create/edit forms.
+  - Do not add a separate navigation item in v1.
+- Existing behavior:
+  - Keep `/reporting/*` Django template routes as fallback.
+  - Do not delete legacy templates or change public routes.
+  - Do not connect this to AI recommendations yet.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py`
+- Focused Django tests for customer asset summary and mutation permissions.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- Local browser smoke for customer detail asset/service/calibration forms where feasible.
+- `git diff --check`
+
+**Current status**:
+
+- Implemented and locally verified after the AI email CRM context hotfix merge.
+- Ready for commit, push, Railway `web` migration/API deployment, and Railway `sales-note-frontend` deployment.
+
 ## 2026-05-18 AI Workspace email CRM context fix plan
 
 **Background**:
 
 - User reported that `/ai-workspace/?department_id=146` does not use email history even when explicitly asked to reference mail.
-- Current AI Workspace action queue can surface `email_waiting`, but department/all-scope question context does not include recent `EmailLog` subjects or bodies.
+- Current AI Workspace action queue can surface `email_waiting`, but department/all-scope question context did not include recent `EmailLog` subjects or bodies.
 - AI answers must be able to reference mail as part of CRM evidence, while still staying inside the authenticated user's CRM scope.
 
 **DB change required**: No.
 
-- Reuse existing `EmailLog` links to `FollowUp` and `Schedule`.
+- Reused existing `EmailLog` links to `FollowUp` and `Schedule`.
 - No model or migration changes.
 
 **Implementation scope**:
 
 - Backend:
-  - Add a scoped recent-email context payload for AI Workspace questions.
-  - Include sent/received date, subject, body excerpt, contact, customer/company/department, thread link, and attachment filenames.
-  - Add `recentEmails` to both selected-department and all-department question contexts.
-  - Update prompt rules so explicit mail/email requests must use `crmContext.recentEmails` or state that no matching email exists.
-  - Return `recentEmailCount` in the question response context for verification/debugging.
+  - Added a scoped recent-email context payload for AI Workspace questions.
+  - Included sent/received date, subject, body excerpt, contact, customer/company/department, thread link, and attachment filenames.
+  - Added `recentEmails` to both selected-department and all-department question contexts.
+  - Updated prompt rules so explicit mail/email requests must use `crmContext.recentEmails` or state that no matching email exists.
+  - Returned `recentEmailCount` in the question response context for verification/debugging.
 - Tests:
-  - Add focused tests proving department-scope question prompts include recent email body/subject.
-  - Add a fallback test proving explicit mail questions can answer from recent email context when OpenAI is unavailable.
+  - Added focused tests proving department-scope question prompts include recent email body/subject.
+  - Added a fallback test proving explicit mail questions can answer from recent email context when OpenAI is unavailable.
 
 **Validation plan**:
 
