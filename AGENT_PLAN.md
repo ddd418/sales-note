@@ -1,5 +1,48 @@
 # AGENT_PLAN.md
 
+## 2026-05-17 AI Workspace all-department question plan
+
+**Background**:
+
+- User requested AI Workspace questions that cover all departments, not only the selected department.
+- Model selection must remain available for both GPT-5.5 and GPT-5.4 mini.
+- Current backend already supports no-`departmentId` question requests by building global CRM context and saving `AIWorkspaceQuestionLog(scope_type='all', department=NULL)`, but the React UI blocks submitting without a department and the history payload only returns department history.
+
+**DB change required**: No.
+
+- Saving all-department answers is recommended because AI answers can affect sales decisions and should be auditable.
+- Store them in the existing `AIWorkspaceQuestionLog` table with `scope_type='all'` and `department=NULL`.
+- This keeps one history/detail/delete model while allowing department history and all-department history to be filtered separately.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `question_scope=all|department` support to the AI Workspace summary API.
+  - Return all-department question history from existing `AIWorkspaceQuestionLog` when `question_scope=all`.
+  - Make question API accept explicit `scopeType='all'` and save the answer as an all-scope log.
+  - Update all-scope back links to return to `/ai-workspace/?question_scope=all`.
+- Frontend:
+  - Add a question scope segmented control: selected department vs all departments.
+  - Keep GPT-5.5 / GPT-5.4 mini selection unchanged.
+  - For all-department scope, submit without `departmentId`, show all-department counts, refresh all-scope history, and keep the URL query in sync.
+  - Keep department detail links, deletion, and pagination working per selected scope.
+- Tests:
+  - Add backend tests for all-scope question save and all-scope history filtering.
+  - Add local UI smoke for all-department scope question/history/delete rendering with mocked data.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_records_all_scope_question_log reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_includes_all_scope_question_history --verbosity=1`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- Local Playwright smoke for department/all question scope and history delete UI.
+- `git diff --check`
+
 ## 2026-05-17 AI Workspace question history delete plan
 
 **Background**:

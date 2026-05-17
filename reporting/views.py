@@ -10828,17 +10828,18 @@ def _ai_workspace_question_log_payload(log):
 
 def _ai_workspace_question_log_detail_link(log):
     department_id = log.department_id
-    return f"/ai-workspace/?department_id={department_id}" if department_id else '/ai-workspace/'
+    return f"/ai-workspace/?department_id={department_id}" if department_id else '/ai-workspace/?question_scope=all'
 
 
-def _ai_workspace_empty_question_history(page=1):
+def _ai_workspace_empty_question_history(page=1, scope_type='department', department_id=None):
     try:
         page_number = int(page or 1)
     except (TypeError, ValueError):
         page_number = 1
+    normalized_scope = 'all' if scope_type == 'all' else 'department'
     return {
-        'scopeType': 'department',
-        'departmentId': None,
+        'scopeType': normalized_scope,
+        'departmentId': department_id if normalized_scope == 'department' else None,
         'page': max(1, page_number),
         'pageSize': AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE,
         'total': 0,
@@ -10849,23 +10850,27 @@ def _ai_workspace_empty_question_history(page=1):
     }
 
 
-def _ai_workspace_question_history_payload(user, department, page=1):
+def _ai_workspace_question_history_payload(user, department=None, page=1, scope_type='department'):
     try:
         page_number = int(page or 1)
     except (TypeError, ValueError):
         page_number = 1
     page_number = max(1, page_number)
-    if not (user and department):
-        return _ai_workspace_empty_question_history(page_number)
+    normalized_scope = 'all' if scope_type == 'all' else 'department'
+    if not user:
+        return _ai_workspace_empty_question_history(page_number, normalized_scope)
+    if normalized_scope == 'department' and not department:
+        return _ai_workspace_empty_question_history(page_number, normalized_scope)
 
-    queryset = AIWorkspaceQuestionLog.objects.filter(
-        user=user,
-        department=department,
-        scope_type='department',
-    ).select_related(
+    queryset = AIWorkspaceQuestionLog.objects.filter(user=user).select_related(
         'department',
         'department__company',
-    ).order_by('-created_at')
+    )
+    if normalized_scope == 'all':
+        queryset = queryset.filter(scope_type='all', department__isnull=True)
+    else:
+        queryset = queryset.filter(department=department, scope_type='department')
+    queryset = queryset.order_by('-created_at')
     paginator = Paginator(queryset, AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE)
     if paginator.count == 0:
         page_obj = None
@@ -10874,8 +10879,8 @@ def _ai_workspace_question_history_payload(user, department, page=1):
         page_number = min(page_number, paginator.num_pages)
         page_obj = paginator.page(page_number)
     return {
-        'scopeType': 'department',
-        'departmentId': department.id,
+        'scopeType': normalized_scope,
+        'departmentId': department.id if normalized_scope == 'department' and department else None,
         'page': page_number,
         'pageSize': AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE,
         'total': paginator.count,
@@ -12438,6 +12443,11 @@ def ai_workspace_summary_api(request):
     except (TypeError, ValueError):
         question_page = 1
     question_page = max(1, question_page)
+    question_scope = str(
+        request.GET.get('question_scope') or request.GET.get('questionScope') or 'department'
+    ).strip().lower()
+    if question_scope not in {'all', 'department'}:
+        question_scope = 'department'
     selected_department = (
         next((department for department in departments if department.id == requested_department_id), None)
         if requested_department_id
@@ -12630,8 +12640,9 @@ def ai_workspace_summary_api(request):
         )
     question_history = _ai_workspace_question_history_payload(
         request.user,
-        effective_question_department,
+        effective_question_department if question_scope == 'department' else None,
         page=question_page,
+        scope_type=question_scope,
     )
 
     prompt_targets = []
@@ -12890,6 +12901,15 @@ def ai_workspace_department_question_api(request):
         }, status=400)
 
     department_id = payload.get('departmentId') or payload.get('department_id')
+    scope_type = str(payload.get('scopeType') or payload.get('scope_type') or '').strip().lower()
+    if not scope_type:
+        scope_type = 'department' if department_id else 'all'
+    if scope_type not in {'all', 'department'}:
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_scope',
+            'message': '질문 범위가 올바르지 않습니다.',
+        }, status=400)
     question = _ai_workspace_question_text(payload.get('question'), AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH)
     if len(question) < 2:
         return JsonResponse({
@@ -12906,7 +12926,8 @@ def ai_workspace_department_question_api(request):
             'modelChoices': _ai_workspace_question_model_choices_payload(),
         }, status=400)
 
-    if department_id:
+    department = None
+    if scope_type == 'department':
         department = _ai_workspace_question_department_for_user(request.user, department_id)
         if not department:
             return JsonResponse({
@@ -12922,8 +12943,8 @@ def ai_workspace_department_question_api(request):
     scope = context.get('scope') or {}
     question_log = AIWorkspaceQuestionLog.objects.create(
         user=request.user,
-        department=department if department_id else None,
-        scope_type='department' if department_id else 'all',
+        department=department if scope_type == 'department' else None,
+        scope_type=scope_type,
         question=question,
         answer_snapshot=_ai_workspace_question_log_answer_snapshot(answer),
         source=source,

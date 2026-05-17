@@ -8092,6 +8092,40 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(log.question, '마지막 주문일 알려줘')
         self.assertIn('summary', log.answer_snapshot)
 
+    def test_ai_workspace_department_question_records_all_scope_question_log(self):
+        from reporting.models import AIWorkspaceQuestionLog
+
+        self._create_customer(self.user, '전체질문A')
+        self._create_customer(self.user, '전체질문B')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'scopeType': 'all',
+                'question': '전체 부서에서 오늘 우선 챙길 곳을 찾아줘',
+                'model': 'gpt-5.4-mini',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['scope']['type'], 'all')
+        self.assertEqual(payload['scope']['departmentId'], None)
+        self.assertEqual(payload['department'], None)
+        self.assertEqual(payload['questionLog']['scopeType'], 'all')
+        self.assertEqual(payload['questionLog']['department'], None)
+        self.assertEqual(payload['model'], 'gpt-5.4-mini')
+        self.assertGreaterEqual(payload['context']['departmentCount'], 1)
+
+        log = AIWorkspaceQuestionLog.objects.get(user=self.user)
+        self.assertIsNone(log.department)
+        self.assertEqual(log.scope_type, 'all')
+        self.assertEqual(log.model, 'gpt-5.4-mini')
+        self.assertIn('summary', log.answer_snapshot)
+
     def test_ai_workspace_question_log_detail_api_returns_full_answer_for_owner(self):
         from reporting.models import AIWorkspaceQuestionLog
 
@@ -8348,6 +8382,62 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn('동료 질문', history_text)
         self.assertNotIn('다른 부서 질문', history_text)
         self.assertNotIn('answerDirection', payload)
+
+    def test_ai_workspace_summary_includes_all_scope_question_history(self):
+        from datetime import timedelta
+        from reporting.models import AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.user, '전체질문이력')
+        now = timezone.now()
+        for index in range(6):
+            log = AIWorkspaceQuestionLog.objects.create(
+                user=self.user,
+                department=None,
+                scope_type='all',
+                question=f'전체 질문 {index}',
+                answer_snapshot={'summary': f'전체 답변 {index}'},
+                source='fallback',
+                model='gpt-5.5',
+            )
+            AIWorkspaceQuestionLog.objects.filter(pk=log.pk).update(created_at=now + timedelta(seconds=index))
+        AIWorkspaceQuestionLog.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            question='부서 질문',
+            answer_snapshot={'summary': '부서 답변'},
+            source='fallback',
+        )
+        AIWorkspaceQuestionLog.objects.create(
+            user=self.coworker,
+            department=None,
+            scope_type='all',
+            question='동료 전체 질문',
+            answer_snapshot={'summary': '동료 전체 답변'},
+            source='fallback',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {
+            'department_id': department.id,
+            'question_scope': 'all',
+            'question_page': 2,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        history = payload['questionHistory']
+        self.assertEqual(history['scopeType'], 'all')
+        self.assertEqual(history['departmentId'], None)
+        self.assertEqual(history['page'], 2)
+        self.assertEqual(history['pageSize'], 5)
+        self.assertEqual(history['total'], 6)
+        self.assertEqual(history['totalPages'], 2)
+        self.assertEqual(len(history['items']), 1)
+        history_text = json.dumps(history, ensure_ascii=False)
+        self.assertIn('전체 질문', history_text)
+        self.assertNotIn('부서 질문', history_text)
+        self.assertNotIn('동료 전체 질문', history_text)
 
     def test_ai_workspace_question_feedback_api_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '질문피드백권한없음')

@@ -115,6 +115,7 @@ import {
   AIWorkspaceDraftType,
   AIWorkspaceActionDraftResponse,
   AIWorkspaceQuestionModel,
+  AIWorkspaceQuestionScope,
   AIWorkspaceQuestionLog,
   AIWorkspaceQuestionLogDetailData,
   AIWorkspaceFollowupTarget,
@@ -1235,6 +1236,12 @@ function getAIWorkspaceDepartmentIdParam(): number | null {
   const rawValue = params.get('department_id') || params.get('department');
   const id = Number(rawValue);
   return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getAIWorkspaceQuestionScopeParam(): AIWorkspaceQuestionScope {
+  const value = new URLSearchParams(window.location.search).get('question_scope')
+    || new URLSearchParams(window.location.search).get('questionScope');
+  return value === 'all' ? 'all' : 'department';
 }
 
 function getAIWorkspaceQuestionLogId(): number | null {
@@ -12733,8 +12740,10 @@ function AIWorkspaceDepartmentQuestionPanel({
   onHistoryPageChange,
   onModelChange,
   onQuestionChange,
+  onQuestionScopeChange,
   onSubmit,
   question,
+  questionScope,
   result,
 }: {
   data: AIWorkspaceData;
@@ -12749,8 +12758,10 @@ function AIWorkspaceDepartmentQuestionPanel({
   onHistoryPageChange: (page: number) => void;
   onModelChange: (value: AIWorkspaceQuestionModel | string) => void;
   onQuestionChange: (value: string) => void;
+  onQuestionScopeChange: (value: AIWorkspaceQuestionScope) => void;
   onSubmit: () => void;
   question: string;
+  questionScope: AIWorkspaceQuestionScope;
   result: AIWorkspaceDepartmentQuestionResponse | null;
 }) {
   const scope = data.feedbackHistory.scope;
@@ -12759,9 +12770,10 @@ function AIWorkspaceDepartmentQuestionPanel({
     data.featuredDepartment?.companyName,
     scope.departmentName || data.featuredDepartment?.departmentName,
   ].filter(Boolean).join(' · ') || '선택 부서';
-  const canUseDepartmentScope = Boolean(departmentId);
+  const allScopeSelected = questionScope === 'all';
+  const canUseQuestionScope = allScopeSelected || Boolean(departmentId);
   const trimmedQuestion = question.trim();
-  const canSubmit = canUseDepartmentScope && trimmedQuestion.length >= 2 && !loading;
+  const canSubmit = canUseQuestionScope && trimmedQuestion.length >= 2 && !loading;
   const answer = result?.answer;
   const actionItems = answer?.actionItems ?? [];
   const decision = answer?.decision;
@@ -12779,6 +12791,11 @@ function AIWorkspaceDepartmentQuestionPanel({
   ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
   const lastDelivery = result?.context?.lastDelivery;
   const customerCount = result?.context?.customerCount ?? data.featuredDepartment?.customerCount ?? 0;
+  const departmentCount = result?.context?.departmentCount ?? data.metrics.departmentsWithCustomers ?? 0;
+  const visibleScopeLabel = result?.scope?.label || (allScopeSelected ? '전체 부서' : selectedDepartmentLabel);
+  const scopeMetaLabel = allScopeSelected
+    ? `부서 ${formatNumber(departmentCount)}개`
+    : `고객 ${formatNumber(customerCount)}명`;
   const history = data.questionHistory;
   const modelChoices = data.questionModelChoices.length > 0
     ? data.questionModelChoices
@@ -12804,9 +12821,26 @@ function AIWorkspaceDepartmentQuestionPanel({
         <MessageSquareText size={18} />
       </div>
       <div className="ai-department-question-scope">
-        <span>{result?.scope?.label || selectedDepartmentLabel}</span>
-        <small>고객 {formatNumber(customerCount)}명</small>
+        <span>{visibleScopeLabel}</span>
+        <small>{scopeMetaLabel}</small>
         {result?.webSearchUsed ? <small>웹 검색 사용</small> : null}
+      </div>
+      <div className="segmented-control ai-question-scope-toggle" aria-label="AI 질문 범위">
+        <button
+          className={questionScope === 'department' ? 'active' : ''}
+          disabled={!departmentId}
+          onClick={() => onQuestionScopeChange('department')}
+          type="button"
+        >
+          선택 부서
+        </button>
+        <button
+          className={questionScope === 'all' ? 'active' : ''}
+          onClick={() => onQuestionScopeChange('all')}
+          type="button"
+        >
+          전체 부서
+        </button>
       </div>
       <div className="segmented-control ai-question-model-toggle" aria-label="AI 질문 모델">
         {modelChoices.map((choice) => (
@@ -12824,7 +12858,7 @@ function AIWorkspaceDepartmentQuestionPanel({
         <textarea
           maxLength={600}
           onChange={(event) => onQuestionChange(event.target.value)}
-          placeholder="예: 재견적 줄 때 샘플 피드백을 다시 물어볼까?"
+          placeholder={allScopeSelected ? '예: 전체 부서에서 이번 주 먼저 챙길 고객은?' : '예: 재견적 줄 때 샘플 피드백을 다시 물어볼까?'}
           rows={3}
           value={question}
         />
@@ -12988,7 +13022,7 @@ function AIWorkspaceDepartmentQuestionPanel({
             ))}
           </div>
         ) : (
-          <DashboardEmpty label="선택 부서의 질문 기록이 없습니다" />
+          <DashboardEmpty label={history.scopeType === 'all' ? '전체 부서 질문 기록이 없습니다' : '선택 부서의 질문 기록이 없습니다'} />
         )}
         {history.totalPages > 1 ? (
           <div className="ai-question-history-pagination">
@@ -13155,7 +13189,7 @@ function AIWorkspaceQuestionDetailPage({
   const departmentLabel = [
     log.department?.company,
     log.department?.name,
-  ].filter(Boolean).join(' · ') || 'AI Workspace';
+  ].filter(Boolean).join(' · ') || (log.scopeType === 'all' ? '전체 부서' : 'AI Workspace');
   const meta = [
     log.createdAt ? formatDateTimeLabel(log.createdAt) : '',
     log.modelLabel,
@@ -13466,12 +13500,16 @@ function AIWorkspacePage({
   data,
   loading,
   onRefresh,
+  questionScope,
+  onQuestionScopeChange,
   selectedDepartmentId,
   onDepartmentSelect,
 }: {
   data: AIWorkspaceData | null;
   loading: boolean;
-  onRefresh: (params?: { departmentId?: number | null; questionPage?: number }) => Promise<AIWorkspaceData>;
+  onRefresh: (params?: { departmentId?: number | null; questionPage?: number; questionScope?: AIWorkspaceQuestionScope }) => Promise<AIWorkspaceData>;
+  questionScope: AIWorkspaceQuestionScope;
+  onQuestionScopeChange: (scope: AIWorkspaceQuestionScope) => void;
   selectedDepartmentId: number | null;
   onDepartmentSelect: (department: AIWorkspaceDepartment) => void;
 }) {
@@ -13501,7 +13539,7 @@ function AIWorkspacePage({
     setQuestionHistoryPage(1);
     setDeleteQuestionLogMessage('');
     setDeleteQuestionLogError('');
-  }, [activeDepartmentId]);
+  }, [activeDepartmentId, questionScope]);
 
   useEffect(() => {
     const choices = data?.questionModelChoices ?? [];
@@ -13602,7 +13640,7 @@ function AIWorkspacePage({
     if (!question || departmentQuestionLoading) {
       return;
     }
-    if (!activeDepartmentId) {
+    if (questionScope === 'department' && !activeDepartmentId) {
       setDepartmentQuestionError('질문할 부서를 먼저 선택하세요.');
       return;
     }
@@ -13610,10 +13648,16 @@ function AIWorkspacePage({
     setDepartmentQuestionLoading(true);
     setDepartmentQuestionError('');
     try {
-      const result = await askAIWorkspaceDepartmentQuestion(activeDepartmentId, question, departmentQuestionModel);
+      const questionDepartmentId = questionScope === 'department' ? activeDepartmentId : null;
+      const result = await askAIWorkspaceDepartmentQuestion(
+        questionDepartmentId,
+        question,
+        departmentQuestionModel,
+        questionScope,
+      );
       setDepartmentQuestionResult(result);
       setQuestionHistoryPage(1);
-      await onRefresh({ departmentId: activeDepartmentId, questionPage: 1 });
+      await onRefresh({ departmentId: activeDepartmentId, questionPage: 1, questionScope });
     } catch (error) {
       setDepartmentQuestionError(error instanceof Error ? error.message : '부서 질문 답변에 실패했습니다.');
     } finally {
@@ -13622,11 +13666,11 @@ function AIWorkspacePage({
   };
 
   const handleQuestionHistoryPageChange = async (page: number) => {
-    if (!activeDepartmentId || page < 1) {
+    if (page < 1 || (questionScope === 'department' && !activeDepartmentId)) {
       return;
     }
     setQuestionHistoryPage(page);
-    await onRefresh({ departmentId: activeDepartmentId, questionPage: page });
+    await onRefresh({ departmentId: activeDepartmentId, questionPage: page, questionScope });
   };
 
   const handleDeleteQuestionHistory = async (item: AIWorkspaceQuestionLog) => {
@@ -13648,7 +13692,7 @@ function AIWorkspacePage({
         ? currentPage - 1
         : currentPage;
       setQuestionHistoryPage(nextPage);
-      await onRefresh({ departmentId: activeDepartmentId, questionPage: nextPage });
+      await onRefresh({ departmentId: activeDepartmentId, questionPage: nextPage, questionScope });
       setDeleteQuestionLogMessage(result.message || '질문/답변 기록을 삭제했습니다.');
     } catch (error) {
       setDeleteQuestionLogError(error instanceof Error ? error.message : '질문/답변 기록 삭제에 실패했습니다.');
@@ -13743,8 +13787,10 @@ function AIWorkspacePage({
               onHistoryPageChange={handleQuestionHistoryPageChange}
               onModelChange={setDepartmentQuestionModel}
               onQuestionChange={setDepartmentQuestion}
+              onQuestionScopeChange={onQuestionScopeChange}
               onSubmit={handleAskDepartmentQuestion}
               question={departmentQuestion}
+              questionScope={questionScope}
               result={departmentQuestionResult}
             />
           </div>
@@ -14654,6 +14700,7 @@ export function App() {
   const weeklyReportEditRoute = currentView === 'weeklyReports' && isWeeklyReportEditRoute();
   const aiWorkspaceQuestionLogId = currentView === 'ai' ? getAIWorkspaceQuestionLogId() : null;
   const initialAIWorkspaceDepartmentId = currentView === 'ai' ? getAIWorkspaceDepartmentIdParam() : null;
+  const initialAIWorkspaceQuestionScope = currentView === 'ai' ? getAIWorkspaceQuestionScopeParam() : 'department';
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(emptyPipelineData);
   const [pipelineLoading, setPipelineLoading] = useState(currentView === 'pipeline');
@@ -14754,6 +14801,7 @@ export function App() {
   const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
   const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai' && !aiWorkspaceQuestionLogId);
   const [aiWorkspaceDepartmentId, setAiWorkspaceDepartmentId] = useState<number | null>(() => initialAIWorkspaceDepartmentId);
+  const [aiWorkspaceQuestionScope, setAiWorkspaceQuestionScope] = useState<AIWorkspaceQuestionScope>(() => initialAIWorkspaceQuestionScope);
   const [aiWorkspaceQuestionDetailData, setAiWorkspaceQuestionDetailData] = useState<AIWorkspaceQuestionLogDetailData | null>(null);
   const [aiWorkspaceQuestionDetailLoading, setAiWorkspaceQuestionDetailLoading] = useState(Boolean(aiWorkspaceQuestionLogId));
   const [mailboxData, setMailboxData] = useState<MailboxData | null>(null);
@@ -15254,7 +15302,7 @@ export function App() {
     }
     let alive = true;
     setAiWorkspaceLoading(true);
-    loadAIWorkspaceData({ departmentId: aiWorkspaceDepartmentId }).then((data) => {
+    loadAIWorkspaceData({ departmentId: aiWorkspaceDepartmentId, questionScope: aiWorkspaceQuestionScope }).then((data) => {
       if (!alive) {
         return;
       }
@@ -15926,23 +15974,49 @@ export function App() {
       setProductsLoading(false);
     }
   };
-  const refreshAIWorkspaceData = async (params: { departmentId?: number | null; questionPage?: number } = {}) => {
+  const refreshAIWorkspaceData = async (
+    params: { departmentId?: number | null; questionPage?: number; questionScope?: AIWorkspaceQuestionScope } = {},
+  ) => {
     const departmentId = params.departmentId !== undefined ? params.departmentId : aiWorkspaceDepartmentId;
-    const data = await loadAIWorkspaceData({ departmentId, questionPage: params.questionPage });
+    const questionScope = params.questionScope ?? aiWorkspaceQuestionScope;
+    const data = await loadAIWorkspaceData({ departmentId, questionPage: params.questionPage, questionScope });
     setAiWorkspaceData(data);
     setAiWorkspaceDepartmentId(data.selectedDepartmentId ?? data.featuredDepartment?.departmentId ?? null);
     return data;
   };
   const handleAIWorkspaceDepartmentSelect = async (department: AIWorkspaceDepartment) => {
     setAiWorkspaceDepartmentId(department.id);
+    setAiWorkspaceQuestionScope('department');
     const params = new URLSearchParams(window.location.search);
     params.set('department_id', String(department.id));
     params.delete('department');
     params.delete('question_page');
+    params.delete('question_scope');
     const query = params.toString();
     window.history.replaceState(null, '', `/ai-workspace/${query ? `?${query}` : ''}`);
     setAiWorkspaceLoading(true);
-    await refreshAIWorkspaceData({ departmentId: department.id });
+    await refreshAIWorkspaceData({ departmentId: department.id, questionScope: 'department', questionPage: 1 });
+    setAiWorkspaceLoading(false);
+  };
+  const handleAIWorkspaceQuestionScopeChange = async (scope: AIWorkspaceQuestionScope) => {
+    setAiWorkspaceQuestionScope(scope);
+    const params = new URLSearchParams(window.location.search);
+    if (aiWorkspaceDepartmentId) {
+      params.set('department_id', String(aiWorkspaceDepartmentId));
+    } else {
+      params.delete('department_id');
+    }
+    params.delete('department');
+    params.delete('question_page');
+    if (scope === 'all') {
+      params.set('question_scope', 'all');
+    } else {
+      params.delete('question_scope');
+    }
+    const query = params.toString();
+    window.history.replaceState(null, '', `/ai-workspace/${query ? `?${query}` : ''}`);
+    setAiWorkspaceLoading(true);
+    await refreshAIWorkspaceData({ departmentId: aiWorkspaceDepartmentId, questionScope: scope, questionPage: 1 });
     setAiWorkspaceLoading(false);
   };
   const handleDocumentTypeFilterChange = (value: string) => {
@@ -16667,8 +16741,10 @@ export function App() {
         <AIWorkspacePage
           data={aiWorkspaceData}
           loading={aiWorkspaceLoading}
+          questionScope={aiWorkspaceQuestionScope}
           selectedDepartmentId={aiWorkspaceDepartmentId}
           onDepartmentSelect={handleAIWorkspaceDepartmentSelect}
+          onQuestionScopeChange={handleAIWorkspaceQuestionScopeChange}
           onRefresh={refreshAIWorkspaceData}
         />
       </AppShell>

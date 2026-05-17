@@ -2608,6 +2608,8 @@ export type AIWorkspaceActionFeedbackResponse = {
 
 export type AIWorkspaceQuestionModel = 'gpt-5.5' | 'gpt-5.4-mini';
 
+export type AIWorkspaceQuestionScope = 'department' | 'all';
+
 export type AIWorkspaceQuestionModelChoice = {
   id: AIWorkspaceQuestionModel | string;
   label: string;
@@ -2667,7 +2669,7 @@ export type AIWorkspaceQuestionLog = {
 };
 
 export type AIWorkspaceQuestionHistory = {
-  scopeType: 'department' | string;
+  scopeType: AIWorkspaceQuestionScope | string;
   departmentId: number | null;
   page: number;
   pageSize: number;
@@ -2884,6 +2886,7 @@ export type AIWorkspaceData = {
 export type AIWorkspaceLoadParams = {
   departmentId?: number | null;
   questionPage?: number;
+  questionScope?: AIWorkspaceQuestionScope;
 };
 
 export type AIWorkspaceQuestionLogDetailData = {
@@ -6751,6 +6754,9 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
   if (params.questionPage && params.questionPage > 1) {
     query.set('question_page', String(params.questionPage));
   }
+  if (params.questionScope === 'all') {
+    query.set('question_scope', 'all');
+  }
   const queryString = query.toString();
   try {
     const response = await fetch(`/reporting/api/ai-workspace/${queryString ? `?${queryString}` : ''}`, {
@@ -6918,9 +6924,12 @@ export async function askAIWorkspaceDepartmentQuestion(
   departmentId: number | null,
   question: string,
   model: AIWorkspaceQuestionModel | string,
+  scopeType: AIWorkspaceQuestionScope = departmentId ? 'department' : 'all',
 ): Promise<AIWorkspaceDepartmentQuestionResponse> {
   const csrfToken = getCookie('csrftoken');
-  const body = departmentId ? { departmentId, question, model } : { question, model };
+  const body = scopeType === 'all'
+    ? { scopeType: 'all', question, model }
+    : { scopeType: 'department', departmentId, question, model };
   const response = await fetch('/reporting/api/ai-workspace/question/', {
     method: 'POST',
     credentials: 'include',

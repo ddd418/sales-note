@@ -19999,3 +19999,97 @@ git diff --check
 4. 다시 휴지통 아이콘을 누르고 확인을 선택합니다.
 5. 성공 메시지가 보이고 해당 기록이 목록에서 사라지는지 확인합니다.
 6. 남은 기록 카드를 클릭하면 기존처럼 `/ai-workspace/questions/<id>/` 상세 페이지로 이동하는지 확인합니다.
+
+---
+
+## 2026-05-17 AI Workspace all-department questions
+
+### 1. Summary
+
+- AI Workspace 질문 패널에 `선택 부서` / `전체 부서` 범위 선택을 추가했습니다.
+- 전체 부서 범위에서도 GPT-5.5 / GPT-5.4 mini 모델 선택을 그대로 사용할 수 있게 했습니다.
+- 전체 부서 답변은 저장하는 방식으로 결정했고, 기존 `AIWorkspaceQuestionLog`에 `scope_type='all'`, `department=NULL`로 저장되도록 명시했습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+
+### 3. CRM Improvements
+
+- 특정 부서만이 아니라 전체 담당 부서 기준으로 우선 연락처, 후속조치, 추천 액션을 질문할 수 있습니다.
+- 전체 범위 질문/답변도 기록, 상세, 삭제 흐름에 남아 영업 판단 근거를 나중에 확인할 수 있습니다.
+- 부서 범위 기록과 전체 범위 기록을 분리해 목록에 보여주므로, 특정 부서 이력과 전체 전략 질문이 섞이지 않습니다.
+
+### 4. Existing Functionality Preserved
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 부서 질문, 부서 질문 기록, 상세 페이지, 삭제 API, GPT 모델 선택은 유지했습니다.
+- `/reporting/*` 라우트와 기존 AI 권한/소유자 체크는 유지했습니다.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_records_all_scope_question_log reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_includes_all_scope_question_history --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 65 tests, OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DvR-cyx0.js / dist/assets/index-B9_wxif7.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+Local Playwright smoke
+→ Mocked `/ai-workspace/?department_id=10`.
+→ Switched from `선택 부서` to `전체 부서` and confirmed URL `question_scope=all`.
+→ Selected `GPT-5.4 mini`, submitted an all-department question, and verified POST body `scopeType=all` with no `departmentId`.
+→ Confirmed all-scope answer rendering, all-scope question history refresh, all-scope delete, and empty all-scope history state.
+→ Browser page errors 0.
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- 전체 부서 질문은 현재 로그인 사용자의 접근 가능한 CRM 데이터 기준입니다. 회사 전체/팀 전체를 보려면 별도 권한 정책이 필요합니다.
+- 전체 범위에서는 특정 부서의 마지막 납품 품목까지 깊게 파고들기보다 추천 액션, 미완료 후속, 최근 노트 중심으로 답변합니다.
+
+### 7. Production Deployment Status
+
+- Pending. This section will be updated after the runtime deployment and production smoke checks.
+
+### 8. Recommended Next Task
+
+운영 검수 후, 전체 부서 질문에서 자주 쓰는 질문 프리셋을 2-3개만 추가하면 반복 사용성이 좋아집니다. 예: `이번 주 먼저 챙길 고객`, `놓친 후속조치`, `매출 영향 큰 기회`.
+
+### 9. Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=10`에 접속합니다.
+2. 질문 패널에서 `전체 부서`를 선택합니다.
+3. `GPT-5.5`와 `GPT-5.4 mini`가 모두 선택되는지 확인합니다.
+4. `GPT-5.4 mini`를 선택하고 `전체 부서에서 이번 주 먼저 챙길 고객은?` 같은 질문을 실행합니다.
+5. 답변 범위가 `전체 부서`로 표시되고, 기록 리스트에 전체 범위 질문이 저장되는지 확인합니다.
+6. 전체 범위 기록을 클릭하면 상세 페이지에서 `전체 부서`로 표시되는지 확인합니다.
+7. 목록으로 돌아와 전체 범위 기록 삭제가 되는지 확인합니다.
+8. 다시 `선택 부서`를 누르면 해당 부서 질문 기록으로 돌아오는지 확인합니다.
