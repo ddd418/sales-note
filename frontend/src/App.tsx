@@ -115,6 +115,8 @@ import {
   AIWorkspaceDraftType,
   AIWorkspaceActionDraftResponse,
   AIWorkspaceQuestionModel,
+  AIWorkspaceQuestionLog,
+  AIWorkspaceQuestionLogDetailData,
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
@@ -173,6 +175,7 @@ import {
   loadFollowupQuoteItems,
   loadSchedulesData,
   loadAIWorkspaceData,
+  loadAIWorkspaceQuestionLogDetailData,
   loadWeeklyReportCreateData,
   loadWeeklyReportDetailData,
   loadWeeklyReportsData,
@@ -1230,6 +1233,15 @@ function getAIWorkspaceDepartmentIdParam(): number | null {
   const params = new URLSearchParams(window.location.search);
   const rawValue = params.get('department_id') || params.get('department');
   const id = Number(rawValue);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getAIWorkspaceQuestionLogId(): number | null {
+  const match = window.location.pathname.match(/^\/ai-workspace\/questions\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
@@ -12934,17 +12946,18 @@ function AIWorkspaceDepartmentQuestionPanel({
         {history.items.length > 0 ? (
           <div className="ai-question-history-list">
             {history.items.map((item) => (
-              <article key={item.id}>
+              <a className="ai-question-history-card" href={`/ai-workspace/questions/${item.id}/`} key={item.id}>
                 <div className="ai-question-history-meta">
                   <span>{formatDateLabel(item.createdAt || '')}</span>
                   {item.modelLabel ? <small>{item.modelLabel}</small> : null}
+                  <MoveUpRight size={13} />
                 </div>
                 <strong>{item.question}</strong>
                 <p>{item.answerSummary}</p>
                 {item.decision?.recommendedChoice ? (
                   <em>{item.decision.recommendedChoice}</em>
                 ) : null}
-              </article>
+              </a>
             ))}
           </div>
         ) : (
@@ -12964,6 +12977,203 @@ function AIWorkspaceDepartmentQuestionPanel({
           </div>
         ) : null}
       </section>
+    </section>
+  );
+}
+
+type AIQuestionDetailBlock = {
+  title: string;
+  lines: string[];
+};
+
+function aiQuestionRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function aiQuestionText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value).trim();
+}
+
+function aiQuestionTextList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(aiQuestionText).filter(Boolean);
+}
+
+function aiQuestionRecordList(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(aiQuestionRecord).filter((item) => Object.keys(item).length > 0);
+}
+
+function aiQuestionEvidenceLine(value: unknown): string {
+  return aiQuestionRecordList(value).map((item) => {
+    const label = aiQuestionText(item.label) || '근거';
+    const detail = aiQuestionText(item.value);
+    return detail ? `${label}: ${detail}` : '';
+  }).filter(Boolean).join(' / ');
+}
+
+function makeAIQuestionDetailAnswer(log: AIWorkspaceQuestionLog): { lead: string; blocks: AIQuestionDetailBlock[] } {
+  const answer = aiQuestionRecord(log.answer);
+  const lead = aiQuestionText(answer.summary) || log.answerSummary || '';
+  const blocks: AIQuestionDetailBlock[] = [];
+  const bullets = aiQuestionTextList(answer.bullets);
+  if (bullets.length > 0) {
+    blocks.push({ title: '핵심 포인트', lines: bullets });
+  }
+
+  const decision = aiQuestionRecord(answer.decision);
+  const decisionLines = [
+    ['추천 판단', decision.recommendedChoice],
+    ['버릴 선택', decision.rejectedChoice],
+    ['판단 이유', decision.reason],
+    ['예외 조건', decision.exception],
+  ].map(([label, value]) => {
+    const text = aiQuestionText(value);
+    return text ? `${label}: ${text}` : '';
+  }).filter(Boolean);
+  if (decisionLines.length > 0) {
+    blocks.push({ title: '추천 판단', lines: decisionLines });
+  }
+
+  const perspective = aiQuestionRecord(answer.perspective);
+  const perspectiveLines = [
+    ['고객 입장 추정', perspective.customerPerspective],
+    ['영업 판단', perspective.salesJudgment],
+    ['추천 접근', perspective.recommendedApproach],
+    ['말문 예시', perspective.talkTrack],
+    ['주의점', perspective.caution],
+  ].map(([label, value]) => {
+    const text = aiQuestionText(value);
+    return text ? `${label}: ${text}` : '';
+  }).filter(Boolean);
+  if (perspectiveLines.length > 0) {
+    blocks.push({ title: '고객/영업 관점', lines: perspectiveLines });
+  }
+
+  const actionLines = aiQuestionRecordList(answer.actionItems).map((item, index) => {
+    const rank = aiQuestionText(item.rank) || String(index + 1);
+    const title = aiQuestionText(item.title) || `추천 액션 ${rank}`;
+    const ownerContext = [item.company, item.department, item.customer].map(aiQuestionText).filter(Boolean).join(' · ');
+    const detailParts = [
+      ownerContext,
+      aiQuestionText(item.priority) ? `우선순위: ${aiQuestionText(item.priority)}` : '',
+      aiQuestionText(item.reason) ? `이유: ${aiQuestionText(item.reason)}` : '',
+      aiQuestionText(item.nextAction) ? `다음 액션: ${aiQuestionText(item.nextAction)}` : '',
+      aiQuestionText(item.timing) ? `시점: ${aiQuestionText(item.timing)}` : '',
+      aiQuestionEvidenceLine(item.crmEvidence),
+    ].filter(Boolean);
+    return `${rank}. ${title}${detailParts.length > 0 ? `\n${detailParts.join('\n')}` : ''}`;
+  });
+  if (actionLines.length > 0) {
+    blocks.push({ title: '추천 액션', lines: actionLines });
+  }
+
+  const evidenceLines = aiQuestionRecordList(answer.evidence).map((item) => {
+    const label = aiQuestionText(item.label) || '근거';
+    const value = aiQuestionText(item.value);
+    return value ? `${label}: ${value}` : '';
+  }).filter(Boolean);
+  if (evidenceLines.length > 0) {
+    blocks.push({ title: '근거', lines: evidenceLines });
+  }
+
+  const confidence = aiQuestionText(answer.confidence);
+  if (confidence) {
+    blocks.push({ title: '신뢰도', lines: [confidence] });
+  }
+
+  return { lead, blocks };
+}
+
+function AIWorkspaceQuestionDetailPage({
+  data,
+  loading,
+}: {
+  data: AIWorkspaceQuestionLogDetailData | null;
+  loading: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>질문/답변 기록을 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data || data.source !== 'django' || !data.questionLog) {
+    return (
+      <section className="ai-question-detail-page">
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>질문/답변 기록을 불러오지 못했습니다</strong>
+            <span>{data?.error || data?.message || '기록이 없거나 접근 권한이 없습니다.'}</span>
+          </div>
+          <a href="/ai-workspace/">AI Workspace</a>
+        </div>
+      </section>
+    );
+  }
+
+  const log = data.questionLog;
+  const answer = makeAIQuestionDetailAnswer(log);
+  const departmentLabel = [
+    log.department?.company,
+    log.department?.name,
+  ].filter(Boolean).join(' · ') || 'AI Workspace';
+  const meta = [
+    log.createdAt ? formatDateTimeLabel(log.createdAt) : '',
+    log.modelLabel,
+    log.webSearchUsed ? '웹 검색 사용' : '',
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <section className="ai-question-detail-page">
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Question detail</span>
+          <h2>질문/답변 기록</h2>
+          <p>{departmentLabel}{meta ? ` · ${meta}` : ''}</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href={data.links.aiWorkspace}>
+            <ChevronLeft size={16} />
+            목록으로
+          </a>
+        </div>
+      </div>
+
+      <div className="ai-question-detail-chat">
+        <article className="ai-question-detail-block">
+          <span className="eyebrow">Question</span>
+          <h3>질문</h3>
+          <p>{log.question}</p>
+        </article>
+
+        <article className="ai-question-detail-block">
+          <span className="eyebrow">Answer</span>
+          <h3>답변</h3>
+          {answer.lead ? <p className="ai-question-detail-answer-lead">{answer.lead}</p> : <DashboardEmpty label="저장된 답변 내용이 없습니다" />}
+          {answer.blocks.map((block) => (
+            <section className="ai-question-detail-answer-section" key={block.title}>
+              <strong>{block.title}</strong>
+              <ul>
+                {block.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </article>
+      </div>
     </section>
   );
 }
@@ -14378,6 +14588,7 @@ export function App() {
   const weeklyReportDetailId = currentView === 'weeklyReports' ? getWeeklyReportDetailId() : null;
   const weeklyReportCreateRoute = currentView === 'weeklyReports' && isWeeklyReportCreateRoute();
   const weeklyReportEditRoute = currentView === 'weeklyReports' && isWeeklyReportEditRoute();
+  const aiWorkspaceQuestionLogId = currentView === 'ai' ? getAIWorkspaceQuestionLogId() : null;
   const initialAIWorkspaceDepartmentId = currentView === 'ai' ? getAIWorkspaceDepartmentIdParam() : null;
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(emptyPipelineData);
@@ -14477,8 +14688,10 @@ export function App() {
   const [productOrder, setProductOrder] = useState<ProductSortOrder>(() => getProductOrderParam());
   const [productPage, setProductPage] = useState(() => Number(new URLSearchParams(window.location.search).get('page') || '1') || 1);
   const [aiWorkspaceData, setAiWorkspaceData] = useState<AIWorkspaceData | null>(null);
-  const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai');
+  const [aiWorkspaceLoading, setAiWorkspaceLoading] = useState(currentView === 'ai' && !aiWorkspaceQuestionLogId);
   const [aiWorkspaceDepartmentId, setAiWorkspaceDepartmentId] = useState<number | null>(() => initialAIWorkspaceDepartmentId);
+  const [aiWorkspaceQuestionDetailData, setAiWorkspaceQuestionDetailData] = useState<AIWorkspaceQuestionLogDetailData | null>(null);
+  const [aiWorkspaceQuestionDetailLoading, setAiWorkspaceQuestionDetailLoading] = useState(Boolean(aiWorkspaceQuestionLogId));
   const [mailboxData, setMailboxData] = useState<MailboxData | null>(null);
   const [mailboxLoading, setMailboxLoading] = useState(currentView === 'mail' && !mailboxThreadId);
   const [mailboxThreadData, setMailboxThreadData] = useState<MailboxThreadData | null>(null);
@@ -14971,7 +15184,8 @@ export function App() {
   }, [currentView, productOrder, productPage, productQuery, productSort, productStatus]);
 
   useEffect(() => {
-    if (currentView !== 'ai') {
+    if (currentView !== 'ai' || aiWorkspaceQuestionLogId) {
+      setAiWorkspaceLoading(false);
       return;
     }
     let alive = true;
@@ -14987,7 +15201,27 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView]);
+  }, [currentView, aiWorkspaceQuestionLogId]);
+
+  useEffect(() => {
+    if (currentView !== 'ai' || !aiWorkspaceQuestionLogId) {
+      setAiWorkspaceQuestionDetailData(null);
+      setAiWorkspaceQuestionDetailLoading(false);
+      return;
+    }
+    let alive = true;
+    setAiWorkspaceQuestionDetailLoading(true);
+    loadAIWorkspaceQuestionLogDetailData(aiWorkspaceQuestionLogId).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setAiWorkspaceQuestionDetailData(data);
+      setAiWorkspaceQuestionDetailLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, aiWorkspaceQuestionLogId]);
 
   useEffect(() => {
     if (currentView !== 'mail' || mailboxThreadId) {
@@ -16351,6 +16585,18 @@ export function App() {
   }
 
   if (currentView === 'ai') {
+    if (aiWorkspaceQuestionLogId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <AIWorkspaceQuestionDetailPage
+            data={aiWorkspaceQuestionDetailData}
+            loading={aiWorkspaceQuestionDetailLoading}
+          />
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

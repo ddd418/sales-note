@@ -5454,7 +5454,7 @@ h2 {
   min-width: 0;
 }
 
-.ai-question-history-list article {
+.ai-question-history-card {
   display: grid;
   gap: 6px;
   min-width: 0;
@@ -5462,6 +5462,17 @@ h2 {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
   background: #ffffff;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.ai-question-history-card:hover,
+.ai-question-history-card:focus-visible {
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+  outline: none;
+  transform: translateY(-1px);
 }
 
 .ai-question-history-meta {
@@ -5472,7 +5483,8 @@ h2 {
 }
 
 .ai-question-history-meta span,
-.ai-question-history-meta small {
+.ai-question-history-meta small,
+.ai-question-history-meta svg {
   color: var(--muted);
   font-size: 11px;
   font-weight: 900;
@@ -5504,6 +5516,75 @@ h2 {
 
 .ai-question-history-pagination button {
   padding: 7px 10px;
+}
+
+.ai-question-detail-page {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.ai-question-detail-chat {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ai-question-detail-block {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ai-question-detail-block h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+}
+
+.ai-question-detail-block p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ai-question-detail-answer-lead {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.ai-question-detail-answer-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.ai-question-detail-answer-section strong {
+  color: var(--primary-strong);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ai-question-detail-answer-section ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.ai-question-detail-answer-section li {
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .ai-action-list {

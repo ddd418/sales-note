@@ -5543,3 +5543,40 @@ python pre_deployment_check.py
 - `cd frontend && node --check server.mjs`
 - Local Playwright smoke for `/ai-workspace/`
 - `git diff --check`
+
+## 2026-05-17 AI Workspace question history detail plan
+
+**Background**:
+
+- User manually confirmed the fixed prompt and answer-direction removal deployment.
+- Next queued task: clicking a question/answer history item should open a detail page that shows the full chat in `질문` / `답변` format, not only the list summary.
+
+**DB change required**: No.
+
+- Reuse `AIWorkspaceQuestionLog.question` and `AIWorkspaceQuestionLog.answer_snapshot`.
+- Improve new question-log snapshots to preserve richer answer fields in the existing JSON column.
+
+**Implementation scope**:
+
+- Backend:
+  - Add an owner-scoped AI Workspace question-log detail API.
+  - Return the selected log with full answer snapshot and an AI Workspace back link.
+  - Keep permission checks aligned with existing AI Workspace APIs.
+- Frontend:
+  - Add `/ai-workspace/questions/<id>/` React detail route.
+  - Make history list items clickable links to the detail route.
+  - Render exactly two main sections: `질문` and `답변`.
+- Tests:
+  - Add API tests for owner access, full answer payload, and cross-user blocking.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local Playwright smoke for history click/detail route
+- `git diff --check`

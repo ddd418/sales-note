@@ -10714,6 +10714,59 @@ def _ai_workspace_question_feedback_answer_snapshot(answer):
     return {key: value for key, value in snapshot.items() if value}
 
 
+def _ai_workspace_question_log_answer_snapshot(answer):
+    if not isinstance(answer, dict):
+        return {}
+
+    snapshot = {
+        'summary': _ai_workspace_question_text(answer.get('summary') or answer.get('answer'), 4200),
+        'bullets': [
+            _ai_workspace_question_text(item, 700)
+            for item in _ai_json_list(answer.get('bullets'))[:10]
+            if _ai_workspace_question_text(item, 700)
+        ],
+        'confidence': _ai_workspace_question_text(answer.get('confidence'), 40),
+    }
+    decision = _ai_workspace_question_decision_payload(answer)
+    perspective = _ai_workspace_question_perspective_payload(answer)
+    if decision:
+        snapshot['decision'] = decision
+    if perspective:
+        snapshot['perspective'] = perspective
+    evidence = _ai_workspace_question_evidence_payload(answer.get('evidence'), limit=10, value_limit=700)
+    if evidence:
+        snapshot['evidence'] = evidence
+    action_items = []
+    for index, item in enumerate(_ai_json_list(answer.get('actionItems'))[:8], start=1):
+        if not isinstance(item, dict):
+            continue
+        title = _ai_workspace_question_text(item.get('title'), 260)
+        next_action = _ai_workspace_question_text(item.get('nextAction'), 900)
+        reason = _ai_workspace_question_text(item.get('reason'), 900)
+        timing = _ai_workspace_question_text(item.get('timing'), 520)
+        if not any([title, next_action, reason, timing]):
+            continue
+        action_items.append({
+            'rank': _ai_workspace_question_int(item.get('rank'), index),
+            'title': title,
+            'customer': _ai_workspace_question_text(item.get('customer'), 160),
+            'company': _ai_workspace_question_text(item.get('company'), 160),
+            'department': _ai_workspace_question_text(item.get('department'), 160),
+            'priority': _ai_workspace_question_text(item.get('priority'), 120),
+            'reason': reason,
+            'nextAction': next_action,
+            'timing': timing,
+            'crmEvidence': _ai_workspace_question_evidence_payload(
+                item.get('crmEvidence'),
+                limit=6,
+                value_limit=520,
+            ),
+        })
+    if action_items:
+        snapshot['actionItems'] = action_items
+    return {key: value for key, value in snapshot.items() if value}
+
+
 def _ai_workspace_question_feedback_payload(feedback):
     department = feedback.department
     return {
@@ -10771,6 +10824,11 @@ def _ai_workspace_question_log_payload(log):
         'createdAt': _datetime_or_none(log.created_at),
         'updatedAt': _datetime_or_none(log.updated_at),
     }
+
+
+def _ai_workspace_question_log_detail_link(log):
+    department_id = log.department_id
+    return f"/ai-workspace/?department_id={department_id}" if department_id else '/ai-workspace/'
 
 
 def _ai_workspace_empty_question_history(page=1):
@@ -12507,6 +12565,47 @@ def ai_workspace_summary_api(request):
 
 
 @never_cache
+@require_http_methods(["GET"])
+def ai_workspace_question_log_detail_api(request, question_log_id):
+    """Return one AI Workspace question/answer history item for the current user."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    question_log = AIWorkspaceQuestionLog.objects.filter(
+        id=question_log_id,
+        user=request.user,
+    ).select_related(
+        'department',
+        'department__company',
+    ).first()
+    if not question_log:
+        return JsonResponse({
+            'success': False,
+            'error': 'question_log_not_found',
+            'message': '질문/답변 기록을 찾을 수 없습니다.',
+        }, status=404)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'questionLog': _ai_workspace_question_log_payload(question_log),
+        'links': {
+            'aiWorkspace': _ai_workspace_question_log_detail_link(question_log),
+        },
+    })
+
+
+@never_cache
 @require_POST
 def ai_workspace_department_question_api(request):
     """Answer a user question using accessible department or all-department CRM context."""
@@ -12567,7 +12666,7 @@ def ai_workspace_department_question_api(request):
         department=department if department_id else None,
         scope_type='department' if department_id else 'all',
         question=question,
-        answer_snapshot=_ai_workspace_question_feedback_answer_snapshot(answer),
+        answer_snapshot=_ai_workspace_question_log_answer_snapshot(answer),
         source=source,
         model=selected_model,
         web_search_used=bool(web_search_used),

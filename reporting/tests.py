@@ -8009,6 +8009,83 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(log.question, '마지막 주문일 알려줘')
         self.assertIn('summary', log.answer_snapshot)
 
+    def test_ai_workspace_question_log_detail_api_returns_full_answer_for_owner(self):
+        from reporting.models import AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.user, '질문상세')
+        log = AIWorkspaceQuestionLog.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            question='이 부서 재견적은 어떻게 할까?',
+            answer_snapshot={
+                'summary': '재견적은 바로 보내되, 고객의 샘플 피드백을 먼저 확인하는 조건부 접근이 좋습니다.',
+                'bullets': ['견적 회신율을 KPI로 봅니다.', '다음 연락은 2일 안에 잡습니다.'],
+                'decision': {
+                    'recommendedChoice': '조건부 재견적',
+                    'rejectedChoice': '무조건 가격 인하',
+                    'reason': '최근 반응이 확인되지 않았기 때문입니다.',
+                    'exception': '구매 일정이 확정되어 있으면 바로 견적을 보냅니다.',
+                },
+                'perspective': {
+                    'customerPerspective': '고객은 가격보다 실험 적합성을 먼저 확인하려 할 수 있습니다.',
+                    'salesJudgment': '영업 판단상 피드백 확인 후 재견적이 안전합니다.',
+                    'recommendedApproach': '샘플 사용 결과를 한 문장으로 확인합니다.',
+                    'talkTrack': '샘플 써보신 기준으로 조정할 조건이 있을까요?',
+                    'caution': '가격 인하를 먼저 꺼내지 않습니다.',
+                },
+                'actionItems': [{
+                    'rank': 1,
+                    'title': '샘플 피드백 확인',
+                    'customer': '질문상세 고객',
+                    'company': self.company.name,
+                    'department': department.name,
+                    'priority': 'high',
+                    'reason': '재견적 조건을 정해야 합니다.',
+                    'nextAction': '담당자에게 샘플 사용 결과와 수량 조건을 확인합니다.',
+                    'timing': '오늘 오후',
+                    'crmEvidence': [{'label': 'CRM', 'value': '질문상세 기록'}],
+                }],
+                'evidence': [{'label': '근거', 'value': '최근 견적 기록'}],
+                'confidence': 'medium',
+            },
+            source='openai',
+            model='gpt-5.5',
+            web_search_used=False,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:ai_workspace_question_log_detail_api', args=[log.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['questionLog']['id'], log.id)
+        self.assertEqual(payload['questionLog']['question'], '이 부서 재견적은 어떻게 할까?')
+        self.assertEqual(payload['questionLog']['answer']['summary'], log.answer_snapshot['summary'])
+        self.assertEqual(payload['questionLog']['answer']['decision']['recommendedChoice'], '조건부 재견적')
+        self.assertEqual(payload['questionLog']['answer']['actionItems'][0]['nextAction'], '담당자에게 샘플 사용 결과와 수량 조건을 확인합니다.')
+        self.assertIn(f'department_id={department.id}', payload['links']['aiWorkspace'])
+
+    def test_ai_workspace_question_log_detail_api_blocks_other_users_log(self):
+        from reporting.models import AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.coworker, '질문상세동료')
+        log = AIWorkspaceQuestionLog.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            question='동료 질문',
+            answer_snapshot={'summary': '동료 답변'},
+            source='fallback',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:ai_workspace_question_log_detail_api', args=[log.id]))
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['error'], 'question_log_not_found')
+
     @patch('ai_chat.services.get_openai_client')
     def test_ai_workspace_department_question_uses_crm_strategy_system_prompt(self, mock_client):
         from types import SimpleNamespace

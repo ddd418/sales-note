@@ -2886,6 +2886,18 @@ export type AIWorkspaceLoadParams = {
   questionPage?: number;
 };
 
+export type AIWorkspaceQuestionLogDetailData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt: string;
+  questionLog: AIWorkspaceQuestionLog | null;
+  links: {
+    aiWorkspace: string;
+  };
+  error?: string;
+  message?: string;
+};
+
 export type WeeklyReportUser = {
   id: number;
   name: string;
@@ -6769,6 +6781,45 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
       ...emptyAIWorkspaceData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'AI workspace API unavailable',
+    };
+  }
+}
+
+export async function loadAIWorkspaceQuestionLogDetailData(questionLogId: number): Promise<AIWorkspaceQuestionLogDetailData> {
+  try {
+    const response = await fetch(`/reporting/api/ai-workspace/questions/${questionLogId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`AI question detail API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as AIWorkspaceQuestionLogDetailData;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `AI question detail unavailable: ${response.status}`);
+    }
+    return {
+      ...payload,
+      links: {
+        aiWorkspace: payload.links?.aiWorkspace || '/ai-workspace/',
+      },
+      questionLog: payload.questionLog ?? null,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      source: 'unavailable',
+      generatedAt: new Date().toISOString(),
+      questionLog: null,
+      links: {
+        aiWorkspace: '/ai-workspace/',
+      },
+      error: error instanceof Error ? error.message : 'AI question detail unavailable',
     };
   }
 }
