@@ -98,6 +98,41 @@ def _delivery_item_name(item):
     return getattr(item, 'item_name', '') or '미정'
 
 
+def _product_label_from_metadata(code, description='', specification='', unit=''):
+    """Build a concise product-master label for AI context without changing legacy item names."""
+    code = str(code or '').strip()
+    description = str(description or '').strip()
+    specification = str(specification or '').strip()
+    unit = str(unit or '').strip()
+    if not code:
+        return ''
+
+    details = [part for part in [description, specification, f'단위 {unit}' if unit else ''] if part]
+    if not details:
+        return code
+    return f"{code} ({', '.join(details[:3])})"
+
+
+def _product_metadata_payload(product, fallback_name=''):
+    code = getattr(product, 'product_code', '') if product else ''
+    description = getattr(product, 'description', '') if product else ''
+    specification = getattr(product, 'specification', '') if product else ''
+    unit = getattr(product, 'unit', '') if product else ''
+    label = _product_label_from_metadata(code, description, specification, unit)
+    return {
+        'product_code': code or '',
+        'productCode': code or '',
+        'product_description': description or '',
+        'productDescription': description or '',
+        'product_specification': specification or '',
+        'productSpecification': specification or '',
+        'product_unit': unit or '',
+        'productUnit': unit or '',
+        'product_label': label or fallback_name or '',
+        'productLabel': label or fallback_name or '',
+    }
+
+
 def _delivery_items_payload(items, amount_key='total_price'):
     payload = []
     total = Decimal('0')
@@ -107,11 +142,14 @@ def _delivery_items_payload(items, amount_key='total_price'):
         if item_total is not None:
             total += item_total
             has_amount = True
+        item_name = _delivery_item_name(item)
+        product_meta = _product_metadata_payload(getattr(item, 'product', None), item_name)
         payload.append({
-            'product': _delivery_item_name(item),
+            'product': item_name,
             'quantity': item.quantity or 0,
             'unit_price': _money_to_int(item.unit_price),
             amount_key: _money_to_int(item_total),
+            **product_meta,
         })
     return payload, total, has_amount
 
@@ -120,11 +158,14 @@ def _quote_items_payload(items):
     payload = []
     for item in items:
         product = getattr(item, 'product', None)
+        product_name = product.product_code if product else '미정'
+        product_meta = _product_metadata_payload(product, product_name)
         payload.append({
-            'product': product.product_code if product else '미정',
+            'product': product_name,
             'quantity': item.quantity,
             'unit_price': _money_to_int(item.unit_price),
             'subtotal': _money_to_int(item.subtotal),
+            **product_meta,
         })
     return payload
 

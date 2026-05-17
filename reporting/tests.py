@@ -7944,6 +7944,89 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('동반 구매 품목', perspective['salesJudgment'])
         self.assertIn('바로 추가 주문', perspective['talkTrack'])
 
+    def test_ai_workspace_question_context_includes_product_master_facts(self):
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, Product, Schedule
+        from reporting.views import _ai_workspace_department_question_context
+
+        followup, department = self._create_customer(self.user, '제품근거')
+        product = Product.objects.create(
+            product_code='P4345N00',
+            description='RLD-1250NS, 1250 µL Low Retention Paradigm Refills, Benchtop, 8 x 96 / pk',
+            specification='5 pk / CS',
+            unit='pk',
+            standard_price=Decimal('1000'),
+            created_by=self.user,
+        )
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=timezone.now().time(),
+            activity_type='delivery',
+            status='completed',
+            expected_revenue=Decimal('1000'),
+            purchase_confirmed=True,
+            notes='제품 마스터 연결 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            product=product,
+            item_name=product.product_code,
+            quantity=1,
+            unit_price=Decimal('1000'),
+        )
+
+        context = _ai_workspace_department_question_context(department, self.user)
+
+        self.assertEqual(context['productFacts'][0]['code'], 'P4345N00')
+        self.assertEqual(context['productFacts'][0]['unit'], 'pk')
+        self.assertIn('Low Retention Paradigm Refills', context['productFacts'][0]['description'])
+        self.assertIn('5 pk / CS', context['productFacts'][0]['label'])
+        self.assertIn('P4345N00', context['recentDeliveries'][0]['items'])
+        self.assertIn('Low Retention Paradigm Refills', context['recentDeliveries'][0]['items'])
+
+    def test_ai_workspace_department_question_product_guard_replaces_unsupported_label(self):
+        from reporting.views import _ai_workspace_normalize_department_question_answer
+
+        context = {
+            'productFacts': [{
+                'code': 'P4345N00',
+                'label': 'P4345N00 (RLD-1250NS, 1250 µL Low Retention Paradigm Refills, Benchtop, 8 x 96 / pk, 5 pk / CS, 단위 pk)',
+                'description': 'RLD-1250NS, 1250 µL Low Retention Paradigm Refills, Benchtop, 8 x 96 / pk',
+                'specification': '5 pk / CS',
+                'unit': 'pk',
+            }],
+        }
+
+        result = _ai_workspace_normalize_department_question_answer({
+            'answer': '김혜원 고객의 기존 팁 사용을 기반으로 튜브(P4345N00)와 연계 업셀을 먼저 봅니다.',
+            'actionItems': [{
+                'rank': 1,
+                'title': '튜브(P4345N00) 업셀',
+                'customer': '김혜원',
+                'department': '제품근거 연구실',
+                'reason': '튜브(P4345N00)를 최근 구매했습니다.',
+                'nextAction': '튜브(P4345N00) 추가 구매보다 소모 속도를 확인합니다.',
+                'timing': '이번 주',
+                'crmEvidence': [{'label': '품목', 'value': '튜브(P4345N00)'}],
+            }],
+            'evidence': [{'label': '납품 품목', 'value': '튜브(P4345N00)'}],
+            'confidence': 'high',
+        }, {
+            'summary': 'fallback',
+            'bullets': [],
+            'evidence': [],
+            'actionItems': [],
+            'confidence': 'low',
+        }, context)
+
+        result_text = json.dumps(result, ensure_ascii=False)
+        self.assertNotIn('튜브(P4345N00)', result_text)
+        self.assertIn('P4345N00 (RLD-1250NS', result_text)
+        self.assertIn('Low Retention Paradigm Refills', result_text)
+
     def test_ai_workspace_department_question_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '질문권한없음')
         self.client.force_login(self.no_ai_user)

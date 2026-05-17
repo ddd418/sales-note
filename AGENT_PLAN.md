@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-17 AI Workspace product-code grounding fix plan
+
+**Background**:
+
+- AI Workspace 부서 질문 답변에서 `P4345N00` 제품을 `튜브(P4345N00)`처럼 실제 제품 성격과 맞지 않게 표현하는 문제가 확인됐다.
+- 로컬 제품 마스터 기준 `P4345N00`은 `RLD-1250NS, 1250 µL Low Retention Paradigm Refills, Benchtop, 8 x 96 / pk`, 규격 `5 pk / CS`, 단위 `pk`로 등록되어 있다.
+- 현재 AI 질문 컨텍스트의 견적/납품 품목은 대부분 `product` 코드만 전달하고 제품 설명/규격/단위가 빠져, 모델이 코드만 보고 임의 분류를 붙일 수 있다.
+
+**DB change required**: No.
+
+- 기존 `Product.description`, `Product.specification`, `Product.unit`을 읽기만 한다.
+- 새 필드, migration, 데이터 보정 스크립트는 추가하지 않는다.
+
+**Implementation scope**:
+
+- AI용 견적/납품 품목 payload에 제품 마스터의 `productCode`, `productDescription`, `productSpecification`, `productUnit`, `productLabel`을 추가한다.
+- AI Workspace 부서 질문 컨텍스트에 코드별 `productFacts`를 포함해 제품 마스터 설명/규격/단위를 명시한다.
+- 질문 프롬프트 rules에 “제품 코드는 식별자이며, productFacts/제품 설명에 없는 품목 유형을 새로 붙이지 말라”는 규칙을 추가한다.
+- OpenAI 응답 정규화 후 제품 코드 주변의 `튜브(P4345N00)` 같은 unsupported label을 제품 마스터 label 또는 `P4345N00 품목`으로 치환하는 deterministic guard를 추가한다.
+- 기존 `/reporting/*`, AI 권한, 부서 접근 권한, React UI는 유지한다.
+
+**Validation plan**:
+
+- 제품 마스터가 연결된 납품 품목에서 AI context가 제품 설명/규격/단위/productFacts를 포함하는지 테스트한다.
+- OpenAI 응답이 unsupported label을 붙여도 정규화 단계에서 제품 마스터 label로 치환되는지 테스트한다.
+- `python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_product_master_facts reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_product_guard_replaces_unsupported_label --verbosity=1`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## Current task — AI Workspace 질문 중심 단순화와 부서별 Q&A 기록
 
 **목표**: AI Workspace의 과도한 추천/분석 섹션을 화면에서 줄이고, 부서 선택 기반의 질문 흐름과 부서별 질문/답변 기록, 현재 답변 방향만 남겨 사용자가 판단에 집중할 수 있게 한다.

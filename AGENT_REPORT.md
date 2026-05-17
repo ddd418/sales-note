@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-05-17 — AI Workspace Product-Code Grounding Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 전
+
+### 요약
+
+AI Workspace 부서 질문 답변에서 `P4345N00` 같은 제품 코드가 `튜브(P4345N00)`처럼 근거 없는 품목명으로 바뀌는 문제를 막았습니다. AI 입력에 제품 마스터의 설명/규격/단위를 포함하고, OpenAI 응답 정규화 단계에서 제품 마스터에 없는 코드 앞 라벨을 제품 마스터 라벨로 치환합니다.
+
+### 변경된 파일
+
+- `ai_chat/services.py`: AI용 견적/납품 품목 payload에 `productCode`, `productDescription`, `productSpecification`, `productUnit`, `productLabel` 추가.
+- `reporting/views.py`: AI Workspace 질문 컨텍스트 `productFacts` 추가, 제품 코드 grounding rules 추가, unsupported 제품 라벨 guard 추가.
+- `reporting/tests.py`: 제품 마스터 context 포함 및 `튜브(P4345N00)` 치환 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- AI 답변이 제품 코드를 보고 품목 유형을 임의 추론하는 위험을 줄였습니다.
+- 제품 마스터에 등록된 설명/규격/단위가 부서 질문 답변의 근거로 전달됩니다.
+- `P4345N00`처럼 제품 마스터가 있는 코드는 잘못된 `튜브(...)` 표기 대신 `P4345N00 (RLD-1250NS, 1250 µL Low Retention Paradigm Refills, Benchtop, 8 x 96 / pk, 5 pk / CS, 단위 pk)`처럼 근거 있는 라벨로 보정됩니다.
+
+### 기존 기능 보존
+
+- DB 모델/마이그레이션 변경은 없습니다.
+- 기존 `/reporting/*`, AI 권한, 부서 접근 권한, React AI Workspace UI는 유지했습니다.
+- 기존 `product` 값은 호환성을 위해 유지하고, 메타데이터 필드만 추가했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py shell -c "... Product.objects.filter(product_code__iexact='P4345N00') ..."
+→ P4345N00 제품 마스터 1건 확인: description `RLD-1250NS, 1250 µL Low Retention Paradigm Refills, Benchtop, 8 x 96 / pk`, specification `5 pk / CS`, unit `pk`
+
+python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_product_master_facts reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_product_guard_replaces_unsupported_label --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 60 tests, OK
+
+python manage.py test ai_chat.tests.AIDepartmentQuoteDeliveryCollectionTests --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 제품 마스터 설명/규격 자체가 비어 있으면 AI는 해당 코드의 품목 유형을 단정하지 않고 `품번/품목` 중심으로 표현하게 됩니다.
+- 기존 과거 질문 로그의 저장된 답변 문구는 자동 재작성하지 않습니다. 새 질문 응답부터 적용됩니다.
+- 제품 유형을 별도 구조화 필드로 관리하지는 않았습니다. 필요하면 향후 `Product`에 카테고리/품목군을 설계해야 합니다.
+
+### 운영 배포 상태
+
+- Runtime change: yes
+- DB migration: none
+- Commit/push: pending
+- Railway deployment: pending
+
+### 추천 다음 작업
+
+- 운영에서 동일 부서에 스케일업 질문을 다시 실행해 `P4345N00`이 `튜브`로 표시되지 않는지 수동 확인합니다.
+- 제품 마스터에 품목군을 안정적으로 관리하려면 별도 카테고리 설계를 다음 과제로 검토합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 문제가 발생했던 부서를 선택합니다.
+3. 같은 질문 또는 “해당 연구실의 주문 물품을 스케일업 하고싶어”를 다시 실행합니다.
+4. 답변 본문, 추천 판단, 액션, 근거에서 `튜브(P4345N00)`가 나오지 않는지 확인합니다.
+5. `P4345N00`이 나오면 제품 마스터 설명/규격 기반 라벨 또는 `P4345N00 품목`으로 표현되는지 확인합니다.
+
+---
+
 ## 2026-05-17 — AI Workspace Question-Centered Simplification
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기

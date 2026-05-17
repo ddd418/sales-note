@@ -10910,12 +10910,223 @@ def _ai_workspace_recent_question_feedbacks(user, department_id=None, limit=AI_W
     ]
 
 
+def _ai_workspace_product_text(value, limit=260):
+    return _ai_workspace_question_text(value, limit)
+
+
+def _ai_workspace_product_label(code, description='', specification='', unit=''):
+    code = _ai_workspace_product_text(code, 80)
+    description = _ai_workspace_product_text(description, 180)
+    specification = _ai_workspace_product_text(specification, 120)
+    unit = _ai_workspace_product_text(unit, 40)
+    if not code:
+        return ''
+    details = [part for part in [description, specification, f'단위 {unit}' if unit else ''] if part]
+    if not details:
+        return code
+    return f"{code} ({', '.join(details[:3])})"
+
+
+def _ai_workspace_product_fact_from_item(item, product_lookup=None):
+    if not isinstance(item, dict):
+        return None
+
+    code = _ai_workspace_product_text(
+        item.get('productCode') or item.get('product_code') or '',
+        80,
+    )
+    product_name = _ai_workspace_product_text(item.get('product') or '', 120)
+    description = _ai_workspace_product_text(
+        item.get('productDescription') or item.get('product_description') or '',
+        220,
+    )
+    specification = _ai_workspace_product_text(
+        item.get('productSpecification') or item.get('product_specification') or '',
+        160,
+    )
+    unit = _ai_workspace_product_text(item.get('productUnit') or item.get('product_unit') or '', 40)
+
+    if not code and product_name:
+        product = (product_lookup or {}).get(product_name)
+        if product:
+            code = _ai_workspace_product_text(product.product_code, 80)
+            description = _ai_workspace_product_text(product.description, 220)
+            specification = _ai_workspace_product_text(product.specification, 160)
+            unit = _ai_workspace_product_text(product.unit, 40)
+
+    if not code:
+        return None
+
+    label = _ai_workspace_product_text(
+        item.get('productLabel') or item.get('product_label'),
+        320,
+    ) or _ai_workspace_product_label(code, description, specification, unit)
+    return {
+        'code': code,
+        'label': label,
+        'description': description,
+        'specification': specification,
+        'unit': unit,
+        'source': 'product_master' if any([description, specification, unit]) else 'crm_item',
+    }
+
+
+def _ai_workspace_question_product_facts(*records):
+    facts = {}
+    raw_items = []
+    lookup_codes = set()
+    for record_list in records:
+        for record in record_list or []:
+            if not isinstance(record, dict):
+                continue
+            for item in record.get('items') or []:
+                if not isinstance(item, dict):
+                    continue
+                raw_items.append(item)
+                if not (item.get('productCode') or item.get('product_code')):
+                    product_name = _ai_workspace_product_text(item.get('product'), 120)
+                    if product_name:
+                        lookup_codes.add(product_name)
+    product_lookup = {}
+    if lookup_codes:
+        try:
+            from reporting.models import Product
+            product_lookup = {
+                product.product_code: product
+                for product in Product.objects.filter(product_code__in=lookup_codes)
+            }
+        except Exception:
+            product_lookup = {}
+
+    for item in raw_items:
+        fact = _ai_workspace_product_fact_from_item(item, product_lookup=product_lookup)
+        if not fact:
+            continue
+        existing = facts.get(fact['code'])
+        if not existing or (fact['source'] == 'product_master' and existing.get('source') != 'product_master'):
+            facts[fact['code']] = fact
+    return sorted(facts.values(), key=lambda item: item['code'])[:40]
+
+
+def _ai_workspace_product_fact_lookup(context):
+    lookup = {}
+    for fact in context.get('productFacts') or []:
+        if not isinstance(fact, dict):
+            continue
+        code = _ai_workspace_product_text(fact.get('code'), 80)
+        if code:
+            lookup[code] = {
+                'code': code,
+                'label': _ai_workspace_product_text(fact.get('label'), 320) or code,
+                'description': _ai_workspace_product_text(fact.get('description'), 220),
+                'specification': _ai_workspace_product_text(fact.get('specification'), 160),
+                'unit': _ai_workspace_product_text(fact.get('unit'), 40),
+            }
+    return lookup
+
+
+def _ai_workspace_product_type_aliases(fact):
+    text = ' '.join(
+        _ai_workspace_product_text(fact.get(key), 240)
+        for key in ['label', 'description', 'specification']
+    ).lower()
+    aliases = set()
+    if any(keyword in text for keyword in ['tip', 'tips', 'low retention', 'paradigm refill', 'paradigm refills']):
+        aliases.update(['팁', 'tip', 'tips', '리필', 'refill', 'refills'])
+    if any(keyword in text for keyword in ['tube', 'tubes']):
+        aliases.update(['튜브', 'tube', 'tubes'])
+    if any(keyword in text for keyword in ['plate', 'plates']):
+        aliases.update(['플레이트', 'plate', 'plates'])
+    if any(keyword in text for keyword in ['reagent', 'reagents']):
+        aliases.update(['시약', 'reagent', 'reagents'])
+    if any(keyword in text for keyword in ['buffer', 'buffers']):
+        aliases.update(['버퍼', 'buffer', 'buffers'])
+    if any(keyword in text for keyword in ['filter', 'filters']):
+        aliases.update(['필터', 'filter', 'filters'])
+    return aliases
+
+
+def _ai_workspace_product_label_is_supported(candidate, fact):
+    normalized = re.sub(r'\s+', '', str(candidate or '').lower())
+    if not normalized:
+        return True
+    generic_labels = {'품목', '제품', '품번', '코드', 'item', 'product'}
+    if normalized in generic_labels:
+        return True
+    source = re.sub(
+        r'\s+',
+        '',
+        ' '.join(
+            _ai_workspace_product_text(fact.get(key), 320)
+            for key in ['label', 'description', 'specification', 'unit']
+        ).lower(),
+    )
+    if normalized and normalized in source:
+        return True
+    return normalized in {re.sub(r'\s+', '', alias.lower()) for alias in _ai_workspace_product_type_aliases(fact)}
+
+
+def _ai_workspace_guard_product_labels_in_text(text, product_facts):
+    guarded = str(text or '')
+    if not guarded or not product_facts:
+        return guarded
+
+    for code, fact in product_facts.items():
+        replacement = fact.get('label') or f'{code} 품목'
+        code_pattern = re.escape(code)
+        label_before_code = re.compile(
+            rf'(?P<label>[A-Za-z가-힣][A-Za-z가-힣0-9+/#._-]{{0,30}})\s*[\(（]\s*{code_pattern}\s*[\)）]'
+        )
+
+        def replace_label_before(match):
+            candidate = match.group('label')
+            if _ai_workspace_product_label_is_supported(candidate, fact):
+                return match.group(0)
+            return replacement
+
+        guarded = label_before_code.sub(replace_label_before, guarded)
+    return guarded
+
+
+def _ai_workspace_apply_product_fact_guard(value, context):
+    product_facts = _ai_workspace_product_fact_lookup(context or {})
+    if not product_facts:
+        return value
+    if isinstance(value, str):
+        return _ai_workspace_guard_product_labels_in_text(value, product_facts)
+    if isinstance(value, list):
+        return [_ai_workspace_apply_product_fact_guard(item, context) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _ai_workspace_apply_product_fact_guard(item, context)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _ai_workspace_question_product_item_label(item):
+    label = _ai_workspace_product_text(
+        item.get('productLabel') or item.get('product_label'),
+        220,
+    )
+    if label:
+        return label
+    code = _ai_workspace_product_text(item.get('product'), 120)
+    product_code = _ai_workspace_product_text(item.get('productCode') or item.get('product_code'), 80)
+    description = _ai_workspace_product_text(item.get('productDescription') or item.get('product_description'), 180)
+    specification = _ai_workspace_product_text(item.get('productSpecification') or item.get('product_specification'), 120)
+    unit = _ai_workspace_product_text(item.get('productUnit') or item.get('product_unit'), 40)
+    if product_code:
+        return _ai_workspace_product_label(product_code, description, specification, unit)
+    return code
+
+
 def _ai_workspace_question_delivery_item_text(items):
     labels = []
     for item in items or []:
         if not isinstance(item, dict):
             continue
-        product = _ai_workspace_question_text(item.get('product'), 80)
+        product = _ai_workspace_question_product_item_label(item)
         quantity = item.get('quantity') or 0
         amount = item.get('total_price')
         if amount is None:
@@ -11198,6 +11409,7 @@ def _ai_workspace_department_question_context(department, user):
             for followup in followups[:20]
         ],
         'summary': quote_delivery.get('summary') or {},
+        'productFacts': _ai_workspace_question_product_facts(quotes, deliveries),
         'lastDelivery': latest_delivery,
         'recentDeliveries': [
             payload
@@ -11470,6 +11682,7 @@ def _ai_workspace_global_question_context(user):
             'open_followups': len(open_followups),
             'recommended_actions': len(action_queue),
         },
+        'productFacts': [],
         'lastDelivery': None,
         'recentDeliveries': [],
         'recentQuotes': [],
@@ -11898,10 +12111,10 @@ def _ai_workspace_question_fallback(question, context):
     }
 
 
-def _ai_workspace_normalize_department_question_answer(data, fallback):
+def _ai_workspace_normalize_department_question_answer(data, fallback, context=None):
     if not isinstance(data, dict):
         fallback.setdefault('actionItems', [])
-        return fallback
+        return _ai_workspace_apply_product_fact_guard(fallback, context or {})
     answer_text = (
         data.get('answer')
         or data.get('summary')
@@ -11961,7 +12174,7 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
 
     if not answer:
         fallback.setdefault('actionItems', [])
-        return fallback
+        return _ai_workspace_apply_product_fact_guard(fallback, context or {})
     result = {
         'summary': answer,
         'bullets': bullets or fallback.get('bullets', []),
@@ -11973,7 +12186,7 @@ def _ai_workspace_normalize_department_question_answer(data, fallback):
         result['decision'] = decision
     if perspective:
         result['perspective'] = perspective
-    return result
+    return _ai_workspace_apply_product_fact_guard(result, context or {})
 
 
 def _ai_workspace_question_needs_web_search(question):
@@ -12030,6 +12243,9 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
                 'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
+                'crmContext.productFacts는 제품 코드별 제품 마스터 설명/규격/단위다. 제품 코드의 품목 성격은 productFacts와 CRM 품목 메모를 우선 근거로 삼는다.',
+                '제품 코드는 식별자다. productFacts.label/description/specification 또는 CRM 메모에 없는 품목 유형을 코드 앞에 새로 붙이지 않는다.',
+                '예를 들어 productFacts에 튜브 근거가 없으면 "튜브(P4345N00)"처럼 쓰지 말고 productFacts.label 또는 "P4345N00 품목"처럼 쓴다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 전체 부서 범위라면 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
@@ -12093,12 +12309,12 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
             response = client.chat.completions.create(**completion_kwargs)
             data = _ai_workspace_json_from_text(response.choices[0].message.content)
             web_search_used = False
-        answer = _ai_workspace_normalize_department_question_answer(data, fallback)
+        answer = _ai_workspace_normalize_department_question_answer(data, fallback, context)
         return answer, 'openai', web_search_used
     except Exception as exc:
         logger.warning('AI workspace department question fallback used: %s', exc)
         fallback.setdefault('actionItems', [])
-        return fallback, 'fallback', False
+        return _ai_workspace_apply_product_fact_guard(fallback, context), 'fallback', False
 
 
 @never_cache
