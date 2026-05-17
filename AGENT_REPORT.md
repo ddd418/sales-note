@@ -1,5 +1,74 @@
 # AGENT_REPORT.md
 
+## 2026-05-17 — Customers API 500 Hotfix
+
+**상태**: 구현/로컬 검증 완료, 커밋/운영 배포 진행 예정
+
+### 요약
+
+운영 `/customers/`에서 `Customers API unavailable: 500`이 뜨는 원인을 확인하고 수정했습니다. `/reporting/api/customers/`가 예정 일정 payload를 만들 때 존재하지 않는 `followup` 지역 변수를 참조해 `NameError`가 발생하고 있었습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 고객 예정 일정 payload의 보고 작성 링크가 `schedule.followup_id`를 사용하도록 수정.
+- `reporting/tests.py`: 고객 API 일정 snapshot 테스트에 `createHistoryHref`, `djangoCreateHistoryHref` 검증 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 긴급 복구 계획과 결과 기록.
+
+### CRM 개선
+
+- 예정 일정이 있는 고객이 포함되어도 React 고객 목록 API가 500으로 중단되지 않습니다.
+- 고객 목록의 `보고` 링크가 해당 고객 id와 일정 id를 포함해 안정적으로 생성됩니다.
+
+### 기존 기능 보존
+
+- DB 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/*` route, 로그인 보호, 고객 데이터 스코프, React 고객 화면 구조는 유지했습니다.
+- 프론트엔드 소스 변경은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_includes_activity_and_schedule_snapshot --verbosity=1
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 22 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 smoke는 Railway `web` 배포 후 로그인 보호와 프론트 proxy 기준으로 추가 확인해야 합니다.
+- 실제 로그인 세션의 고객 데이터 payload 200 확인은 사용자 운영 계정에서 수동 검수가 필요합니다.
+
+### 추천 다음 작업
+
+- 운영 `/customers/`에서 고객 목록 로딩, 예정 일정 `보고` 링크, 고객 상세 진입을 수동 확인합니다.
+
+### 운영 배포 상태
+
+- 배포 전. 커밋/푸시 후 Railway `web` 배포 예정.
+
+### 사용자 수동 테스트 절차
+
+1. 운영 `https://sales-note-frontend-production.up.railway.app/customers/`에 로그인된 상태로 접속합니다.
+2. 상단 에러 `Customers API unavailable: 500`이 사라지고 고객 목록/우선순위 고객이 로딩되는지 확인합니다.
+3. 예정 일정이 있는 고객 행에서 `보고` 링크를 눌렀을 때 `/notes/?create=1&customer=...&schedule=...` 화면으로 이동하는지 확인합니다.
+4. 고객 검색/우선순위 필터/담당자 필터가 기존처럼 동작하는지 확인합니다.
+
+---
+
 ## 2026-05-17 — AI Workspace Customer Perspective Answers
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 운영 수동검수 대기

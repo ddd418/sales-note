@@ -2767,6 +2767,7 @@ def dashboard_summary_api(request):
 
 
 def _customers_schedule_payload(schedule):
+    followup_id = schedule.followup_id
     return {
         'id': schedule.id,
         'date': _date_or_none(schedule.visit_date),
@@ -2779,7 +2780,7 @@ def _customers_schedule_payload(schedule):
         'notes': (schedule.notes or '').strip()[:100],
         'href': f'/schedules/{schedule.id}/',
         'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
-        'createHistoryHref': f'/notes/?create=1&customer={followup.id}&schedule={schedule.id}',
+        'createHistoryHref': f'/notes/?create=1&customer={followup_id}&schedule={schedule.id}',
         'djangoCreateHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
     }
 

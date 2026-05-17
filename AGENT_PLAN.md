@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## Current task — Customers API 500 긴급 복구
+
+**목표**: 운영 React 고객 목록(`/customers/`)에서 `/reporting/api/customers/`가 500을 반환해 `Customers API unavailable: 500`이 뜨는 문제를 즉시 복구한다.
+
+### 확인된 상태
+
+- 운영 프론트 `/customers/` HTML은 정상 200으로 내려온다.
+- 운영 백엔드 로그에서 `/reporting/api/customers/`가 `_customers_schedule_payload()` 내부 `followup` 미정의 참조로 `NameError`를 발생시키는 것을 확인했다.
+- 문제는 예정 일정이 있는 고객 payload의 `createHistoryHref` 생성 과정에서 발생한다.
+- 인증/권한/CSRF 문제가 아니라 서버 코드 예외다.
+- DB 모델 변경과 migration은 필요 없다.
+
+### 구현 계획
+
+- `_customers_schedule_payload()`에서 존재하지 않는 지역 변수 `followup` 대신 `schedule.followup_id`를 사용한다.
+- 고객 API 일정 snapshot 테스트에 `createHistoryHref`와 `djangoCreateHistoryHref` 검증을 추가한다.
+- 기존 `/reporting/*`, 로그인 보호, 고객 데이터 스코프, React 고객 화면 구조는 유지한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_includes_activity_and_schedule_snapshot --verbosity=1`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web` 배포 및 운영 `/customers/`, `/reporting/api/customers/` smoke 확인.
+
+### 현재 상태
+
+- 운영 로그에서 `NameError: name 'followup' is not defined` 원인 확인 완료.
+- `_customers_schedule_payload()`가 `schedule.followup_id`로 보고 작성 링크를 생성하도록 수정 완료.
+- 고객 API 일정 snapshot 테스트에 React 보고 링크와 Django 보고 생성 링크 검증 추가 완료.
+- `CustomersSummaryApiTests` 22건, Django check, migration dry-run, diff check 통과.
+- 커밋/푸시 및 Railway `web` 배포 대기.
+
+---
+
 ## Current task — AI Workspace 고객 관점 답변 구조화
 
 **목표**: AI Workspace 질문 답변이 CRM 사실 요약에 머물지 않고, CRM 근거 기반 `고객 입장 추정`과 `영업 판단`, 자연스러운 말문 예시를 함께 제공하게 한다.

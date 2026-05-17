@@ -1850,6 +1850,14 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(customer['upcomingSchedule']['id'], upcoming.id)
         self.assertEqual(customer['upcomingSchedule']['activityLabel'], '견적 제출')
         self.assertEqual(customer['upcomingSchedule']['time'], '10:30')
+        self.assertEqual(
+            customer['upcomingSchedule']['createHistoryHref'],
+            f'/notes/?create=1&customer={target.id}&schedule={upcoming.id}',
+        )
+        self.assertEqual(
+            customer['upcomingSchedule']['djangoCreateHistoryHref'],
+            reverse('reporting:history_create_from_schedule', args=[upcoming.id]),
+        )
         self.assertEqual(payload['metrics']['scheduledCustomers'], 1)
 
     def test_customers_apis_exclude_stale_quote_submission_overdue_count(self):
