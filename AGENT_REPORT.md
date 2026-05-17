@@ -2,7 +2,7 @@
 
 ## 2026-05-17 — AI Workspace Question Feedback Loop
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시 및 운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -60,6 +60,29 @@ git diff --check
 
 Playwright local smoke on http://127.0.0.1:4178/ai-workspace/?department_id=14 with mocked AI Workspace APIs
 → 답변 피드백 UI 렌더링, `방향 수정` 선택, 코멘트 입력, feedback API payload, 성공 메시지 OK, console errors 0
+
+git commit -m "feat: add ai question feedback loop"
+git push origin main
+→ pushed cd6ac20 to origin/main
+
+railway deployment list --service web --limit 1 --json
+→ 22388975-3692-4d8a-9b6f-9fabac311e79 SUCCESS, commit cd6ac20
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI question feedback loop cd6ac20"
+railway deployment list --service sales-note-frontend --limit 1 --json
+→ e99e2be2-10b1-42be-96fc-2640b0c56d1b SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-DNG2AEtn.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-DNG2AEtn.js
+→ 200, `답변 피드백` and `AI question feedback API` present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+POST https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/question/feedback/ without authenticated CSRF session
+→ 403 protection OK
 ```
 
 ### 알려진 제한
@@ -73,7 +96,11 @@ Playwright local smoke on http://127.0.0.1:4178/ai-workspace/?department_id=14 w
 
 ### 운영 배포 상태
 
-- 커밋/푸시 및 Railway 배포 진행 예정.
+- Runtime commit: `cd6ac20 feat: add ai question feedback loop`
+- Railway `web`: `22388975-3692-4d8a-9b6f-9fabac311e79` SUCCESS
+- Railway `sales-note-frontend`: `e99e2be2-10b1-42be-96fc-2640b0c56d1b` SUCCESS
+- Production smoke: `/ai-workspace/` 200, latest bundle `assets/index-DNG2AEtn.js` contains `답변 피드백` and new feedback API client string, AI Workspace API login/CSRF protection confirmed
+- User manual test: 대기 중.
 
 ### 사용자 수동 테스트 절차
 

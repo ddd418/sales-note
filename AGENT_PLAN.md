@@ -44,7 +44,10 @@
 - React AI Workspace 질문 답변 카드에 `답변 피드백` 평가/코멘트/저장 UI 추가 완료.
 - 집중 테스트 4건, AI Workspace 전체 테스트 52건, Django check, migration dry-run, frontend 타입체크/빌드, node syntax check, diff check 통과.
 - 로컬 Playwright smoke에서 질문 답변 후 `방향 수정` 피드백 저장 UI와 API payload, 성공 메시지, 콘솔 오류 없음 확인.
-- 커밋/푸시 및 Railway 배포 진행 예정.
+- 커밋/푸시 완료: `cd6ac20 feat: add ai question feedback loop`.
+- Railway `web` 배포 완료: `22388975-3692-4d8a-9b6f-9fabac311e79` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `e99e2be2-10b1-42be-96fc-2640b0c56d1b` SUCCESS.
+- 운영 smoke 완료: `/ai-workspace/` 최신 번들 `assets/index-DNG2AEtn.js`에 `답변 피드백`/새 API 클라이언트 포함, AI Workspace summary anonymous 401, question feedback POST without auth/CSRF 403.
 
 ---
 
