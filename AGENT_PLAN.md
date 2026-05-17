@@ -5505,3 +5505,41 @@ python pre_deployment_check.py
   - `cd frontend && npm run build`
   - `cd frontend && node --check server.mjs`
   - `git diff --check`
+
+## 2026-05-17 AI Workspace fixed system prompt and direction removal plan
+
+**Background**:
+
+- User clarified that the CRM strategy architect prompt must be fixed exactly as the system prompt.
+- The answer-direction free-form control makes the workflow harder to use and should be removed.
+
+**DB change required**: No.
+
+- Do not delete existing `AIWorkspaceAnswerDirection` table/migration in this runtime task.
+- Stop using answer-direction data in the API context and React UI.
+
+**Implementation scope**:
+
+- Backend:
+  - Replace the AI Workspace department Q&A system prompt with the user-provided fixed prompt text.
+  - Keep JSON response parsing stable by moving the app's JSON response contract into the user payload rules instead of modifying the system prompt.
+  - Remove `answerDirection` from department/global question context, summary payload, question response context, and prompt rules.
+  - Remove the answer-direction API route/view from active runtime routes.
+- Frontend:
+  - Remove the `현재 답변 방향` UI section, state, save handler, API client, and related CSS.
+  - Keep department selection, model selection, question execution, question history, and pagination.
+- Tests:
+  - Update prompt tests to assert the fixed system prompt and absence of answer-direction context.
+  - Remove answer-direction API/UI payload expectations.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local Playwright smoke for `/ai-workspace/`
+- `git diff --check`

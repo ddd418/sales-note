@@ -192,7 +192,6 @@ urlpatterns = [
     path('api/ai-workspace/', views.ai_workspace_summary_api, name='ai_workspace_summary_api'),
     path('api/ai-workspace/question/', views.ai_workspace_department_question_api, name='ai_workspace_question_api'),
     path('api/ai-workspace/department-question/', views.ai_workspace_department_question_api, name='ai_workspace_department_question_api'),
-    path('api/ai-workspace/question/direction/', views.ai_workspace_answer_direction_api, name='ai_workspace_answer_direction_api'),
     path('api/ai-workspace/question/feedback/', views.ai_workspace_question_feedback_api, name='ai_workspace_question_feedback_api'),
     path('api/ai-workspace/actions/draft/', views.ai_workspace_action_draft_api, name='ai_workspace_action_draft_api'),
     path('api/ai-workspace/actions/feedback/', views.ai_workspace_action_feedback_api, name='ai_workspace_action_feedback_api'),

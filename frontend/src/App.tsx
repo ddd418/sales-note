@@ -185,7 +185,6 @@ import {
   runMailboxSync,
   sendMailboxEmail,
   submitAIWorkspaceActionFeedback,
-  saveAIWorkspaceAnswerDirection,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateCustomer as updateCustomerRecord,
@@ -12711,15 +12710,9 @@ function AIWorkspaceDepartmentActionSummary({ data }: { data: AIWorkspaceData })
 function AIWorkspaceDepartmentQuestionPanel({
   data,
   departmentId,
-  directionDraft,
-  directionError,
-  directionMessage,
-  directionSaving,
   error,
   loading,
   model,
-  onDirectionChange,
-  onDirectionSave,
   onHistoryPageChange,
   onModelChange,
   onQuestionChange,
@@ -12729,15 +12722,9 @@ function AIWorkspaceDepartmentQuestionPanel({
 }: {
   data: AIWorkspaceData;
   departmentId: number | null;
-  directionDraft: string;
-  directionError: string;
-  directionMessage: string;
-  directionSaving: boolean;
   error: string;
   loading: boolean;
   model: AIWorkspaceQuestionModel | string;
-  onDirectionChange: (value: string) => void;
-  onDirectionSave: () => void;
   onHistoryPageChange: (page: number) => void;
   onModelChange: (value: AIWorkspaceQuestionModel | string) => void;
   onQuestionChange: (value: string) => void;
@@ -12772,9 +12759,6 @@ function AIWorkspaceDepartmentQuestionPanel({
   const lastDelivery = result?.context?.lastDelivery;
   const customerCount = result?.context?.customerCount ?? data.featuredDepartment?.customerCount ?? 0;
   const history = data.questionHistory;
-  const directionLength = directionDraft.trim().length;
-  const effectiveDirection = data.answerDirection.effectiveDirection
-    || '기본 방향: CRM 전략가 관점으로 상황 진단, 핵심 가정, 전략 방향, 우선순위 액션, KPI/테스트 계획, 리스크 대응을 한국어로 구체적으로 제안합니다.';
   const modelChoices = data.questionModelChoices.length > 0
     ? data.questionModelChoices
     : [
@@ -12832,30 +12816,6 @@ function AIWorkspaceDepartmentQuestionPanel({
         </div>
       </form>
       {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
-      <section className="ai-answer-direction-box">
-        <div className="ai-answer-direction-head">
-          <strong>현재 답변 방향</strong>
-          {data.answerDirection.updatedAt ? <span>{formatDateLabel(data.answerDirection.updatedAt)}</span> : null}
-        </div>
-        <p className="ai-answer-direction-current">{effectiveDirection}</p>
-        <textarea
-          disabled={!canUseDepartmentScope || directionSaving}
-          maxLength={1200}
-          onChange={(event) => onDirectionChange(event.target.value)}
-          placeholder="원하는 조정 방향을 입력하세요. 예: CRM 브리핑보다 고객 입장 추정과 추천 판단을 먼저 보여줘"
-          rows={3}
-          value={directionDraft}
-        />
-        <div className="ai-answer-direction-actions">
-          <span>{formatNumber(directionLength)} / 1200</span>
-          <button disabled={!canUseDepartmentScope || directionSaving} onClick={onDirectionSave} type="button">
-            {directionSaving ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
-            {directionSaving ? '저장 중' : '방향 저장'}
-          </button>
-        </div>
-        {directionMessage ? <small className="ai-question-feedback-message success">{directionMessage}</small> : null}
-        {directionError ? <small className="ai-question-feedback-message error">{directionError}</small> : null}
-      </section>
       {answer ? (
         <article className="ai-department-question-answer">
           <div className="ai-department-question-answer-head">
@@ -13292,24 +13252,14 @@ function AIWorkspacePage({
   const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
   const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
   const [departmentQuestionError, setDepartmentQuestionError] = useState('');
-  const [answerDirectionDraft, setAnswerDirectionDraft] = useState('');
-  const [answerDirectionSaving, setAnswerDirectionSaving] = useState(false);
-  const [answerDirectionMessage, setAnswerDirectionMessage] = useState('');
-  const [answerDirectionError, setAnswerDirectionError] = useState('');
   const [questionHistoryPage, setQuestionHistoryPage] = useState(1);
   const activeDepartmentId = data?.featuredDepartment?.departmentId ?? selectedDepartmentId ?? data?.selectedDepartmentId ?? null;
 
   useEffect(() => {
     setDepartmentQuestionResult(null);
     setDepartmentQuestionError('');
-    setAnswerDirectionMessage('');
-    setAnswerDirectionError('');
     setQuestionHistoryPage(1);
   }, [activeDepartmentId]);
-
-  useEffect(() => {
-    setAnswerDirectionDraft(data?.answerDirection.direction ?? '');
-  }, [data?.answerDirection.departmentId, data?.answerDirection.direction]);
 
   useEffect(() => {
     const choices = data?.questionModelChoices ?? [];
@@ -13429,26 +13379,6 @@ function AIWorkspacePage({
     }
   };
 
-  const handleSaveAnswerDirection = async () => {
-    if (!activeDepartmentId || answerDirectionSaving) {
-      setAnswerDirectionError('답변 방향을 저장할 부서를 먼저 선택하세요.');
-      return;
-    }
-
-    setAnswerDirectionSaving(true);
-    setAnswerDirectionError('');
-    setAnswerDirectionMessage('');
-    try {
-      const result = await saveAIWorkspaceAnswerDirection(activeDepartmentId, answerDirectionDraft.trim());
-      setAnswerDirectionMessage(result.message || '현재 답변 방향을 저장했습니다.');
-      await onRefresh({ departmentId: activeDepartmentId, questionPage: questionHistoryPage });
-    } catch (error) {
-      setAnswerDirectionError(error instanceof Error ? error.message : '답변 방향 저장에 실패했습니다.');
-    } finally {
-      setAnswerDirectionSaving(false);
-    }
-  };
-
   const handleQuestionHistoryPageChange = async (page: number) => {
     if (!activeDepartmentId || page < 1) {
       return;
@@ -13498,7 +13428,7 @@ function AIWorkspacePage({
         <div>
           <span className="eyebrow">AI Workspace</span>
           <h2>{data.currentUser.company || 'AI 업무도구'}</h2>
-          <p>부서를 선택하고 현재 상황을 질문합니다. 질문 기록과 답변 방향은 선택 부서 기준으로 관리됩니다.</p>
+          <p>부서를 선택하고 현재 상황을 질문합니다. 질문 기록은 선택 부서 기준으로 관리됩니다.</p>
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href={data.links.weeklyReportCreate}>
@@ -13533,15 +13463,9 @@ function AIWorkspacePage({
             <AIWorkspaceDepartmentQuestionPanel
               data={data}
               departmentId={activeDepartmentId}
-              directionDraft={answerDirectionDraft}
-              directionError={answerDirectionError}
-              directionMessage={answerDirectionMessage}
-              directionSaving={answerDirectionSaving}
               error={departmentQuestionError}
               loading={departmentQuestionLoading}
               model={departmentQuestionModel}
-              onDirectionChange={setAnswerDirectionDraft}
-              onDirectionSave={handleSaveAnswerDirection}
               onHistoryPageChange={handleQuestionHistoryPageChange}
               onModelChange={setDepartmentQuestionModel}
               onQuestionChange={setDepartmentQuestion}

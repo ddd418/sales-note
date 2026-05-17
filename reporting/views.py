@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -10551,28 +10551,23 @@ AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS = 2400
 AI_WORKSPACE_QUESTION_FEEDBACK_COMMENT_MAX_LENGTH = 1000
 AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT = 6
 AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE = 5
-AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH = 1200
-AI_WORKSPACE_DEFAULT_ANSWER_DIRECTION = (
-    '기본 방향: CRM 전략가 관점으로 상황 진단, 핵심 가정, 전략 방향, 우선순위 액션, '
-    'KPI/테스트 계획, 리스크 대응을 한국어로 구체적으로 제안합니다.'
-)
 AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT = """
-Act like a CRM strategy architect, senior growth consultant, and Zhuge Liang-level tactician who analyzes CRM programs, customer data, operational constraints, and business goals to recommend the most effective CRM strategy.
+Act like a CRM strategy architect, senior growth consultant, and “Zhuge Liang”-level tactician who analyzes CRM programs, customer data, operational constraints, and business goals to recommend the most effective CRM strategy.
 
 Your goal is to help the user diagnose their CRM situation, identify the highest-leverage opportunities, and recommend optimal conditions, priorities, execution directions, and decision criteria.
 
 Task: When the user asks a question or provides CRM-related variables, analyze the CRM context and produce a practical strategic recommendation.
 
 Follow this step-by-step process:
-1) Identify the user's CRM objective: acquisition, retention, reactivation, upsell, cross-sell, churn reduction, automation, segmentation, personalization, campaign performance, customer lifecycle design, or operational efficiency.
+1) Identify the user’s CRM objective: acquisition, retention, reactivation, upsell, cross-sell, churn reduction, automation, segmentation, personalization, campaign performance, customer lifecycle design, or operational efficiency.
 2) Extract all available variables, including industry, target customers, customer journey stage, CRM tool, available data, campaign history, budget, team capacity, KPIs, constraints, and timeline.
-3) If key information is missing, state assumptions clearly and proceed with a best-effort recommendation rather than stopping.
+3) If key information is missing, state your assumptions clearly and proceed with a best-effort recommendation rather than stopping.
 4) Investigate the CRM problem from multiple angles: customer behavior, data quality, segmentation, channel strategy, automation flow, content strategy, sales process, retention loop, measurement system, and implementation feasibility.
-5) Recommend the optimal strategy, explaining why it fits the user's variables and what trade-offs exist.
+5) Recommend the optimal strategy, explaining why it fits the user’s variables and what trade-offs exist.
 6) Provide specific next actions, prioritized by expected impact, difficulty, speed, and risk.
 7) Include measurement guidance: KPIs, success criteria, tracking setup, testing plan, and review cadence.
 
-Output planning format to reflect inside the JSON fields:
+Output format:
 - Situation diagnosis
 - Key assumptions
 - Strategic direction
@@ -10582,9 +10577,12 @@ Output planning format to reflect inside the JSON fields:
 - KPI and testing plan
 - Risks and countermeasures
 
-Style: Use clear, practical Korean. Be strategic but concrete. Avoid vague advice. Use tables only when comparing options conceptually inside text fields. Do not over-explain theory unless it directly supports the recommendation.
+Style:
+Use clear, practical Korean. Be strategic but concrete. Avoid vague advice. Use tables when comparing options. Do not over-explain theory unless it directly supports the recommendation.
 
 Before finalizing, check whether the answer is specific, actionable, logically prioritized, and tailored to the variables provided.
+
+Take a deep breath and work on this problem step-by-step.
 """.strip()
 AI_WORKSPACE_QUESTION_MODELS = {
     'gpt-5.5': 'GPT-5.5',
@@ -10793,16 +10791,6 @@ def _ai_workspace_empty_question_history(page=1):
     }
 
 
-def _ai_workspace_effective_answer_direction(direction_text=''):
-    direction_text = _ai_workspace_question_text(direction_text, AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH)
-    if not direction_text:
-        return AI_WORKSPACE_DEFAULT_ANSWER_DIRECTION
-    return _ai_workspace_question_text(
-        f"현재 방향: 기본 CRM 전략가 분석을 유지하면서 사용자 요청을 우선 반영합니다. 사용자 요청: {direction_text}",
-        AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
-    )
-
-
 def _ai_workspace_question_history_payload(user, department, page=1):
     try:
         page_number = int(page or 1)
@@ -10841,42 +10829,6 @@ def _ai_workspace_question_history_payload(user, department, page=1):
             for log in (page_obj.object_list if page_obj else [])
         ],
     }
-
-
-def _ai_workspace_answer_direction_payload(direction=None, department=None):
-    if direction:
-        department = direction.department
-    saved_direction = _ai_workspace_question_text(
-        direction.direction if direction else '',
-        AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
-    )
-    return {
-        'id': direction.id if direction else None,
-        'scopeType': 'department',
-        'departmentId': department.id if department else None,
-        'department': {
-            'id': department.id,
-            'name': department.name,
-            'company': department.company.name if department.company else '',
-        } if department else None,
-        'direction': saved_direction,
-        'effectiveDirection': _ai_workspace_effective_answer_direction(saved_direction),
-        'createdAt': _datetime_or_none(direction.created_at) if direction else None,
-        'updatedAt': _datetime_or_none(direction.updated_at) if direction else None,
-    }
-
-
-def _ai_workspace_answer_direction_for_user(user, department):
-    if not (user and department):
-        return None
-    return AIWorkspaceAnswerDirection.objects.filter(
-        user=user,
-        department=department,
-        scope_type='department',
-    ).select_related(
-        'department',
-        'department__company',
-    ).first()
 
 
 def _ai_workspace_recent_question_feedbacks(user, department_id=None, limit=AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT):
@@ -11114,7 +11066,6 @@ def _ai_workspace_question_latest_delivery(deliveries):
 def _ai_workspace_department_question_context(department, user):
     from ai_chat.services import gather_quote_delivery_data
 
-    answer_direction = _ai_workspace_answer_direction_for_user(user, department)
     followups = list(FollowUp.objects.filter(
         user=user,
         department=department,
@@ -11210,7 +11161,6 @@ def _ai_workspace_department_question_context(department, user):
         'recentNotes': recent_histories,
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user, department_id=department.id),
-        'answerDirection': _ai_workspace_answer_direction_payload(answer_direction, department),
         'recentSchedules': recent_schedules,
     }
 
@@ -11468,7 +11418,6 @@ def _ai_workspace_global_question_context(user):
         'recentNotes': recent_histories,
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user),
-        'answerDirection': _ai_workspace_answer_direction_payload(),
         'recentSchedules': recent_schedules,
         'openFollowups': open_followups,
         'recommendedActions': [
@@ -12023,8 +11972,6 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
                 'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
-                'crmContext.answerDirection.effectiveDirection은 현재 적용 중인 답변 방향이다. CRM 사실이 아니라 답변 관점/톤/판단 기준 선호로만 적용한다.',
-                'crmContext.answerDirection.direction이 있으면 사용자가 직접 저장한 추가 요청이다. 기본 CRM 전략가 분석을 유지하되 이 요청을 우선 반영한다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 전체 부서 범위라면 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
@@ -12042,24 +11989,11 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
                 '각 actionItems 항목은 title, customer, company, department, priority, reason, nextAction, timing, crmEvidence를 채운다.',
                 'reason, nextAction, timing은 짧은 단어 조각이 아니라 실행자가 바로 이해할 수 있는 한 문장 이상으로 쓴다.',
                 'bullets는 보조 요약만 넣고, 고객별 실행 상세는 actionItems에 넣는다.',
+                '이 애플리케이션은 JSON 객체만 파싱한다. JSON 바깥의 Markdown 본문은 쓰지 않는다.',
+                '반드시 {"answer": string, "bullets": string[], "decision": {"recommendedChoice": string, "rejectedChoice": string, "reason": string, "exception": string}, "perspective": {"customerPerspective": string, "salesJudgment": string, "recommendedApproach": string, "talkTrack": string, "caution": string}, "actionItems": [{"rank": number, "title": string, "customer": string, "company": string, "department": string, "priority": string, "reason": string, "nextAction": string, "timing": string, "crmEvidence": [{"label": string, "value": string}]}], "evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"} 형태의 JSON 객체만 반환한다.',
             ],
         }
-        system_prompt = (
-            f"{AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT}\n\n"
-            '너는 내부 영업 CRM의 질문 답변 AI다. '
-            'CRM 컨텍스트의 최신성, 완료/미완료 상태, 후속조치 우선순위를 판단한다. '
-            '답변은 한국어로 쓰고, 단답형을 피한다. '
-            '위 전략가 프로세스와 출력 구성은 JSON 필드 내부 내용에 반영하고, JSON 바깥의 Markdown 본문은 쓰지 않는다. '
-            '반드시 JSON으로 {"answer": string, "bullets": string[], '
-            '"decision": {"recommendedChoice": string, "rejectedChoice": string, '
-            '"reason": string, "exception": string}, '
-            '"perspective": {"customerPerspective": string, "salesJudgment": string, '
-            '"recommendedApproach": string, "talkTrack": string, "caution": string}, '
-            '"actionItems": [{"rank": number, "title": string, "customer": string, "company": string, '
-            '"department": string, "priority": string, "reason": string, "nextAction": string, '
-            '"timing": string, "crmEvidence": [{"label": string, "value": string}]}], '
-            '"evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"}만 반환한다.'
-        )
+        system_prompt = AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT
         data = None
         if use_web_search and hasattr(client, 'responses'):
             response = client.responses.create(
@@ -12185,7 +12119,6 @@ def ai_workspace_summary_api(request):
             'featuredDepartment': None,
             'selectedDepartmentId': None,
             'questionHistory': _ai_workspace_empty_question_history(),
-            'answerDirection': _ai_workspace_answer_direction_payload(),
             'questionModelChoices': _ai_workspace_question_model_choices_payload(),
             'defaultQuestionModel': AI_WORKSPACE_DEFAULT_QUESTION_MODEL,
         })
@@ -12421,7 +12354,6 @@ def ai_workspace_summary_api(request):
             (department for department in departments if department.id == featured_department_id),
             None,
         )
-    answer_direction = _ai_workspace_answer_direction_for_user(request.user, effective_question_department)
     question_history = _ai_workspace_question_history_payload(
         request.user,
         effective_question_department,
@@ -12555,7 +12487,6 @@ def ai_workspace_summary_api(request):
         'featuredDepartment': featured_department,
         'selectedDepartmentId': featured_department['departmentId'] if featured_department else None,
         'questionHistory': question_history,
-        'answerDirection': _ai_workspace_answer_direction_payload(answer_direction, effective_question_department),
         'questionModelChoices': _ai_workspace_question_model_choices_payload(),
         'defaultQuestionModel': AI_WORKSPACE_DEFAULT_QUESTION_MODEL,
         'recommendedGoals': [
@@ -12661,62 +12592,8 @@ def ai_workspace_department_question_api(request):
             'recommendedActionCount': len(context.get('recommendedActions') or []),
             'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
             'questionFeedbackCount': len(context.get('questionFeedbacks') or []),
-            'answerDirection': context.get('answerDirection') or _ai_workspace_answer_direction_payload(),
         },
         'requiresHumanReview': True,
-    })
-
-
-@never_cache
-@require_POST
-def ai_workspace_answer_direction_api(request):
-    """Create or update the current answer direction for one accessible department."""
-    auth_response = _api_login_required_response(request)
-    if auth_response:
-        return auth_response
-
-    user_profile = get_user_profile(request.user)
-    if not (user_profile and user_profile.can_use_ai):
-        return JsonResponse({
-            'success': False,
-            'error': 'permission_denied',
-            'message': 'AI 기능 사용 권한이 없습니다.',
-        }, status=403)
-
-    try:
-        payload = json.loads(request.body.decode('utf-8') or '{}')
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return JsonResponse({
-            'success': False,
-            'error': 'invalid_json',
-            'message': '요청 JSON 형식이 올바르지 않습니다.',
-        }, status=400)
-
-    department_id = payload.get('departmentId') or payload.get('department_id')
-    department = _ai_workspace_question_department_for_user(request.user, department_id)
-    if not department:
-        return JsonResponse({
-            'success': False,
-            'error': 'department_not_found',
-            'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
-        }, status=404)
-
-    direction_text = _ai_workspace_question_text(
-        payload.get('direction'),
-        AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
-    )
-    direction, _created = AIWorkspaceAnswerDirection.objects.update_or_create(
-        user=request.user,
-        department=department,
-        scope_type='department',
-        defaults={'direction': direction_text},
-    )
-
-    return JsonResponse({
-        'success': True,
-        'generatedAt': timezone.now().isoformat(),
-        'answerDirection': _ai_workspace_answer_direction_payload(direction),
-        'message': '현재 답변 방향을 저장했습니다.',
     })
 
 

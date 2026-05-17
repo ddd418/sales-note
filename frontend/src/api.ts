@@ -2678,21 +2678,6 @@ export type AIWorkspaceQuestionHistory = {
   items: AIWorkspaceQuestionLog[];
 };
 
-export type AIWorkspaceAnswerDirection = {
-  id: number | null;
-  scopeType: 'department' | string;
-  departmentId: number | null;
-  department: {
-    id: number;
-    name: string;
-    company: string;
-  } | null;
-  direction: string;
-  effectiveDirection: string;
-  createdAt: string | null;
-  updatedAt: string | null;
-};
-
 export type AIWorkspaceDepartmentQuestionResponse = {
   success?: boolean;
   source: 'openai' | 'fallback';
@@ -2730,7 +2715,6 @@ export type AIWorkspaceDepartmentQuestionResponse = {
     recommendedActionCount?: number;
     recentFeedbackCount?: number;
     questionFeedbackCount?: number;
-    answerDirection?: AIWorkspaceAnswerDirection;
   };
   requiresHumanReview: boolean;
   error?: string;
@@ -2877,7 +2861,6 @@ export type AIWorkspaceData = {
   featuredDepartment: AIWorkspaceFeaturedDepartment | null;
   selectedDepartmentId: number | null;
   questionHistory: AIWorkspaceQuestionHistory;
-  answerDirection: AIWorkspaceAnswerDirection;
   questionModelChoices: AIWorkspaceQuestionModelChoice[];
   defaultQuestionModel: AIWorkspaceQuestionModel | string;
   recentDepartmentAnalyses: AIWorkspaceAnalysis[];
@@ -4057,16 +4040,6 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     hasNext: false,
     hasPrevious: false,
     items: [],
-  },
-  answerDirection: {
-    id: null,
-    scopeType: 'department',
-    departmentId: null,
-    department: null,
-    direction: '',
-    effectiveDirection: '기본 방향: CRM 전략가 관점으로 상황 진단, 핵심 가정, 전략 방향, 우선순위 액션, KPI/테스트 계획, 리스크 대응을 한국어로 구체적으로 제안합니다.',
-    createdAt: null,
-    updatedAt: null,
   },
   questionModelChoices: [
     { id: 'gpt-5.5', label: 'GPT-5.5' },
@@ -6788,12 +6761,6 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
       actionQueue: payload.actionQueue ?? [],
       feedbackHistory: payload.feedbackHistory ?? emptyAIWorkspaceData.feedbackHistory,
       questionHistory: payload.questionHistory ?? emptyAIWorkspaceData.questionHistory,
-      answerDirection: {
-        ...emptyAIWorkspaceData.answerDirection,
-        ...(payload.answerDirection ?? {}),
-        effectiveDirection: payload.answerDirection?.effectiveDirection
-          || emptyAIWorkspaceData.answerDirection.effectiveDirection,
-      },
       questionModelChoices: payload.questionModelChoices ?? emptyAIWorkspaceData.questionModelChoices,
       defaultQuestionModel: payload.defaultQuestionModel ?? emptyAIWorkspaceData.defaultQuestionModel,
     };
@@ -6888,46 +6855,6 @@ export async function askAIWorkspaceDepartmentQuestion(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI department question failed: ${response.status}`);
-  }
-  return data;
-}
-
-export async function saveAIWorkspaceAnswerDirection(
-  departmentId: number,
-  direction: string,
-): Promise<{
-  success?: boolean;
-  generatedAt: string;
-  answerDirection: AIWorkspaceAnswerDirection;
-  message?: string;
-  error?: string;
-}> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch('/reporting/api/ai-workspace/question/direction/', {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-    body: JSON.stringify({ departmentId, direction }),
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`AI answer direction API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as {
-    success?: boolean;
-    generatedAt: string;
-    answerDirection: AIWorkspaceAnswerDirection;
-    message?: string;
-    error?: string;
-  };
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `AI answer direction failed: ${response.status}`);
   }
   return data;
 }
