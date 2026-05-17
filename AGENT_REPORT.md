@@ -2,7 +2,7 @@
 
 ## 2026-05-17 — AI Workspace Decisive Choice Answers
 
-**상태**: 구현/로컬 검증 완료, 커밋/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -61,6 +61,29 @@ git diff --check
 
 Playwright CLI local smoke on http://127.0.0.1:4173/ai-workspace/ with mocked AI Workspace API
 → 추천 판단/버릴 선택/판단 이유/예외 조건/고객 입장 추정/말문 예시 렌더링 OK, console errors 0
+
+git commit -m "feat: add decisive ai workspace answers"
+git push origin main
+→ pushed 449b378 to origin/main
+
+railway deployment list --service web --limit 5 --json
+→ 270c242e-b5ce-4006-9fbf-74a87bdcc09d SUCCESS, commit 449b378
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy decisive AI workspace answers 449b378"
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ 8cc2ad82-4610-4b59-8448-0cf5aa808d07 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200, assets/index-6cgphG4x.js loaded
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/assets/index-6cgphG4x.js
+→ 200, `추천 판단` and `버릴 선택` present
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/
+→ 401 login_required JSON
+
+POST https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/question/ without authenticated CSRF session
+→ 403 protection OK
 ```
 
 ### 알려진 제한
@@ -74,7 +97,10 @@ Playwright CLI local smoke on http://127.0.0.1:4173/ai-workspace/ with mocked AI
 
 ### 운영 배포 상태
 
-- 배포 전. 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 예정.
+- Runtime commit: `449b378 feat: add decisive ai workspace answers`
+- Railway `web`: `270c242e-b5ce-4006-9fbf-74a87bdcc09d` SUCCESS
+- Railway `sales-note-frontend`: `8cc2ad82-4610-4b59-8448-0cf5aa808d07` SUCCESS
+- Production smoke: `/ai-workspace/` 200, latest bundle `assets/index-6cgphG4x.js` contains `추천 판단`/`버릴 선택`, AI Workspace API login/CSRF protection confirmed
 
 ### 사용자 수동 테스트 절차
 

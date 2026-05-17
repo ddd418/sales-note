@@ -43,7 +43,11 @@
 - 질문 응답 context가 비어도 UI가 깨지지 않도록 React context 접근을 방어적으로 보강 완료.
 - 집중 테스트 3건, AI Workspace 전체 테스트 48건, Django check, migration dry-run, frontend 타입체크/빌드, diff check 통과.
 - 로컬 Playwright smoke에서 모킹된 AI Workspace 질문 응답의 `추천 판단`/`버릴 선택`/`판단 이유`/`예외 조건`/`고객 입장 추정`/`말문 예시` 렌더링과 콘솔 오류 없음 확인.
-- 커밋/푸시 및 Railway `web`, `sales-note-frontend` 배포 대기.
+- 커밋/푸시 완료: `449b378 feat: add decisive ai workspace answers`.
+- Railway `web` 배포 완료: `270c242e-b5ce-4006-9fbf-74a87bdcc09d` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `8cc2ad82-4610-4b59-8448-0cf5aa808d07` SUCCESS.
+- 운영 smoke 완료: `/ai-workspace/` 200, latest bundle `assets/index-6cgphG4x.js`에 `추천 판단`/`버릴 선택` 포함, AI Workspace API 로그인/CSRF 보호 확인.
+- 사용자 운영 계정 수동검수 대기.
 
 ---
 
