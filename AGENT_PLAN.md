@@ -1,5 +1,53 @@
 # AGENT_PLAN.md
 
+## Current task — AI Workspace 저장형 질문 피드백 루프
+
+**목표**: AI Workspace 질문 답변에 대한 사용자의 평가와 수정 코멘트를 저장하고, 이후 같은 사용자의 질문 답변 컨텍스트에 반영해 답변 톤과 판단 품질을 점진적으로 개선한다.
+
+### 확인된 상태
+
+- `AIWorkspaceActionFeedback`은 추천 실행 목록에 대한 현장 답변과 AI 판단 결과를 저장한다.
+- 부서/전체 질문 API(`/reporting/api/ai-workspace/question/`)는 현재 질문과 CRM 컨텍스트를 기반으로 JSON 답변을 생성하지만, 질문 답변 자체에 대한 사용자 평가를 저장하지 않는다.
+- React AI Workspace 질문 패널은 답변을 표시하지만, 답변이 좋았는지/어떤 방향으로 수정해야 하는지 기록하는 UI가 없다.
+- 기존 액션 피드백과 질문 답변 피드백은 목적이 다르므로 별도 모델이 필요하다.
+
+### 구현 계획
+
+- `AIWorkspaceQuestionFeedback` 모델과 migration을 추가한다.
+- 저장 항목은 사용자, 부서, 범위 유형, 질문, 답변 스냅샷, source, 평가값, 수정 코멘트, 생성/수정 시각으로 제한한다.
+- `POST /reporting/api/ai-workspace/question/feedback/` API를 추가하고 로그인 및 `can_use_ai` 권한을 유지한다.
+- `rating`은 `helpful`, `needs_style`, `incorrect`만 허용하고, `needs_style`/`incorrect`는 코멘트를 필수로 검증한다.
+- 질문 답변 컨텍스트에 현재 사용자 본인의 최근 질문 피드백만 포함한다.
+- OpenAI 프롬프트에는 질문 피드백을 CRM 사실이 아니라 답변 방식 선호/오류 회피 기준으로만 사용하도록 규칙을 추가한다.
+- React 질문 답변 카드 아래에 평가 버튼과 코멘트 입력/저장 상태를 추가한다.
+- 회사 전체 공유, 관리자 승인형 좋은 답변 라이브러리, fine-tuning은 이번 범위에서 제외한다.
+
+### 검증 계획
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_feedback_api_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_feedback_api_records_feedback reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_feedback_api_requires_comment_for_negative_rating reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_only_own_question_feedback --verbosity=1`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포 및 운영 `/ai-workspace/` smoke 확인.
+
+### 현재 상태
+
+- `AIWorkspaceQuestionFeedback` 모델, migration, admin 등록 구현 완료.
+- 질문 피드백 저장 API와 URL 추가 완료.
+- 질문 답변 컨텍스트에 현재 사용자 본인의 최근 질문 피드백만 포함하도록 구현 완료.
+- OpenAI 프롬프트에 질문 피드백을 답변 방식 선호/오류 회피 기준으로만 쓰도록 규칙 추가 완료.
+- React AI Workspace 질문 답변 카드에 `답변 피드백` 평가/코멘트/저장 UI 추가 완료.
+- 집중 테스트 4건, AI Workspace 전체 테스트 52건, Django check, migration dry-run, frontend 타입체크/빌드, node syntax check, diff check 통과.
+- 로컬 Playwright smoke에서 질문 답변 후 `방향 수정` 피드백 저장 UI와 API payload, 성공 메시지, 콘솔 오류 없음 확인.
+- 커밋/푸시 및 Railway 배포 진행 예정.
+
+---
+
 ## Completed task — AI Workspace 선택지형 질문 결론 강화
 
 **목표**: AI Workspace 질문이 “할까/말까”, “A가 좋을까 B가 좋을까”처럼 선택지형일 때, CRM 브리핑보다 먼저 추천 선택을 명확히 제시하고 버릴 선택과 예외 조건을 함께 보여준다.

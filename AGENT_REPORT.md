@@ -1,5 +1,91 @@
 # AGENT_REPORT.md
 
+## 2026-05-17 — AI Workspace Question Feedback Loop
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시 및 운영 배포 진행 예정
+
+### 요약
+
+AI Workspace 질문 답변에 대해 사용자가 `좋음`, `방향 수정`, `틀림` 평가와 수정 코멘트를 저장할 수 있게 했습니다. 저장된 피드백은 같은 사용자의 다음 질문 답변 컨텍스트에 포함되어 답변 방식 선호와 반복 오류 회피 기준으로만 사용됩니다.
+
+### 변경된 파일
+
+- `reporting/models.py`, `reporting/migrations/0101_aiworkspacequestionfeedback.py`: 질문 답변 품질 피드백 모델 추가.
+- `reporting/views.py`, `reporting/urls.py`, `reporting/admin.py`: 피드백 저장 API, 질문 컨텍스트 반영, admin 조회 추가.
+- `reporting/tests.py`: 권한, 검증, 저장, 사용자/부서 스코프 회귀 테스트 추가.
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: 질문 답변 카드 하단 피드백 UI와 API 클라이언트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- AI 답변이 마음에 들지 않는 이유를 CRM 안에 남길 수 있습니다.
+- `방향 수정`/`틀림` 코멘트가 다음 질문 답변에서 답변 톤과 판단 기준 보정에 활용됩니다.
+- 피드백 반영 범위는 현재 사용자 본인 기준으로 제한해 동료 데이터나 회사 전체 노이즈를 섞지 않습니다.
+
+### 기존 기능 보존
+
+- 기존 `AIWorkspaceActionFeedback`과 액션 큐 현장 답변 기록은 그대로 유지했습니다.
+- 기존 `/reporting/*` route, 로그인 보호, AI 권한, 부서 접근 권한 검증은 유지했습니다.
+- 회사 전체 공유형 학습, 관리자 승인형 예시 라이브러리, fine-tuning은 추가하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_feedback_api_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_feedback_api_records_feedback reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_feedback_api_requires_comment_for_negative_rating reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_only_own_question_feedback --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 52 tests, OK
+
+python manage.py check
+→ OK, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, assets/index-DNG2AEtn.js / assets/index-CAtmHS_Q.css, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Playwright local smoke on http://127.0.0.1:4178/ai-workspace/?department_id=14 with mocked AI Workspace APIs
+→ 답변 피드백 UI 렌더링, `방향 수정` 선택, 코멘트 입력, feedback API payload, 성공 메시지 OK, console errors 0
+```
+
+### 알려진 제한
+
+- v1은 사용자의 피드백을 프롬프트 컨텍스트로 반영하는 방식이며 모델 자체 fine-tuning은 아닙니다.
+- 회사 전체 기준의 좋은 답변 라이브러리나 관리자 승인 workflow는 다음 단계로 남겨두었습니다.
+
+### 추천 다음 작업
+
+- 운영에서 실제 질문을 한 뒤 `방향 수정` 또는 `틀림` 피드백을 저장하고, 같은 주제로 다시 질문했을 때 답변 톤이 개선되는지 확인합니다.
+
+### 운영 배포 상태
+
+- 커밋/푸시 및 Railway 배포 진행 예정.
+
+### 사용자 수동 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=14`에 접속합니다.
+2. 부서 질문에 “재견적을 줄 때 샘플 피드백을 물어볼까?”처럼 질문합니다.
+3. 답변 하단의 `답변 피드백`에서 `방향 수정`을 선택합니다.
+4. “결론을 먼저 말하고 고객 입장 추정을 CRM 사실과 분리해줘”처럼 코멘트를 입력하고 저장합니다.
+5. 성공 메시지가 보이는지 확인합니다.
+6. 비슷한 질문을 다시 했을 때 답변이 해당 코멘트를 반영하는지 확인합니다.
+
+---
+
 ## 2026-05-17 — AI Workspace Decisive Choice Answers
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke/사용자 수동검수 완료

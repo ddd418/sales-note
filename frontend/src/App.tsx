@@ -114,6 +114,7 @@ import {
   AIWorkspaceDepartmentQuestionResponse,
   AIWorkspaceDraftType,
   AIWorkspaceActionDraftResponse,
+  AIWorkspaceQuestionFeedbackRating,
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
@@ -184,6 +185,7 @@ import {
   runMailboxSync,
   sendMailboxEmail,
   submitAIWorkspaceActionFeedback,
+  submitAIWorkspaceQuestionFeedback,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateCustomer as updateCustomerRecord,
@@ -12709,7 +12711,15 @@ function AIWorkspaceDepartmentQuestionPanel({
   data,
   departmentId,
   error,
+  feedbackComment,
+  feedbackError,
+  feedbackMessage,
+  feedbackRating,
+  feedbackSaving,
   loading,
+  onFeedbackCommentChange,
+  onFeedbackRatingChange,
+  onFeedbackSubmit,
   onQuestionChange,
   onScopeModeChange,
   onSubmit,
@@ -12720,7 +12730,15 @@ function AIWorkspaceDepartmentQuestionPanel({
   data: AIWorkspaceData;
   departmentId: number | null;
   error: string;
+  feedbackComment: string;
+  feedbackError: string;
+  feedbackMessage: string;
+  feedbackRating: AIWorkspaceQuestionFeedbackRating | '';
+  feedbackSaving: boolean;
   loading: boolean;
+  onFeedbackCommentChange: (value: string) => void;
+  onFeedbackRatingChange: (value: AIWorkspaceQuestionFeedbackRating) => void;
+  onFeedbackSubmit: () => void;
   onQuestionChange: (value: string) => void;
   onScopeModeChange: (value: 'all' | 'department') => void;
   onSubmit: () => void;
@@ -12742,6 +12760,8 @@ function AIWorkspaceDepartmentQuestionPanel({
   const canSubmit = trimmedQuestion.length >= 2 && !loading;
   const answer = result?.answer;
   const actionItems = answer?.actionItems ?? [];
+  const needsFeedbackComment = feedbackRating === 'needs_style' || feedbackRating === 'incorrect';
+  const canSubmitFeedback = Boolean(answer && feedbackRating && !feedbackSaving && (!needsFeedbackComment || feedbackComment.trim()));
   const decision = answer?.decision;
   const decisionDetailRows = decision ? [
     { label: '버릴 선택', value: decision.rejectedChoice },
@@ -12766,6 +12786,11 @@ function AIWorkspaceDepartmentQuestionPanel({
   const placeholder = scopeMode === 'all'
     ? '예: 전체 부서 중 이번 주 다음 액션 할 만한 곳 찾아줘'
     : '예: 해당 연구실에서 우리에게 마지막으로 주문한 날짜가 언제지?';
+  const feedbackOptions: { rating: AIWorkspaceQuestionFeedbackRating; label: string; icon: typeof CheckCircle2 }[] = [
+    { rating: 'helpful', label: '좋음', icon: CheckCircle2 },
+    { rating: 'needs_style', label: '방향 수정', icon: Pencil },
+    { rating: 'incorrect', label: '틀림', icon: AlertTriangle },
+  ];
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -12940,6 +12965,49 @@ function AIWorkspaceDepartmentQuestionPanel({
               ))}
             </div>
           ) : null}
+          <section className="ai-question-feedback-box">
+            <div className="ai-question-feedback-head">
+              <strong>답변 피드백</strong>
+              <span>다음 AI 답변에 반영</span>
+            </div>
+            <div className="ai-question-feedback-options" aria-label="AI 답변 평가">
+              {feedbackOptions.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    className={feedbackRating === option.rating ? 'active' : ''}
+                    disabled={feedbackSaving}
+                    key={option.rating}
+                    onClick={() => onFeedbackRatingChange(option.rating)}
+                    type="button"
+                  >
+                    <Icon size={14} />
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {feedbackRating ? (
+              <div className="ai-question-feedback-form">
+                <textarea
+                  maxLength={1000}
+                  onChange={(event) => onFeedbackCommentChange(event.target.value)}
+                  placeholder={needsFeedbackComment ? '예: 결론을 더 먼저 말하고 CRM 요약은 뒤로 보내줘' : '선택 사항'}
+                  rows={3}
+                  value={feedbackComment}
+                />
+                <div>
+                  <span>{formatNumber(feedbackComment.trim().length)} / 1000</span>
+                  <button disabled={!canSubmitFeedback} onClick={onFeedbackSubmit} type="button">
+                    {feedbackSaving ? <Loader2 className="spin-icon" size={14} /> : <Send size={14} />}
+                    {feedbackSaving ? '저장 중' : '피드백 저장'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {feedbackMessage ? <small className="ai-question-feedback-message success">{feedbackMessage}</small> : null}
+            {feedbackError ? <small className="ai-question-feedback-message error">{feedbackError}</small> : null}
+          </section>
         </article>
       ) : null}
     </section>
@@ -13230,12 +13298,21 @@ function AIWorkspacePage({
   const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
   const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
   const [departmentQuestionError, setDepartmentQuestionError] = useState('');
+  const [questionFeedbackRating, setQuestionFeedbackRating] = useState<AIWorkspaceQuestionFeedbackRating | ''>('');
+  const [questionFeedbackComment, setQuestionFeedbackComment] = useState('');
+  const [questionFeedbackSaving, setQuestionFeedbackSaving] = useState(false);
+  const [questionFeedbackMessage, setQuestionFeedbackMessage] = useState('');
+  const [questionFeedbackError, setQuestionFeedbackError] = useState('');
   const activeDepartmentId = data?.featuredDepartment?.departmentId ?? selectedDepartmentId ?? data?.selectedDepartmentId ?? null;
   const activeQuestionDepartmentId = departmentQuestionScope === 'department' ? activeDepartmentId : null;
 
   useEffect(() => {
     setDepartmentQuestionResult(null);
     setDepartmentQuestionError('');
+    setQuestionFeedbackRating('');
+    setQuestionFeedbackComment('');
+    setQuestionFeedbackMessage('');
+    setQuestionFeedbackError('');
   }, [activeQuestionDepartmentId, departmentQuestionScope]);
 
   const handleCopyPrompt = async (target: AIWorkspacePromptTarget) => {
@@ -13334,6 +13411,10 @@ function AIWorkspacePage({
 
     setDepartmentQuestionLoading(true);
     setDepartmentQuestionError('');
+    setQuestionFeedbackRating('');
+    setQuestionFeedbackComment('');
+    setQuestionFeedbackMessage('');
+    setQuestionFeedbackError('');
     try {
       const result = await askAIWorkspaceDepartmentQuestion(activeQuestionDepartmentId, question);
       setDepartmentQuestionResult(result);
@@ -13341,6 +13422,44 @@ function AIWorkspacePage({
       setDepartmentQuestionError(error instanceof Error ? error.message : '부서 질문 답변에 실패했습니다.');
     } finally {
       setDepartmentQuestionLoading(false);
+    }
+  };
+
+  const handleQuestionFeedbackSubmit = async () => {
+    if (!departmentQuestionResult || !questionFeedbackRating || questionFeedbackSaving) {
+      return;
+    }
+
+    const comment = questionFeedbackComment.trim();
+    if ((questionFeedbackRating === 'needs_style' || questionFeedbackRating === 'incorrect') && !comment) {
+      setQuestionFeedbackError('수정이 필요한 이유를 입력하세요.');
+      return;
+    }
+
+    const resultScopeType = departmentQuestionResult.scope?.type === 'department' ? 'department' : 'all';
+    const resultDepartmentId = resultScopeType === 'department'
+      ? departmentQuestionResult.scope?.departmentId ?? activeQuestionDepartmentId
+      : null;
+
+    setQuestionFeedbackSaving(true);
+    setQuestionFeedbackError('');
+    setQuestionFeedbackMessage('');
+    try {
+      const result = await submitAIWorkspaceQuestionFeedback({
+        departmentId: resultDepartmentId,
+        scopeType: resultScopeType,
+        question: departmentQuestionResult.question || departmentQuestion,
+        answer: departmentQuestionResult.answer,
+        source: departmentQuestionResult.source,
+        rating: questionFeedbackRating,
+        comment,
+      });
+      setQuestionFeedbackMessage(result.message || '피드백을 저장했습니다.');
+      setQuestionFeedbackComment('');
+    } catch (error) {
+      setQuestionFeedbackError(error instanceof Error ? error.message : '피드백 저장에 실패했습니다.');
+    } finally {
+      setQuestionFeedbackSaving(false);
     }
   };
 
@@ -13427,13 +13546,21 @@ function AIWorkspacePage({
           data={data}
           departmentId={activeDepartmentId}
           error={departmentQuestionError}
+          feedbackComment={questionFeedbackComment}
+          feedbackError={questionFeedbackError}
+          feedbackMessage={questionFeedbackMessage}
+          feedbackRating={questionFeedbackRating}
+          feedbackSaving={questionFeedbackSaving}
           loading={departmentQuestionLoading}
-          question={departmentQuestion}
-          result={departmentQuestionResult}
-          scopeMode={departmentQuestionScope}
+          onFeedbackCommentChange={setQuestionFeedbackComment}
+          onFeedbackRatingChange={setQuestionFeedbackRating}
+          onFeedbackSubmit={handleQuestionFeedbackSubmit}
           onQuestionChange={setDepartmentQuestion}
           onScopeModeChange={setDepartmentQuestionScope}
           onSubmit={handleAskDepartmentQuestion}
+          question={departmentQuestion}
+          result={departmentQuestionResult}
+          scopeMode={departmentQuestionScope}
         />
 
         <div className="ai-workspace-layout">

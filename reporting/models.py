@@ -800,6 +800,52 @@ class AIWorkspaceActionFeedback(models.Model):
             models.Index(fields=['followup', 'status'], name='ai_fb_follow_status_idx'),
         ]
 
+
+class AIWorkspaceQuestionFeedback(models.Model):
+    """AI Workspace 질문 답변에 대한 사용자의 품질 피드백."""
+
+    RATING_CHOICES = [
+        ('helpful', '좋음'),
+        ('needs_style', '방향 수정'),
+        ('incorrect', '틀림'),
+    ]
+
+    SCOPE_CHOICES = [
+        ('all', '전체 부서'),
+        ('department', '부서'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_workspace_question_feedbacks', verbose_name="사용자")
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ai_workspace_question_feedbacks',
+        verbose_name="관련 부서",
+    )
+    scope_type = models.CharField(max_length=20, choices=SCOPE_CHOICES, default='department', verbose_name="질문 범위")
+    question = models.TextField(verbose_name="질문")
+    answer_snapshot = models.JSONField(default=dict, blank=True, verbose_name="답변 스냅샷")
+    source = models.CharField(max_length=30, blank=True, default='', verbose_name="답변 출처")
+    rating = models.CharField(max_length=20, choices=RATING_CHOICES, verbose_name="평가")
+    comment = models.TextField(blank=True, default='', verbose_name="수정 코멘트")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_rating_display()} ({self.scope_type})"
+
+    class Meta:
+        verbose_name = "AI 질문 답변 피드백"
+        verbose_name_plural = "AI 질문 답변 피드백 목록"
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user', 'rating', '-updated_at'], name='ai_qfb_user_rating_idx'),
+            models.Index(fields=['user', 'department', '-updated_at'], name='ai_qfb_user_dept_idx'),
+            models.Index(fields=['department', 'rating'], name='ai_qfb_dept_rating_idx'),
+        ]
+
 # 히스토리 첨부파일 (HistoryFile) 모델
 class HistoryFile(models.Model):
     history = models.ForeignKey(History, on_delete=models.CASCADE, related_name='files', verbose_name="관련 히스토리")

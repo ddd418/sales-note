@@ -5267,6 +5267,133 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.ai-question-feedback-box {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.ai-question-feedback-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ai-question-feedback-head strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.ai-question-feedback-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.ai-question-feedback-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-question-feedback-options button,
+.ai-question-feedback-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ai-question-feedback-options button {
+  padding: 7px 10px;
+}
+
+.ai-question-feedback-options button.active {
+  border-color: var(--primary);
+  background: #eff6ff;
+  color: var(--primary-strong);
+}
+
+.ai-question-feedback-options button:disabled,
+.ai-question-feedback-form button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.ai-question-feedback-form {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ai-question-feedback-form textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  outline: none;
+}
+
+.ai-question-feedback-form textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.ai-question-feedback-form > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-question-feedback-form span,
+.ai-question-feedback-message {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.ai-question-feedback-form button {
+  padding: 7px 12px;
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.ai-question-feedback-message {
+  overflow-wrap: anywhere;
+}
+
+.ai-question-feedback-message.success {
+  color: #047857;
+}
+
+.ai-question-feedback-message.error {
+  color: #b91c1c;
+}
+
 .ai-action-list {
   display: grid;
   gap: 10px;

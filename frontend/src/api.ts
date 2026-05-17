@@ -2669,8 +2669,45 @@ export type AIWorkspaceDepartmentQuestionResponse = {
     } | null;
     recommendedActionCount?: number;
     recentFeedbackCount?: number;
+    questionFeedbackCount?: number;
   };
   requiresHumanReview: boolean;
+  error?: string;
+  message?: string;
+};
+
+export type AIWorkspaceQuestionFeedbackRating = 'helpful' | 'needs_style' | 'incorrect';
+
+export type AIWorkspaceQuestionFeedbackPayload = {
+  departmentId?: number | null;
+  scopeType?: 'all' | 'department';
+  question: string;
+  answer: AIWorkspaceDepartmentQuestionResponse['answer'];
+  source?: AIWorkspaceDepartmentQuestionResponse['source'];
+  rating: AIWorkspaceQuestionFeedbackRating;
+  comment?: string;
+};
+
+export type AIWorkspaceQuestionFeedbackResponse = {
+  success?: boolean;
+  generatedAt: string;
+  feedback: {
+    id: number;
+    scopeType: 'all' | 'department' | string;
+    rating: AIWorkspaceQuestionFeedbackRating | string;
+    ratingLabel: string;
+    comment: string;
+    question: string;
+    answerSummary: string;
+    source: string;
+    department: {
+      id: number;
+      name: string;
+      company: string;
+    } | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  };
   error?: string;
   message?: string;
 };
@@ -6746,6 +6783,33 @@ export async function askAIWorkspaceDepartmentQuestion(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI department question failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function submitAIWorkspaceQuestionFeedback(
+  payload: AIWorkspaceQuestionFeedbackPayload,
+): Promise<AIWorkspaceQuestionFeedbackResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/api/ai-workspace/question/feedback/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI question feedback API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceQuestionFeedbackResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI question feedback failed: ${response.status}`);
   }
   return data;
 }

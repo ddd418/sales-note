@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceQuestionFeedback, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -10548,6 +10548,8 @@ def _ai_workspace_featured_department_payload(
 
 AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH = 600
 AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS = 2400
+AI_WORKSPACE_QUESTION_FEEDBACK_COMMENT_MAX_LENGTH = 1000
+AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT = 6
 
 
 def _ai_workspace_question_department_for_user(user, department_id):
@@ -10603,6 +10605,78 @@ def _ai_workspace_question_text(value, limit=600):
     if len(text) <= limit:
         return text
     return text[:limit - 1].rstrip() + '...'
+
+
+def _ai_workspace_question_feedback_rating_label(rating):
+    return {
+        'helpful': '좋음',
+        'needs_style': '방향 수정',
+        'incorrect': '틀림',
+    }.get(rating, rating or '')
+
+
+def _ai_workspace_question_feedback_answer_snapshot(answer):
+    if not isinstance(answer, dict):
+        return {}
+
+    snapshot = {
+        'summary': _ai_workspace_question_text(answer.get('summary') or answer.get('answer'), 1800),
+        'bullets': [
+            _ai_workspace_question_text(item, 420)
+            for item in _ai_json_list(answer.get('bullets'))[:6]
+            if _ai_workspace_question_text(item, 420)
+        ],
+        'confidence': _ai_workspace_question_text(answer.get('confidence'), 40),
+    }
+    decision = _ai_workspace_question_decision_payload(answer)
+    perspective = _ai_workspace_question_perspective_payload(answer)
+    if decision:
+        snapshot['decision'] = decision
+    if perspective:
+        snapshot['perspective'] = perspective
+    return {key: value for key, value in snapshot.items() if value}
+
+
+def _ai_workspace_question_feedback_payload(feedback):
+    department = feedback.department
+    return {
+        'id': feedback.id,
+        'scopeType': feedback.scope_type,
+        'rating': feedback.rating,
+        'ratingLabel': _ai_workspace_question_feedback_rating_label(feedback.rating),
+        'comment': _ai_workspace_question_text(feedback.comment, AI_WORKSPACE_QUESTION_FEEDBACK_COMMENT_MAX_LENGTH),
+        'question': _ai_workspace_question_text(feedback.question, AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH),
+        'answerSummary': _ai_workspace_question_text((feedback.answer_snapshot or {}).get('summary'), 600),
+        'source': feedback.source or '',
+        'department': {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+        } if department else None,
+        'createdAt': _datetime_or_none(feedback.created_at),
+        'updatedAt': _datetime_or_none(feedback.updated_at),
+    }
+
+
+def _ai_workspace_recent_question_feedbacks(user, department_id=None, limit=AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT):
+    if not user:
+        return []
+
+    queryset = AIWorkspaceQuestionFeedback.objects.filter(
+        user=user,
+    ).select_related(
+        'department',
+        'department__company',
+    )
+    if department_id:
+        queryset = queryset.filter(Q(department_id=department_id) | Q(scope_type='all', department__isnull=True))
+    else:
+        queryset = queryset.filter(scope_type='all')
+
+    return [
+        _ai_workspace_question_feedback_payload(feedback)
+        for feedback in queryset.order_by('-updated_at')[:limit]
+    ]
 
 
 def _ai_workspace_question_delivery_item_text(items):
@@ -10913,6 +10987,7 @@ def _ai_workspace_department_question_context(department, user):
         ],
         'recentNotes': recent_histories,
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids),
+        'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user, department_id=department.id),
         'recentSchedules': recent_schedules,
     }
 
@@ -11169,6 +11244,7 @@ def _ai_workspace_global_question_context(user):
         'recentQuotes': [],
         'recentNotes': recent_histories,
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
+        'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user),
         'recentSchedules': recent_schedules,
         'openFollowups': open_followups,
         'recommendedActions': [
@@ -11721,6 +11797,8 @@ def _ai_workspace_generate_department_question_answer(question, context):
             'rules': [
                 '제공된 crmContext에 있는 사실만 사용한다.',
                 'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
+                'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
+                'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 전체 부서 범위라면 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
@@ -12301,8 +12379,109 @@ def ai_workspace_department_question_api(request):
             'lastDelivery': context.get('lastDelivery'),
             'recommendedActionCount': len(context.get('recommendedActions') or []),
             'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
+            'questionFeedbackCount': len(context.get('questionFeedbacks') or []),
         },
         'requiresHumanReview': True,
+    })
+
+
+@never_cache
+@require_POST
+def ai_workspace_question_feedback_api(request):
+    """Record user's quality feedback for an AI Workspace question answer."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_json',
+            'message': '요청 JSON 형식이 올바르지 않습니다.',
+        }, status=400)
+
+    question = _ai_workspace_question_text(payload.get('question'), AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH)
+    if len(question) < 2:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_question',
+            'message': '질문을 입력하세요.',
+        }, status=400)
+
+    rating = str(payload.get('rating') or '').strip()
+    if rating not in {'helpful', 'needs_style', 'incorrect'}:
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_rating',
+            'message': '평가값이 올바르지 않습니다.',
+        }, status=400)
+
+    comment = _ai_workspace_question_text(
+        payload.get('comment'),
+        AI_WORKSPACE_QUESTION_FEEDBACK_COMMENT_MAX_LENGTH,
+    )
+    if rating in {'needs_style', 'incorrect'} and not comment:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_comment',
+            'message': '수정이 필요한 이유를 입력하세요.',
+        }, status=400)
+
+    raw_answer = payload.get('answer')
+    if not isinstance(raw_answer, dict):
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_answer',
+            'message': '저장할 AI 답변 정보가 없습니다.',
+        }, status=400)
+
+    scope_type = str(payload.get('scopeType') or payload.get('scope_type') or '').strip()
+    department_id = payload.get('departmentId') or payload.get('department_id')
+    if not scope_type:
+        scope_type = 'department' if department_id else 'all'
+    if scope_type not in {'all', 'department'}:
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_scope',
+            'message': '질문 범위가 올바르지 않습니다.',
+        }, status=400)
+
+    department = None
+    if scope_type == 'department':
+        department = _ai_workspace_question_department_for_user(request.user, department_id)
+        if not department:
+            return JsonResponse({
+                'success': False,
+                'error': 'department_not_found',
+                'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
+            }, status=404)
+
+    feedback = AIWorkspaceQuestionFeedback.objects.create(
+        user=request.user,
+        department=department,
+        scope_type=scope_type,
+        question=question,
+        answer_snapshot=_ai_workspace_question_feedback_answer_snapshot(raw_answer),
+        source=_ai_workspace_question_text(payload.get('source'), 30),
+        rating=rating,
+        comment=comment,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'generatedAt': timezone.now().isoformat(),
+        'feedback': _ai_workspace_question_feedback_payload(feedback),
+        'message': 'AI 답변 피드백을 저장했습니다. 다음 질문 답변에 반영됩니다.',
     })
 
 

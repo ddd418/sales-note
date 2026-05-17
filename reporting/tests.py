@@ -7977,6 +7977,148 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()['error'], 'department_not_found')
 
+    def test_ai_workspace_question_feedback_api_requires_ai_permission(self):
+        _followup, department = self._create_customer(self.no_ai_user, '질문피드백권한없음')
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_feedback_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'scopeType': 'department',
+                'question': '재견적 피드백을 물어볼까?',
+                'answer': {'summary': '짧게 조건 확인만 하세요.', 'confidence': 'medium'},
+                'source': 'fallback',
+                'rating': 'helpful',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    def test_ai_workspace_question_feedback_api_records_feedback(self):
+        from reporting.models import AIWorkspaceQuestionFeedback
+
+        _followup, department = self._create_customer(self.user, '질문피드백저장')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_feedback_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'scopeType': 'department',
+                'question': '재견적 피드백을 물어볼까?',
+                'answer': {
+                    'summary': '샘플 피드백을 다시 캐묻지 말고 조건 확인처럼 짧게 묻습니다.',
+                    'decision': {
+                        'recommendedChoice': '짧게 확인',
+                        'rejectedChoice': '다시 캐묻기',
+                    },
+                    'confidence': 'medium',
+                },
+                'source': 'fallback',
+                'rating': 'needs_style',
+                'comment': '답변 첫 문장은 더 단호하게 추천부터 말해줘.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['feedback']['rating'], 'needs_style')
+        self.assertEqual(payload['feedback']['department']['id'], department.id)
+        self.assertIn('다음 질문 답변', payload['message'])
+
+        feedback = AIWorkspaceQuestionFeedback.objects.get(user=self.user)
+        self.assertEqual(feedback.department, department)
+        self.assertEqual(feedback.scope_type, 'department')
+        self.assertEqual(feedback.source, 'fallback')
+        self.assertIn('더 단호하게', feedback.comment)
+        self.assertIn('샘플 피드백', feedback.answer_snapshot['summary'])
+        self.assertEqual(feedback.answer_snapshot['decision']['recommendedChoice'], '짧게 확인')
+
+    def test_ai_workspace_question_feedback_api_requires_comment_for_negative_rating(self):
+        from reporting.models import AIWorkspaceQuestionFeedback
+
+        _followup, department = self._create_customer(self.user, '질문피드백코멘트')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_feedback_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'scopeType': 'department',
+                'question': '스케일업을 제안할까?',
+                'answer': {'summary': '소모 속도를 먼저 확인하세요.'},
+                'source': 'openai',
+                'rating': 'incorrect',
+                'comment': '',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], 'missing_comment')
+        self.assertEqual(AIWorkspaceQuestionFeedback.objects.count(), 0)
+
+    def test_ai_workspace_question_context_includes_only_own_question_feedback(self):
+        from reporting.models import AIWorkspaceQuestionFeedback
+        from reporting.views import _ai_workspace_department_question_context
+
+        _followup, department = self._create_customer(self.user, '질문피드백문맥')
+        _other_followup, other_department = self._create_customer(self.user, '질문피드백다른부서')
+        AIWorkspaceQuestionFeedback.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            question='이다민 재견적 질문',
+            answer_snapshot={'summary': '조건 확인처럼 짧게 묻기'},
+            source='fallback',
+            rating='needs_style',
+            comment='고객 관점 추정과 추천 선택을 먼저 보여줘.',
+        )
+        AIWorkspaceQuestionFeedback.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            question='동료 질문',
+            answer_snapshot={'summary': '동료 답변'},
+            source='fallback',
+            rating='incorrect',
+            comment='동료 코멘트는 섞이면 안 됩니다.',
+        )
+        AIWorkspaceQuestionFeedback.objects.create(
+            user=self.user,
+            department=other_department,
+            scope_type='department',
+            question='다른 부서 질문',
+            answer_snapshot={'summary': '다른 부서 답변'},
+            source='fallback',
+            rating='incorrect',
+            comment='다른 부서 코멘트도 제외합니다.',
+        )
+        AIWorkspaceQuestionFeedback.objects.create(
+            user=self.user,
+            department=None,
+            scope_type='all',
+            question='전체 답변 톤',
+            answer_snapshot={'summary': '전체 범위 답변'},
+            source='openai',
+            rating='helpful',
+            comment='',
+        )
+
+        context = _ai_workspace_department_question_context(department, self.user)
+
+        feedback_text = json.dumps(context['questionFeedbacks'], ensure_ascii=False)
+        self.assertEqual(len(context['questionFeedbacks']), 2)
+        self.assertIn('고객 관점 추정', feedback_text)
+        self.assertIn('전체 범위 답변', feedback_text)
+        self.assertNotIn('동료 코멘트', feedback_text)
+        self.assertNotIn('다른 부서 코멘트', feedback_text)
+
     def test_ai_workspace_prompts_include_recent_notes_and_sales_amounts(self):
         from datetime import time, timedelta
         from decimal import Decimal
