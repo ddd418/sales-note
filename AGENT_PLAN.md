@@ -47,8 +47,10 @@
 
 **Current status**:
 
-- Implemented and locally verified after the AI email CRM context hotfix merge.
-- Ready for commit, push, Railway `web` migration/API deployment, and Railway `sales-note-frontend` deployment.
+- Implemented, locally verified, committed, pushed, and deployed to Railway `web` and `sales-note-frontend`.
+- Railway `web` deployment `0cbdaf15-58f9-4f72-9e9f-bc6c2e704cf6` is SUCCESS.
+- Railway `sales-note-frontend` deployment `fd28bb07-8fd4-49da-bc1b-691fff53059d` is SUCCESS.
+- Production smoke passed: backend login 200, frontend `/customers/` 200 with bundle `assets/index-DW6PG7yO.js`, protected customers/AI APIs anonymous 401.
 
 ## 2026-05-18 AI Workspace email CRM context fix plan
 

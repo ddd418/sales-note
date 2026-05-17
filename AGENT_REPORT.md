@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Customer Asset / Service / Calibration V1
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -61,6 +61,36 @@ cd frontend; node --check server.mjs
 git diff --check
 → OK
 
+git commit -m "feat: add customer asset service calibration tracking"
+→ 2830942
+
+git push
+→ main pushed to origin
+
+railway deployment up --service web --detach --message "Deploy customer assets 2830942"
+→ deployment 0cbdaf15-58f9-4f72-9e9f-bc6c2e704cf6 created
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy customer assets 2830942"
+→ deployment fd28bb07-8fd4-49da-bc1b-691fff53059d created
+
+railway deployment list --service web --limit 4 --json
+→ 0cbdaf15-58f9-4f72-9e9f-bc6c2e704cf6 SUCCESS
+
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ fd28bb07-8fd4-49da-bc1b-691fff53059d SUCCESS
+
+Invoke-WebRequest https://web-production-5096.up.railway.app/reporting/login/
+→ 200, title `로그인 - 영업 보고 시스템`
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/customers/
+→ 200, bundle `assets/index-DW6PG7yO.js`
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/customers/ -SkipHttpErrorCheck
+→ expected anonymous 401 `login_required`
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/?department_id=146 -SkipHttpErrorCheck
+→ expected anonymous 401 `login_required`
+
 Local browser smoke:
 → Django 127.0.0.1:8000 + Vite 127.0.0.1:5173, local smoke customer.
 → `/customers/285/` rendered `장비/교정/서비스`, 1 asset, 1 service, 1 calibration.
@@ -76,9 +106,10 @@ Local browser smoke:
 
 ### 운영 배포 상태
 
-- Pending commit/push/deploy.
-- DB migration이 있으므로 Railway `web` 배포 시 migration 적용 확인이 필요합니다.
-- Frontend bundle 변경이 있으므로 Railway `sales-note-frontend` 배포가 필요합니다.
+- Git commit: `2830942` (`feat: add customer asset service calibration tracking`)
+- Railway `web`: `0cbdaf15-58f9-4f72-9e9f-bc6c2e704cf6` SUCCESS.
+- Railway `sales-note-frontend`: `fd28bb07-8fd4-49da-bc1b-691fff53059d` SUCCESS.
+- 운영 smoke 완료: backend login 200, frontend `/customers/` 200, customers API anonymous 401, AI Workspace API anonymous 401.
 
 ### 권장 다음 작업
 
