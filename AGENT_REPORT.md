@@ -2,7 +2,7 @@
 
 ## 2026-05-17 — AI Workspace Question-Centered Simplification
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 전
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기
 
 ### 요약
 
@@ -75,7 +75,17 @@ cd frontend; node --check server.mjs
 
 - Runtime change: yes
 - DB migration: `0102_aiworkspaceanswerdirection_aiworkspacequestionlog`
-- Railway deployment: pending after commit/push
+- Runtime commit: `1f8878e feat: simplify ai workspace questions`
+- GitHub: `main` pushed.
+- Railway `web`: `875c6e05-2ff9-47cf-91b3-47be2b2698f7` SUCCESS, commit `1f8878e90d8bd47a0ff9a084e49048374ef12a67`.
+- Railway `sales-note-frontend`: `c0132d9b-bc90-45a1-909e-5020a147e0bf` SUCCESS.
+- Production smoke:
+  - Frontend `/ai-workspace/` returned 200.
+  - Latest asset served: `assets/index-erSs9oQS.js`.
+  - Latest asset includes `GPT-5.5`, `GPT-5.4 mini`, `현재 답변 방향`, `질문/답변 기록`.
+  - Backend `/reporting/api/ai-workspace/` returned expected anonymous `401 login_required`.
+  - Backend logs show `Applying reporting.0102_aiworkspaceanswerdirection_aiworkspacequestionlog... OK` and gunicorn startup OK.
+  - Direction API path exists and is protected by CSRF/auth, returning expected anonymous `403` without browser session cookies.
 
 ### 수동 서버 테스트 절차
 

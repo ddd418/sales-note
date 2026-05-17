@@ -44,7 +44,10 @@
 - React AI Workspace 화면을 `부서 분석 대상`과 `부서 상황 질문` 중심으로 단순화 완료.
 - 질문 모델 선택, 현재 답변 방향 저장, 질문/답변 기록 페이지네이션 UI 구현 완료.
 - Django AI Workspace 전체 테스트, check, migration dry-run, frontend 타입체크/빌드, 로컬 Playwright smoke, diff check 통과.
-- 커밋/푸시/배포와 운영 smoke 진행 예정.
+- 커밋/푸시 완료: `1f8878e feat: simplify ai workspace questions`.
+- Railway `web` 배포 완료: `875c6e05-2ff9-47cf-91b3-47be2b2698f7` SUCCESS.
+- Railway `sales-note-frontend` 배포 완료: `c0132d9b-bc90-45a1-909e-5020a147e0bf` SUCCESS.
+- 운영 smoke 완료: 최신 프론트 번들, migration 적용, backend anonymous auth response 확인.
 
 ---
 
