@@ -2606,9 +2606,97 @@ export type AIWorkspaceActionFeedbackResponse = {
   message?: string;
 };
 
+export type AIWorkspaceQuestionModel = 'gpt-5.5' | 'gpt-5.4-mini';
+
+export type AIWorkspaceQuestionModelChoice = {
+  id: AIWorkspaceQuestionModel | string;
+  label: string;
+};
+
+export type AIWorkspaceQuestionAnswer = {
+  summary: string;
+  bullets: string[];
+  decision?: {
+    recommendedChoice?: string;
+    rejectedChoice?: string;
+    reason?: string;
+    exception?: string;
+  };
+  perspective?: {
+    customerPerspective?: string;
+    salesJudgment?: string;
+    recommendedApproach?: string;
+    talkTrack?: string;
+    caution?: string;
+  };
+  evidence: AIWorkspaceActionEvidence[];
+  actionItems?: {
+    rank: number;
+    title: string;
+    customer: string;
+    company: string;
+    department: string;
+    priority: string;
+    reason: string;
+    nextAction: string;
+    timing: string;
+    crmEvidence: AIWorkspaceActionEvidence[];
+  }[];
+  confidence: 'high' | 'medium' | 'low' | string;
+};
+
+export type AIWorkspaceQuestionLog = {
+  id: number;
+  scopeType: 'all' | 'department' | string;
+  question: string;
+  answerSummary: string;
+  answer?: AIWorkspaceQuestionAnswer | Record<string, unknown>;
+  decision?: AIWorkspaceQuestionAnswer['decision'] | null;
+  perspective?: AIWorkspaceQuestionAnswer['perspective'] | null;
+  source: string;
+  model: string;
+  modelLabel: string;
+  webSearchUsed: boolean;
+  department: {
+    id: number;
+    name: string;
+    company: string;
+  } | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type AIWorkspaceQuestionHistory = {
+  scopeType: 'department' | string;
+  departmentId: number | null;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+  items: AIWorkspaceQuestionLog[];
+};
+
+export type AIWorkspaceAnswerDirection = {
+  id: number | null;
+  scopeType: 'department' | string;
+  departmentId: number | null;
+  department: {
+    id: number;
+    name: string;
+    company: string;
+  } | null;
+  direction: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
 export type AIWorkspaceDepartmentQuestionResponse = {
   success?: boolean;
   source: 'openai' | 'fallback';
+  model?: string;
+  modelLabel?: string;
   webSearchUsed?: boolean;
   generatedAt: string;
   scope?: {
@@ -2622,37 +2710,8 @@ export type AIWorkspaceDepartmentQuestionResponse = {
     company: string;
   } | null;
   question: string;
-  answer: {
-    summary: string;
-    bullets: string[];
-    decision?: {
-      recommendedChoice?: string;
-      rejectedChoice?: string;
-      reason?: string;
-      exception?: string;
-    };
-    perspective?: {
-      customerPerspective?: string;
-      salesJudgment?: string;
-      recommendedApproach?: string;
-      talkTrack?: string;
-      caution?: string;
-    };
-    evidence: AIWorkspaceActionEvidence[];
-    actionItems?: {
-      rank: number;
-      title: string;
-      customer: string;
-      company: string;
-      department: string;
-      priority: string;
-      reason: string;
-      nextAction: string;
-      timing: string;
-      crmEvidence: AIWorkspaceActionEvidence[];
-    }[];
-    confidence: 'high' | 'medium' | 'low' | string;
-  };
+  answer: AIWorkspaceQuestionAnswer;
+  questionLog?: AIWorkspaceQuestionLog;
   context: {
     customerCount: number;
     departmentCount?: number;
@@ -2670,6 +2729,7 @@ export type AIWorkspaceDepartmentQuestionResponse = {
     recommendedActionCount?: number;
     recentFeedbackCount?: number;
     questionFeedbackCount?: number;
+    answerDirection?: AIWorkspaceAnswerDirection;
   };
   requiresHumanReview: boolean;
   error?: string;
@@ -2682,7 +2742,7 @@ export type AIWorkspaceQuestionFeedbackPayload = {
   departmentId?: number | null;
   scopeType?: 'all' | 'department';
   question: string;
-  answer: AIWorkspaceDepartmentQuestionResponse['answer'];
+  answer: AIWorkspaceQuestionAnswer;
   source?: AIWorkspaceDepartmentQuestionResponse['source'];
   rating: AIWorkspaceQuestionFeedbackRating;
   comment?: string;
@@ -2815,6 +2875,10 @@ export type AIWorkspaceData = {
   departments: AIWorkspaceDepartment[];
   featuredDepartment: AIWorkspaceFeaturedDepartment | null;
   selectedDepartmentId: number | null;
+  questionHistory: AIWorkspaceQuestionHistory;
+  answerDirection: AIWorkspaceAnswerDirection;
+  questionModelChoices: AIWorkspaceQuestionModelChoice[];
+  defaultQuestionModel: AIWorkspaceQuestionModel | string;
   recentDepartmentAnalyses: AIWorkspaceAnalysis[];
   painpoints: AIWorkspacePainpoint[];
   followupTargets: AIWorkspaceFollowupTarget[];
@@ -2835,6 +2899,7 @@ export type AIWorkspaceData = {
 
 export type AIWorkspaceLoadParams = {
   departmentId?: number | null;
+  questionPage?: number;
 };
 
 export type WeeklyReportUser = {
@@ -3981,6 +4046,31 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
   departments: [],
   featuredDepartment: null,
   selectedDepartmentId: null,
+  questionHistory: {
+    scopeType: 'department',
+    departmentId: null,
+    page: 1,
+    pageSize: 5,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+    items: [],
+  },
+  answerDirection: {
+    id: null,
+    scopeType: 'department',
+    departmentId: null,
+    department: null,
+    direction: '',
+    createdAt: null,
+    updatedAt: null,
+  },
+  questionModelChoices: [
+    { id: 'gpt-5.5', label: 'GPT-5.5' },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
+  ],
+  defaultQuestionModel: 'gpt-5.5',
   recentDepartmentAnalyses: [],
   painpoints: [],
   followupTargets: [],
@@ -6660,6 +6750,9 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
   if (params.departmentId) {
     query.set('department_id', String(params.departmentId));
   }
+  if (params.questionPage && params.questionPage > 1) {
+    query.set('question_page', String(params.questionPage));
+  }
   const queryString = query.toString();
   try {
     const response = await fetch(`/reporting/api/ai-workspace/${queryString ? `?${queryString}` : ''}`, {
@@ -6692,6 +6785,10 @@ export async function loadAIWorkspaceData(params: AIWorkspaceLoadParams = {}): P
       promptTargets: payload.promptTargets ?? [],
       actionQueue: payload.actionQueue ?? [],
       feedbackHistory: payload.feedbackHistory ?? emptyAIWorkspaceData.feedbackHistory,
+      questionHistory: payload.questionHistory ?? emptyAIWorkspaceData.questionHistory,
+      answerDirection: payload.answerDirection ?? emptyAIWorkspaceData.answerDirection,
+      questionModelChoices: payload.questionModelChoices ?? emptyAIWorkspaceData.questionModelChoices,
+      defaultQuestionModel: payload.defaultQuestionModel ?? emptyAIWorkspaceData.defaultQuestionModel,
     };
   } catch (error) {
     return {
@@ -6761,9 +6858,10 @@ export async function submitAIWorkspaceActionFeedback(
 export async function askAIWorkspaceDepartmentQuestion(
   departmentId: number | null,
   question: string,
+  model: AIWorkspaceQuestionModel | string,
 ): Promise<AIWorkspaceDepartmentQuestionResponse> {
   const csrfToken = getCookie('csrftoken');
-  const body = departmentId ? { departmentId, question } : { question };
+  const body = departmentId ? { departmentId, question, model } : { question, model };
   const response = await fetch('/reporting/api/ai-workspace/question/', {
     method: 'POST',
     credentials: 'include',
@@ -6783,6 +6881,46 @@ export async function askAIWorkspaceDepartmentQuestion(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI department question failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function saveAIWorkspaceAnswerDirection(
+  departmentId: number,
+  direction: string,
+): Promise<{
+  success?: boolean;
+  generatedAt: string;
+  answerDirection: AIWorkspaceAnswerDirection;
+  message?: string;
+  error?: string;
+}> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/api/ai-workspace/question/direction/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ departmentId, direction }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI answer direction API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as {
+    success?: boolean;
+    generatedAt: string;
+    answerDirection: AIWorkspaceAnswerDirection;
+    message?: string;
+    error?: string;
+  };
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI answer direction failed: ${response.status}`);
   }
   return data;
 }

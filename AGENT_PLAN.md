@@ -1,5 +1,53 @@
 # AGENT_PLAN.md
 
+## Current task — AI Workspace 질문 중심 단순화와 부서별 Q&A 기록
+
+**목표**: AI Workspace의 과도한 추천/분석 섹션을 화면에서 줄이고, 부서 선택 기반의 질문 흐름과 부서별 질문/답변 기록, 현재 답변 방향만 남겨 사용자가 판단에 집중할 수 있게 한다.
+
+### 확인된 범위
+
+- 화면에서 숨김: AI 추천 실행 목록, AI 실행 피드백, 고객 분석 대상, 추천 질문, 추천 목표 및 관련 요약 패널.
+- 화면에 유지: 부서 상황 질문, 부서 분석 대상.
+- 기존 AI 추천 실행/피드백/목표/질문 API와 데이터는 삭제하지 않고 보존한다.
+- 부서별 질문과 답변 스냅샷은 사용자별로 기록하고, 선택한 부서 아래에서 페이지네이션으로 보여준다.
+- 답변 방향성은 사용자+부서별 현재 값 하나만 저장하며, 변경 시 덮어쓴다.
+- 현재 답변 방향성은 이후 질문 프롬프트에 사용자 선호로 반영하되 CRM 사실로 취급하지 않는다.
+- 부서 질문을 보낼 때마다 사용자가 `GPT-5.5` 또는 `GPT-5.4 mini` 모델을 선택할 수 있게 한다.
+
+### 구현 계획
+
+- `AIWorkspaceQuestionLog`, `AIWorkspaceAnswerDirection` 모델과 migration을 추가한다.
+- AI Workspace summary/question API에 선택 부서의 질문 기록과 현재 답변 방향성을 포함한다.
+- 질문 답변 생성 성공 시 질문/답변 스냅샷을 저장한다.
+- 현재 답변 방향성을 저장/수정하는 API를 추가한다.
+- 질문 API에 선택 모델 검증과 응답/기록 스냅샷 반영을 추가한다.
+- React API 타입과 클라이언트를 갱신한다.
+- React AI Workspace 화면을 부서 목록, 부서 질문 패널, 모델 선택, 현재 답변 방향성, 질문/답변 기록으로 단순화한다.
+- Django 테스트, check, migration dry-run, frontend 타입체크/빌드, diff check를 실행한다.
+- `AGENT_REPORT.md`를 갱신하고 커밋/푸시/배포 후 운영 smoke와 수동 검증 절차를 제공한다.
+
+### 검증 계획
+
+- 질문 API가 질문 기록을 생성하고 응답에 로그 정보를 포함하는지 확인한다.
+- summary API가 현재 사용자와 선택 부서의 질문 기록만 페이지네이션으로 반환하는지 확인한다.
+- 방향성 API가 AI 권한과 부서 접근 권한을 검증하고, 사용자+부서별 현재 값 하나만 유지하는지 확인한다.
+- 현재 답변 방향성이 질문 생성 컨텍스트에 포함되는지 확인한다.
+- 질문 API가 허용 모델만 받고 선택 모델을 응답과 기록에 남기는지 확인한다.
+- React 빌드 결과에 삭제 대상 섹션명이 표시되지 않는지 확인한다.
+
+### 현재 상태
+
+- `AIWorkspaceQuestionLog`, `AIWorkspaceAnswerDirection` 모델, migration, admin 등록 구현 완료.
+- AI Workspace summary/question API에 질문 기록, 답변 방향, 모델 선택 payload 반영 완료.
+- 질문 생성 시 선택 모델 검증, 응답 모델 라벨, 질문/답변 스냅샷 기록 구현 완료.
+- 답변 방향 저장 API 구현 완료.
+- React AI Workspace 화면을 `부서 분석 대상`과 `부서 상황 질문` 중심으로 단순화 완료.
+- 질문 모델 선택, 현재 답변 방향 저장, 질문/답변 기록 페이지네이션 UI 구현 완료.
+- Django AI Workspace 전체 테스트, check, migration dry-run, frontend 타입체크/빌드, 로컬 Playwright smoke, diff check 통과.
+- 커밋/푸시/배포와 운영 smoke 진행 예정.
+
+---
+
 ## Current task — AI Workspace 저장형 질문 피드백 루프
 
 **목표**: AI Workspace 질문 답변에 대한 사용자의 평가와 수정 코멘트를 저장하고, 이후 같은 사용자의 질문 답변 컨텍스트에 반영해 답변 톤과 판단 품질을 점진적으로 개선한다.

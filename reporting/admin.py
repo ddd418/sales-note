@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    AIWorkspaceActionFeedback, AIWorkspaceQuestionFeedback, FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
+    AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
+    FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage,
     Company, Department, DocumentTemplate, EmailLog, BusinessCard, CustomerCategory
 )
@@ -161,6 +162,28 @@ class AIWorkspaceQuestionFeedbackAdmin(admin.ModelAdmin):
     list_display = ('user', 'department', 'scope_type', 'rating', 'source', 'updated_at')
     list_filter = ('rating', 'scope_type', 'source', 'updated_at')
     search_fields = ('question', 'comment', 'user__username', 'department__name', 'department__company__name')
+    autocomplete_fields = ['user', 'department']
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'updated_at'
+    list_per_page = 20
+
+
+@admin.register(AIWorkspaceQuestionLog)
+class AIWorkspaceQuestionLogAdmin(admin.ModelAdmin):
+    list_display = ('user', 'department', 'scope_type', 'source', 'model', 'web_search_used', 'created_at')
+    list_filter = ('scope_type', 'source', 'model', 'web_search_used', 'created_at')
+    search_fields = ('question', 'user__username', 'department__name', 'department__company__name')
+    autocomplete_fields = ['user', 'department']
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'created_at'
+    list_per_page = 20
+
+
+@admin.register(AIWorkspaceAnswerDirection)
+class AIWorkspaceAnswerDirectionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'department', 'scope_type', 'updated_at')
+    list_filter = ('scope_type', 'updated_at')
+    search_fields = ('direction', 'user__username', 'department__name', 'department__company__name')
     autocomplete_fields = ['user', 'department']
     readonly_fields = ('created_at', 'updated_at')
     date_hierarchy = 'updated_at'

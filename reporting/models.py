@@ -846,6 +846,82 @@ class AIWorkspaceQuestionFeedback(models.Model):
             models.Index(fields=['department', 'rating'], name='ai_qfb_dept_rating_idx'),
         ]
 
+
+class AIWorkspaceQuestionLog(models.Model):
+    """AI Workspace 부서 질문과 답변 스냅샷 기록."""
+
+    SCOPE_CHOICES = [
+        ('all', '전체 부서'),
+        ('department', '부서'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_workspace_question_logs', verbose_name="사용자")
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ai_workspace_question_logs',
+        verbose_name="관련 부서",
+    )
+    scope_type = models.CharField(max_length=20, choices=SCOPE_CHOICES, default='department', verbose_name="질문 범위")
+    question = models.TextField(verbose_name="질문")
+    answer_snapshot = models.JSONField(default=dict, blank=True, verbose_name="답변 스냅샷")
+    source = models.CharField(max_length=30, blank=True, default='', verbose_name="답변 출처")
+    model = models.CharField(max_length=60, blank=True, default='', verbose_name="선택 모델")
+    web_search_used = models.BooleanField(default=False, verbose_name="웹 검색 사용")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.scope_type} question ({self.created_at:%Y-%m-%d})"
+
+    class Meta:
+        verbose_name = "AI 질문 답변 기록"
+        verbose_name_plural = "AI 질문 답변 기록 목록"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'department', '-created_at'], name='ai_qlog_user_dept_idx'),
+            models.Index(fields=['user', '-created_at'], name='ai_qlog_user_created_idx'),
+        ]
+
+
+class AIWorkspaceAnswerDirection(models.Model):
+    """AI Workspace 부서별 현재 답변 방향성."""
+
+    SCOPE_CHOICES = [
+        ('department', '부서'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_workspace_answer_directions', verbose_name="사용자")
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name='ai_workspace_answer_directions',
+        verbose_name="관련 부서",
+    )
+    scope_type = models.CharField(max_length=20, choices=SCOPE_CHOICES, default='department', verbose_name="답변 범위")
+    direction = models.TextField(blank=True, default='', verbose_name="현재 답변 방향")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"{self.user.username} - {self.department} answer direction"
+
+    class Meta:
+        verbose_name = "AI 현재 답변 방향"
+        verbose_name_plural = "AI 현재 답변 방향 목록"
+        ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'department', 'scope_type'],
+                name='ai_answer_direction_unique',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'department'], name='ai_dir_user_dept_idx'),
+        ]
+
 # 히스토리 첨부파일 (HistoryFile) 모델
 class HistoryFile(models.Model):
     history = models.ForeignKey(History, on_delete=models.CASCADE, related_name='files', verbose_name="관련 히스토리")

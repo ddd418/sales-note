@@ -1,5 +1,98 @@
 # AGENT_REPORT.md
 
+## 2026-05-17 — AI Workspace Question-Centered Simplification
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 전
+
+### 요약
+
+AI Workspace를 `부서 분석 대상`과 `부서 상황 질문` 중심으로 단순화했습니다. 질문할 때마다 `GPT-5.5` 또는 `GPT-5.4 mini`를 선택할 수 있고, 선택 부서별로 현재 답변 방향과 질문/답변 기록을 저장해 다음 질문 컨텍스트에 반영합니다.
+
+### 변경된 파일
+
+- `reporting/models.py`, `reporting/migrations/0102_aiworkspaceanswerdirection_aiworkspacequestionlog.py`: 부서별 질문 로그와 현재 답변 방향 모델 추가.
+- `reporting/views.py`, `reporting/urls.py`, `reporting/admin.py`: 질문 기록/방향 payload, 방향 저장 API, 질문 모델 선택 검증, admin 조회 추가.
+- `reporting/tests.py`: 질문 로그, 모델 검증, 기록 페이지네이션, 방향 저장 권한/업서트 테스트 추가.
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: 단순화된 AI Workspace 화면, 모델 선택, 답변 방향 저장, 질문 기록 UI 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 사용자가 AI Workspace에서 과도한 추천/피드백/목표 섹션에 분산되지 않고 부서 선택과 질문에 집중할 수 있습니다.
+- 답변 방향은 로그가 아니라 부서별 현재 선호값 하나로 관리되어, 사용자가 원하는 답변 관점을 계속 바꿀 수 있습니다.
+- 질문/답변 기록은 선택 부서 기준으로 페이지네이션되어, 이전 판단 흐름을 다시 확인할 수 있습니다.
+- 질문 단위로 `GPT-5.5`와 `GPT-5.4 mini`를 선택해 품질/비용 균형을 사용자가 직접 조정할 수 있습니다.
+
+### 기존 기능 보존
+
+- 기존 AI 추천 실행, 실행 피드백, 추천 목표, 추천 질문 관련 backend API와 데이터 모델은 삭제하지 않았습니다.
+- 기존 `/reporting/*` route, 로그인 보호, `can_use_ai` 권한, 접근 가능한 부서 검증은 유지했습니다.
+- 답변 방향은 CRM 사실이 아니라 사용자 선호로만 프롬프트에 전달되도록 했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 57 tests, OK
+
+python manage.py check
+→ System check identified no issues, EMAIL_ENCRYPTION_KEY warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected, EMAIL_ENCRYPTION_KEY warning only
+
+cd frontend; npm run build
+→ OK, dist/assets/index-erSs9oQS.js generated, Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local Playwright CLI smoke on http://127.0.0.1:5173/ai-workspace/?department_id=223
+→ `부서 분석 대상`, `부서 상황 질문`, `GPT-5.5`, `GPT-5.4 mini`, `현재 답변 방향`, `질문/답변 기록` 렌더링 확인
+→ `AI 추천 실행 목록`, `AI 실행 피드백`, `고객 분석 대상`, `추천 질문`, `추천 목표` 미노출 확인
+→ 답변 방향 저장 성공 및 날짜 라벨 `5월 17일` 표시 확인
+
+cd frontend; npm run build
+→ OK after date-label fix, dist/assets/index-erSs9oQS.js / dist/assets/index-Cqw9Jekt.css generated
+
+cd frontend; node --check server.mjs
+→ OK
+```
+
+### 알려진 제한
+
+- 삭제 요청된 AI 추천/피드백/목표 기능은 화면에서 숨겼고, 기존 API와 데이터는 보존했습니다.
+- 질문 기록은 새 질문 생성 이후부터 누적됩니다. 기존 과거 질문 답변은 별도 로그가 없으면 자동 복원하지 않습니다.
+- 실제 OpenAI 호출 품질은 운영 `OPENAI_API_KEY`와 모델 접근 권한에 의존합니다.
+
+### 운영 배포 상태
+
+- Runtime change: yes
+- DB migration: `0102_aiworkspaceanswerdirection_aiworkspacequestionlog`
+- Railway deployment: pending after commit/push
+
+### 수동 서버 테스트 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. `부서 분석 대상`에서 테스트할 부서를 선택합니다.
+3. 화면이 `부서 분석 대상`과 `부서 상황 질문` 중심으로만 보이고, `AI 추천 실행 목록`, `AI 실행 피드백`, `고객 분석 대상`, `추천 질문`, `추천 목표`가 보이지 않는지 확인합니다.
+4. 질문 모델에서 `GPT-5.5`와 `GPT-5.4 mini`를 각각 선택할 수 있는지 확인합니다.
+5. `현재 답변 방향`에 원하는 답변 관점을 입력하고 `방향 저장`을 누른 뒤 새로고침해도 유지되는지 확인합니다.
+6. 부서 질문을 한 번 실행하고, 답변 아래 또는 기록 영역에 질문/답변 기록이 쌓이는지 확인합니다.
+
+### 추천 다음 작업
+
+1. 기본 시스템 프롬프트로 제안한 CRM 전략가 프롬프트를 그대로 넣을지, 짧은 운영용 프롬프트로 재설계할지 결정합니다.
+2. OpenAI 공식 가격 기준으로 `GPT-5.5` 기본 사용 시 현재 대비 비용 차이를 계산합니다.
+
+---
+
 ## 2026-05-17 — AI Workspace Question Feedback Loop
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 수동검수 대기

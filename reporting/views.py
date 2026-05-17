@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceQuestionFeedback, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -10550,6 +10550,13 @@ AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH = 600
 AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS = 2400
 AI_WORKSPACE_QUESTION_FEEDBACK_COMMENT_MAX_LENGTH = 1000
 AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT = 6
+AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE = 5
+AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH = 1200
+AI_WORKSPACE_QUESTION_MODELS = {
+    'gpt-5.5': 'GPT-5.5',
+    'gpt-5.4-mini': 'GPT-5.4 mini',
+}
+AI_WORKSPACE_DEFAULT_QUESTION_MODEL = 'gpt-5.5'
 
 
 def _ai_workspace_question_department_for_user(user, department_id):
@@ -10615,6 +10622,24 @@ def _ai_workspace_question_feedback_rating_label(rating):
     }.get(rating, rating or '')
 
 
+def _ai_workspace_question_model_choices_payload():
+    return [
+        {'id': model_id, 'label': label}
+        for model_id, label in AI_WORKSPACE_QUESTION_MODELS.items()
+    ]
+
+
+def _ai_workspace_question_model_label(model):
+    return AI_WORKSPACE_QUESTION_MODELS.get(model, model or '')
+
+
+def _ai_workspace_normalize_question_model(value):
+    model = str(value or '').strip()
+    if not model:
+        return AI_WORKSPACE_DEFAULT_QUESTION_MODEL
+    return model
+
+
 def _ai_workspace_question_feedback_answer_snapshot(answer):
     if not isinstance(answer, dict):
         return {}
@@ -10634,6 +10659,26 @@ def _ai_workspace_question_feedback_answer_snapshot(answer):
         snapshot['decision'] = decision
     if perspective:
         snapshot['perspective'] = perspective
+    evidence = _ai_workspace_question_evidence_payload(answer.get('evidence'), limit=6, value_limit=420)
+    if evidence:
+        snapshot['evidence'] = evidence
+    action_items = []
+    for index, item in enumerate(_ai_json_list(answer.get('actionItems'))[:5], start=1):
+        if not isinstance(item, dict):
+            continue
+        title = _ai_workspace_question_text(item.get('title'), 220)
+        next_action = _ai_workspace_question_text(item.get('nextAction'), 420)
+        if not (title or next_action):
+            continue
+        action_items.append({
+            'rank': _ai_workspace_question_int(item.get('rank'), index),
+            'title': title,
+            'nextAction': next_action,
+            'reason': _ai_workspace_question_text(item.get('reason'), 420),
+            'timing': _ai_workspace_question_text(item.get('timing'), 260),
+        })
+    if action_items:
+        snapshot['actionItems'] = action_items
     return {key: value for key, value in snapshot.items() if value}
 
 
@@ -10656,6 +10701,136 @@ def _ai_workspace_question_feedback_payload(feedback):
         'createdAt': _datetime_or_none(feedback.created_at),
         'updatedAt': _datetime_or_none(feedback.updated_at),
     }
+
+
+def _ai_workspace_question_log_payload(log):
+    department = log.department
+    answer = log.answer_snapshot or {}
+    decision = answer.get('decision') if isinstance(answer.get('decision'), dict) else {}
+    perspective = answer.get('perspective') if isinstance(answer.get('perspective'), dict) else {}
+    return {
+        'id': log.id,
+        'scopeType': log.scope_type,
+        'question': _ai_workspace_question_text(log.question, AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH),
+        'answerSummary': _ai_workspace_question_text(answer.get('summary'), 900),
+        'answer': answer,
+        'decision': {
+            'recommendedChoice': _ai_workspace_question_text(decision.get('recommendedChoice'), 420),
+            'rejectedChoice': _ai_workspace_question_text(decision.get('rejectedChoice'), 420),
+            'reason': _ai_workspace_question_text(decision.get('reason'), 520),
+            'exception': _ai_workspace_question_text(decision.get('exception'), 520),
+        } if decision else None,
+        'perspective': {
+            'customerPerspective': _ai_workspace_question_text(perspective.get('customerPerspective'), 520),
+            'salesJudgment': _ai_workspace_question_text(perspective.get('salesJudgment'), 520),
+            'recommendedApproach': _ai_workspace_question_text(perspective.get('recommendedApproach'), 520),
+            'talkTrack': _ai_workspace_question_text(perspective.get('talkTrack'), 520),
+            'caution': _ai_workspace_question_text(perspective.get('caution'), 520),
+        } if perspective else None,
+        'source': log.source or '',
+        'model': log.model or '',
+        'modelLabel': _ai_workspace_question_model_label(log.model),
+        'webSearchUsed': bool(log.web_search_used),
+        'department': {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+        } if department else None,
+        'createdAt': _datetime_or_none(log.created_at),
+        'updatedAt': _datetime_or_none(log.updated_at),
+    }
+
+
+def _ai_workspace_empty_question_history(page=1):
+    try:
+        page_number = int(page or 1)
+    except (TypeError, ValueError):
+        page_number = 1
+    return {
+        'scopeType': 'department',
+        'departmentId': None,
+        'page': max(1, page_number),
+        'pageSize': AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE,
+        'total': 0,
+        'totalPages': 0,
+        'hasNext': False,
+        'hasPrevious': False,
+        'items': [],
+    }
+
+
+def _ai_workspace_question_history_payload(user, department, page=1):
+    try:
+        page_number = int(page or 1)
+    except (TypeError, ValueError):
+        page_number = 1
+    page_number = max(1, page_number)
+    if not (user and department):
+        return _ai_workspace_empty_question_history(page_number)
+
+    queryset = AIWorkspaceQuestionLog.objects.filter(
+        user=user,
+        department=department,
+        scope_type='department',
+    ).select_related(
+        'department',
+        'department__company',
+    ).order_by('-created_at')
+    paginator = Paginator(queryset, AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE)
+    if paginator.count == 0:
+        page_obj = None
+        page_number = 1
+    else:
+        page_number = min(page_number, paginator.num_pages)
+        page_obj = paginator.page(page_number)
+    return {
+        'scopeType': 'department',
+        'departmentId': department.id,
+        'page': page_number,
+        'pageSize': AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE,
+        'total': paginator.count,
+        'totalPages': paginator.num_pages,
+        'hasNext': bool(page_obj and page_obj.has_next()),
+        'hasPrevious': bool(page_obj and page_obj.has_previous()),
+        'items': [
+            _ai_workspace_question_log_payload(log)
+            for log in (page_obj.object_list if page_obj else [])
+        ],
+    }
+
+
+def _ai_workspace_answer_direction_payload(direction=None, department=None):
+    if direction:
+        department = direction.department
+    return {
+        'id': direction.id if direction else None,
+        'scopeType': 'department',
+        'departmentId': department.id if department else None,
+        'department': {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+        } if department else None,
+        'direction': _ai_workspace_question_text(
+            direction.direction if direction else '',
+            AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
+        ),
+        'createdAt': _datetime_or_none(direction.created_at) if direction else None,
+        'updatedAt': _datetime_or_none(direction.updated_at) if direction else None,
+    }
+
+
+def _ai_workspace_answer_direction_for_user(user, department):
+    if not (user and department):
+        return None
+    return AIWorkspaceAnswerDirection.objects.filter(
+        user=user,
+        department=department,
+        scope_type='department',
+    ).select_related(
+        'department',
+        'department__company',
+    ).first()
 
 
 def _ai_workspace_recent_question_feedbacks(user, department_id=None, limit=AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT):
@@ -10893,6 +11068,7 @@ def _ai_workspace_question_latest_delivery(deliveries):
 def _ai_workspace_department_question_context(department, user):
     from ai_chat.services import gather_quote_delivery_data
 
+    answer_direction = _ai_workspace_answer_direction_for_user(user, department)
     followups = list(FollowUp.objects.filter(
         user=user,
         department=department,
@@ -10988,6 +11164,7 @@ def _ai_workspace_department_question_context(department, user):
         'recentNotes': recent_histories,
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user, department_id=department.id),
+        'answerDirection': _ai_workspace_answer_direction_payload(answer_direction, department),
         'recentSchedules': recent_schedules,
     }
 
@@ -11245,6 +11422,7 @@ def _ai_workspace_global_question_context(user):
         'recentNotes': recent_histories,
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user),
+        'answerDirection': _ai_workspace_answer_direction_payload(),
         'recentSchedules': recent_schedules,
         'openFollowups': open_followups,
         'recommendedActions': [
@@ -11782,14 +11960,14 @@ def _ai_workspace_json_from_text(text):
         raise
 
 
-def _ai_workspace_generate_department_question_answer(question, context):
+def _ai_workspace_generate_department_question_answer(question, context, model=None):
     fallback = _ai_workspace_question_fallback(question, context)
     use_web_search = _ai_workspace_question_needs_web_search(question)
     try:
         from ai_chat.services import get_openai_client
 
         client = get_openai_client()
-        model = os.environ.get('OPENAI_MODEL_AI_WORKSPACE') or os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+        model = model or os.environ.get('OPENAI_MODEL_AI_WORKSPACE') or os.environ.get('OPENAI_MODEL_STANDARD', AI_WORKSPACE_DEFAULT_QUESTION_MODEL)
         prompt_payload = {
             'question': question,
             'crmContext': context,
@@ -11799,6 +11977,7 @@ def _ai_workspace_generate_department_question_answer(question, context):
                 'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
+                'crmContext.answerDirection.direction은 현재 사용자가 이 부서 답변에 원하는 방향성이다. CRM 사실이 아니라 답변 관점/톤/판단 기준 선호로만 적용한다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 전체 부서 범위라면 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
@@ -11851,9 +12030,9 @@ def _ai_workspace_generate_department_question_answer(question, context):
                 for item in getattr(response, 'output', []) or []
             )
         else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
+            completion_kwargs = {
+                'model': model,
+                'messages': [
                     {
                         'role': 'system',
                         'content': system_prompt,
@@ -11863,10 +12042,14 @@ def _ai_workspace_generate_department_question_answer(question, context):
                         'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder),
                     },
                 ],
-                temperature=0.2,
-                max_tokens=AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS,
-                response_format={'type': 'json_object'},
-            )
+                'response_format': {'type': 'json_object'},
+            }
+            if str(model).startswith(('gpt-5', 'o')):
+                completion_kwargs['max_completion_tokens'] = AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS
+            else:
+                completion_kwargs['temperature'] = 0.2
+                completion_kwargs['max_tokens'] = AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS
+            response = client.chat.completions.create(**completion_kwargs)
             data = _ai_workspace_json_from_text(response.choices[0].message.content)
             web_search_used = False
         answer = _ai_workspace_normalize_department_question_answer(data, fallback)
@@ -11952,6 +12135,10 @@ def ai_workspace_summary_api(request):
             'recommendedGoals': [],
             'featuredDepartment': None,
             'selectedDepartmentId': None,
+            'questionHistory': _ai_workspace_empty_question_history(),
+            'answerDirection': _ai_workspace_answer_direction_payload(),
+            'questionModelChoices': _ai_workspace_question_model_choices_payload(),
+            'defaultQuestionModel': AI_WORKSPACE_DEFAULT_QUESTION_MODEL,
         })
 
     followup_rows = list(FollowUp.objects.filter(
@@ -11990,6 +12177,11 @@ def ai_workspace_summary_api(request):
             requested_department_id = int(requested_department_value)
         except (TypeError, ValueError):
             requested_department_id = None
+    try:
+        question_page = int(request.GET.get('question_page') or request.GET.get('questionPage') or 1)
+    except (TypeError, ValueError):
+        question_page = 1
+    question_page = max(1, question_page)
     selected_department = (
         next((department for department in departments if department.id == requested_department_id), None)
         if requested_department_id
@@ -12173,6 +12365,20 @@ def ai_workspace_summary_api(request):
             unverified_counts,
         )
 
+    effective_question_department = None
+    if featured_department:
+        featured_department_id = featured_department.get('departmentId')
+        effective_question_department = next(
+            (department for department in departments if department.id == featured_department_id),
+            None,
+        )
+    answer_direction = _ai_workspace_answer_direction_for_user(request.user, effective_question_department)
+    question_history = _ai_workspace_question_history_payload(
+        request.user,
+        effective_question_department,
+        page=question_page,
+    )
+
     prompt_targets = []
     for card in painpoint_cards[:3]:
         department = card.analysis.department
@@ -12299,6 +12505,10 @@ def ai_workspace_summary_api(request):
         'promptTargets': prompt_targets,
         'featuredDepartment': featured_department,
         'selectedDepartmentId': featured_department['departmentId'] if featured_department else None,
+        'questionHistory': question_history,
+        'answerDirection': _ai_workspace_answer_direction_payload(answer_direction, effective_question_department),
+        'questionModelChoices': _ai_workspace_question_model_choices_payload(),
+        'defaultQuestionModel': AI_WORKSPACE_DEFAULT_QUESTION_MODEL,
         'recommendedGoals': [
             {
                 'title': goal.get('title', ''),
@@ -12349,6 +12559,14 @@ def ai_workspace_department_question_api(request):
             'error': 'missing_question',
             'message': '질문을 입력하세요.',
         }, status=400)
+    selected_model = _ai_workspace_normalize_question_model(payload.get('model') or payload.get('questionModel'))
+    if selected_model not in AI_WORKSPACE_QUESTION_MODELS:
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_model',
+            'message': '지원하지 않는 AI 모델입니다.',
+            'modelChoices': _ai_workspace_question_model_choices_payload(),
+        }, status=400)
 
     if department_id:
         department = _ai_workspace_question_department_for_user(request.user, department_id)
@@ -12362,16 +12580,30 @@ def ai_workspace_department_question_api(request):
     else:
         context = _ai_workspace_global_question_context(request.user)
 
-    answer, source, web_search_used = _ai_workspace_generate_department_question_answer(question, context)
+    answer, source, web_search_used = _ai_workspace_generate_department_question_answer(question, context, model=selected_model)
+    scope = context.get('scope') or {}
+    question_log = AIWorkspaceQuestionLog.objects.create(
+        user=request.user,
+        department=department if department_id else None,
+        scope_type='department' if department_id else 'all',
+        question=question,
+        answer_snapshot=_ai_workspace_question_feedback_answer_snapshot(answer),
+        source=source,
+        model=selected_model,
+        web_search_used=bool(web_search_used),
+    )
     return JsonResponse({
         'success': True,
         'source': source,
+        'model': selected_model,
+        'modelLabel': _ai_workspace_question_model_label(selected_model),
         'webSearchUsed': web_search_used,
         'generatedAt': timezone.now().isoformat(),
-        'scope': context.get('scope') or {},
+        'scope': scope,
         'department': context.get('department'),
         'question': question,
         'answer': answer,
+        'questionLog': _ai_workspace_question_log_payload(question_log),
         'context': {
             'customerCount': len(context.get('customers') or []),
             'departmentCount': len(context.get('departments') or []) or (1 if context.get('department') else 0),
@@ -12380,8 +12612,62 @@ def ai_workspace_department_question_api(request):
             'recommendedActionCount': len(context.get('recommendedActions') or []),
             'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
             'questionFeedbackCount': len(context.get('questionFeedbacks') or []),
+            'answerDirection': context.get('answerDirection') or _ai_workspace_answer_direction_payload(),
         },
         'requiresHumanReview': True,
+    })
+
+
+@never_cache
+@require_POST
+def ai_workspace_answer_direction_api(request):
+    """Create or update the current answer direction for one accessible department."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_json',
+            'message': '요청 JSON 형식이 올바르지 않습니다.',
+        }, status=400)
+
+    department_id = payload.get('departmentId') or payload.get('department_id')
+    department = _ai_workspace_question_department_for_user(request.user, department_id)
+    if not department:
+        return JsonResponse({
+            'success': False,
+            'error': 'department_not_found',
+            'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
+        }, status=404)
+
+    direction_text = _ai_workspace_question_text(
+        payload.get('direction'),
+        AI_WORKSPACE_ANSWER_DIRECTION_MAX_LENGTH,
+    )
+    direction, _created = AIWorkspaceAnswerDirection.objects.update_or_create(
+        user=request.user,
+        department=department,
+        scope_type='department',
+        defaults={'direction': direction_text},
+    )
+
+    return JsonResponse({
+        'success': True,
+        'generatedAt': timezone.now().isoformat(),
+        'answerDirection': _ai_workspace_answer_direction_payload(direction),
+        'message': '현재 답변 방향을 저장했습니다.',
     })
 
 
