@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 CRM global benchmark gap analysis plan
+
+**Background**:
+
+- User provided a global CRM benchmark report covering customer DB, pipeline, activities, quotes, products/orders, service, assets/calibration, marketing, analytics, workflow, AI, and security.
+- Current code inspection shows strong existing coverage in customer/activity/pipeline/product/quote/delivery/mail/weekly-report/AI areas.
+- The largest business-specific gaps are customer-owned equipment/assets, serial/warranty/calibration history, formal A/S service cases/SLA, campaign/consent, and domain audit logging.
+
+**DB change required**: No.
+
+- This task is documentation and roadmap analysis only.
+- No runtime behavior, model, API, React route, migration, or deployment change is required.
+
+**Implementation scope**:
+
+- Add a CRM benchmark gap analysis document that maps the provided global CRM 12-axis framework to the current Sales Note implementation.
+- Classify each axis as strong, partial, weak, or missing using current model/API/frontend evidence.
+- Identify business risk, benchmarkable improvements, and recommended P0/P1/P2 priorities.
+- Highlight the next recommended implementation candidate: customer asset + service/calibration CRM groundwork.
+- Update `AGENT_REPORT.md` with summary, files changed, validation, deployment status, and recommended next task.
+
+**Validation plan**:
+
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+**Current status**:
+
+- Completed as documentation-only benchmark analysis in `CRM_BENCHMARK_GAP_ANALYSIS.md`.
+
 ## 2026-05-17 AI Workspace all-department question plan
 
 **Background**:

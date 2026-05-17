@@ -20119,3 +20119,66 @@ git diff --check
 6. 전체 범위 기록을 클릭하면 상세 페이지에서 `전체 부서`로 표시되는지 확인합니다.
 7. 목록으로 돌아와 전체 범위 기록 삭제가 되는지 확인합니다.
 8. 다시 `선택 부서`를 누르면 해당 부서 질문 기록으로 돌아오는지 확인합니다.
+
+---
+
+## 2026-05-18 CRM global benchmark gap analysis
+
+### 1. Summary
+
+- 사용자가 제공한 글로벌 CRM 조사 보고서를 현재 Sales Note 코드 구조에 매핑했습니다.
+- 12개 CRM 축별로 현재 커버리지, 구현 근거, 주요 갭, 권장 우선순위를 정리했습니다.
+- 가장 큰 벤치마킹 후보를 `고객 보유 장비 + A/S/교정 모듈`로 확정했습니다.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `CRM_BENCHMARK_GAP_ANALYSIS.md`
+
+### 3. CRM Improvements
+
+- 현재 시스템이 강한 축과 약한 축을 코드 근거 기준으로 분리했습니다.
+- 장비/시리얼/보증/교정, 독립 A/S 케이스/SLA, 캠페인/수신동의, 감사 로그가 주요 갭임을 명확히 했습니다.
+- 다음 구현 후보를 일반 리드 관리보다 생명과학 유통 업무에 더 직접적인 장비/서비스/교정 CRM으로 제안했습니다.
+
+### 4. Existing Functionality Preserved
+
+- 런타임 코드 변경은 없습니다.
+- DB 모델, migration, API, React 화면, `/reporting/*` 라우트는 변경하지 않았습니다.
+- 인증/권한 동작에는 영향이 없습니다.
+
+### 5. Commands Run
+
+```text
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warning only for AGENT_PLAN.md
+```
+
+### 6. Known Limitations
+
+- 이번 작업은 갭 분석 문서화만 수행했습니다. 실제 장비/A/S/교정 모델과 화면은 아직 구현하지 않았습니다.
+- 벤치마크 기준은 사용자가 제공한 조사 보고서와 현재 코드 탐색 결과입니다.
+
+### 7. Production Deployment Status
+
+- Documentation-only change.
+- Railway deployment not required.
+
+### 8. Recommended Next Task
+
+`고객 보유 장비 + 서비스/교정 모듈 v1`을 구현 후보로 잡는 것이 가장 타당합니다. 첫 구현은 고객 상세 화면 안에 보유 장비, 진행 중 서비스, 교정 만료 예정 섹션을 붙이는 방향이 좋습니다.
+
+### 9. Manual Review Process
+
+1. `CRM_BENCHMARK_GAP_ANALYSIS.md`를 열어 12개 CRM 축별 평가를 확인합니다.
+2. 우선순위가 P0로 표시된 장비/교정/A/S 축이 실제 업무 우선순위와 맞는지 검토합니다.
+3. 다음 구현으로 진행할 경우 장비를 고객 기준으로 둘지, 부서/연구실 기준으로 둘지 결정합니다.
