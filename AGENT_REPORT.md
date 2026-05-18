@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — AI Cost/Speed Optimization and Detail AI Integration
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포/운영 smoke 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -69,13 +69,49 @@ git diff --check
 
 local frontend route smoke
 → Vite on http://127.0.0.1:5174/ and Django on http://127.0.0.1:8000/. Anonymous /customers/1/ redirected to /reporting/login/?next=/customers/1/ as expected.
+
+git commit -m "feat: add customer and schedule AI detail tools"
+→ 2efd9f4 feat: add customer and schedule AI detail tools
+
+git push
+→ origin/main updated to 2efd9f4
+
+railway up --service web --detach --message "Deploy AI detail tools 2efd9f4"
+→ Initial upload failed with a transient connection reset. Follow-up source redeploy was used.
+
+railway redeploy --service web --from-source --yes --json
+→ web deployment fc3abdd7-33f1-4bb0-bdcd-d5d59db1132d reached SUCCESS
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI detail tools frontend 2efd9f4"
+→ Initial upload failed with a transient BadRecordMac error. Retried the same frontend deploy.
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI detail tools frontend 2efd9f4 retry"
+→ sales-note-frontend deployment ff8e91d5-3680-4b89-8188-2f26adbc1c7c reached SUCCESS
+
+curl.exe -I https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+
+curl.exe -i https://web-production-5096.up.railway.app/reporting/api/customers/1/ai-question/
+→ 405 Method Not Allowed, Allow: POST
+
+curl.exe -i https://web-production-5096.up.railway.app/reporting/api/schedules/1/ai-coach/
+→ 405 Method Not Allowed, Allow: POST
+
+curl.exe -I https://sales-note-frontend-production.up.railway.app/customers/1/
+→ 200 OK, served /assets/index-CEcWHmqO.js and /assets/index-DkQFgOSo.css
+
+curl.exe -I https://sales-note-frontend-production.up.railway.app/schedules/1/
+→ 200 OK
+
+production frontend asset check
+→ JS contains ai-question, ai-coach, customer-ai-question-card, schedule-ai-coach-panel, 일정 실행 코치, 고객 상황 질문
 ```
 
 ### 알려진 제한
 
 - 일정 AI 코치 결과는 저장하지 않습니다. 사용자가 보고 초안을 적용한 뒤 저장해야 CRM 기록이 됩니다.
 - 고객 상세 AI는 질문형 v1만 제공합니다. 자동 추천 카드나 장기 저장 UI는 기존 AI Workspace 흐름을 사용합니다.
-- 운영 로그인 세션에서 실제 고객/일정 상세 패널 버튼 클릭은 배포 후 사용자 수동 검수가 필요합니다.
+- 운영 로그인 세션에서 실제 고객/일정 상세 패널 버튼 클릭과 AI 응답 품질은 사용자 수동 검수가 필요합니다.
 
 ### 권장 다음 단계
 
@@ -93,7 +129,17 @@ local frontend route smoke
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행합니다.
+- Runtime commit: `2efd9f4 feat: add customer and schedule AI detail tools`
+- GitHub: `main` pushed.
+- Railway `web`: `fc3abdd7-33f1-4bb0-bdcd-d5d59db1132d` SUCCESS.
+- Railway `sales-note-frontend`: `ff8e91d5-3680-4b89-8188-2f26adbc1c7c` SUCCESS.
+- DB migration: none.
+- Production smoke:
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - New backend API routes return expected `405 Allow: POST` for anonymous GET.
+  - Frontend `/customers/1/` and `/schedules/1/` return 200.
+  - Latest frontend bundle is `/assets/index-CEcWHmqO.js`.
+  - Latest frontend JS contains `ai-question`, `ai-coach`, `customer-ai-question-card`, `schedule-ai-coach-panel`, `일정 실행 코치`, and `고객 상황 질문`.
 
 ## 2026-05-18 — AI Workspace Memory Management v1
 

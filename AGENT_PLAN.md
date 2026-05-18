@@ -42,7 +42,7 @@
 
 **Current status**:
 
-- Backend APIs, React panels, focused tests, full AI Workspace regression tests, Django checks, frontend type-check/build, and local anonymous route smoke are complete. Commit, push, Railway deployment, production smoke, and user production manual verification are next.
+- Backend APIs, React panels, focused tests, full AI Workspace regression tests, Django checks, frontend type-check/build, local anonymous route smoke, commit/push, Railway deployment, and production smoke are complete. User production manual verification is next.
 
 ## 2026-05-18 AI Workspace memory management v1 plan
 
