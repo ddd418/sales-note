@@ -46,7 +46,7 @@
 
 **Current status**:
 
-- Backend model/API/context, React review UI, focused tests, Django checks, and frontend build complete. Commit/deploy is next.
+- Backend model/API/context, React review UI, focused tests, Django checks, frontend build, commit, push, Railway backend/frontend deploy, and production smoke checks are complete. User production manual verification is next.
 
 ## 2026-05-18 React tasks/TODO v2 detail plan
 

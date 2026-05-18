@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — AI Workspace Verified Memory Foundation
 
-**상태**: 구현/로컬 검증 완료, 커밋/배포 대기
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료
 
 ### 요약
 
@@ -69,13 +69,40 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git push origin main
+→ OK, pushed commit 01813a1 feat: add verified AI workspace memory
+
+railway service status --service web --json
+→ SUCCESS, deployment 85174d87-66a1-4f6d-b3c1-f1b158a1a466
+
+curl.exe -I https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+
+curl.exe -i https://web-production-5096.up.railway.app/reporting/api/ai-workspace/memories/create/
+→ 405 Method Not Allowed with Allow: POST, confirming the new route exists
+
+railway up frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI verified memory frontend 01813a1"
+→ OK, deployment 40813d59-5b5f-4675-877f-b96a31dc206c
+
+railway service status --service sales-note-frontend --json
+→ SUCCESS
+
+curl.exe -I https://sales-note-frontend-production.up.railway.app/
+→ 200 OK
+
+curl.exe -I "https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=146"
+→ 200 OK
+
+production bundle check
+→ /assets/index-DS8A06La.js includes `정정 저장`, `앞으로 기억`, and `/reporting/api/ai-workspace/memories/create/`
 ```
 
 ### 알려진 제한
 
 - 검수 기억 삭제/비활성화 UI는 아직 없습니다. admin에서는 관리할 수 있습니다.
 - 저장된 기억은 현재 사용자 단위입니다. 회사 공용 검수 기억은 별도 권한 정책이 필요합니다.
-- 운영 배포 전까지 production 프론트에는 새 검수 UI가 보이지 않습니다.
+- 운영 smoke는 라우팅/번들/API 존재 확인까지 완료했습니다. 실제 로그인 세션에서 정정 저장 후 재질문하는 수동 검수는 사용자가 확인해야 합니다.
 
 ### 권장 다음 단계
 
