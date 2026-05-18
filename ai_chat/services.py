@@ -13,6 +13,8 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_FAST_OPENAI_MODEL = 'gpt-5.4-mini'
+
 
 def get_openai_client():
     """OpenAI 클라이언트 생성"""
@@ -20,6 +22,141 @@ def get_openai_client():
     if not api_key:
         raise ValueError("OPENAI_API_KEY 환경변수가 설정되지 않았습니다.")
     return OpenAI(api_key=api_key)
+
+
+def get_standard_openai_model():
+    """Return the default model for CRM AI calls while preserving env overrides."""
+    return (
+        os.environ.get('OPENAI_MODEL_STANDARD')
+        or os.environ.get('OPENAI_MODEL_AI_WORKSPACE')
+        or DEFAULT_FAST_OPENAI_MODEL
+    )
+
+
+def _openai_object_value(value, key, default=None):
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        return value.get(key, default)
+    return getattr(value, key, default)
+
+
+def openai_prompt_cache_kwargs(cache_key):
+    cache_key = str(cache_key or '').strip()
+    if not cache_key:
+        return {}
+    return {
+        'prompt_cache_key': cache_key,
+        'prompt_cache_retention': 'in_memory',
+    }
+
+
+def openai_usage_summary(response):
+    usage = getattr(response, 'usage', None)
+    if not usage:
+        return {
+            'totalTokens': 0,
+            'inputTokens': 0,
+            'outputTokens': 0,
+            'cachedTokens': 0,
+        }
+
+    input_tokens = (
+        _openai_object_value(usage, 'prompt_tokens')
+        or _openai_object_value(usage, 'input_tokens')
+        or 0
+    )
+    output_tokens = (
+        _openai_object_value(usage, 'completion_tokens')
+        or _openai_object_value(usage, 'output_tokens')
+        or 0
+    )
+    total_tokens = _openai_object_value(usage, 'total_tokens') or (input_tokens + output_tokens)
+    input_details = (
+        _openai_object_value(usage, 'prompt_tokens_details')
+        or _openai_object_value(usage, 'input_tokens_details')
+        or {}
+    )
+    cached_tokens = _openai_object_value(input_details, 'cached_tokens', 0) or 0
+
+    return {
+        'totalTokens': int(total_tokens or 0),
+        'inputTokens': int(input_tokens or 0),
+        'outputTokens': int(output_tokens or 0),
+        'cachedTokens': int(cached_tokens or 0),
+    }
+
+
+def log_openai_usage(label, model, response):
+    usage = openai_usage_summary(response)
+    if not any(usage.values()):
+        return usage
+    logger.info(
+        'OpenAI usage %s model=%s total=%s input=%s output=%s cached=%s',
+        label,
+        model,
+        usage['totalTokens'],
+        usage['inputTokens'],
+        usage['outputTokens'],
+        usage['cachedTokens'],
+    )
+    return usage
+
+
+def openai_chat_completion_kwargs(
+    model,
+    messages,
+    *,
+    response_format=None,
+    temperature=0.3,
+    max_tokens=4000,
+    prompt_cache_key='',
+):
+    kwargs = {
+        'model': model,
+        'messages': messages,
+    }
+    if response_format:
+        kwargs['response_format'] = response_format
+    if str(model or '').startswith(('gpt-5', 'o')):
+        kwargs['max_completion_tokens'] = max_tokens
+    else:
+        kwargs['temperature'] = temperature
+        kwargs['max_tokens'] = max_tokens
+    kwargs.update(openai_prompt_cache_kwargs(prompt_cache_key))
+    return kwargs
+
+
+def create_openai_chat_completion(
+    client,
+    label,
+    model,
+    messages,
+    *,
+    response_format=None,
+    temperature=0.3,
+    max_tokens=4000,
+    prompt_cache_key='',
+):
+    kwargs = openai_chat_completion_kwargs(
+        model,
+        messages,
+        response_format=response_format,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        prompt_cache_key=prompt_cache_key,
+    )
+    try:
+        response = client.chat.completions.create(**kwargs)
+    except TypeError as exc:
+        if prompt_cache_key and 'prompt_cache' in str(exc):
+            kwargs.pop('prompt_cache_key', None)
+            kwargs.pop('prompt_cache_retention', None)
+            response = client.chat.completions.create(**kwargs)
+        else:
+            raise
+    log_openai_usage(label, model, response)
+    return response
 
 
 # ================================================
@@ -1745,7 +1882,7 @@ def analyze_department(analysis, department, user):
     Returns: (analysis_data, quote_delivery_data, token_usage)
     """
     client = get_openai_client()
-    model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+    model = get_standard_openai_model()
 
     # 데이터 수집
     meetings = gather_meeting_data(department, user)
@@ -1866,16 +2003,19 @@ def analyze_department(analysis, department, user):
     ]
 
     try:
-        response = client.chat.completions.create(
+        response = create_openai_chat_completion(
+            client,
+            'department_analysis',
             model=model,
             messages=messages,
+            response_format={"type": "json_object"},
             temperature=0.3,
             max_tokens=4000,
-            response_format={"type": "json_object"},
+            prompt_cache_key='sales-note:department-analysis:v1',
         )
 
         ai_text = response.choices[0].message.content
-        token_usage = response.usage.total_tokens if response.usage else 0
+        token_usage = openai_usage_summary(response)['totalTokens']
 
         try:
             analysis_result = json.loads(ai_text)
@@ -2186,7 +2326,7 @@ def analyze_followup(analysis, followup, user):
     Returns: (analysis_data, meeting_count, token_usage)
     """
     client = get_openai_client()
-    model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+    model = get_standard_openai_model()
 
     data = gather_followup_data(followup, user)
 
@@ -2302,15 +2442,18 @@ def analyze_followup(analysis, followup, user):
     ]
 
     try:
-        response = client.chat.completions.create(
+        response = create_openai_chat_completion(
+            client,
+            'followup_analysis',
             model=model,
             messages=messages,
+            response_format={"type": "json_object"},
             temperature=0.3,
             max_tokens=4000,
-            response_format={"type": "json_object"},
+            prompt_cache_key='sales-note:followup-analysis:v1',
         )
         ai_text = response.choices[0].message.content
-        token_usage = response.usage.total_tokens if response.usage else 0
+        token_usage = openai_usage_summary(response)['totalTokens']
 
         try:
             analysis_result = json.loads(ai_text)
@@ -2533,7 +2676,7 @@ def generate_weekly_report_draft(user, week_start, week_end):
     user_prompt = "\n".join(parts)
 
     client = get_openai_client()
-    model = os.environ.get('OPENAI_MODEL_STANDARD', 'gpt-4o')
+    model = get_standard_openai_model()
 
     messages = [
         {"role": "system", "content": WEEKLY_REPORT_SYSTEM_PROMPT},
@@ -2541,12 +2684,15 @@ def generate_weekly_report_draft(user, week_start, week_end):
     ]
 
     try:
-        response = client.chat.completions.create(
+        response = create_openai_chat_completion(
+            client,
+            'weekly_report_draft',
             model=model,
             messages=messages,
+            response_format={"type": "json_object"},
             temperature=0.3,
             max_tokens=3000,
-            response_format={"type": "json_object"},
+            prompt_cache_key='sales-note:weekly-report:v1',
         )
         ai_text = response.choices[0].message.content
         try:

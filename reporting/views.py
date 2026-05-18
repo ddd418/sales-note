@@ -8139,6 +8139,10 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'djangoSendMail': reverse('reporting:send_email_from_schedule', args=[schedule.id]),
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
+        'ai': {
+            'canUseAi': bool(user_profile and user_profile.can_use_ai),
+            'message': '' if user_profile and user_profile.can_use_ai else 'AI 기능 사용 권한이 없습니다.',
+        },
         'documents': documents,
         'commercialChecks': commercial_checks,
         'relatedNotes': related_notes,
@@ -13330,14 +13334,27 @@ def _ai_workspace_json_from_text(text):
         raise
 
 
-def _ai_workspace_generate_department_question_answer(question, context, model=None):
+def _ai_workspace_generate_department_question_answer(
+    question,
+    context,
+    model=None,
+    *,
+    allow_web_search=True,
+    prompt_cache_key='sales-note:ai-workspace-question:v1',
+):
     fallback = _ai_workspace_question_fallback(question, context)
-    use_web_search = _ai_workspace_question_needs_web_search(question)
+    use_web_search = bool(allow_web_search and _ai_workspace_question_needs_web_search(question))
     try:
-        from ai_chat.services import get_openai_client
+        from ai_chat.services import (
+            create_openai_chat_completion,
+            get_openai_client,
+            get_standard_openai_model,
+            log_openai_usage,
+            openai_prompt_cache_kwargs,
+        )
 
         client = get_openai_client()
-        model = model or os.environ.get('OPENAI_MODEL_AI_WORKSPACE') or os.environ.get('OPENAI_MODEL_STANDARD', AI_WORKSPACE_DEFAULT_QUESTION_MODEL)
+        model = model or os.environ.get('OPENAI_MODEL_AI_WORKSPACE') or get_standard_openai_model() or AI_WORKSPACE_DEFAULT_QUESTION_MODEL
         prompt_payload = {
             'question': question,
             'crmContext': context,
@@ -13380,26 +13397,39 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
         system_prompt = AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT
         data = None
         if use_web_search and hasattr(client, 'responses'):
-            response = client.responses.create(
-                model=model,
-                input=[
+            response_kwargs = {
+                'model': model,
+                'input': [
                     {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder)},
                 ],
-                tools=[{'type': 'web_search'}],
-                tool_choice='auto',
-                include=['web_search_call.action.sources'],
-                max_output_tokens=AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS,
-            )
+                'tools': [{'type': 'web_search'}],
+                'tool_choice': 'auto',
+                'include': ['web_search_call.action.sources'],
+                'max_output_tokens': AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS,
+                **openai_prompt_cache_kwargs(prompt_cache_key),
+            }
+            try:
+                response = client.responses.create(**response_kwargs)
+            except TypeError as exc:
+                if prompt_cache_key and 'prompt_cache' in str(exc):
+                    response_kwargs.pop('prompt_cache_key', None)
+                    response_kwargs.pop('prompt_cache_retention', None)
+                    response = client.responses.create(**response_kwargs)
+                else:
+                    raise
+            log_openai_usage('ai_workspace_question', model, response)
             data = _ai_workspace_json_from_text(_ai_workspace_response_output_text(response))
             web_search_used = any(
                 (item.get('type') if isinstance(item, dict) else getattr(item, 'type', '')) == 'web_search_call'
                 for item in getattr(response, 'output', []) or []
             )
         else:
-            completion_kwargs = {
-                'model': model,
-                'messages': [
+            response = create_openai_chat_completion(
+                client,
+                'ai_workspace_question',
+                model,
+                [
                     {
                         'role': 'system',
                         'content': system_prompt,
@@ -13409,14 +13439,11 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
                         'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder),
                     },
                 ],
-                'response_format': {'type': 'json_object'},
-            }
-            if str(model).startswith(('gpt-5', 'o')):
-                completion_kwargs['max_completion_tokens'] = AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS
-            else:
-                completion_kwargs['temperature'] = 0.2
-                completion_kwargs['max_tokens'] = AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS
-            response = client.chat.completions.create(**completion_kwargs)
+                response_format={'type': 'json_object'},
+                temperature=0.2,
+                max_tokens=AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS,
+                prompt_cache_key=prompt_cache_key,
+            )
             data = _ai_workspace_json_from_text(response.choices[0].message.content)
             web_search_used = False
         answer = _ai_workspace_normalize_department_question_answer(data, fallback, context)
@@ -13425,6 +13452,641 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
         logger.warning('AI workspace department question fallback used: %s', exc)
         fallback.setdefault('actionItems', [])
         return _ai_workspace_apply_product_fact_guard(fallback, context), 'fallback', False
+
+
+def _customer_ai_primary_context(followup):
+    return {
+        'id': followup.id,
+        'name': followup.customer_name or followup.manager or '고객명 미정',
+        'manager': followup.manager or '',
+        'company': followup.company.name if followup.company else '',
+        'department': followup.department.name if followup.department else '',
+        'priority': followup.get_priority_display(),
+        'status': followup.get_status_display(),
+        'grade': followup.customer_grade or '',
+        'score': followup.ai_score or 0,
+        'pipelineStage': followup.get_pipeline_stage_display(),
+        'email': followup.email or '',
+        'phone': followup.phone_number or '',
+        'notes': _ai_workspace_question_text(followup.notes, 700),
+    }
+
+
+def _customer_ai_question_context(followup, actor):
+    context_user = followup.user
+    department = followup.department if followup.department_id else None
+    if department:
+        context = _ai_workspace_department_question_context(department, context_user)
+    else:
+        context = {
+            'department': None,
+            'customers': [],
+            'summary': {},
+            'recentNotes': [],
+            'recentEmails': [],
+            'recentFeedbacks': [],
+            'questionFeedbacks': [],
+            'verifiedMemories': [],
+            'recentQuestionLogs': [],
+            'recentSchedules': [],
+        }
+
+    scope_label = ' · '.join(_ai_prompt_context(
+        followup.company.name if followup.company else '',
+        followup.department.name if followup.department else '',
+        followup.customer_name or followup.manager or '고객명 미정',
+    ))
+    primary_customer = _customer_ai_primary_context(followup)
+
+    recent_notes = []
+    history_qs = History.objects.filter(
+        user=context_user,
+        followup=followup,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related('followup').order_by('-created_at')[:10]
+    for history in history_qs:
+        activity_date = history.meeting_date or history.delivery_date
+        date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
+        recent_notes.append({
+            'date': date_label,
+            'type': history.get_action_type_display(),
+            'content': _ai_workspace_question_text(_history_activity_content(history), 900),
+            'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 320),
+            'nextActionDate': _date_or_none(history.next_action_date),
+        })
+
+    recent_schedules = []
+    schedule_qs = Schedule.objects.filter(
+        user=context_user,
+        followup=followup,
+    ).exclude(status='cancelled').order_by('-visit_date', '-visit_time')[:10]
+    for schedule in schedule_qs:
+        recent_schedules.append({
+            'id': schedule.id,
+            'date': _date_or_none(schedule.visit_date),
+            'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
+            'type': schedule.get_activity_type_display(),
+            'status': schedule.get_status_display(),
+            'amount': _money_int(schedule.expected_revenue),
+            'probability': schedule.probability or 0,
+            'purchaseConfirmed': bool(schedule.purchase_confirmed),
+            'notes': _ai_workspace_question_text(schedule.notes, 420),
+        })
+
+    context.update({
+        'scope': {
+            'type': 'customer',
+            'label': scope_label,
+            'followupId': followup.id,
+            'departmentId': department.id if department else None,
+        },
+        'primaryCustomer': primary_customer,
+        'primaryRecentNotes': recent_notes,
+        'primaryRecentSchedules': recent_schedules,
+        'primaryRecentEmails': _ai_workspace_recent_email_context(
+            context_user,
+            followup_ids=[followup.id],
+            department_id=department.id if department else None,
+            limit=8,
+        ),
+        'recentFeedbacks': _ai_workspace_question_recent_feedbacks(context_user, [followup.id], limit=8),
+        'questionFeedbacks': _ai_workspace_recent_question_feedbacks(actor, department_id=department.id if department else None),
+        'verifiedMemories': _ai_workspace_verified_memories(
+            actor,
+            department_id=department.id if department else None,
+            scope_type='department' if department else 'all',
+        ),
+        'recentQuestionLogs': _ai_workspace_recent_question_log_context(
+            actor,
+            department=department,
+            scope_type='department' if department else 'all',
+        ),
+    })
+    return context
+
+
+@never_cache
+@require_POST
+def customer_detail_ai_question_api(request, followup_id):
+    """Answer a customer-detail question scoped to one customer plus department context."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    followup = get_object_or_404(
+        FollowUp.objects.select_related('user', 'company', 'department', 'department__company'),
+        pk=followup_id,
+    )
+    if not can_access_followup(request.user, followup):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': '접근 권한이 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_json',
+            'message': '요청 JSON 형식이 올바르지 않습니다.',
+        }, status=400)
+
+    question = _ai_workspace_question_text(payload.get('question'), AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH)
+    if len(question) < 2:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_question',
+            'message': '질문을 입력하세요.',
+        }, status=400)
+
+    selected_model = _ai_workspace_normalize_question_model(payload.get('model') or payload.get('questionModel'))
+    context = _customer_ai_question_context(followup, request.user)
+    answer, source, web_search_used = _ai_workspace_generate_department_question_answer(
+        question,
+        context,
+        model=selected_model,
+        allow_web_search=False,
+        prompt_cache_key='sales-note:customer-detail-question:v1',
+    )
+
+    department = followup.department if followup.department_id else None
+    log_scope_type = 'department' if department else 'all'
+    question_log = AIWorkspaceQuestionLog.objects.create(
+        user=request.user,
+        department=department,
+        scope_type=log_scope_type,
+        question=question,
+        answer_snapshot=_ai_workspace_question_log_answer_snapshot(answer),
+        source='customer_detail',
+        model=selected_model,
+        web_search_used=False,
+    )
+    return JsonResponse({
+        'success': True,
+        'source': source,
+        'model': selected_model,
+        'modelLabel': _ai_workspace_question_model_label(selected_model),
+        'webSearchUsed': False,
+        'generatedAt': timezone.now().isoformat(),
+        'scope': context.get('scope') or {},
+        'department': context.get('department'),
+        'question': question,
+        'answer': answer,
+        'questionLog': _ai_workspace_question_log_payload(question_log),
+        'context': {
+            'type': 'customer',
+            'followupId': followup.id,
+            'label': (context.get('scope') or {}).get('label', ''),
+            'customerCount': len(context.get('customers') or []) or 1,
+            'departmentCount': 1 if context.get('department') else 0,
+            'summary': context.get('summary') or {},
+            'lastDelivery': context.get('lastDelivery'),
+            'recentNoteCount': len(context.get('primaryRecentNotes') or []),
+            'recentScheduleCount': len(context.get('primaryRecentSchedules') or []),
+            'recentEmailCount': len(context.get('primaryRecentEmails') or []),
+            'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
+            'questionFeedbackCount': len(context.get('questionFeedbacks') or []),
+            'verifiedMemoryCount': len(context.get('verifiedMemories') or []),
+            'recentQuestionLogCount': len(context.get('recentQuestionLogs') or []),
+        },
+        'requiresHumanReview': True,
+    })
+
+
+SCHEDULE_AI_COACH_OUTPUT_TOKENS = 1400
+
+
+def _schedule_ai_report_action_type(activity_type):
+    if activity_type in {'customer_meeting', 'quote', 'delivery_schedule', 'service'}:
+        return activity_type
+    return {
+        'quote': 'quote',
+        'delivery': 'delivery_schedule',
+        'service': 'service',
+        'customer_meeting': 'customer_meeting',
+    }.get(activity_type, 'customer_meeting')
+
+
+def _schedule_ai_coach_context(schedule, actor):
+    followup = schedule.followup
+    department = followup.department if followup and followup.department_id else None
+    email_thread_count = EmailLog.objects.filter(
+        schedule=schedule,
+        gmail_thread_id__isnull=False,
+    ).exclude(gmail_thread_id='').values('gmail_thread_id').distinct().count()
+    delivery_text, delivery_total = _schedules_delivery_items_summary(schedule)
+    documents = _schedules_document_actions(schedule, actor)
+    commercial_checks = _schedules_commercial_checks(
+        schedule,
+        actor,
+        documents,
+        email_thread_count,
+    )
+
+    related_notes = []
+    related_note_qs = History.objects.filter(
+        Q(schedule=schedule) | Q(followup=followup),
+        user=schedule.user,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related('followup').distinct().order_by('-created_at')[:10]
+    for history in related_note_qs:
+        activity_date = history.meeting_date or history.delivery_date
+        date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
+        related_notes.append({
+            'date': date_label,
+            'type': history.get_action_type_display(),
+            'content': _ai_workspace_question_text(_history_activity_content(history), 760),
+            'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 320),
+            'nextActionDate': _date_or_none(history.next_action_date),
+        })
+
+    return {
+        'scope': {
+            'type': 'schedule',
+            'label': ' · '.join(_ai_prompt_context(
+                followup.company.name if followup and followup.company else '',
+                followup.department.name if followup and followup.department else '',
+                followup.customer_name if followup else '',
+                schedule.get_activity_type_display(),
+            )),
+            'scheduleId': schedule.id,
+            'followupId': followup.id if followup else None,
+            'departmentId': department.id if department else None,
+        },
+        'schedule': {
+            'id': schedule.id,
+            'date': _date_or_none(schedule.visit_date),
+            'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
+            'activityType': schedule.activity_type,
+            'activityLabel': schedule.get_activity_type_display(),
+            'status': schedule.status,
+            'statusLabel': schedule.get_status_display(),
+            'location': schedule.location or '',
+            'notes': _ai_workspace_question_text(schedule.notes, 900),
+            'expectedRevenue': _money_int(schedule.expected_revenue),
+            'probability': schedule.probability or 0,
+            'expectedCloseDate': _date_or_none(schedule.expected_close_date),
+            'purchaseConfirmed': bool(schedule.purchase_confirmed),
+            'vatMode': schedule.vat_mode,
+            'usePrepayment': bool(schedule.use_prepayment),
+            'prepaymentAmount': _money_int(schedule.prepayment_amount),
+        },
+        'customer': _customer_ai_primary_context(followup) if followup else {},
+        'deliverySummary': {
+            'itemsText': _ai_workspace_question_text(delivery_text, 900),
+            'totalAmount': delivery_total,
+        },
+        'deliveryItems': [
+            _schedules_delivery_item_payload(item)
+            for item in schedule.delivery_items_set.all().order_by('id')[:12]
+        ],
+        'commercialChecks': {
+            'status': commercial_checks.get('status'),
+            'statusLabel': commercial_checks.get('statusLabel'),
+            'summary': commercial_checks.get('summary'),
+            'warnings': commercial_checks.get('warnings') or [],
+        },
+        'recentNotes': related_notes,
+        'recentEmails': _ai_workspace_recent_email_context(
+            schedule.user,
+            followup_ids=[followup.id] if followup else [],
+            department_id=department.id if department else None,
+            limit=8,
+        ),
+        'recentFeedbacks': _ai_workspace_question_recent_feedbacks(schedule.user, [followup.id] if followup else [], limit=6),
+        'verifiedMemories': _ai_workspace_verified_memories(
+            actor,
+            department_id=department.id if department else None,
+            scope_type='department' if department else 'all',
+        ),
+    }
+
+
+def _schedule_ai_evidence_from_context(context):
+    schedule = context.get('schedule') or {}
+    customer = context.get('customer') or {}
+    delivery_summary = context.get('deliverySummary') or {}
+    evidence = [
+        {
+            'label': '일정',
+            'value': ' · '.join(_ai_prompt_context(
+                schedule.get('date'),
+                schedule.get('time'),
+                schedule.get('activityLabel'),
+                schedule.get('statusLabel'),
+            )),
+        },
+        {
+            'label': '고객',
+            'value': ' · '.join(_ai_prompt_context(
+                customer.get('company'),
+                customer.get('department'),
+                customer.get('name'),
+                customer.get('pipelineStage'),
+            )),
+        },
+    ]
+    if delivery_summary.get('itemsText'):
+        evidence.append({
+            'label': '품목',
+            'value': delivery_summary.get('itemsText'),
+        })
+    return _ai_workspace_question_evidence_payload(evidence, limit=5, value_limit=700)
+
+
+def _schedule_ai_coach_fallback(context):
+    schedule = context.get('schedule') or {}
+    customer = context.get('customer') or {}
+    activity_type = schedule.get('activityType') or ''
+    activity_label = schedule.get('activityLabel') or '일정'
+    customer_label = customer.get('name') or '고객'
+    amount = _money_int(schedule.get('expectedRevenue') or (context.get('deliverySummary') or {}).get('totalAmount') or 0)
+    date_label = ' '.join(_ai_prompt_context(schedule.get('date'), schedule.get('time'))) or '일정 시간'
+    delivery_items = context.get('deliveryItems') or []
+
+    if activity_type == 'quote':
+        summary = f"{customer_label} 견적 일정입니다. 견적 금액, 품목, 의사결정 일정, 다음 회신 기한을 이 일정에서 확정하는 쪽으로 움직이세요."
+        talk_track = [
+            '이번 견적 기준에서 수량, 납기, 예산 중 어느 조건이 먼저 맞아야 진행 가능한지 확인합니다.',
+            '견적서를 보낸 뒤 언제까지 내부 확인이 가능한지 날짜로 받습니다.',
+            '가격을 먼저 낮추기보다 변경 가능한 조건과 필수 조건을 분리해 묻습니다.',
+        ]
+        checklist = ['견적 품목/수량 재확인', '의사결정자와 내부 결재 일정 확인', '견적 유효기간과 다음 회신일 설정']
+        recommended_next_action = '견적 전달 후 회신 기한을 CRM 후속일로 잡고, 필요한 수정 조건을 한 번에 정리합니다.'
+    elif activity_type == 'delivery':
+        summary = f"{customer_label} 납품 일정입니다. 품목, 수량, 세금계산서, 선결제 차감 여부를 현장에서 누락 없이 확인해야 합니다."
+        talk_track = [
+            '납품 품목과 수량이 맞는지 먼저 같이 확인합니다.',
+            '세금계산서 발행 기준과 선결제 차감 여부를 고객에게 명확히 확인합니다.',
+            '추가 소모품이나 다음 발주 예상 시점을 짧게 물어 다음 기회를 만듭니다.',
+        ]
+        checklist = ['납품 품목/수량 확인', '세금계산서와 결제 방식 확인', '다음 사용 예정일과 재주문 가능성 확인']
+        recommended_next_action = '납품 완료 여부와 세금계산서/결제 상태를 노트에 남기고 다음 재구매 확인일을 잡습니다.'
+    elif activity_type == 'service':
+        summary = f"{customer_label} 서비스 일정입니다. 증상, 사용 조건, 긴급도, 후속 처리 기준을 분리해 기록하는 것이 핵심입니다."
+        talk_track = [
+            '현재 증상이 언제부터 어떤 조건에서 반복되는지 확인합니다.',
+            '사용 제품, 로트, 사진/동영상 근거가 있는지 확인합니다.',
+            '교체, 회수, 추가 확인 중 어떤 처리 방향을 기대하는지 묻습니다.',
+        ]
+        checklist = ['증상과 발생 조건 확인', '제품/로트/사진 근거 확보', '처리 예정일과 담당자 합의']
+        recommended_next_action = '서비스 증상과 처리 예정일을 노트에 남기고 고객에게 다음 안내 시점을 공유합니다.'
+    else:
+        summary = f"{customer_label} 고객 미팅 일정입니다. 이 일정에서는 고객의 현재 실험/구매 맥락과 다음 제안 조건을 확인하는 데 집중하세요."
+        talk_track = [
+            '최근 사용 중인 품목과 불편한 점을 먼저 확인합니다.',
+            '다음 실험 일정, 예산, 구매 가능 시점을 짧게 물어봅니다.',
+            '바로 팔기보다 다음 견적이나 샘플 제안으로 이어질 조건을 찾습니다.',
+        ]
+        checklist = ['현재 사용 품목 확인', '다음 실험/구매 일정 확인', '견적/샘플 필요 여부 확인']
+        recommended_next_action = '미팅에서 확인한 구매 조건과 다음 연락일을 CRM 후속 액션으로 남깁니다.'
+
+    risks = []
+    if activity_type in {'quote', 'delivery'} and not delivery_items and not (context.get('deliverySummary') or {}).get('itemsText'):
+        risks.append({'level': 'medium', 'label': '품목 누락', 'value': '견적/납품 품목이 비어 있어 현장 확인이나 서류 자동화가 흔들릴 수 있습니다.'})
+    if amount <= 0 and activity_type in {'quote', 'delivery'}:
+        risks.append({'level': 'low', 'label': '금액 미입력', 'value': '예상 금액이 없어 매출 영향과 우선순위 판단이 약합니다.'})
+    if not (context.get('recentEmails') or []):
+        risks.append({'level': 'low', 'label': '메일 근거 부족', 'value': '최근 연결 메일이 없어 고객의 최신 문면 요청은 확인되지 않았습니다.'})
+
+    note_content = (
+        f"[{activity_label}] {date_label} {customer_label} 일정 진행. "
+        f"핵심 확인: {' / '.join(checklist[:3])}. "
+        f"권장 대응: {recommended_next_action}"
+    )
+    if schedule.get('notes'):
+        note_content += f" 기존 일정 메모: {schedule.get('notes')}"
+
+    return {
+        'summary': summary,
+        'priority': 'high' if activity_type in {'quote', 'delivery'} else 'medium',
+        'talkTrack': talk_track,
+        'checklist': checklist,
+        'risks': risks,
+        'recommendedNextAction': recommended_next_action,
+        'afterMeetingNoteDraft': {
+            'actionType': _schedule_ai_report_action_type(activity_type),
+            'content': _ai_workspace_question_text(note_content, 1600),
+            'nextAction': recommended_next_action,
+        },
+        'mailDraft': {
+            'subject': f"{customer_label} {activity_label} 후속 확인",
+            'body': (
+                f"안녕하세요.\n\n{activity_label} 관련해 오늘 확인한 내용을 기준으로 필요한 조건을 정리해드리겠습니다.\n"
+                f"{recommended_next_action}\n\n확인 후 회신드리겠습니다."
+            ),
+        },
+        'evidence': _schedule_ai_evidence_from_context(context),
+        'confidence': 'medium' if context.get('recentNotes') or context.get('deliveryItems') else 'low',
+    }
+
+
+def _schedule_ai_text_list(value, limit=6, text_limit=420):
+    return [
+        _ai_workspace_question_text(item, text_limit)
+        for item in _ai_json_list(value)[:limit]
+        if _ai_workspace_question_text(item, text_limit)
+    ]
+
+
+def _schedule_ai_risk_payload(value):
+    risks = []
+    for item in _ai_json_list(value)[:5]:
+        if isinstance(item, dict):
+            label = _ai_workspace_question_text(item.get('label') or item.get('title') or item.get('risk'), 160)
+            risk_value = _ai_workspace_question_text(item.get('value') or item.get('detail') or item.get('reason'), 520)
+            level = _ai_workspace_question_text(item.get('level') or item.get('severity'), 40) or 'medium'
+        else:
+            label = '주의'
+            risk_value = _ai_workspace_question_text(item, 520)
+            level = 'medium'
+        if label or risk_value:
+            risks.append({
+                'level': level if level in {'high', 'medium', 'low'} else 'medium',
+                'label': label or '주의',
+                'value': risk_value,
+            })
+    return risks
+
+
+def _normalize_schedule_ai_coach(data, fallback):
+    if not isinstance(data, dict):
+        return fallback
+
+    note_draft = data.get('afterMeetingNoteDraft') or data.get('reportDraft') or {}
+    if not isinstance(note_draft, dict):
+        note_draft = {}
+    fallback_note = fallback.get('afterMeetingNoteDraft') or {}
+
+    mail_draft = data.get('mailDraft') or data.get('emailDraft') or {}
+    if not isinstance(mail_draft, dict):
+        mail_draft = {}
+    fallback_mail = fallback.get('mailDraft') or {}
+
+    confidence = _ai_workspace_question_text(data.get('confidence') or fallback.get('confidence'), 20).lower()
+    if confidence not in {'high', 'medium', 'low'}:
+        confidence = fallback.get('confidence') or 'low'
+
+    result = {
+        'summary': _ai_workspace_question_text(data.get('summary') or data.get('answer'), 1400) or fallback.get('summary', ''),
+        'priority': _ai_workspace_question_text(data.get('priority'), 40) or fallback.get('priority', 'medium'),
+        'talkTrack': _schedule_ai_text_list(data.get('talkTrack') or data.get('talk_track'), limit=5) or fallback.get('talkTrack', []),
+        'checklist': _schedule_ai_text_list(data.get('checklist') or data.get('checks'), limit=7) or fallback.get('checklist', []),
+        'risks': _schedule_ai_risk_payload(data.get('risks')) or fallback.get('risks', []),
+        'recommendedNextAction': _ai_workspace_question_text(
+            data.get('recommendedNextAction') or data.get('nextAction'),
+            760,
+        ) or fallback.get('recommendedNextAction', ''),
+        'afterMeetingNoteDraft': {
+            'actionType': _schedule_ai_report_action_type(
+                note_draft.get('actionType') or fallback_note.get('actionType') or 'customer_meeting'
+            ),
+            'content': _ai_workspace_question_text(note_draft.get('content'), 1800) or fallback_note.get('content', ''),
+            'nextAction': _ai_workspace_question_text(
+                note_draft.get('nextAction') or note_draft.get('next_action'),
+                760,
+            ) or fallback_note.get('nextAction', ''),
+        },
+        'mailDraft': {
+            'subject': _ai_workspace_question_text(mail_draft.get('subject'), 220) or fallback_mail.get('subject', ''),
+            'body': _ai_workspace_question_text(mail_draft.get('body') or mail_draft.get('content'), 1800) or fallback_mail.get('body', ''),
+        },
+        'evidence': _ai_workspace_question_evidence_payload(data.get('evidence'), limit=6, value_limit=700) or fallback.get('evidence', []),
+        'confidence': confidence,
+    }
+    return result
+
+
+def _generate_schedule_ai_coach(context, model=None):
+    fallback = _schedule_ai_coach_fallback(context)
+    selected_model = model or AI_WORKSPACE_DEFAULT_QUESTION_MODEL
+    try:
+        from ai_chat.services import create_openai_chat_completion, get_openai_client, get_standard_openai_model
+
+        selected_model = (
+            model
+            or os.environ.get('OPENAI_MODEL_SCHEDULE_COACH')
+            or os.environ.get('OPENAI_MODEL_AI_WORKSPACE')
+            or get_standard_openai_model()
+            or AI_WORKSPACE_DEFAULT_QUESTION_MODEL
+        )
+        client = get_openai_client()
+        prompt_payload = {
+            'crmContext': context,
+            'rules': [
+                '제공된 crmContext에 있는 CRM 사실만 사용한다.',
+                '일정 상세 화면에서 바로 행동할 수 있는 실행 추천을 만든다.',
+                '질문을 기다리는 Q&A가 아니라 이 일정에서 어떻게 말하고 확인하고 기록할지 추천한다.',
+                '일정 유형이 견적이면 견적 조건, 회신 기한, 의사결정 일정을 우선한다.',
+                '일정 유형이 납품이면 품목, 수량, 세금계산서, 선결제, 다음 재주문 가능성을 우선한다.',
+                '일정 유형이 서비스이면 증상, 근거 확보, 처리 예정일을 우선한다.',
+                'afterMeetingNoteDraft는 저장하지 않을 초안이므로 사실과 확인 필요를 분리해 쓴다.',
+                '없는 구매 의사, 납품 완료, 고객 마음을 만들어내지 않는다.',
+                '웹 검색은 사용하지 않는다.',
+                'JSON 객체만 반환한다.',
+            ],
+            'outputSchema': {
+                'summary': 'string',
+                'priority': 'high|medium|low',
+                'talkTrack': ['string'],
+                'checklist': ['string'],
+                'risks': [{'level': 'high|medium|low', 'label': 'string', 'value': 'string'}],
+                'recommendedNextAction': 'string',
+                'afterMeetingNoteDraft': {
+                    'actionType': 'customer_meeting|quote|delivery_schedule|service',
+                    'content': 'string',
+                    'nextAction': 'string',
+                },
+                'mailDraft': {'subject': 'string', 'body': 'string'},
+                'evidence': [{'label': 'string', 'value': 'string'}],
+                'confidence': 'high|medium|low',
+            },
+        }
+        response = create_openai_chat_completion(
+            client,
+            'schedule_ai_coach',
+            selected_model,
+            [
+                {
+                    'role': 'system',
+                    'content': (
+                        '너는 B2B 영업 CRM의 일정 실행 코치다. '
+                        '현재 일정과 연결 고객 기록만 보고, 담당자가 이 일정에서 어떻게 행동해야 하는지 한국어로 구체적으로 추천한다. '
+                        '반드시 JSON 객체만 반환한다.'
+                    ),
+                },
+                {
+                    'role': 'user',
+                    'content': json.dumps(prompt_payload, ensure_ascii=False, cls=DjangoJSONEncoder),
+                },
+            ],
+            response_format={'type': 'json_object'},
+            temperature=0.2,
+            max_tokens=SCHEDULE_AI_COACH_OUTPUT_TOKENS,
+            prompt_cache_key='sales-note:schedule-coach:v1',
+        )
+        data = _ai_workspace_json_from_text(response.choices[0].message.content)
+        return _normalize_schedule_ai_coach(data, fallback), 'openai', selected_model
+    except Exception as exc:
+        logger.warning('Schedule AI coach fallback used: %s', exc)
+        return fallback, 'fallback', selected_model
+
+
+@never_cache
+@require_POST
+def schedule_ai_coach_api(request, schedule_id):
+    """Generate unsaved execution coaching for one schedule detail screen."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    schedule = _schedules_get_detail_schedule(schedule_id)
+    if not can_access_user_data(request.user, schedule.user):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': '접근 권한이 없습니다.',
+        }, status=403)
+
+    context = _schedule_ai_coach_context(schedule, request.user)
+    coach, source, selected_model = _generate_schedule_ai_coach(context)
+    return JsonResponse({
+        'success': True,
+        'source': source,
+        'model': selected_model,
+        'modelLabel': _ai_workspace_question_model_label(selected_model),
+        'generatedAt': timezone.now().isoformat(),
+        'scope': context.get('scope') or {},
+        'coach': coach,
+        'context': {
+            'scheduleId': schedule.id,
+            'followupId': schedule.followup_id,
+            'departmentId': schedule.followup.department_id if schedule.followup else None,
+            'recentNoteCount': len(context.get('recentNotes') or []),
+            'recentEmailCount': len(context.get('recentEmails') or []),
+            'deliveryItemCount': len(context.get('deliveryItems') or []),
+            'stored': False,
+        },
+        'requiresHumanReview': True,
+    })
 
 
 @never_cache

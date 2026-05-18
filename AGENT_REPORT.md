@@ -1,5 +1,100 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — AI Cost/Speed Optimization and Detail AI Integration
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포/운영 smoke 진행 예정
+
+### 요약
+
+AI 런타임 기본값을 비용/속도 친화적으로 정리하고, 기존 환경변수 override를 보존했습니다. 고객 상세에는 현재 고객+부서 배경으로 질문만 하는 AI 패널을 추가했고, 일정 상세에는 저장되지 않는 실행 코치 AI를 추가했습니다.
+
+### 변경된 파일
+
+- `ai_chat/services.py`: fast 기본 모델, prompt cache 옵션, usage/cached token 로깅, 모델별 chat completion 옵션 helper 추가.
+- `reporting/views.py`: 고객 상세 AI 질문 API, 일정 상세 AI 코치 API, schedule detail AI 권한 payload 추가.
+- `reporting/urls.py`: 고객 AI 질문 및 일정 AI 코치 route 추가.
+- `reporting/tests.py`: 새 API 권한/스코프/로그/비저장 fallback 테스트 추가.
+- `frontend/src/api.ts`: 고객 AI 질문 및 일정 AI 코치 타입/API client 추가.
+- `frontend/src/App.tsx`: 고객 상세 질문 패널, 일정 상세 실행 코치 패널, 보고 초안 적용/메일 초안 복사 UI 추가.
+- `frontend/src/styles.css`: 새 AI 패널 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 고객 상세에서 현재 고객과 같은 부서 배경을 함께 보고 질문할 수 있습니다.
+- 고객 상세 질문은 기존 `AIWorkspaceQuestionLog`에 `source=customer_detail`로 남겨 추적 가능합니다.
+- 일정 상세 AI는 질문 입력 대신 해당 일정에서 말할 내용, 체크리스트, 위험, 다음 액션, 보고 초안을 추천합니다.
+- 일정 AI 추천은 v1에서 저장하지 않고, 사용자가 `보고 초안 적용`을 누른 뒤 직접 저장해야 합니다.
+- AI 호출은 `gpt-5.4-mini` 기본값, prompt cache, token/cached token 로깅으로 비용/속도 기준을 개선했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 인증, 권한, 기존 AI Workspace 질문/기억/피드백 기능을 유지했습니다.
+- DB 모델 변경과 migration은 없습니다.
+- Django legacy 화면과 기존 React 고객/일정 상세 기능을 제거하지 않았습니다.
+- 환경변수 `OPENAI_MODEL_STANDARD`, `OPENAI_MODEL_AI_WORKSPACE`, `OPENAI_MODEL_SCHEDULE_COACH` override를 보존했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile ai_chat\services.py reporting\views.py reporting\urls.py
+→ OK
+
+python -m py_compile ai_chat\services.py reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_customer_detail_ai_question_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_customer_detail_ai_question_blocks_inaccessible_customer reporting.tests.AIWorkspaceSummaryApiTests.test_customer_detail_ai_question_uses_customer_context_and_logs reporting.tests.AIWorkspaceSummaryApiTests.test_schedule_ai_coach_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_schedule_ai_coach_blocks_inaccessible_schedule reporting.tests.AIWorkspaceSummaryApiTests.test_schedule_ai_coach_returns_unsaved_fallback_for_accessible_schedule --verbosity=1
+→ Ran 6 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 85 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-CEcWHmqO.js and /assets/index-DkQFgOSo.css. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+local frontend route smoke
+→ Vite on http://127.0.0.1:5174/ and Django on http://127.0.0.1:8000/. Anonymous /customers/1/ redirected to /reporting/login/?next=/customers/1/ as expected.
+```
+
+### 알려진 제한
+
+- 일정 AI 코치 결과는 저장하지 않습니다. 사용자가 보고 초안을 적용한 뒤 저장해야 CRM 기록이 됩니다.
+- 고객 상세 AI는 질문형 v1만 제공합니다. 자동 추천 카드나 장기 저장 UI는 기존 AI Workspace 흐름을 사용합니다.
+- 운영 로그인 세션에서 실제 고객/일정 상세 패널 버튼 클릭은 배포 후 사용자 수동 검수가 필요합니다.
+
+### 권장 다음 단계
+
+운영에서 고객 상세 질문과 일정 상세 실행 코치를 수동 검수한 뒤, 통과하면 다른 React CRM 상세 화면의 남은 AI 표면은 같은 “범위 고정 + 저장 전 사용자 확인” 원칙으로 확장하는 것이 좋습니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 고객 상세 `/customers/<id>/`에 접속합니다.
+2. `고객 상황 질문` 패널에서 현재 고객 대응 질문을 입력하고 답변이 고객+부서 맥락으로 나오는지 확인합니다.
+3. 같은 고객 상세에서 기존 `Department AI` 분석 실행/결과 보기 기능이 그대로 동작하는지 확인합니다.
+4. 일정 상세 `/schedules/<id>/`에 접속합니다.
+5. `일정 실행 코치`에서 `추천 생성`을 누르고 말문, 체크리스트, 위험, 다음 액션이 일정 유형에 맞는지 확인합니다.
+6. `보고 초안 적용`을 눌러 보고 작성 폼에 내용이 들어오지만 자동 저장되지 않는지 확인합니다.
+7. 필요한 경우 보고를 직접 저장하고 일정/고객 연결이 유지되는지 확인합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행합니다.
+
 ## 2026-05-18 — AI Workspace Memory Management v1
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke/사용자 운영 수동검수 완료

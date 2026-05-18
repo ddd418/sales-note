@@ -2685,6 +2685,142 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.schedule-ai-coach-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  background: #f8faff;
+}
+
+.schedule-ai-coach-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.schedule-ai-coach-heading h3 {
+  margin: 2px 0 0;
+}
+
+.schedule-ai-coach-run:disabled {
+  cursor: not-allowed;
+  opacity: 0.66;
+}
+
+.schedule-ai-coach-body,
+.schedule-ai-coach-list,
+.schedule-ai-coach-risk-list,
+.schedule-ai-coach-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-ai-coach-summary,
+.schedule-ai-coach-next {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.schedule-ai-coach-summary p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.48;
+  overflow-wrap: anywhere;
+}
+
+.schedule-ai-coach-summary span,
+.schedule-ai-coach-next span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.schedule-ai-coach-next strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.schedule-ai-coach-list h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.schedule-ai-coach-list p {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.schedule-ai-coach-checklist {
+  display: grid;
+  gap: 6px;
+}
+
+.schedule-ai-coach-checklist span,
+.schedule-ai-coach-risk-list div {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid #d1fae5;
+  border-radius: 7px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.schedule-ai-coach-risk-list div {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.schedule-ai-coach-risk-list div.high {
+  border-color: #fecaca;
+  background: #fff5f5;
+  color: #991b1b;
+}
+
+.schedule-ai-coach-risk-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.schedule-ai-coach-risk-list strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.schedule-ai-coach-evidence {
+  margin-top: 0;
+}
+
+.schedule-ai-coach-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .schedule-commercial-panel {
   display: grid;
   gap: 10px;
@@ -4551,6 +4687,25 @@ h2 {
 .customer-ai-run-button:disabled {
   cursor: not-allowed;
   opacity: 0.68;
+}
+
+.customer-ai-question-card {
+  border-color: #c7d2fe;
+  background: #f5f7ff;
+}
+
+.customer-ai-question-card .ai-department-question-form,
+.customer-ai-question-card .ai-department-question-answer {
+  margin-top: 0;
+}
+
+.customer-ai-question-scope {
+  background: #ffffff;
+}
+
+.customer-ai-question-answer {
+  gap: 9px;
+  padding: 10px;
 }
 
 .pipeline-ai-alert {

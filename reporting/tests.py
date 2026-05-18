@@ -8594,6 +8594,165 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('P4345N00 (RLD-1250NS', result_text)
         self.assertIn('Low Retention Paradigm Refills', result_text)
 
+    def test_customer_detail_ai_question_requires_ai_permission(self):
+        followup, _department = self._create_customer(self.no_ai_user, '고객질문권한없음')
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.post(
+            reverse('reporting:customer_detail_ai_question_api', args=[followup.id]),
+            data=json.dumps({'question': '오늘 뭐라고 말할까?'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    def test_customer_detail_ai_question_blocks_inaccessible_customer(self):
+        outsider = make_user('ai_workspace_customer_outsider', role='salesman', can_use_ai=True, company=self.other_company)
+        followup, _department = self._create_customer(outsider, '고객질문타사회사')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:customer_detail_ai_question_api', args=[followup.id]),
+            data=json.dumps({'question': '이 고객 어떻게 대응할까?'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    def test_customer_detail_ai_question_uses_customer_context_and_logs(self):
+        from reporting.models import AIWorkspaceQuestionLog, History
+
+        followup, department = self._create_customer(self.user, '고객질문컨텍스트')
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='고객이 재견적 조건을 다시 확인하고 싶다고 말함',
+            next_action='재견적 조건 정리',
+        )
+        captured = {}
+
+        def fake_generate(question, context, model=None, **kwargs):
+            captured['question'] = question
+            captured['context'] = context
+            captured['model'] = model
+            captured['kwargs'] = kwargs
+            return {
+                'summary': '재견적 조건을 먼저 정리해서 말하는 것이 좋습니다.',
+                'bullets': ['고객 기록 기반 답변'],
+                'evidence': [{'label': '고객', 'value': context['primaryCustomer']['name']}],
+                'actionItems': [],
+                'confidence': 'high',
+            }, 'openai', False
+
+        self.client.force_login(self.user)
+        with patch('reporting.views._ai_workspace_generate_department_question_answer', side_effect=fake_generate):
+            response = self.client.post(
+                reverse('reporting:customer_detail_ai_question_api', args=[followup.id]),
+                data=json.dumps({'question': '재견적 조건을 어떻게 말할까?'}),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['scope']['type'], 'customer')
+        self.assertEqual(payload['context']['followupId'], followup.id)
+        self.assertFalse(payload['webSearchUsed'])
+        self.assertEqual(captured['question'], '재견적 조건을 어떻게 말할까?')
+        self.assertEqual(captured['context']['primaryCustomer']['id'], followup.id)
+        self.assertEqual(captured['context']['scope']['departmentId'], department.id)
+        self.assertFalse(captured['kwargs']['allow_web_search'])
+
+        log = AIWorkspaceQuestionLog.objects.get(user=self.user)
+        self.assertEqual(log.department, department)
+        self.assertEqual(log.scope_type, 'department')
+        self.assertEqual(log.source, 'customer_detail')
+        self.assertEqual(log.model, 'gpt-5.4-mini')
+        self.assertFalse(log.web_search_used)
+
+    def test_schedule_ai_coach_requires_ai_permission(self):
+        from datetime import time
+
+        followup, _department = self._create_customer(self.no_ai_user, '일정코치권한없음')
+        schedule = Schedule.objects.create(
+            user=self.no_ai_user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.post(reverse('reporting:schedule_ai_coach_api', args=[schedule.id]))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    def test_schedule_ai_coach_blocks_inaccessible_schedule(self):
+        from datetime import time
+
+        outsider = make_user('ai_workspace_schedule_outsider', role='salesman', can_use_ai=True, company=self.other_company)
+        followup, _department = self._create_customer(outsider, '일정코치타사회사')
+        schedule = Schedule.objects.create(
+            user=outsider,
+            company=self.other_company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 0),
+            activity_type='customer_meeting',
+            status='scheduled',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:schedule_ai_coach_api', args=[schedule.id]))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    def test_schedule_ai_coach_returns_unsaved_fallback_for_accessible_schedule(self):
+        from datetime import time
+        from decimal import Decimal
+        from reporting.models import AIWorkspaceQuestionLog, DeliveryItem
+
+        followup, _department = self._create_customer(self.user, '일정코치')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(14, 30),
+            activity_type='delivery',
+            status='scheduled',
+            expected_revenue=Decimal('330000'),
+            notes='납품 품목과 세금계산서 확인 필요',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='P1000',
+            quantity=3,
+            unit='EA',
+            unit_price=Decimal('100000'),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:schedule_ai_coach_api', args=[schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['context']['scheduleId'], schedule.id)
+        self.assertFalse(payload['context']['stored'])
+        self.assertIn('납품', payload['coach']['summary'])
+        self.assertTrue(payload['coach']['afterMeetingNoteDraft']['content'])
+        self.assertEqual(payload['coach']['afterMeetingNoteDraft']['actionType'], 'delivery_schedule')
+        self.assertEqual(AIWorkspaceQuestionLog.objects.count(), 0)
+
     def test_ai_workspace_department_question_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '질문권한없음')
         self.client.force_login(self.no_ai_user)

@@ -63,6 +63,7 @@ import {
   CustomerCalibrationRecord,
   CustomerCalibrationPayload,
   CustomerDetailData,
+  CustomerAIQuestionResponse,
   CustomerAiDepartment,
   CustomerAiPainpoint,
   CustomerEditPayload,
@@ -115,6 +116,7 @@ import {
   ScheduleGeneratedDocument,
   ScheduleDocumentPreviewData,
   ScheduleFileItem,
+  ScheduleAICoachResponse,
   ScheduleEditPayload,
   ScheduleItem,
   SchedulePrepaymentSelectionPayload,
@@ -154,6 +156,7 @@ import {
   PersonalScheduleDetailData,
   PersonalSchedulePayload,
   addNoteReply,
+  askCustomerDetailAIQuestion,
   assignManagerTask,
   askAIWorkspaceDepartmentQuestion,
   bulkDeleteProducts,
@@ -168,6 +171,7 @@ import {
   createCustomer as createCustomerRecord,
   createDocumentTemplate,
   generateAIWorkspaceActionDraft,
+  generateScheduleAICoach,
   createPersonalSchedule,
   changeManagerTaskStatus,
   changeTaskStatus,
@@ -2781,6 +2785,93 @@ function CustomerAiResultPanel({
   );
 }
 
+function CustomerAIQuestionAnswer({ result }: { result: CustomerAIQuestionResponse }) {
+  const answer = result.answer;
+  const decision = answer.decision;
+  const actionItems = answer.actionItems ?? [];
+  const perspectiveRows = answer.perspective ? [
+    { label: '고객 입장 추정', value: answer.perspective.customerPerspective },
+    { label: '영업 판단', value: answer.perspective.salesJudgment },
+    { label: '추천 접근', value: answer.perspective.recommendedApproach },
+    { label: '말문 예시', value: answer.perspective.talkTrack },
+    { label: '주의점', value: answer.perspective.caution },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
+
+  return (
+    <article className="ai-department-question-answer customer-ai-question-answer">
+      <div className="ai-department-question-answer-head">
+        <p>{answer.summary}</p>
+        <span>{result.source === 'openai' ? `${result.modelLabel || 'AI'} 답변` : 'CRM 기반 답변'}</span>
+      </div>
+      {decision?.recommendedChoice ? (
+        <section className="ai-department-question-decision">
+          <span>추천 판단</span>
+          <strong>{decision.recommendedChoice}</strong>
+          {decision.reason || decision.rejectedChoice || decision.exception ? (
+            <dl>
+              {decision.rejectedChoice ? <div><dt>버릴 선택</dt><dd>{decision.rejectedChoice}</dd></div> : null}
+              {decision.reason ? <div><dt>판단 이유</dt><dd>{decision.reason}</dd></div> : null}
+              {decision.exception ? <div><dt>예외 조건</dt><dd>{decision.exception}</dd></div> : null}
+            </dl>
+          ) : null}
+        </section>
+      ) : null}
+      {perspectiveRows.length > 0 ? (
+        <dl className="ai-department-question-perspective">
+          {perspectiveRows.map((item) => (
+            <div key={item.label}>
+              <dt>{item.label}</dt>
+              <dd>{item.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {actionItems.length > 0 ? (
+        <div className="ai-department-question-actions">
+          {actionItems.slice(0, 4).map((item, index) => (
+            <section className="ai-department-question-action-item" key={`${item.rank || index}-${item.title}-${item.nextAction}`}>
+              <div className="ai-department-question-action-head">
+                <div>
+                  <span>{item.priority || '추천 작업'}</span>
+                  <strong>{item.title || `추천 작업 ${index + 1}`}</strong>
+                </div>
+                <small>{formatNumber(item.rank || index + 1)}</small>
+              </div>
+              {item.reason ? <p className="ai-department-question-action-meta">{item.reason}</p> : null}
+              {item.nextAction ? (
+                <dl className="ai-department-question-action-detail">
+                  <div>
+                    <dt>다음 액션</dt>
+                    <dd>{item.nextAction}</dd>
+                  </div>
+                  {item.timing ? <div><dt>확인 시점</dt><dd>{item.timing}</dd></div> : null}
+                </dl>
+              ) : null}
+            </section>
+          ))}
+        </div>
+      ) : null}
+      {answer.bullets.length > 0 ? (
+        <ul>
+          {answer.bullets.slice(0, 5).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+      {answer.evidence.length > 0 ? (
+        <div className="ai-evidence-list">
+          {answer.evidence.slice(0, 5).map((item) => (
+            <span key={`${item.label}-${item.value}`}>
+              <b>{item.label}</b>
+              {item.value}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function CustomerDetailPage({
   data,
   loading,
@@ -2802,6 +2893,10 @@ function CustomerDetailPage({
   const [aiResultOpen, setAiResultOpen] = useState(false);
   const [aiVerificationNotes, setAiVerificationNotes] = useState<Record<number, string>>({});
   const [aiVerifyingId, setAiVerifyingId] = useState<number | null>(null);
+  const [customerAiQuestion, setCustomerAiQuestion] = useState('');
+  const [customerAiQuestionLoading, setCustomerAiQuestionLoading] = useState(false);
+  const [customerAiQuestionError, setCustomerAiQuestionError] = useState('');
+  const [customerAiQuestionResult, setCustomerAiQuestionResult] = useState<CustomerAIQuestionResponse | null>(null);
   const [assetEditor, setAssetEditor] = useState<CustomerAssetEditorMode>('');
   const [assetForm, setAssetForm] = useState<CustomerAssetFormState>(() => makeCustomerAssetForm());
   const [serviceCaseForm, setServiceCaseForm] = useState<CustomerServiceCaseFormState>(() => makeCustomerServiceCaseForm());
@@ -2824,6 +2919,10 @@ function CustomerDetailPage({
     setAiResultOpen(false);
     setAiVerificationNotes({});
     setAiVerifyingId(null);
+    setCustomerAiQuestion('');
+    setCustomerAiQuestionLoading(false);
+    setCustomerAiQuestionError('');
+    setCustomerAiQuestionResult(null);
     setAssetEditor('');
     setAssetForm(makeCustomerAssetForm(null, getOptionValue(data?.assetSummary.options.assetStatuses ?? [], 'active')));
     setServiceCaseForm(makeCustomerServiceCaseForm(data?.assetSummary));
@@ -2971,6 +3070,34 @@ function CustomerDetailPage({
       setAiError(error instanceof Error ? error.message : 'PainPoint 검증 저장에 실패했습니다.');
     } finally {
       setAiVerifyingId(null);
+    }
+  };
+
+  const handleCustomerAiQuestionSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!customer || customerAiQuestionLoading) {
+      return;
+    }
+    if (!data?.aiDepartment?.canUseAi) {
+      setCustomerAiQuestionError(data?.aiDepartment?.message || 'AI 기능 사용 권한이 없습니다.');
+      return;
+    }
+    const question = customerAiQuestion.trim();
+    if (question.length < 2) {
+      setCustomerAiQuestionError('질문을 입력하세요.');
+      return;
+    }
+
+    setCustomerAiQuestionLoading(true);
+    setCustomerAiQuestionError('');
+    try {
+      const result = await askCustomerDetailAIQuestion(customer.id, question);
+      setCustomerAiQuestionResult(result);
+    } catch (error) {
+      setCustomerAiQuestionResult(null);
+      setCustomerAiQuestionError(error instanceof Error ? error.message : '고객 AI 질문에 실패했습니다.');
+    } finally {
+      setCustomerAiQuestionLoading(false);
     }
   };
 
@@ -4030,6 +4157,57 @@ function CustomerDetailPage({
                 onVerify={handleAiPainpointVerify}
               />
             ) : null}
+          </div>
+
+          <div className="customer-ai-card customer-ai-question-card">
+            <div className="customer-ai-card-heading">
+              <div>
+                <span className="eyebrow">Customer AI</span>
+                <h3>고객 상황 질문</h3>
+              </div>
+              <MessageSquareText size={18} />
+            </div>
+            <div className="ai-department-question-scope customer-ai-question-scope">
+              <span>{[customer?.company, customer?.department, customer?.customer].filter(Boolean).join(' · ') || '현재 고객'}</span>
+              <small>고객 + 부서 배경</small>
+              {customerAiQuestionResult?.context?.recentEmailCount ? <small>메일 {formatNumber(customerAiQuestionResult.context.recentEmailCount)}건</small> : null}
+            </div>
+            <form className="ai-department-question-form customer-ai-question-form" onSubmit={handleCustomerAiQuestionSubmit}>
+              <textarea
+                disabled={!aiDepartment.canUseAi || customerAiQuestionLoading}
+                maxLength={600}
+                onChange={(event) => {
+                  setCustomerAiQuestion(event.target.value);
+                  setCustomerAiQuestionError('');
+                }}
+                placeholder="예: 오늘 재견적 조건을 어떻게 말할까?"
+                rows={3}
+                value={customerAiQuestion}
+              />
+              <div>
+                <span>{formatNumber(customerAiQuestion.trim().length)} / 600</span>
+                <button
+                  disabled={!aiDepartment.canUseAi || customerAiQuestion.trim().length < 2 || customerAiQuestionLoading}
+                  type="submit"
+                >
+                  {customerAiQuestionLoading ? <Loader2 className="spin-icon" size={14} /> : <Send size={14} />}
+                  {customerAiQuestionLoading ? '분석 중' : '질문'}
+                </button>
+              </div>
+            </form>
+            {customerAiQuestionError ? (
+              <div className="dashboard-api-alert compact">
+                <AlertTriangle size={16} />
+                <span>{customerAiQuestionError}</span>
+              </div>
+            ) : null}
+            {!aiDepartment.canUseAi && !customerAiQuestionError ? (
+              <div className="dashboard-api-alert compact">
+                <AlertTriangle size={16} />
+                <span>{aiDepartment.message || 'AI 기능 사용 권한이 없습니다.'}</span>
+              </div>
+            ) : null}
+            {customerAiQuestionResult ? <CustomerAIQuestionAnswer result={customerAiQuestionResult} /> : null}
           </div>
 
           <div className="dashboard-panel-heading customer-detail-section-heading">
@@ -7409,6 +7587,111 @@ function ScheduleDocumentsPanel({
   );
 }
 
+function ScheduleAICoachPanel({
+  canUseAi,
+  error,
+  loading,
+  message,
+  permissionMessage,
+  onApplyDraft,
+  onCopyMail,
+  onGenerate,
+  result,
+}: {
+  canUseAi: boolean;
+  error: string;
+  loading: boolean;
+  message: string;
+  permissionMessage: string;
+  onApplyDraft: () => void;
+  onCopyMail: () => void;
+  onGenerate: () => void;
+  result: ScheduleAICoachResponse | null;
+}) {
+  const coach = result?.coach ?? null;
+  const risks = coach?.risks ?? [];
+  const evidence = coach?.evidence ?? [];
+  const canApplyDraft = Boolean(coach?.afterMeetingNoteDraft?.content);
+  const canCopyMail = Boolean(coach?.mailDraft?.body || coach?.mailDraft?.subject);
+
+  return (
+    <section className="schedule-ai-coach-panel" aria-label="일정 AI 실행 코치">
+      <div className="schedule-ai-coach-heading">
+        <div>
+          <span className="eyebrow">Execution AI</span>
+          <h3>일정 실행 코치</h3>
+        </div>
+        <button className="customer-row-action schedule-ai-coach-run" disabled={!canUseAi || loading} onClick={onGenerate} type="button">
+          {loading ? <Loader2 className="spin-icon" size={14} /> : <Sparkles size={14} />}
+          <span>{loading ? '분석 중' : coach ? '다시 생성' : '추천 생성'}</span>
+        </button>
+      </div>
+      {!canUseAi ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{permissionMessage || 'AI 기능 사용 권한이 없습니다.'}</span></div> : null}
+      {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
+      {message ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{message}</span></div> : null}
+      {coach ? (
+        <div className="schedule-ai-coach-body">
+          <div className="schedule-ai-coach-summary">
+            <p>{coach.summary}</p>
+            <span>{result?.source === 'openai' ? `${result.modelLabel || 'AI'} 추천` : 'CRM 기반 추천'} · {coach.confidence}</span>
+          </div>
+          {coach.recommendedNextAction ? (
+            <div className="schedule-ai-coach-next">
+              <span>다음 액션</span>
+              <strong>{coach.recommendedNextAction}</strong>
+            </div>
+          ) : null}
+          {coach.talkTrack.length > 0 ? (
+            <div className="schedule-ai-coach-list">
+              <h4>말문</h4>
+              {coach.talkTrack.map((item) => <p key={item}>{item}</p>)}
+            </div>
+          ) : null}
+          {coach.checklist.length > 0 ? (
+            <div className="schedule-ai-coach-checklist">
+              {coach.checklist.map((item) => (
+                <span key={item}><CheckCircle2 size={13} />{item}</span>
+              ))}
+            </div>
+          ) : null}
+          {risks.length > 0 ? (
+            <div className="schedule-ai-coach-risk-list">
+              {risks.map((risk) => (
+                <div className={risk.level || 'medium'} key={`${risk.label}-${risk.value}`}>
+                  <AlertTriangle size={14} />
+                  <span><strong>{risk.label}</strong>{risk.value}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {evidence.length > 0 ? (
+            <div className="ai-evidence-list schedule-ai-coach-evidence">
+              {evidence.slice(0, 5).map((item) => (
+                <span key={`${item.label}-${item.value}`}>
+                  <b>{item.label}</b>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="schedule-ai-coach-actions">
+            <button className="route-secondary-action" disabled={!canApplyDraft} onClick={onApplyDraft} type="button">
+              <FileText size={14} />
+              보고 초안 적용
+            </button>
+            <button className="route-secondary-action" disabled={!canCopyMail} onClick={onCopyMail} type="button">
+              <Copy size={14} />
+              메일 초안 복사
+            </button>
+          </div>
+        </div>
+      ) : (
+        <DashboardEmpty label="현재 일정 기준 추천을 생성하세요" />
+      )}
+    </section>
+  );
+}
+
 function ScheduleDetailPage({
   data,
   loading,
@@ -7465,6 +7748,10 @@ function ScheduleDetailPage({
   const [scheduleNoteError, setScheduleNoteError] = useState('');
   const [scheduleNoteMessage, setScheduleNoteMessage] = useState('');
   const [scheduleNoteHref, setScheduleNoteHref] = useState('');
+  const [scheduleCoachLoading, setScheduleCoachLoading] = useState(false);
+  const [scheduleCoachError, setScheduleCoachError] = useState('');
+  const [scheduleCoachMessage, setScheduleCoachMessage] = useState('');
+  const [scheduleCoachResult, setScheduleCoachResult] = useState<ScheduleAICoachResponse | null>(null);
 
   useEffect(() => {
     setEditForm(makeScheduleEditForm(currentSchedule));
@@ -7508,6 +7795,10 @@ function ScheduleDetailPage({
     setScheduleNoteError('');
     setScheduleNoteMessage('');
     setScheduleNoteHref('');
+    setScheduleCoachLoading(false);
+    setScheduleCoachError('');
+    setScheduleCoachMessage('');
+    setScheduleCoachResult(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -7704,6 +7995,66 @@ function ScheduleDetailPage({
       setScheduleNoteError(error instanceof Error ? error.message : '영업노트 저장에 실패했습니다.');
     } finally {
       setScheduleNoteSaving(false);
+    }
+  };
+
+  const handleScheduleCoachRun = async () => {
+    if (!currentSchedule || scheduleCoachLoading) {
+      return;
+    }
+    setScheduleCoachLoading(true);
+    setScheduleCoachError('');
+    setScheduleCoachMessage('');
+    try {
+      const result = await generateScheduleAICoach(currentSchedule.id);
+      setScheduleCoachResult(result);
+      setScheduleCoachMessage(result.context?.stored === false ? '추천은 저장되지 않았습니다.' : '');
+    } catch (error) {
+      setScheduleCoachResult(null);
+      setScheduleCoachError(error instanceof Error ? error.message : '일정 AI 추천 생성에 실패했습니다.');
+    } finally {
+      setScheduleCoachLoading(false);
+    }
+  };
+
+  const handleScheduleCoachApplyDraft = () => {
+    if (!currentSchedule) {
+      return;
+    }
+    const draft = scheduleCoachResult?.coach.afterMeetingNoteDraft;
+    if (!draft?.content) {
+      setScheduleCoachError('적용할 보고 초안이 없습니다.');
+      setScheduleCoachMessage('');
+      return;
+    }
+    setScheduleNoteForm({
+      ...makeScheduleNoteCreateForm(currentSchedule),
+      actionType: draft.actionType || scheduleActivityToNoteActionType(currentSchedule.activityType),
+      content: draft.content,
+      nextAction: draft.nextAction || scheduleCoachResult?.coach.recommendedNextAction || '',
+    });
+    setScheduleNoteOpen(true);
+    setScheduleNoteError('');
+    setScheduleNoteMessage('AI 초안을 보고 작성 폼에 불러왔습니다.');
+    setScheduleNoteHref('');
+    setScheduleCoachError('');
+    setScheduleCoachMessage('보고 초안을 작성 폼에 적용했습니다.');
+  };
+
+  const handleScheduleCoachCopyMail = async () => {
+    const draft = scheduleCoachResult?.coach.mailDraft;
+    if (!draft?.subject && !draft?.body) {
+      setScheduleCoachError('복사할 메일 초안이 없습니다.');
+      setScheduleCoachMessage('');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText([draft.subject, draft.body].filter(Boolean).join('\n\n'));
+      setScheduleCoachError('');
+      setScheduleCoachMessage('메일 초안을 복사했습니다.');
+    } catch {
+      setScheduleCoachError('메일 초안을 복사하지 못했습니다.');
+      setScheduleCoachMessage('');
     }
   };
 
@@ -8921,6 +9272,17 @@ function ScheduleDetailPage({
             {data.links.createNote ? <a href={data.links.createNote}>보고 작성</a> : null}
             <a href={data.links.calendar}>일정 캘린더</a>
           </div>
+          <ScheduleAICoachPanel
+            canUseAi={data.ai.canUseAi}
+            error={scheduleCoachError}
+            loading={scheduleCoachLoading}
+            message={scheduleCoachMessage}
+            permissionMessage={data.ai.message}
+            onApplyDraft={handleScheduleCoachApplyDraft}
+            onCopyMail={handleScheduleCoachCopyMail}
+            onGenerate={handleScheduleCoachRun}
+            result={scheduleCoachResult}
+          />
           <ScheduleCommercialChecksPanel checks={data.commercialChecks} />
           <ScheduleDocumentsPanel
             documents={data.documents}

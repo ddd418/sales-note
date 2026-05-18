@@ -2486,6 +2486,10 @@ export type ScheduleDetailData = {
       djangoHref?: string;
     }>;
   };
+  ai: {
+    canUseAi: boolean;
+    message: string;
+  };
   relatedNotes: NoteItem[];
   deliveryItems: ScheduleDeliveryItem[];
   documents: ScheduleDocumentsData;
@@ -2910,6 +2914,69 @@ export type AIWorkspaceDepartmentQuestionResponse = {
     questionFeedbackCount?: number;
     verifiedMemoryCount?: number;
     recentQuestionLogCount?: number;
+  };
+  requiresHumanReview: boolean;
+  error?: string;
+  message?: string;
+};
+
+export type CustomerAIQuestionResponse = AIWorkspaceDepartmentQuestionResponse & {
+  context: AIWorkspaceDepartmentQuestionResponse['context'] & {
+    type?: 'customer' | string;
+    followupId?: number;
+    label?: string;
+    recentNoteCount?: number;
+    recentScheduleCount?: number;
+    recentEmailCount?: number;
+  };
+};
+
+export type ScheduleAICoach = {
+  summary: string;
+  priority: 'high' | 'medium' | 'low' | string;
+  talkTrack: string[];
+  checklist: string[];
+  risks: Array<{
+    level: 'high' | 'medium' | 'low' | string;
+    label: string;
+    value: string;
+  }>;
+  recommendedNextAction: string;
+  afterMeetingNoteDraft: {
+    actionType: string;
+    content: string;
+    nextAction: string;
+  };
+  mailDraft: {
+    subject: string;
+    body: string;
+  };
+  evidence: AIWorkspaceActionEvidence[];
+  confidence: 'high' | 'medium' | 'low' | string;
+};
+
+export type ScheduleAICoachResponse = {
+  success?: boolean;
+  source: 'openai' | 'fallback';
+  model?: string;
+  modelLabel?: string;
+  generatedAt: string;
+  scope?: {
+    type?: string;
+    label?: string;
+    scheduleId?: number;
+    followupId?: number | null;
+    departmentId?: number | null;
+  };
+  coach: ScheduleAICoach;
+  context: {
+    scheduleId: number;
+    followupId: number | null;
+    departmentId: number | null;
+    recentNoteCount: number;
+    recentEmailCount: number;
+    deliveryItemCount: number;
+    stored: boolean;
   };
   requiresHumanReview: boolean;
   error?: string;
@@ -4268,6 +4335,10 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     activityTypes: [],
     statuses: [],
     customers: [],
+  },
+  ai: {
+    canUseAi: false,
+    message: '',
   },
   relatedNotes: [],
   deliveryItems: [],
@@ -7013,6 +7084,10 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         ...emptyScheduleDetailData.edit,
         ...(payload.edit ?? {}),
       },
+      ai: {
+        ...emptyScheduleDetailData.ai,
+        ...(payload.ai ?? {}),
+      },
       schedule: payload.schedule ?? emptyScheduleDetailData.schedule,
       relatedNotes: payload.relatedNotes ?? emptyScheduleDetailData.relatedNotes,
       deliveryItems: payload.deliveryItems ?? emptyScheduleDetailData.deliveryItems,
@@ -7881,6 +7956,59 @@ export async function askAIWorkspaceDepartmentQuestion(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI department question failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function askCustomerDetailAIQuestion(
+  followupId: number,
+  question: string,
+): Promise<CustomerAIQuestionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(`/reporting/api/customers/${followupId}/ai-question/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ question }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Customer AI question API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CustomerAIQuestionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Customer AI question failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function generateScheduleAICoach(scheduleId: number): Promise<ScheduleAICoachResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(`/reporting/api/schedules/${scheduleId}/ai-coach/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({}),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule AI coach API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleAICoachResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule AI coach failed: ${response.status}`);
   }
   return data;
 }

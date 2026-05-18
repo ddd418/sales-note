@@ -1,5 +1,49 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 AI cost/speed optimization and detail AI integration plan
+
+**Background**:
+
+- User completed manual verification for the previous AI Workspace memory-management work.
+- Next task is to make the existing AI runtime cheaper/faster without weakening quality, then bring scoped AI help into React customer and schedule detail screens.
+- Customer detail AI should answer user questions only, scoped to the current customer plus department background.
+- Schedule detail AI should act as an execution coach that recommends how to handle the current schedule, not as a generic question box.
+
+**DB change required**: No.
+
+- Reuse existing AI logs for customer-detail questions.
+- Do not persist schedule coach output in v1.
+- Preserve all existing `/reporting/*` routes and legacy screens.
+
+**Implementation scope**:
+
+- Backend:
+  - Centralize safe OpenAI model defaults around a fast/cost-conscious model while preserving environment overrides.
+  - Add prompt-cache parameters and lightweight token/cached-token logging to existing OpenAI calls.
+  - Add authenticated customer-detail AI question API scoped to one customer plus department context.
+  - Add authenticated schedule-detail AI coach API that generates recommendations without saving them.
+- Frontend:
+  - Add a customer-detail AI question panel in React.
+  - Add a schedule-detail AI coach panel in React with an option to apply the generated report-note draft locally.
+  - Keep schedule coach recommendations on the detail page only.
+- Tests:
+  - Cover permissions, scoping, logging/no-storage behavior, and fallback responses for the new APIs.
+
+**Validation plan**:
+
+- `python -m py_compile ai_chat\services.py reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused Django tests for customer-detail AI question and schedule AI coach APIs.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+**Current status**:
+
+- Backend APIs, React panels, focused tests, full AI Workspace regression tests, Django checks, frontend type-check/build, and local anonymous route smoke are complete. Commit, push, Railway deployment, production smoke, and user production manual verification are next.
+
 ## 2026-05-18 AI Workspace memory management v1 plan
 
 **Background**:
