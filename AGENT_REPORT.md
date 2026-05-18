@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Customer Asset Directory / Search V1
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시 완료, backend 운영 반영 확인, frontend 운영 배포는 Railway CLI 재로그인 필요
 
 ### 요약
 
@@ -74,7 +74,23 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 커밋/푸시/배포 진행 예정.
+- Git commit: `cf8f62e` (`feat: add customer asset directory`)
+- Git push: `main` pushed to origin.
+- Backend: GitHub push 기반 자동 배포로 신규 API 반영 확인.
+  - `https://sales-note-frontend-production.up.railway.app/reporting/api/customer-assets/`
+  - anonymous 요청 기준 expected `401 login_required`
+- Frontend: 아직 이전 bundle `assets/index-DW6PG7yO.js` 제공 중이라 `/assets/` React UI는 운영에 미반영.
+- 직접 Railway 배포 시도:
+
+```text
+railway deployment up --service web --detach --message "Deploy asset directory cf8f62e"
+→ Unauthorized. Please run `railway login` again.
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy asset directory cf8f62e"
+→ Unauthorized. Please run `railway login` again.
+```
+
+- Railway CLI 상태: OAuth refresh token expired / invalid_grant. `railway login` 재인증 후 frontend 배포 필요.
 
 ### 권장 다음 작업
 
