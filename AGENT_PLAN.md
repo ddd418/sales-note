@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 Frontend legacy Django route canonicalization plan
+
+**Background**:
+
+- User pointed out that `https://sales-note-frontend-production.up.railway.app/reporting/analytics/`, `/reporting/business-cards/`, and `/reporting/profile/` are not React screens.
+- These routes are intentionally still Django fallback pages from the previous menu triage, but the frontend service currently proxies `/reporting/*`, which can make legacy Django template pages appear under the React frontend domain.
+- React should not pretend these legacy pages are migrated. API calls still need same-origin proxying for the React app.
+
+**DB change required**: No.
+
+- No model, migration, permission, or data-shape changes are required.
+- Preserve Django legacy pages and `/reporting/api/*` behavior.
+
+**Implementation scope**:
+
+- Frontend server:
+  - Redirect full-page `GET`/`HEAD` requests for legacy Django page namespaces (`/reporting/*`, `/todos/*`, `/ai/*`) to the backend Django canonical domain.
+  - Continue proxying `/reporting/api/*`, `/static/*`, `/media/*`, and non-GET legacy form/API actions to Django.
+  - Update the fallback Django backend URL used by the frontend server to the current production backend domain.
+- Documentation:
+  - Record that analytics, business cards, and profile remain Django fallback screens until explicit React replacements are built and manually verified.
+
+**Validation plan**:
+
+- `cd frontend; node --check server.mjs`
+- `cd frontend; npm run build`
+- Local production-server smoke:
+  - `/reporting/analytics/`, `/reporting/business-cards/`, `/reporting/profile/` redirect to the Django backend domain.
+  - `/reporting/api/navigation/` remains proxied and login-protected.
+  - `/ai-workspace/` remains a React route.
+- Production smoke after Railway frontend deploy with the same URLs.
+
+**Current status**:
+
+- Frontend server implementation and local validation are complete. Commit, push, Railway frontend deploy, production smoke, and final report are next.
+
 ## 2026-05-19 Django menu triage and React navigation cleanup plan
 
 **Background**:

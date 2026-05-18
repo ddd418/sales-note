@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
 const port = Number(process.env.PORT || 4173);
-const djangoBaseUrl = new URL(process.env.DJANGO_BASE_URL || 'https://web-production-5096.up.railway.app');
+const djangoBaseUrl = new URL(process.env.DJANGO_BASE_URL || 'https://web-production-2cc17.up.railway.app');
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -88,21 +88,73 @@ function proxyToDjango(clientRequest, clientResponse) {
   clientRequest.pipe(proxyRequest);
 }
 
-function shouldProxy(requestUrl) {
+function getPathname(requestUrl) {
+  try {
+    return new URL(requestUrl, 'http://frontend.local').pathname;
+  } catch {
+    return requestUrl.split('?')[0];
+  }
+}
+
+function isDjangoApiRequest(pathname) {
+  return pathname === '/reporting/api' || pathname.startsWith('/reporting/api/');
+}
+
+function isDjangoAssetRequest(pathname) {
   return (
-    requestUrl.startsWith('/reporting/') ||
-    requestUrl === '/reporting' ||
-    requestUrl.startsWith('/ai/') ||
-    requestUrl === '/ai' ||
-    requestUrl.startsWith('/static/') ||
-    requestUrl === '/static' ||
-    requestUrl.startsWith('/media/') ||
-    requestUrl === '/media'
+    pathname.startsWith('/static/') ||
+    pathname === '/static' ||
+    pathname.startsWith('/media/') ||
+    pathname === '/media'
+  );
+}
+
+function isDjangoLegacyNamespace(pathname) {
+  return (
+    pathname.startsWith('/reporting/') ||
+    pathname === '/reporting' ||
+    pathname.startsWith('/todos/') ||
+    pathname === '/todos' ||
+    pathname.startsWith('/ai/') ||
+    pathname === '/ai'
+  );
+}
+
+function shouldRedirectToDjangoPage(clientRequest) {
+  const method = (clientRequest.method || 'GET').toUpperCase();
+  const pathname = getPathname(clientRequest.url || '/');
+  return (
+    (method === 'GET' || method === 'HEAD') &&
+    isDjangoLegacyNamespace(pathname) &&
+    !isDjangoApiRequest(pathname) &&
+    !isDjangoAssetRequest(pathname)
+  );
+}
+
+function redirectToDjango(clientRequest, clientResponse) {
+  const target = new URL(clientRequest.url || '/', djangoBaseUrl);
+  clientResponse.writeHead(302, {
+    'Cache-Control': 'no-cache',
+    Location: target.toString(),
+  });
+  clientResponse.end();
+}
+
+function shouldProxy(requestUrl) {
+  const pathname = getPathname(requestUrl);
+  return (
+    isDjangoApiRequest(pathname) ||
+    isDjangoAssetRequest(pathname) ||
+    isDjangoLegacyNamespace(pathname)
   );
 }
 
 createServer((request, response) => {
   const requestUrl = request.url || '/';
+  if (shouldRedirectToDjangoPage(request)) {
+    redirectToDjango(request, response);
+    return;
+  }
   if (shouldProxy(requestUrl)) {
     proxyToDjango(request, response);
     return;
@@ -110,5 +162,6 @@ createServer((request, response) => {
   sendStatic(response, resolveStaticPath(requestUrl));
 }).listen(port, '0.0.0.0', () => {
   console.log(`Frontend server listening on ${port}`);
-  console.log(`Proxying /reporting/*, /ai/*, /static/* and /media/* to ${djangoBaseUrl.origin}`);
+  console.log(`Redirecting legacy Django pages to ${djangoBaseUrl.origin}`);
+  console.log(`Proxying /reporting/api/*, /static/*, /media/* and non-GET legacy actions to ${djangoBaseUrl.origin}`);
 });
