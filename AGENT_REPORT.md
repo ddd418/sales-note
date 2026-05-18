@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Scheduled Mailbox Detail Route Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -62,7 +62,17 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending: 커밋/푸시 후 `web`과 `sales-note-frontend`를 Railway에 배포해야 합니다.
+- Git commit: `eec7ddd` (`fix: open scheduled email detail route`)
+- Git push: `main` pushed to origin.
+- Railway `web`: `708ae257-7683-4365-94a3-4bb270e0a56e` SUCCESS, latest commit `eec7ddd`.
+- Railway `sales-note-frontend`: `ba7fbf52-8083-4218-ae90-075f0536fb44` SUCCESS via CLI upload.
+- Frontend production bundle: `/assets/index-C6PfCqJZ.js`.
+- Production smoke:
+  - `https://sales-note-frontend-production.up.railway.app/mailbox/?box=scheduled` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/mailbox/scheduled/1/` → 200, React app shell served.
+  - Production JS bundle contains `/mailbox/scheduled/` route and `/reporting/api/mailbox/scheduled/` API client.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/mailbox/scheduled/1/` → expected `302` to login.
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
 
 ### 운영 수동 검수 절차
 

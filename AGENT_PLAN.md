@@ -34,7 +34,7 @@
 
 **Current status**:
 
-- Implementation and local validation complete. Commit, push, Railway deployment, and production smoke are next.
+- Implementation, local validation, commit, push, Railway backend/frontend deployment, and production smoke complete. User production manual verification is next.
 
 ## 2026-05-18 Scheduled mailbox disconnected view fix plan
 
