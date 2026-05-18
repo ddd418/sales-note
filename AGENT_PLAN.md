@@ -42,7 +42,7 @@
 
 **Current status**:
 
-- Backend APIs, React panel, tests, Django checks, frontend build, and local route smoke are complete. Commit, push, Railway deployment, and production smoke are next.
+- Backend APIs, React panel, tests, Django checks, frontend build, local route smoke, commit/push, Railway deployment, and production smoke are complete. Waiting for user production manual verification before starting the next task.
 
 ## 2026-05-18 AI Workspace quality and verified memory plan
 

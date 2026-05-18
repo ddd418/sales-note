@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — AI Workspace Memory Management v1
 
-**상태**: 구현/로컬 검증/로컬 라우트 smoke 완료, 배포 준비 중
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -64,6 +64,33 @@ git diff --check
 
 local frontend route smoke
 → Built frontend served at http://127.0.0.1:4173/ai-workspace/ and redirected anonymous user to /reporting/login/?next=/ai-workspace/. Playwright console check reported 0 errors/warnings.
+
+git push
+→ main updated to acf8054.
+
+railway up --service web --detach --message "Deploy AI memory management acf8054"
+→ CLI upload created deployment 89a78945 but failed with Railway code snapshot error. GitHub auto deploy for acf8054 succeeded as 75f0300f.
+
+railway redeploy --service web --from-source --yes --json
+→ SUCCESS, web deployment a8a1d042 SUCCESS and service stopped=false.
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy AI memory management frontend acf8054"
+→ sales-note-frontend deployment 957d2428 SUCCESS and service stopped=false.
+
+curl.exe -I https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+
+curl.exe -i https://web-production-5096.up.railway.app/reporting/api/ai-workspace/memories/
+→ 401 Unauthorized login_required
+
+curl.exe -I https://sales-note-frontend-production.up.railway.app/ai-workspace/
+→ 200 OK
+
+curl.exe -i https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/memories/
+→ 401 Unauthorized login_required
+
+production frontend asset check
+→ /assets/index-CPJTnbBi.js contains `검수 기억 관리`, `/reporting/api/ai-workspace/memories/`, and `/toggle-active/`.
 ```
 
 ### 알려진 제한
@@ -89,7 +116,16 @@ local frontend route smoke
 
 ### 운영 배포 상태
 
-- 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 배포와 production smoke를 진행할 예정입니다.
+- GitHub: `main` pushed at `acf8054`.
+- Railway `web`: deployment `a8a1d042-ee4b-40a8-b867-bf53b839792d` SUCCESS.
+- Railway `sales-note-frontend`: deployment `957d2428-0a6a-45dd-86bb-34b4b3969b3a` SUCCESS.
+- Railway service status: both `web` and `sales-note-frontend` are SUCCESS with `stopped=false`.
+- Production smoke passed:
+  - `https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - Anonymous `https://web-production-5096.up.railway.app/reporting/api/ai-workspace/memories/` returned expected 401 `login_required`.
+  - `https://sales-note-frontend-production.up.railway.app/ai-workspace/` returned 200.
+  - Anonymous frontend proxy `https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/memories/` returned expected 401 `login_required`.
+  - Deployed frontend JS includes the memory management panel text and new memories/toggle API paths.
 
 ## 2026-05-18 — AI Workspace Verified Memory Foundation
 
