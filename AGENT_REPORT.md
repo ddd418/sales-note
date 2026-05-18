@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Customer Detail AI Removal
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포/운영 smoke 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -69,6 +69,43 @@ local Playwright smoke
 → Anonymous /customers/1/ redirected to /reporting/login/?next=/customers/1/ as expected.
 → Local production JS does not contain 고객 상황 질문, customer-ai-question-card, Customer AI, or customer ai-question endpoint strings.
 → Local production JS still contains 일정 실행 코치 and schedule-ai-coach-panel.
+
+git commit -m "fix: remove AI from customer detail"
+→ 5514010 fix: remove AI from customer detail
+
+git push
+→ origin/main updated to 5514010
+
+railway up --service web --detach --message "Deploy customer AI removal 5514010"
+→ Initial upload failed with a transient BadRecordMac connection error. Follow-up source redeploy was used.
+
+railway redeploy --service web --from-source --yes --json
+→ web deployment 00196312-9657-4cb8-b602-f0c901e3284e reached SUCCESS
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy customer AI removal frontend 5514010"
+→ sales-note-frontend deployment 3cff37f1-65e7-490c-82a7-bd7ec75dbd96 reached SUCCESS
+
+curl.exe -I https://web-production-5096.up.railway.app/reporting/login/
+→ 200 OK
+
+curl.exe -i https://web-production-5096.up.railway.app/reporting/api/customers/1/ai-question/
+→ 404 Not Found
+
+curl.exe -i https://web-production-5096.up.railway.app/reporting/api/schedules/1/ai-coach/
+→ 405 Method Not Allowed, Allow: POST
+
+curl.exe -i https://web-production-5096.up.railway.app/reporting/api/customers/1/
+→ 401 Unauthorized login_required
+
+curl.exe -I https://sales-note-frontend-production.up.railway.app/customers/1/
+→ 200 OK, served /assets/index-DM_9gBg2.js and /assets/index-X4HQPTB9.css
+
+curl.exe -I https://sales-note-frontend-production.up.railway.app/schedules/1/
+→ 200 OK
+
+production frontend asset check
+→ JS does not contain 고객 상황 질문, customer-ai-question-card, Customer AI, /ai-question/, or customers/${followupId}/ai-question.
+→ JS still contains 일정 실행 코치, schedule-ai-coach-panel, and ai-coach.
 ```
 
 ### 알려진 제한
@@ -90,7 +127,19 @@ local Playwright smoke
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행합니다.
+- Runtime commit: `5514010 fix: remove AI from customer detail`
+- GitHub: `main` pushed.
+- Railway `web`: `00196312-9657-4cb8-b602-f0c901e3284e` SUCCESS.
+- Railway `sales-note-frontend`: `3cff37f1-65e7-490c-82a7-bd7ec75dbd96` SUCCESS.
+- DB migration: none.
+- Production smoke:
+  - `GET https://web-production-5096.up.railway.app/reporting/login/` returned 200.
+  - Removed customer-detail AI route returns 404.
+  - Existing customer detail API remains login-protected with 401 for anonymous access.
+  - Existing schedule AI coach route still exists and returns expected `405 Allow: POST` for anonymous GET.
+  - Frontend `/customers/1/` and `/schedules/1/` return 200.
+  - Latest frontend bundle is `/assets/index-DM_9gBg2.js`.
+  - Latest frontend JS no longer contains customer-detail AI question strings and still contains schedule AI coach strings.
 
 ## 2026-05-18 — AI Cost/Speed Optimization and Detail AI Integration
 

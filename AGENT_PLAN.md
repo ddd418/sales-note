@@ -41,7 +41,7 @@
 
 **Current status**:
 
-- Implementation, backend/frontend validation, and local smoke are complete. Commit/push, Railway deployment, production smoke, and user production manual verification are next.
+- Implementation, backend/frontend validation, local smoke, commit/push, Railway deployment, and production smoke are complete. User production manual verification is next.
 
 ## 2026-05-18 AI cost/speed optimization and detail AI integration plan
 
