@@ -2772,16 +2772,16 @@ def dashboard_summary_api(request):
             'monthEnd': month_end.isoformat(),
         },
         'links': {
-            'operationalDashboard': reverse('reporting:dashboard'),
+            'operationalDashboard': '/dashboard/',
             'createNote': '/notes/?create=1',
-            'customers': reverse('reporting:followup_list'),
+            'customers': '/customers/',
             'customerReport': reverse('reporting:customer_report'),
-            'notes': reverse('reporting:history_list'),
-            'schedules': reverse('reporting:schedule_list'),
+            'notes': '/notes/',
+            'schedules': '/schedules/',
             'calendar': '/schedules/calendar/',
-            'pipeline': reverse('reporting:funnel_pipeline'),
+            'pipeline': '/pipeline/',
             'weeklyReports': '/weekly-reports/',
-            'pendingReviews': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
+            'pendingReviews': '/notes/?review=unreviewed',
         },
         'today': {
             'date': today.isoformat(),
@@ -3235,7 +3235,7 @@ def customers_summary_api(request):
         },
         'links': {
             'createCustomer': '/customers/?create=1',
-            'customers': reverse('reporting:followup_list'),
+            'customers': '/customers/',
             'companies': reverse('reporting:company_list'),
             'customerReport': reverse('reporting:customer_report'),
             'createNote': '/notes/?create=1',
@@ -4948,8 +4948,8 @@ def notes_summary_api(request):
         ],
         'links': {
             'createNote': '/notes/?create=1',
-            'notes': reverse('reporting:history_list'),
-            'unreviewed': f"{reverse('reporting:history_list')}?review_filter=unreviewed",
+            'notes': '/notes/',
+            'unreviewed': '/notes/?review=unreviewed',
             'weeklyReports': '/weekly-reports/',
         },
         'create': {
@@ -13831,16 +13831,16 @@ def ai_workspace_summary_api(request):
     week_end = week_start + timedelta(days=4)
 
     base_links = {
-        'aiHub': reverse('ai_chat:department_list'),
+        'aiHub': '/ai-workspace/',
         'weeklyReports': '/weekly-reports/',
         'weeklyReportCreate': '/weekly-reports/new/',
         'weeklyAiDraft': (
             f"{reverse('reporting:weekly_report_ai_draft')}"
             f"?week_start={week_start.isoformat()}&week_end={week_end.isoformat()}"
         ),
-        'customers': reverse('reporting:followup_list'),
-        'notes': reverse('reporting:history_list'),
-        'dashboard': reverse('reporting:dashboard'),
+        'customers': '/customers/',
+        'notes': '/notes/',
+        'dashboard': '/dashboard/',
     }
 
     current_user = {

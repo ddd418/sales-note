@@ -559,6 +559,13 @@ const getScheduleCalendarDataFilterParam = () => {
 
 const shouldOpenCreatePanel = () => new URLSearchParams(window.location.search).get('create') === '1';
 
+const getNoteReviewParam = () => {
+  const value = new URLSearchParams(window.location.search).get('review') ||
+    new URLSearchParams(window.location.search).get('review_filter') ||
+    '';
+  return value === 'unreviewed' || value === 'reviewed' ? value : '';
+};
+
 const makeEmptyWeeklyReportForm = (): WeeklyReportFormPayload => ({
   weekStart: '',
   weekEnd: '',
@@ -1312,20 +1319,20 @@ const routeMeta: Record<
     primaryLabel: '프론트 대시보드 보기',
     actions: [
       { label: '영업노트 작성', href: '/notes/?create=1', primary: true },
-      { label: '미검토 노트', href: '/notes/' },
-      { label: '고객 리포트', href: '/reporting/customer-report/' },
+      { label: '미검토 노트', href: '/notes/?review=unreviewed' },
+      { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
   customers: {
     eyebrow: 'Sales CRM / Customers',
     title: '고객',
-    summary: '고객, 업체, 팔로우업, 고객 리포트를 하나의 고객 업무 흐름으로 묶습니다.',
+    summary: '고객, 업체, 부서, 팔로우업을 하나의 고객 업무 흐름으로 묶습니다.',
     primaryHref: '/customers/',
     primaryLabel: '프론트 고객 보기',
     actions: [
       { label: '새 고객 등록', href: '/customers/?create=1', primary: true },
-      { label: '고객사 관리', href: '/reporting/companies/' },
-      { label: '고객 리포트', href: '/reporting/customer-report/' },
+      { label: '장비 디렉터리', href: '/assets/' },
+      { label: '파이프라인', href: '/pipeline/' },
     ],
   },
   assets: {
@@ -1344,11 +1351,12 @@ const routeMeta: Record<
     eyebrow: 'Sales CRM / Pipeline',
     title: '파이프라인 관리',
     summary: '견적, 협상, 수주 가능성을 중심으로 이번 주 우선 영업 건을 관리합니다.',
-    primaryHref: '/',
+    primaryHref: '/pipeline/',
     primaryLabel: '파이프라인 보기',
     actions: [
-      { label: 'Django 파이프라인 리스트', href: '/reporting/funnel/' },
-      { label: 'Django 파이프라인 보드', href: '/reporting/funnel/pipeline/' },
+      { label: '고객 목록', href: '/customers/' },
+      { label: '영업노트', href: '/notes/' },
+      { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
   notes: {
@@ -1371,7 +1379,7 @@ const routeMeta: Record<
     primaryLabel: '일정 캘린더 열기',
     actions: [
       { label: '일정 캘린더', href: scheduleCalendarUrl, primary: true },
-      { label: '새 일정 등록', href: '/reporting/schedules/create/' },
+      { label: '새 일정 등록', href: '/schedules/?create=1' },
       { label: '이번 주 보고', href: '/weekly-reports/' },
     ],
   },
@@ -1384,7 +1392,7 @@ const routeMeta: Record<
     actions: [
       { label: '업무 보기', href: '/tasks/', primary: true },
       { label: '업무하달', href: '/tasks/manager/' },
-      { label: 'Django TODOLIST', href: '/todos/' },
+      { label: '고객 목록', href: '/customers/' },
     ],
   },
   mail: {
@@ -1396,7 +1404,7 @@ const routeMeta: Record<
     actions: [
       { label: '메일 작성', href: '/mailbox/?compose=1', primary: true },
       { label: '받은편지함', href: '/mailbox/?box=inbox' },
-      { label: 'Django 메일함', href: '/reporting/mailbox/inbox/' },
+      { label: '보낸편지함', href: '/mailbox/?box=sent' },
     ],
   },
   weeklyReports: {
@@ -1407,8 +1415,8 @@ const routeMeta: Record<
     primaryLabel: '주간보고 작성',
     actions: [
       { label: '보고서 작성', href: '/weekly-reports/new/', primary: true },
-      { label: 'Django 주간보고', href: '/reporting/weekly-reports/' },
       { label: '영업노트', href: '/notes/' },
+      { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
   documents: {
@@ -1419,8 +1427,8 @@ const routeMeta: Record<
     primaryLabel: '서류 템플릿 관리',
     actions: [
       { label: '서류 등록', href: '/documents/?create=1', primary: true },
-      { label: 'Django 서류 관리', href: '/reporting/documents/' },
       { label: '일정', href: '/schedules/' },
+      { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
   products: {
@@ -1431,8 +1439,8 @@ const routeMeta: Record<
     primaryLabel: '제품관리 열기',
     actions: [
       { label: '제품 등록', href: '/products/?create=1', primary: true },
-      { label: 'Django 제품관리', href: '/reporting/products/' },
       { label: '엑셀 다운로드', href: '/reporting/api/products/export.xlsx' },
+      { label: '일정', href: '/schedules/' },
     ],
   },
   prepayments: {
@@ -1443,20 +1451,20 @@ const routeMeta: Record<
     primaryLabel: '프론트 선결제 보기',
     actions: [
       { label: '선결제 등록', href: '/prepayments/new/', primary: true },
-      { label: 'Django 선결제 관리', href: '/reporting/prepayment/' },
-      { label: '엑셀 다운로드', href: '/reporting/prepayment/excel/' },
+      { label: '고객 목록', href: '/customers/' },
+      { label: '일정', href: '/schedules/' },
     ],
   },
   ai: {
     eyebrow: 'Sales CRM / AI',
     title: 'AI 업무도구',
     summary: '부서 분석 결과와 목표를 조합해 외부 AI용 업무 프롬프트를 생성합니다.',
-    primaryHref: '/ai/',
-    primaryLabel: 'AI 분석/프롬프트 열기',
+    primaryHref: '/ai-workspace/',
+    primaryLabel: 'AI Workspace 열기',
     actions: [
-      { label: 'AI 허브 열기', href: '/ai/', primary: true },
-      { label: '고객 리포트', href: '/reporting/customer-report/' },
-      { label: '영업노트', href: '/reporting/histories/' },
+      { label: 'AI Workspace', href: '/ai-workspace/', primary: true },
+      { label: '영업노트', href: '/notes/' },
+      { label: '주간보고', href: '/weekly-reports/' },
     ],
   },
 };
@@ -4275,8 +4283,9 @@ function CustomersPage({
           </div>
           <CustomersPriorityList customers={data.priorityCustomers} />
           <div className="customers-side-actions">
-            <a href={data.links.customerReport}>고객 리포트</a>
-            <a href={data.links.companies}>고객사 관리</a>
+            <a href="/assets/">장비 디렉터리</a>
+            <a href="/pipeline/">파이프라인</a>
+            <a href="/notes/">영업노트</a>
           </div>
         </aside>
       </div>
@@ -5539,7 +5548,7 @@ function NotesPage({
           </div>
           <NotesActionCounts data={data} />
           <div className="customers-side-actions">
-            <a href={data.links.notes}>Django 영업노트</a>
+            <a href={data.links.notes}>전체 노트</a>
             <a href={data.links.unreviewed}>미검토 노트</a>
             <a href={data.links.weeklyReports}>주간보고</a>
           </div>
@@ -6275,9 +6284,7 @@ function ScheduleCalendarPage({
     { label: '완료', value: `${formatNumber(data.metrics.completedSchedules)}건`, detail: '고객 일정 기준', icon: CheckCircle2, tone: 'amber' as const },
     { label: '지연', value: `${formatNumber(data.metrics.overdueSchedules)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
   ];
-  const djangoScheduleCreateHref = appendDateQuery(data.links.createSchedule, selectedDate);
   const personalScheduleCreateConfig = data.create.personalSchedule;
-  const personalScheduleCreateBaseHref = personalScheduleCreateConfig?.djangoUrl || data.links.createPersonalSchedule;
 
   return (
     <section className="schedules-page schedule-calendar-page">
@@ -6426,9 +6433,8 @@ function ScheduleCalendarPage({
             >
               {personalScheduleCreateConfig?.canCreate ? '개인 일정 등록' : '개인 일정 권한 없음'}
             </button>
-            <a href={djangoScheduleCreateHref}>Django 상세 등록</a>
             <a href={data.links.weeklyReports}>주간보고</a>
-            <a href={data.links.djangoSchedules}>Django 일정 목록</a>
+            <a href={data.links.schedules}>일정 목록</a>
           </div>
 
           {calendarCreateOpen || calendarCreateError || calendarCreateMessage ? (
@@ -6614,10 +6620,6 @@ function ScheduleCalendarPage({
                     />
                   </label>
                   <div className="notes-create-actions">
-                    <a className="route-secondary-action" href={appendDateQuery(personalScheduleCreateBaseHref, personalCreateForm.scheduleDate || selectedDate)}>
-                      Django 등록
-                      <MoveUpRight size={15} />
-                    </a>
                     <button className="route-primary-action" disabled={personalCreating} type="submit">
                       {personalCreating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                       저장
@@ -9936,7 +9938,7 @@ function PrepaymentsPage({
         <div>
           <span className="eyebrow">Prepayments</span>
           <h2>{data.scope.label || '선결제 현황'}</h2>
-          <p>입금액, 사용액, 잔액을 고객 단위로 확인하고 원본 Django 관리 화면으로 이어갑니다.</p>
+          <p>입금액, 사용액, 잔액을 고객 단위로 확인하고 납품 일정 차감 흐름과 연결합니다.</p>
         </div>
         <div className="schedules-summary-actions">
           {data.links.create ? (
@@ -9945,7 +9947,6 @@ function PrepaymentsPage({
               <Plus size={16} />
             </a>
           ) : null}
-          <a className="route-secondary-action" href={data.links.djangoList}>Django 관리</a>
           <a className="route-secondary-action" href={data.links.excel}>엑셀</a>
         </div>
       </div>
@@ -10444,7 +10445,6 @@ function PrepaymentCreatePage({
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/prepayments/">목록</a>
-          <a className="route-secondary-action" href={data.create.djangoUrl}>Django 등록</a>
         </div>
       </div>
 
@@ -10470,7 +10470,6 @@ function PrepaymentCreatePage({
             form={form}
             options={formOptions}
             saving={saving}
-            secondaryActions={<a className="route-secondary-action" href={data.links.djangoList}>Django 목록</a>}
             showStatus={false}
             submitLabel="등록"
             onChange={handleChange}
@@ -11998,10 +11997,6 @@ function MailboxPage({
               </button>
             );
           })}
-          <a className="mailbox-legacy-link" href={mailbox?.links.djangoInbox || '/reporting/mailbox/inbox/'}>
-            Django 메일함
-            <MoveUpRight size={15} />
-          </a>
         </aside>
 
         <section className="mailbox-list-panel">
@@ -13826,7 +13821,6 @@ function DocumentsPage({
                   등록
                 </button>
               ) : null}
-              <a className="route-secondary-action" href={data?.links.djangoList || '/reporting/documents/'}>Django 관리</a>
             </div>
           </div>
 
@@ -14033,7 +14027,6 @@ function DocumentsPage({
               <div className="button-stack">
                 <a className="route-secondary-action" href={data?.links.scheduleList || '/schedules/'}>일정 목록</a>
                 <a className="route-secondary-action" href={data?.links.scheduleCalendar || '/schedules/calendar/'}>일정 캘린더</a>
-                <a className="route-secondary-action" href={data?.links.djangoList || '/reporting/documents/'}>Django 서류 관리</a>
               </div>
             </div>
           )}
@@ -14541,7 +14534,6 @@ function ProductManagementPage({
               <h2>제품 목록</h2>
               <span>{loading ? '불러오는 중' : `현재 ${formatNumber(products.length)}건 표시`}</span>
             </div>
-            <a className="route-secondary-action" href={data?.links.djangoList || '/reporting/products/'}>Django 제품관리</a>
           </div>
 
           {loading && !data ? (
@@ -16594,7 +16586,7 @@ function AIWorkspacePage({
             주간보고
           </a>
           <a className="route-primary-action" href={data.links.aiHub}>
-            AI 허브
+            AI Workspace
             <MoveUpRight size={16} />
           </a>
         </div>
@@ -16701,7 +16693,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       detail: `${revenueYear}년 납품 일정 기준`,
       icon: CircleDollarSign,
       tone: 'amber' as const,
-      href: data.links.operationalDashboard,
+      href: data.links.schedules,
     },
     {
       label: '현재 분기 매출',
@@ -16709,7 +16701,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       detail: `${revenueYear}년 ${revenueQuarter}분기`,
       icon: Target,
       tone: 'green' as const,
-      href: data.links.operationalDashboard,
+      href: data.links.schedules,
     },
     {
       label: '오늘 일정',
@@ -16741,7 +16733,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       detail: '납품 일정 기준',
       icon: CircleDollarSign,
       tone: 'amber' as const,
-      href: data.links.operationalDashboard,
+      href: data.links.schedules,
     },
   ];
 
@@ -16760,7 +16752,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     { label: '영업노트 작성', href: data.links.createNote, icon: Plus, primary: true },
     { label: '고객 목록', href: data.links.customers, icon: Users },
     { label: '일정 캘린더', href: data.links.calendar, icon: CalendarDays },
-    { label: '운영 대시보드', href: data.links.operationalDashboard, icon: MoveUpRight },
+    { label: '파이프라인', href: data.links.pipeline, icon: MoveUpRight },
   ];
 
   return (
@@ -17609,7 +17601,7 @@ export function App() {
   const [noteQuery, setNoteQuery] = useState('');
   const [noteOwner, setNoteOwner] = useState('');
   const [noteActionType, setNoteActionType] = useState('');
-  const [noteReview, setNoteReview] = useState('');
+  const [noteReview, setNoteReview] = useState(() => getNoteReviewParam());
   const [noteNextAction, setNoteNextAction] = useState('');
   const [noteReviewingId, setNoteReviewingId] = useState<number | null>(null);
   const [noteReviewError, setNoteReviewError] = useState('');

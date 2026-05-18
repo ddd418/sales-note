@@ -1,5 +1,61 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 Django menu triage and React navigation cleanup plan
+
+**Background**:
+
+- Before adding global features that include equipment/assets, the Django sidebar menu needs a quick product-fit triage.
+- The user chose the scoped option: classify menus and clean React navigation/quick actions, without building a new React screen in this batch.
+- React remains the primary CRM frontend. Django templates remain as authenticated fallback/admin/compatibility screens.
+
+**DB change required**: No.
+
+- No model, migration, permission, or data-shape changes are required.
+- Preserve `/reporting/*`, `/todos/*`, `/ai/*`, and all existing legacy fallback routes.
+
+**Menu decision matrix**:
+
+| Django menu/workflow | Decision | Runtime handling |
+| --- | --- | --- |
+| 대시보드, 고객, 장비, 파이프라인, 영업노트, 일정, 업무, 메일, 주간보고, 서류, 제품, 선결제, AI | React primary | Keep in React navigation and React quick actions. |
+| 고객사/부서/카테고리 관리 | Django fallback | Do not add to React top navigation yet; keep authenticated Django routes/API for customer create/edit support. |
+| 고객 리포트 | Django fallback / not a React main menu | Remove from React primary shortcuts; keep legacy URL available. |
+| 관리자/사용자 관리, 업체 조회, 프로필, 백업 | Admin/ops fallback | Do not expose as React CRM main menu in this pass. |
+| Analytics/report exports | Django fallback | Keep exports and analytics routes; do not add to React main menu in this pass. |
+| Django TODOLIST, Django mailbox, Django product/prepayment/document management links | Legacy fallback | Remove from route-hub shortcuts where React parity already exists; keep detailed fallback links only where useful. |
+| 명함 관리 | Django fallback | Keep route available; do not migrate or add to React navigation in this pass. |
+
+**Implementation scope**:
+
+- Backend:
+  - Keep `GET /reporting/api/navigation/` response shape unchanged and continue returning only React CRM primary menu items.
+  - Change dashboard and notes API link defaults to prefer React routes where React screens already exist.
+- Frontend:
+  - Replace route hub shortcuts that point at legacy Django pages with React-first links.
+  - Fix AI route hub links from `/ai/` to `/ai-workspace/`.
+  - Remove customer/notes list side shortcuts that promote `고객 리포트`, `고객사 관리`, or `Django 영업노트` as primary actions.
+  - Keep detailed/contextual Django fallback links for edit/detail/export workflows that still need them.
+- Documentation:
+  - Record the final menu triage, preserved legacy routes, validation, deployment, and manual test process in `AGENT_REPORT.md`.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- Production smoke after Railway deploy:
+  - `/reporting/api/navigation/` remains login-protected for anonymous users.
+  - React `/dashboard/`, `/customers/`, `/notes/?review=unreviewed`, `/pipeline/`, `/ai-workspace/` return 200 from frontend.
+  - Legacy fallback `/reporting/companies/`, `/reporting/customer-report/`, `/reporting/analytics/` remain protected/available behind login.
+
+**Current status**:
+
+- Implementation and local validation complete. Commit, push, Railway deploy, and production smoke are next.
+
 ## 2026-05-18 Customer detail AI removal plan
 
 **Background**:

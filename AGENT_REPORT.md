@@ -1,5 +1,96 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Django Menu Triage and React Navigation Cleanup
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행 예정
+
+### 요약
+
+Django sidebar 메뉴를 React CRM 기준으로 분류하고, React 주 이동선에서 legacy Django 메뉴 바로가기를 제거했습니다. React 주 메뉴는 대시보드, 고객, 장비, 파이프라인, 영업노트, 일정, 업무, 메일, 주간보고, 서류, 제품, 선결제, AI로 유지했고, 고객사/부서/카테고리, 고객 리포트, 관리자/리포트/명함/백업/프로필류는 Django fallback으로 남겼습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`: Django 메뉴별 React 이관/보류/legacy fallback 결정표 추가.
+- `reporting/views.py`: dashboard, customers, notes, AI Workspace API 링크를 React 우선 경로로 정리.
+- `frontend/src/api.ts`: API unavailable fallback 링크를 React 우선 경로로 정리.
+- `frontend/src/App.tsx`: route hub와 주요 목록/사이드 액션에서 `Django ...` 메뉴 링크 제거, `/ai/` 주 이동 링크를 `/ai-workspace/`로 정리, `/notes/?review=unreviewed` 링크 지원.
+
+### CRM 개선
+
+- React에서 사용자가 보는 주 메뉴/바로가기가 더 이상 Django legacy 메뉴를 기본 선택지로 밀어주지 않습니다.
+- 고객/노트/일정/메일/서류/제품/선결제/AI의 기본 이동은 React 화면으로 정리됐습니다.
+- 장비 포함 글로벌 기능을 추가하기 전에 어떤 Django 메뉴를 React로 옮기고 어떤 메뉴를 fallback으로 남길지 기준을 고정했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*`, `/todos/*`, `/ai/*` legacy route는 삭제하지 않았습니다.
+- 고객사/부서 생성 API, 고객 리포트, analytics/export, 관리자/프로필/백업/명함 legacy 기능은 인증된 fallback으로 유지했습니다.
+- 상세/수정/다운로드 등 아직 필요한 일부 Django fallback 링크는 문맥 안에 남겼습니다.
+- DB 모델 변경과 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-D-Wk0lB9.js and /assets/index-X4HQPTB9.css. Existing large chunk warning remains.
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+python manage.py test reporting.tests.DashboardSummaryApiTests reporting.tests.CustomersSummaryApiTests reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 53 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_requires_login_json reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_returns_permission_state_without_ai_access reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_lists_own_ai_operational_data --verbosity=1
+→ Ran 3 tests, OK
+
+local frontend dev smoke
+→ Vite dev server is running at http://127.0.0.1:5174/
+→ /dashboard/, /customers/, /notes/?review=unreviewed, /pipeline/, /ai-workspace/, /schedules/calendar/ returned 200.
+→ Latest local JS contains /ai-workspace/, /notes/?review=unreviewed, 장비 디렉터리, 파이프라인.
+→ Latest local JS no longer contains the removed route-hub legacy phrases such as Django 메일함, Django 제품관리, Django 관리, 고객 리포트, 고객사 관리.
+```
+
+### 알려진 제한
+
+- 이번 작업은 메뉴/바로가기 정리입니다. 고객사/부서/카테고리 관리, 고객 리포트, 명함 관리, analytics 등은 React 화면으로 새로 만들지 않았습니다.
+- React 상세 화면에서 업무상 필요한 일부 Django fallback 링크는 남아 있습니다.
+- in-app browser 제어용 Node 실행 도구가 현재 노출되지 않아 Browser 플러그인 검증은 로컬 HTTP smoke와 빌드 산출물 문자열 검사로 대체했습니다.
+
+### 권장 다음 단계
+
+운영 검수 후 장비 포함 글로벌 기능의 실제 정보 구조와 권한 범위를 확정하고, React 장비/고객/일정 흐름 안에 통합하는 작업으로 넘어가는 것이 좋습니다.
+
+### 운영 수동 검수 절차
+
+배포 후 운영 프론트에서 다음을 확인합니다.
+
+1. `/dashboard/`에서 quick action이 `영업노트 작성`, `고객 목록`, `일정 캘린더`, `파이프라인` 중심인지 확인합니다.
+2. `/customers/` 우측 액션에서 `고객 리포트`, `고객사 관리`가 보이지 않고 `장비 디렉터리`, `파이프라인`, `영업노트`가 보이는지 확인합니다.
+3. `/notes/?review=unreviewed`로 들어가면 미검토 필터가 적용된 노트 화면으로 열리는지 확인합니다.
+4. `/schedules/calendar/`, `/mailbox/`, `/documents/`, `/products/`, `/prepayments/`, `/ai-workspace/`에서 주 이동선에 `Django ... 관리/목록/등록` 같은 legacy 메뉴가 노출되지 않는지 확인합니다.
+5. 필요 시 `/reporting/companies/`, `/reporting/customer-report/`, `/reporting/analytics/`는 로그인된 사용자에게 legacy fallback으로 접근 가능한지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: pending.
+- Railway deployment: pending.
+- DB migration: none.
+
 ## 2026-05-18 — Customer Detail AI Removal
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
