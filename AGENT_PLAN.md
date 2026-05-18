@@ -17,7 +17,7 @@
 
 - Frontend server:
   - Redirect full-page `GET`/`HEAD` requests for legacy Django page namespaces (`/reporting/*`, `/todos/*`, `/ai/*`) to the backend Django canonical domain.
-  - Continue proxying `/reporting/api/*`, `/static/*`, `/media/*`, and non-GET legacy form/API actions to Django.
+  - Continue proxying `/reporting/api/*`, `/static/*`, `/media/*`, frontend-domain session routes (`/reporting/login/`, `/reporting/logout/`, Gmail/IMAP connect flows), and non-GET legacy form/API actions to Django.
   - Update the fallback Django backend URL used by the frontend server to the current production backend domain.
 - Documentation:
   - Record that analytics, business cards, and profile remain Django fallback screens until explicit React replacements are built and manually verified.

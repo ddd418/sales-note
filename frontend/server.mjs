@@ -109,6 +109,17 @@ function isDjangoAssetRequest(pathname) {
   );
 }
 
+function isFrontendSessionRequest(pathname) {
+  return (
+    pathname === '/reporting/login' ||
+    pathname === '/reporting/login/' ||
+    pathname === '/reporting/logout' ||
+    pathname === '/reporting/logout/' ||
+    pathname.startsWith('/reporting/gmail/') ||
+    pathname.startsWith('/reporting/imap/')
+  );
+}
+
 function isDjangoLegacyNamespace(pathname) {
   return (
     pathname.startsWith('/reporting/') ||
@@ -127,7 +138,8 @@ function shouldRedirectToDjangoPage(clientRequest) {
     (method === 'GET' || method === 'HEAD') &&
     isDjangoLegacyNamespace(pathname) &&
     !isDjangoApiRequest(pathname) &&
-    !isDjangoAssetRequest(pathname)
+    !isDjangoAssetRequest(pathname) &&
+    !isFrontendSessionRequest(pathname)
   );
 }
 
@@ -163,5 +175,7 @@ createServer((request, response) => {
 }).listen(port, '0.0.0.0', () => {
   console.log(`Frontend server listening on ${port}`);
   console.log(`Redirecting legacy Django pages to ${djangoBaseUrl.origin}`);
-  console.log(`Proxying /reporting/api/*, /static/*, /media/* and non-GET legacy actions to ${djangoBaseUrl.origin}`);
+  console.log(
+    `Proxying /reporting/api/*, session routes, /static/*, /media/* and non-GET legacy actions to ${djangoBaseUrl.origin}`,
+  );
 });
