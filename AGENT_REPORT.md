@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Weekly Report Line Break Rendering Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -53,11 +53,24 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 커밋/푸시/배포 진행 예정.
+- Git commit: `ad550ef` (`fix: preserve weekly report inline line breaks`)
+- Git push: `main` pushed to origin.
+- Railway `web`: `646d93fe-f019-4c37-b6d3-866fc2b352e9` SUCCESS.
+- Frontend redeploy: 필요 없음. React bundle은 기존 상세 화면을 그대로 사용하고 backend API 렌더링만 보정.
+- 운영 smoke:
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/3/` anonymous 요청 → expected `401 login_required`.
 
 ### 권장 다음 작업
 
 운영 배포 후 `https://sales-note-frontend-production.up.railway.app/weekly-reports/3/`에서 영업 활동, 견적/납품, 기타 섹션의 줄바꿈이 보존되는지 수동 검수합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/weekly-reports/3/`에 접속합니다.
+2. `영업 활동`, `견적/납품`, `기타` 섹션에서 입력 당시 줄바꿈이 실제 줄바꿈으로 표시되는지 확인합니다.
+3. `<br>` 같은 문자열이 화면에 글자로 보이지 않는지 확인합니다.
+4. 수정 화면에서 기존 본문을 열었을 때 줄바꿈이 textarea에 보존되는지 확인합니다.
 
 ## 2026-05-18 — Customer Asset Directory / Search V1
 

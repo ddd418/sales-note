@@ -29,8 +29,8 @@
 
 **Current status**:
 
-- Implementation and local validation complete.
-- Commit, push, Railway backend deployment, and production smoke are next.
+- Implementation, local validation, commit, push, Railway backend deployment, and production smoke complete.
+- Waiting for user production manual verification.
 
 ## 2026-05-18 Customer asset directory / search v1 plan
 
