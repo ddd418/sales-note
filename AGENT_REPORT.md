@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — Django Menu Triage and React Navigation Cleanup
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -63,6 +63,35 @@ local frontend dev smoke
 → /dashboard/, /customers/, /notes/?review=unreviewed, /pipeline/, /ai-workspace/, /schedules/calendar/ returned 200.
 → Latest local JS contains /ai-workspace/, /notes/?review=unreviewed, 장비 디렉터리, 파이프라인.
 → Latest local JS no longer contains the removed route-hub legacy phrases such as Django 메일함, Django 제품관리, Django 관리, 고객 리포트, 고객사 관리.
+
+git commit -m "chore: clean up React CRM navigation"
+→ 9d706f4 chore: clean up React CRM navigation
+
+git push
+→ origin/main updated to 9d706f4
+
+railway deployment up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy React CRM navigation cleanup 9d706f4"
+→ sales-note-frontend deployment 3f9f33bd-267d-4729-95ae-45ff3d978a32 reached SUCCESS
+
+Railway GitHub auto-deploy for web
+→ web deployment e2222f6f-e8a1-4b8a-9ca1-7ee237fb8044 reached SUCCESS
+
+curl.exe -I https://web-production-2cc17.up.railway.app/reporting/login/
+→ 200 OK
+
+curl.exe -i https://web-production-2cc17.up.railway.app/reporting/api/navigation/
+→ 401 Unauthorized login_required
+
+production frontend route smoke
+→ /dashboard/, /customers/, /notes/?review=unreviewed, /pipeline/, /ai-workspace/, /schedules/calendar/ returned 200.
+
+production frontend asset check
+→ Latest JS is /assets/index-D-Wk0lB9.js.
+→ JS contains /ai-workspace/, /notes/?review=unreviewed, 장비 디렉터리, 파이프라인.
+→ JS no longer contains the removed route-hub legacy phrases such as Django 메일함, Django 제품관리, Django 관리, 고객 리포트, 고객사 관리.
+
+legacy fallback smoke
+→ /reporting/companies/, /reporting/customer-report/, /reporting/analytics/ return 302 to login for anonymous users.
 ```
 
 ### 알려진 제한
@@ -87,9 +116,13 @@ local frontend dev smoke
 
 ### 운영 배포 상태
 
-- Runtime commit: pending.
-- Railway deployment: pending.
+- Runtime commit: `9d706f4 chore: clean up React CRM navigation`
+- GitHub: `main` pushed.
+- Railway `web`: `e2222f6f-e8a1-4b8a-9ca1-7ee237fb8044` SUCCESS.
+- Railway `sales-note-frontend`: `3f9f33bd-267d-4729-95ae-45ff3d978a32` SUCCESS.
 - DB migration: none.
+- Production backend URL: `https://web-production-2cc17.up.railway.app`
+- Production frontend URL: `https://sales-note-frontend-production.up.railway.app`
 
 ## 2026-05-18 — Customer Detail AI Removal
 
