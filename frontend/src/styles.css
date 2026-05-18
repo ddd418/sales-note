@@ -4689,25 +4689,6 @@ h2 {
   opacity: 0.68;
 }
 
-.customer-ai-question-card {
-  border-color: #c7d2fe;
-  background: #f5f7ff;
-}
-
-.customer-ai-question-card .ai-department-question-form,
-.customer-ai-question-card .ai-department-question-answer {
-  margin-top: 0;
-}
-
-.customer-ai-question-scope {
-  background: #ffffff;
-}
-
-.customer-ai-question-answer {
-  gap: 9px;
-  padding: 10px;
-}
-
 .pipeline-ai-alert {
   display: inline-flex;
   align-items: center;

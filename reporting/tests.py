@@ -2578,165 +2578,21 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(payload['assets'][0]['latestServiceCase']['caseType'], 'inspection')
         self.assertEqual(payload['assets'][0]['latestCalibration']['result'], 'pending')
 
-    def test_customer_detail_summary_api_includes_department_ai_action(self):
-        from datetime import date
-        from ai_chat.models import AIDepartmentAnalysis, PainPointCard
-
-        target = self._create_customer(self.user, 'AI고객', priority='urgent')
+    def test_customer_detail_summary_api_excludes_customer_ai_payload(self):
+        target = self._create_customer(self.user, 'AI제거고객', priority='urgent')
         profile = self.user.userprofile
         profile.can_use_ai = True
         profile.save(update_fields=['can_use_ai'])
-        long_summary = (
-            'PCR 부서는 구매 프로세스 확인이 필요합니다. '
-            '결재권자 확인, 예산 집행일, 필요 서류를 한 번에 정리해야 합니다. '
-            '반복되는 견적 후속 지연을 줄이려면 다음 연락에서 승인자와 일정 기준을 명확히 확인해야 합니다.'
-        )
-        analysis = AIDepartmentAnalysis.objects.create(
-            user=self.user,
-            department=target.department,
-            analysis_data={
-                'department_summary': long_summary,
-                'meeting_insights': [{
-                    'theme': '구매 승인 지연',
-                    'details': '견적 이후 결재권자 확인이 반복적으로 늦어집니다.',
-                    'frequency': '최근 2회',
-                }],
-                'quote_delivery_insights': {
-                    'conversion_analysis': '견적 대비 납품 전환율이 낮습니다.',
-                    'delivery_cycle': '정기 납품 주기는 아직 확인이 필요합니다.',
-                    'product_trends': 'PCR 소모품 문의가 반복됩니다.',
-                    'stalled_quotes': [{
-                        'quote_info': 'Q-001',
-                        'possible_reason': '결재 승인자 미확인',
-                        'suggestion': '승인자를 직접 확인합니다.',
-                    }],
-                },
-                'next_actions': [{
-                    'action': '결재 승인자 확인',
-                    'priority': 'high',
-                    'reason': '견적 후속 지연 해소',
-                }],
-                'verification_insights': [{
-                    'status': 'checked',
-                    'status_label': '검증 메모',
-                    'hypothesis': '구매 결재 단계가 길어 견적 후속이 지연됩니다.',
-                    'insight': '김박사가 최종 승인자로 확인되어 승인자 기준 후속이 필요합니다.',
-                    'impact': '6월 예산 소진 뒤 구매 가능하다는 검증 메모를 다음 액션에 반영해야 합니다.',
-                    'previous_question': '결재 승인자가 누구인지 확인했나요?',
-                    'next_verification': '6월 예산 집행일과 필요 서류를 확인합니다.',
-                    'verified_at': '2026-05-10T09:00:00+09:00',
-                }],
-                'missing_info': {
-                    'items': ['구매 승인자'],
-                    'questions': ['결재 최종 승인자는 누구인가요?'],
-                },
-            },
-            quote_delivery_data={
-                'summary': {
-                    'total_quotes': 2,
-                    'converted_quotes': 1,
-                    'conversion_rate': 50,
-                    'total_deliveries': 1,
-                    'avg_delivery_interval_days': 21,
-                    'product_stats': {
-                        'PCR Mix': {
-                            'quoted': 2,
-                            'quote_amount': 300000,
-                            'delivered': 1,
-                            'delivery_amount': 150000,
-                        },
-                    },
-                },
-                'deliveries': [{
-                    'date': '2026-04-29',
-                    'customer': 'AI고객 담당자',
-                    'amount': 150000,
-                    'items': [{
-                        'product': 'PCR Mix',
-                        'quantity': 3,
-                        'unit_price': 50000,
-                        'total_price': 150000,
-                    }],
-                    'source': '납품 일정',
-                    'schedule_id': 101,
-                    'notes': '최근 납품 메모',
-                }],
-            },
-            meeting_count=3,
-            quote_count=2,
-            delivery_count=1,
-            analysis_period_start=date(2026, 4, 1),
-            analysis_period_end=date(2026, 5, 1),
-        )
-        card = PainPointCard.objects.create(
-            analysis=analysis,
-            category='purchase_process',
-            hypothesis='구매 결재 단계가 길어 견적 후속이 지연됩니다.',
-            confidence='high',
-            confidence_score=90,
-            evidence=[{'type': 'verification', 'text': '김박사 승인자 확인', 'source_section': '검증 메모'}],
-            attribution='lab',
-            verification_question='결재 승인자가 누구인지 확인했나요?',
-            action_if_yes='승인자에게 직접 후속합니다.',
-            action_if_no='담당 연구원에게 결재 라인을 확인합니다.',
-        )
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
 
         self.assertEqual(response.status_code, 200)
-        ai_department = response.json()['aiDepartment']
-        self.assertEqual(ai_department['departmentId'], target.department_id)
-        self.assertTrue(ai_department['canUseAi'])
-        self.assertTrue(ai_department['canAnalyze'])
-        self.assertTrue(ai_department['hasAnalysis'])
-        self.assertEqual(ai_department['summary'], long_summary)
-        self.assertEqual(ai_department['meetingCount'], 3)
-        self.assertEqual(ai_department['painpointCount'], 1)
-        self.assertEqual(ai_department['unverifiedPainpointCount'], 1)
-        self.assertEqual(ai_department['href'], reverse('ai_chat:department_analysis', args=[target.department_id]))
-        self.assertEqual(ai_department['runHref'], reverse('ai_chat:run_analysis', args=[target.department_id]))
-        self.assertEqual(ai_department['periodStart'], '2026-04-01')
-        self.assertEqual(ai_department['periodEnd'], '2026-05-01')
-        self.assertEqual(ai_department['meetingInsights'][0]['theme'], '구매 승인 지연')
-        self.assertEqual(ai_department['quoteDelivery']['totalQuotes'], 2)
-        self.assertEqual(ai_department['quoteDelivery']['convertedQuotes'], 1)
-        self.assertEqual(ai_department['quoteDelivery']['conversionRate'], 50)
-        self.assertEqual(ai_department['quoteDelivery']['productStats'][0]['name'], 'PCR Mix')
-        self.assertEqual(ai_department['quoteDelivery']['recentDeliveries'][0]['items'][0]['product'], 'PCR Mix')
-        self.assertEqual(ai_department['quoteDelivery']['recentDeliveries'][0]['items'][0]['quantity'], 3)
-        self.assertIn('납품 전환율', ai_department['quoteInsights']['conversionAnalysis'])
-        self.assertEqual(ai_department['quoteInsights']['stalledQuotes'][0]['quoteInfo'], 'Q-001')
-        self.assertEqual(ai_department['nextActions'][0]['action'], '결재 승인자 확인')
-        self.assertEqual(ai_department['verificationInsights'][0]['status'], 'checked')
-        self.assertEqual(ai_department['verificationInsights'][0]['statusLabel'], '검증 메모')
-        self.assertIn('김박사', ai_department['verificationInsights'][0]['insight'])
-        self.assertEqual(ai_department['verificationInsights'][0]['nextVerification'], '6월 예산 집행일과 필요 서류를 확인합니다.')
-        self.assertEqual(ai_department['missingInfo']['questions'][0], '결재 최종 승인자는 누구인가요?')
-        recommended_questions = [item['question'] for item in ai_department['recommendedQuestions']]
-        self.assertIn('결재 최종 승인자는 누구인가요?', recommended_questions)
-        self.assertIn('6월 예산 집행일과 필요 서류를 확인합니다.', recommended_questions)
-        self.assertIn('결재 승인자가 누구인지 확인했나요?', recommended_questions)
-        self.assertEqual(ai_department['painpoints'][0]['id'], card.id)
-        self.assertEqual(ai_department['painpoints'][0]['categoryLabel'], '결재/구매 프로세스')
-        self.assertEqual(ai_department['painpoints'][0]['evidence'][0]['typeLabel'], '검증')
-        self.assertEqual(ai_department['painpoints'][0]['verifyHref'], reverse('ai_chat:verify_card', args=[card.id]))
-        self.assertTrue(ai_department['painpoints'][0]['canVerify'])
-
-    def test_customer_detail_summary_api_hides_ai_run_without_permission(self):
-        target = self._create_customer(self.user, 'AI권한없음', priority='urgent')
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
-
-        self.assertEqual(response.status_code, 200)
-        ai_department = response.json()['aiDepartment']
-        self.assertFalse(ai_department['canUseAi'])
-        self.assertFalse(ai_department['canAnalyze'])
-        self.assertFalse(ai_department['hasAnalysis'])
-        self.assertEqual(ai_department['runHref'], '')
-        self.assertEqual(ai_department['href'], '')
-        self.assertIn('AI 기능 사용 권한', ai_department['message'])
+        payload = response.json()
+        self.assertNotIn('aiDepartment', payload)
+        self.assertIn('customer', payload)
+        self.assertIn('assetSummary', payload)
+        self.assertIn('recentNotes', payload)
 
     def test_customer_update_api_updates_customer_for_owner(self):
         from reporting.models import Company, Department, FollowUp
@@ -8593,86 +8449,6 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn('튜브(P4345N00)', result_text)
         self.assertIn('P4345N00 (RLD-1250NS', result_text)
         self.assertIn('Low Retention Paradigm Refills', result_text)
-
-    def test_customer_detail_ai_question_requires_ai_permission(self):
-        followup, _department = self._create_customer(self.no_ai_user, '고객질문권한없음')
-        self.client.force_login(self.no_ai_user)
-
-        response = self.client.post(
-            reverse('reporting:customer_detail_ai_question_api', args=[followup.id]),
-            data=json.dumps({'question': '오늘 뭐라고 말할까?'}),
-            content_type='application/json',
-        )
-
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['error'], 'permission_denied')
-
-    def test_customer_detail_ai_question_blocks_inaccessible_customer(self):
-        outsider = make_user('ai_workspace_customer_outsider', role='salesman', can_use_ai=True, company=self.other_company)
-        followup, _department = self._create_customer(outsider, '고객질문타사회사')
-        self.client.force_login(self.user)
-
-        response = self.client.post(
-            reverse('reporting:customer_detail_ai_question_api', args=[followup.id]),
-            data=json.dumps({'question': '이 고객 어떻게 대응할까?'}),
-            content_type='application/json',
-        )
-
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['error'], 'permission_denied')
-
-    def test_customer_detail_ai_question_uses_customer_context_and_logs(self):
-        from reporting.models import AIWorkspaceQuestionLog, History
-
-        followup, department = self._create_customer(self.user, '고객질문컨텍스트')
-        History.objects.create(
-            user=self.user,
-            company=self.company,
-            followup=followup,
-            action_type='customer_meeting',
-            content='고객이 재견적 조건을 다시 확인하고 싶다고 말함',
-            next_action='재견적 조건 정리',
-        )
-        captured = {}
-
-        def fake_generate(question, context, model=None, **kwargs):
-            captured['question'] = question
-            captured['context'] = context
-            captured['model'] = model
-            captured['kwargs'] = kwargs
-            return {
-                'summary': '재견적 조건을 먼저 정리해서 말하는 것이 좋습니다.',
-                'bullets': ['고객 기록 기반 답변'],
-                'evidence': [{'label': '고객', 'value': context['primaryCustomer']['name']}],
-                'actionItems': [],
-                'confidence': 'high',
-            }, 'openai', False
-
-        self.client.force_login(self.user)
-        with patch('reporting.views._ai_workspace_generate_department_question_answer', side_effect=fake_generate):
-            response = self.client.post(
-                reverse('reporting:customer_detail_ai_question_api', args=[followup.id]),
-                data=json.dumps({'question': '재견적 조건을 어떻게 말할까?'}),
-                content_type='application/json',
-            )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertTrue(payload['success'])
-        self.assertEqual(payload['scope']['type'], 'customer')
-        self.assertEqual(payload['context']['followupId'], followup.id)
-        self.assertFalse(payload['webSearchUsed'])
-        self.assertEqual(captured['question'], '재견적 조건을 어떻게 말할까?')
-        self.assertEqual(captured['context']['primaryCustomer']['id'], followup.id)
-        self.assertEqual(captured['context']['scope']['departmentId'], department.id)
-        self.assertFalse(captured['kwargs']['allow_web_search'])
-
-        log = AIWorkspaceQuestionLog.objects.get(user=self.user)
-        self.assertEqual(log.department, department)
-        self.assertEqual(log.scope_type, 'department')
-        self.assertEqual(log.source, 'customer_detail')
-        self.assertEqual(log.model, 'gpt-5.4-mini')
-        self.assertFalse(log.web_search_used)
 
     def test_schedule_ai_coach_requires_ai_permission(self):
         from datetime import time

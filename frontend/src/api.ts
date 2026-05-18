@@ -756,7 +756,6 @@ export type CustomerDetailData = {
   };
   prepaymentSummary: CustomerPrepaymentSummary;
   assetSummary: CustomerAssetSummary;
-  aiDepartment: CustomerAiDepartment;
   edit: {
     canEdit: boolean;
     message: string;
@@ -2920,17 +2919,6 @@ export type AIWorkspaceDepartmentQuestionResponse = {
   message?: string;
 };
 
-export type CustomerAIQuestionResponse = AIWorkspaceDepartmentQuestionResponse & {
-  context: AIWorkspaceDepartmentQuestionResponse['context'] & {
-    type?: 'customer' | string;
-    followupId?: number;
-    label?: string;
-    recentNoteCount?: number;
-    recentScheduleCount?: number;
-    recentEmailCount?: number;
-  };
-};
-
 export type ScheduleAICoach = {
   summary: string;
   priority: 'high' | 'medium' | 'low' | string;
@@ -3879,6 +3867,53 @@ const emptyCustomersData: CustomersData = {
   priorityCustomers: [],
 };
 
+const emptyCustomerAiDepartment: CustomerAiDepartment = {
+  departmentId: null,
+  departmentName: '',
+  companyName: '',
+  canUseAi: false,
+  canAnalyze: false,
+  hasAnalysis: false,
+  message: '',
+  summary: '',
+  updatedAt: null,
+  meetingCount: 0,
+  quoteCount: 0,
+  deliveryCount: 0,
+  painpointCount: 0,
+  unverifiedPainpointCount: 0,
+  href: '',
+  hubHref: '',
+  runHref: '',
+  periodStart: null,
+  periodEnd: null,
+  tokenUsage: 0,
+  meetingInsights: [],
+  quoteDelivery: {
+    totalQuotes: 0,
+    convertedQuotes: 0,
+    conversionRate: 0,
+    totalDeliveries: 0,
+    avgDeliveryIntervalDays: 0,
+    productStats: [],
+    recentDeliveries: [],
+  },
+  quoteInsights: {
+    conversionAnalysis: '',
+    deliveryCycle: '',
+    productTrends: '',
+    stalledQuotes: [],
+  },
+  nextActions: [],
+  verificationInsights: [],
+  missingInfo: {
+    items: [],
+    questions: [],
+  },
+  recommendedQuestions: [],
+  painpoints: [],
+};
+
 const emptyCustomerDetailData: CustomerDetailData = {
   success: false,
   source: 'unavailable',
@@ -3943,52 +3978,6 @@ const emptyCustomerDetailData: CustomerDetailData = {
       calibrationResults: [],
     },
     assets: [],
-  },
-  aiDepartment: {
-    departmentId: null,
-    departmentName: '',
-    companyName: '',
-    canUseAi: false,
-    canAnalyze: false,
-    hasAnalysis: false,
-    message: '',
-    summary: '',
-    updatedAt: null,
-    meetingCount: 0,
-    quoteCount: 0,
-    deliveryCount: 0,
-    painpointCount: 0,
-    unverifiedPainpointCount: 0,
-    href: '',
-    hubHref: '',
-    runHref: '',
-    periodStart: null,
-    periodEnd: null,
-    tokenUsage: 0,
-    meetingInsights: [],
-    quoteDelivery: {
-      totalQuotes: 0,
-      convertedQuotes: 0,
-      conversionRate: 0,
-      totalDeliveries: 0,
-      avgDeliveryIntervalDays: 0,
-      productStats: [],
-      recentDeliveries: [],
-    },
-    quoteInsights: {
-      conversionAnalysis: '',
-      deliveryCycle: '',
-      productTrends: '',
-      stalledQuotes: [],
-    },
-    nextActions: [],
-    verificationInsights: [],
-    missingInfo: {
-      items: [],
-      questions: [],
-    },
-    recommendedQuestions: [],
-    painpoints: [],
   },
   edit: {
     canEdit: false,
@@ -4059,30 +4048,30 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
 
 export function normalizeCustomerAiDepartment(payload?: Partial<CustomerAiDepartment> | null): CustomerAiDepartment {
   return {
-    ...emptyCustomerDetailData.aiDepartment,
+    ...emptyCustomerAiDepartment,
     ...(payload ?? {}),
     quoteDelivery: {
-      ...emptyCustomerDetailData.aiDepartment.quoteDelivery,
+      ...emptyCustomerAiDepartment.quoteDelivery,
       ...(payload?.quoteDelivery ?? {}),
-      productStats: payload?.quoteDelivery?.productStats ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.productStats,
-      recentDeliveries: payload?.quoteDelivery?.recentDeliveries ?? emptyCustomerDetailData.aiDepartment.quoteDelivery.recentDeliveries,
+      productStats: payload?.quoteDelivery?.productStats ?? emptyCustomerAiDepartment.quoteDelivery.productStats,
+      recentDeliveries: payload?.quoteDelivery?.recentDeliveries ?? emptyCustomerAiDepartment.quoteDelivery.recentDeliveries,
     },
     quoteInsights: {
-      ...emptyCustomerDetailData.aiDepartment.quoteInsights,
+      ...emptyCustomerAiDepartment.quoteInsights,
       ...(payload?.quoteInsights ?? {}),
-      stalledQuotes: payload?.quoteInsights?.stalledQuotes ?? emptyCustomerDetailData.aiDepartment.quoteInsights.stalledQuotes,
+      stalledQuotes: payload?.quoteInsights?.stalledQuotes ?? emptyCustomerAiDepartment.quoteInsights.stalledQuotes,
     },
     missingInfo: {
-      ...emptyCustomerDetailData.aiDepartment.missingInfo,
+      ...emptyCustomerAiDepartment.missingInfo,
       ...(payload?.missingInfo ?? {}),
-      items: payload?.missingInfo?.items ?? emptyCustomerDetailData.aiDepartment.missingInfo.items,
-      questions: payload?.missingInfo?.questions ?? emptyCustomerDetailData.aiDepartment.missingInfo.questions,
+      items: payload?.missingInfo?.items ?? emptyCustomerAiDepartment.missingInfo.items,
+      questions: payload?.missingInfo?.questions ?? emptyCustomerAiDepartment.missingInfo.questions,
     },
-    meetingInsights: payload?.meetingInsights ?? emptyCustomerDetailData.aiDepartment.meetingInsights,
-    nextActions: payload?.nextActions ?? emptyCustomerDetailData.aiDepartment.nextActions,
-    verificationInsights: payload?.verificationInsights ?? emptyCustomerDetailData.aiDepartment.verificationInsights,
-    recommendedQuestions: payload?.recommendedQuestions ?? emptyCustomerDetailData.aiDepartment.recommendedQuestions,
-    painpoints: payload?.painpoints ?? emptyCustomerDetailData.aiDepartment.painpoints,
+    meetingInsights: payload?.meetingInsights ?? emptyCustomerAiDepartment.meetingInsights,
+    nextActions: payload?.nextActions ?? emptyCustomerAiDepartment.nextActions,
+    verificationInsights: payload?.verificationInsights ?? emptyCustomerAiDepartment.verificationInsights,
+    recommendedQuestions: payload?.recommendedQuestions ?? emptyCustomerAiDepartment.recommendedQuestions,
+    painpoints: payload?.painpoints ?? emptyCustomerAiDepartment.painpoints,
   };
 }
 
@@ -5787,7 +5776,6 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
         },
         assets: payload.assetSummary?.assets ?? emptyCustomerDetailData.assetSummary.assets,
       },
-      aiDepartment: normalizeCustomerAiDepartment(payload.aiDepartment),
       edit: {
         ...emptyCustomerDetailData.edit,
         ...(payload.edit ?? {}),
@@ -7956,34 +7944,6 @@ export async function askAIWorkspaceDepartmentQuestion(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI department question failed: ${response.status}`);
-  }
-  return data;
-}
-
-export async function askCustomerDetailAIQuestion(
-  followupId: number,
-  question: string,
-): Promise<CustomerAIQuestionResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch(`/reporting/api/customers/${followupId}/ai-question/`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-    body: JSON.stringify({ question }),
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Customer AI question API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as CustomerAIQuestionResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Customer AI question failed: ${response.status}`);
   }
   return data;
 }

@@ -1,5 +1,48 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Customer detail AI removal plan
+
+**Background**:
+
+- User clarified that the customer detail AI integration should not be a copied/legacy Department AI surface.
+- Customer-detail AI should be removed because the AI Workspace menu already covers AI questions.
+- Schedule detail AI coach remains in scope and should not be removed.
+
+**DB change required**: No.
+
+- Do not delete existing AI question logs, including any `source=customer_detail` rows.
+- Preserve AI Workspace APIs, schedule AI coach, and existing `/reporting/*` authentication/routes.
+
+**Implementation scope**:
+
+- Backend:
+  - Remove customer detail `aiDepartment` payload from the customer detail API.
+  - Remove the customer-detail AI question API route/view and customer-detail question helper context.
+  - Remove customer-detail AI question API tests.
+- Frontend:
+  - Remove all AI UI from React customer detail, including the Department AI card/result panel and the customer situation question panel.
+  - Remove customer-detail AI question client/type/state/styles.
+  - Keep shared AI Workspace and pipeline AI types/components if still used outside customer detail.
+- Tests:
+  - Update customer detail API expectations.
+  - Keep schedule AI coach regression coverage.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused customer-detail API and schedule AI coach tests.
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+**Current status**:
+
+- Implementation, backend/frontend validation, and local smoke are complete. Commit/push, Railway deployment, production smoke, and user production manual verification are next.
+
 ## 2026-05-18 AI cost/speed optimization and detail AI integration plan
 
 **Background**:

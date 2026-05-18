@@ -1,5 +1,97 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Customer Detail AI Removal
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포/운영 smoke 진행 예정
+
+### 요약
+
+고객 상세 화면의 AI 표면을 제거했습니다. `Department AI` 카드와 `고객 상황 질문` 패널을 모두 제거했고, 고객 상세 API에서도 `aiDepartment` payload를 더 이상 내려주지 않습니다. AI 질문/분석은 `/ai-workspace/`에서 계속 사용하며, 일정 상세 `일정 실행 코치`는 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 고객 상세 `aiDepartment` payload 제거, 고객 상세 AI 질문 API/view 제거.
+- `reporting/urls.py`: 고객 상세 AI 질문 route 제거.
+- `reporting/tests.py`: 고객 상세 AI payload 제거 테스트로 갱신, 고객 상세 질문 API 테스트 제거.
+- `frontend/src/api.ts`: 고객 상세 `aiDepartment` 타입 의존성과 고객 상세 질문 client/type 제거.
+- `frontend/src/App.tsx`: 고객 상세 AI 카드/질문 패널/state/handler 제거.
+- `frontend/src/styles.css`: 고객 상세 질문 패널 전용 스타일 제거.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 고객 상세 화면이 AI Workspace의 중복/legacy 성격 UI를 표시하지 않습니다.
+- 고객 상세는 고객 정보, 이력, 일정, 선결제, 장비/A/S/교정 중심으로 유지됩니다.
+- AI 작업 위치는 `/ai-workspace/`로 정리되고, 일정 상세 실행 코치는 그대로 유지됩니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 인증/권한/legacy route를 유지했습니다.
+- AI Workspace 질문, 기록, 기억, 피드백 API를 유지했습니다.
+- Pipeline 화면의 Department AI 카드와 일정 상세 AI coach는 유지했습니다.
+- DB 모델 변경과 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_excludes_customer_ai_payload reporting.tests.AIWorkspaceSummaryApiTests.test_schedule_ai_coach_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_schedule_ai_coach_blocks_inaccessible_schedule reporting.tests.AIWorkspaceSummaryApiTests.test_schedule_ai_coach_returns_unsaved_fallback_for_accessible_schedule --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 82 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 27 tests, OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-DM_9gBg2.js and /assets/index-X4HQPTB9.css. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+local Playwright smoke
+→ Vite on http://127.0.0.1:5174/ and Django on http://127.0.0.1:8000/.
+→ Anonymous /customers/1/ redirected to /reporting/login/?next=/customers/1/ as expected.
+→ Local production JS does not contain 고객 상황 질문, customer-ai-question-card, Customer AI, or customer ai-question endpoint strings.
+→ Local production JS still contains 일정 실행 코치 and schedule-ai-coach-panel.
+```
+
+### 알려진 제한
+
+- 기존에 저장된 `AIWorkspaceQuestionLog.source=customer_detail` 이력은 삭제하지 않았습니다.
+- 고객 상세에서 부서 AI 분석을 실행하거나 보는 UI는 사라졌습니다. 해당 작업은 AI Workspace 또는 관련 AI 화면에서 수행해야 합니다.
+
+### 권장 다음 단계
+
+운영에서 고객 상세에 AI 카드가 사라졌는지 검수한 뒤, 일정 상세 AI coach 품질만 별도로 평가하는 것이 좋습니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `/customers/<id>/`에 접속합니다.
+2. 우측/사이드 영역에 `Department AI`, `Customer AI`, `고객 상황 질문`, `AI 분석 실행`이 보이지 않는지 확인합니다.
+3. 고객 기본정보, 최근 노트, 예정 일정, 지연 후속, 선결제, 장비/A/S/교정 섹션은 그대로 보이는지 확인합니다.
+4. `/ai-workspace/`에 접속해 AI 질문 화면이 그대로 동작하는지 확인합니다.
+5. `/schedules/<id>/`에 접속해 `일정 실행 코치`가 그대로 보이는지 확인합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시 후 Railway `web`, `sales-note-frontend` 배포와 운영 smoke를 진행합니다.
+
 ## 2026-05-18 — AI Cost/Speed Optimization and Detail AI Integration
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

@@ -63,7 +63,6 @@ import {
   CustomerCalibrationRecord,
   CustomerCalibrationPayload,
   CustomerDetailData,
-  CustomerAIQuestionResponse,
   CustomerAiDepartment,
   CustomerAiPainpoint,
   CustomerEditPayload,
@@ -156,7 +155,6 @@ import {
   PersonalScheduleDetailData,
   PersonalSchedulePayload,
   addNoteReply,
-  askCustomerDetailAIQuestion,
   assignManagerTask,
   askAIWorkspaceDepartmentQuestion,
   bulkDeleteProducts,
@@ -2785,93 +2783,6 @@ function CustomerAiResultPanel({
   );
 }
 
-function CustomerAIQuestionAnswer({ result }: { result: CustomerAIQuestionResponse }) {
-  const answer = result.answer;
-  const decision = answer.decision;
-  const actionItems = answer.actionItems ?? [];
-  const perspectiveRows = answer.perspective ? [
-    { label: '고객 입장 추정', value: answer.perspective.customerPerspective },
-    { label: '영업 판단', value: answer.perspective.salesJudgment },
-    { label: '추천 접근', value: answer.perspective.recommendedApproach },
-    { label: '말문 예시', value: answer.perspective.talkTrack },
-    { label: '주의점', value: answer.perspective.caution },
-  ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
-
-  return (
-    <article className="ai-department-question-answer customer-ai-question-answer">
-      <div className="ai-department-question-answer-head">
-        <p>{answer.summary}</p>
-        <span>{result.source === 'openai' ? `${result.modelLabel || 'AI'} 답변` : 'CRM 기반 답변'}</span>
-      </div>
-      {decision?.recommendedChoice ? (
-        <section className="ai-department-question-decision">
-          <span>추천 판단</span>
-          <strong>{decision.recommendedChoice}</strong>
-          {decision.reason || decision.rejectedChoice || decision.exception ? (
-            <dl>
-              {decision.rejectedChoice ? <div><dt>버릴 선택</dt><dd>{decision.rejectedChoice}</dd></div> : null}
-              {decision.reason ? <div><dt>판단 이유</dt><dd>{decision.reason}</dd></div> : null}
-              {decision.exception ? <div><dt>예외 조건</dt><dd>{decision.exception}</dd></div> : null}
-            </dl>
-          ) : null}
-        </section>
-      ) : null}
-      {perspectiveRows.length > 0 ? (
-        <dl className="ai-department-question-perspective">
-          {perspectiveRows.map((item) => (
-            <div key={item.label}>
-              <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-      {actionItems.length > 0 ? (
-        <div className="ai-department-question-actions">
-          {actionItems.slice(0, 4).map((item, index) => (
-            <section className="ai-department-question-action-item" key={`${item.rank || index}-${item.title}-${item.nextAction}`}>
-              <div className="ai-department-question-action-head">
-                <div>
-                  <span>{item.priority || '추천 작업'}</span>
-                  <strong>{item.title || `추천 작업 ${index + 1}`}</strong>
-                </div>
-                <small>{formatNumber(item.rank || index + 1)}</small>
-              </div>
-              {item.reason ? <p className="ai-department-question-action-meta">{item.reason}</p> : null}
-              {item.nextAction ? (
-                <dl className="ai-department-question-action-detail">
-                  <div>
-                    <dt>다음 액션</dt>
-                    <dd>{item.nextAction}</dd>
-                  </div>
-                  {item.timing ? <div><dt>확인 시점</dt><dd>{item.timing}</dd></div> : null}
-                </dl>
-              ) : null}
-            </section>
-          ))}
-        </div>
-      ) : null}
-      {answer.bullets.length > 0 ? (
-        <ul>
-          {answer.bullets.slice(0, 5).map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      ) : null}
-      {answer.evidence.length > 0 ? (
-        <div className="ai-evidence-list">
-          {answer.evidence.slice(0, 5).map((item) => (
-            <span key={`${item.label}-${item.value}`}>
-              <b>{item.label}</b>
-              {item.value}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
 function CustomerDetailPage({
   data,
   loading,
@@ -2887,16 +2798,6 @@ function CustomerDetailPage({
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editMessage, setEditMessage] = useState('');
-  const [aiRunning, setAiRunning] = useState(false);
-  const [aiError, setAiError] = useState('');
-  const [aiMessage, setAiMessage] = useState('');
-  const [aiResultOpen, setAiResultOpen] = useState(false);
-  const [aiVerificationNotes, setAiVerificationNotes] = useState<Record<number, string>>({});
-  const [aiVerifyingId, setAiVerifyingId] = useState<number | null>(null);
-  const [customerAiQuestion, setCustomerAiQuestion] = useState('');
-  const [customerAiQuestionLoading, setCustomerAiQuestionLoading] = useState(false);
-  const [customerAiQuestionError, setCustomerAiQuestionError] = useState('');
-  const [customerAiQuestionResult, setCustomerAiQuestionResult] = useState<CustomerAIQuestionResponse | null>(null);
   const [assetEditor, setAssetEditor] = useState<CustomerAssetEditorMode>('');
   const [assetForm, setAssetForm] = useState<CustomerAssetFormState>(() => makeCustomerAssetForm());
   const [serviceCaseForm, setServiceCaseForm] = useState<CustomerServiceCaseFormState>(() => makeCustomerServiceCaseForm());
@@ -2913,16 +2814,6 @@ function CustomerDetailPage({
     setEditError('');
     setEditMessage('');
     setEditOpen(false);
-    setAiRunning(false);
-    setAiError('');
-    setAiMessage('');
-    setAiResultOpen(false);
-    setAiVerificationNotes({});
-    setAiVerifyingId(null);
-    setCustomerAiQuestion('');
-    setCustomerAiQuestionLoading(false);
-    setCustomerAiQuestionError('');
-    setCustomerAiQuestionResult(null);
     setAssetEditor('');
     setAssetForm(makeCustomerAssetForm(null, getOptionValue(data?.assetSummary.options.assetStatuses ?? [], 'active')));
     setServiceCaseForm(makeCustomerServiceCaseForm(data?.assetSummary));
@@ -2934,12 +2825,6 @@ function CustomerDetailPage({
     setAssetError('');
     setAssetMessage('');
   }, [customer?.id]);
-
-  useEffect(() => {
-    if (data?.aiDepartment?.hasAnalysis) {
-      setAiResultOpen(true);
-    }
-  }, [customer?.id, data?.aiDepartment?.hasAnalysis]);
 
   const editConfig = data?.edit;
   const editCompanies = editConfig?.companies ?? [];
@@ -3014,90 +2899,6 @@ function CustomerDetailPage({
       setEditError(error instanceof Error ? error.message : '고객 정보 수정에 실패했습니다.');
     } finally {
       setEditSaving(false);
-    }
-  };
-
-  const handleAiDepartmentRun = async () => {
-    const aiDepartment = data?.aiDepartment;
-    if (!aiDepartment?.canAnalyze || !aiDepartment.runHref || aiRunning) {
-      setAiError(aiDepartment?.message || 'AI 분석을 실행할 수 없습니다.');
-      setAiMessage('');
-      return;
-    }
-
-    setAiRunning(true);
-    setAiError('');
-    setAiMessage('');
-    try {
-      const result = await runAiDepartmentAnalysis(aiDepartment.runHref);
-      await onRefresh();
-      const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
-      setAiMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
-      setAiResultOpen(true);
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
-    } finally {
-      setAiRunning(false);
-    }
-  };
-
-  const handleAiVerificationNoteChange = (cardId: number, value: string) => {
-    setAiVerificationNotes((previous) => ({
-      ...previous,
-      [cardId]: value,
-    }));
-  };
-
-  const handleAiPainpointVerify = async (card: CustomerAiPainpoint) => {
-    if (!card.canVerify || !card.verifyHref || aiVerifyingId) {
-      return;
-    }
-
-    setAiVerifyingId(card.id);
-    setAiError('');
-    setAiMessage('');
-    try {
-      await verifyAiPainpoint(card.verifyHref, aiVerificationNotes[card.id] || '');
-      await onRefresh();
-      setAiMessage('PainPoint 검증 메모를 저장했습니다.');
-      setAiVerificationNotes((previous) => {
-        const next = { ...previous };
-        delete next[card.id];
-        return next;
-      });
-      setAiResultOpen(true);
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : 'PainPoint 검증 저장에 실패했습니다.');
-    } finally {
-      setAiVerifyingId(null);
-    }
-  };
-
-  const handleCustomerAiQuestionSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!customer || customerAiQuestionLoading) {
-      return;
-    }
-    if (!data?.aiDepartment?.canUseAi) {
-      setCustomerAiQuestionError(data?.aiDepartment?.message || 'AI 기능 사용 권한이 없습니다.');
-      return;
-    }
-    const question = customerAiQuestion.trim();
-    if (question.length < 2) {
-      setCustomerAiQuestionError('질문을 입력하세요.');
-      return;
-    }
-
-    setCustomerAiQuestionLoading(true);
-    setCustomerAiQuestionError('');
-    try {
-      const result = await askCustomerDetailAIQuestion(customer.id, question);
-      setCustomerAiQuestionResult(result);
-    } catch (error) {
-      setCustomerAiQuestionResult(null);
-      setCustomerAiQuestionError(error instanceof Error ? error.message : '고객 AI 질문에 실패했습니다.');
-    } finally {
-      setCustomerAiQuestionLoading(false);
     }
   };
 
@@ -3335,7 +3136,6 @@ function CustomerDetailPage({
   }
 
   const customerDetail = data.customer;
-  const aiDepartment = data.aiDepartment;
   const prepaymentSummary = data.prepaymentSummary;
   const assetSummary = data.assetSummary;
   const metrics = [
@@ -4098,116 +3898,6 @@ function CustomerDetailPage({
                 <MoveUpRight size={15} />
               </a>
             </div>
-          </div>
-
-          <div className="customer-ai-card">
-            <div className="customer-ai-card-heading">
-              <div>
-                <span className="eyebrow">Department AI</span>
-                <h3>{aiDepartment.departmentName || '부서 AI 분석'}</h3>
-              </div>
-              <Sparkles size={18} />
-            </div>
-            {aiDepartment.hasAnalysis ? (
-              <p>{aiDepartment.summary || '분석 요약 없음'}</p>
-            ) : (
-              <p>{aiDepartment.message || '아직 부서 AI 분석이 없습니다.'}</p>
-            )}
-            <div className="customer-ai-metrics">
-              <span>미팅 <strong>{formatNumber(aiDepartment.meetingCount)}</strong></span>
-              <span>견적 <strong>{formatNumber(aiDepartment.quoteCount)}</strong></span>
-              <span>납품 <strong>{formatNumber(aiDepartment.deliveryCount)}</strong></span>
-              <span>PainPoint <strong>{formatNumber(aiDepartment.painpointCount)}</strong></span>
-            </div>
-            {aiError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{aiError}</span></div> : null}
-            {aiMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{aiMessage}</span></div> : null}
-            <div className="customer-ai-actions">
-              {aiDepartment.hasAnalysis ? (
-                <button className="route-secondary-action" onClick={() => setAiResultOpen((open) => !open)} type="button">
-                  {aiResultOpen ? '결과 닫기' : '결과 보기'}
-                </button>
-              ) : null}
-              {aiDepartment.href ? (
-                <a className="route-secondary-action" href={aiDepartment.href}>
-                  Django 보기
-                  <MoveUpRight size={15} />
-                </a>
-              ) : aiDepartment.hubHref ? (
-                <a className="route-secondary-action" href={aiDepartment.hubHref}>
-                  AI 허브
-                  <MoveUpRight size={15} />
-                </a>
-              ) : null}
-              <button
-                className="route-primary-action customer-ai-run-button"
-                disabled={!aiDepartment.canAnalyze || !aiDepartment.runHref || aiRunning}
-                onClick={handleAiDepartmentRun}
-                type="button"
-              >
-                {aiRunning ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
-                AI 분석 실행
-              </button>
-            </div>
-            {aiDepartment.hasAnalysis && aiResultOpen ? (
-              <CustomerAiResultPanel
-                aiDepartment={aiDepartment}
-                verificationNotes={aiVerificationNotes}
-                verifyingId={aiVerifyingId}
-                onNoteChange={handleAiVerificationNoteChange}
-                onVerify={handleAiPainpointVerify}
-              />
-            ) : null}
-          </div>
-
-          <div className="customer-ai-card customer-ai-question-card">
-            <div className="customer-ai-card-heading">
-              <div>
-                <span className="eyebrow">Customer AI</span>
-                <h3>고객 상황 질문</h3>
-              </div>
-              <MessageSquareText size={18} />
-            </div>
-            <div className="ai-department-question-scope customer-ai-question-scope">
-              <span>{[customer?.company, customer?.department, customer?.customer].filter(Boolean).join(' · ') || '현재 고객'}</span>
-              <small>고객 + 부서 배경</small>
-              {customerAiQuestionResult?.context?.recentEmailCount ? <small>메일 {formatNumber(customerAiQuestionResult.context.recentEmailCount)}건</small> : null}
-            </div>
-            <form className="ai-department-question-form customer-ai-question-form" onSubmit={handleCustomerAiQuestionSubmit}>
-              <textarea
-                disabled={!aiDepartment.canUseAi || customerAiQuestionLoading}
-                maxLength={600}
-                onChange={(event) => {
-                  setCustomerAiQuestion(event.target.value);
-                  setCustomerAiQuestionError('');
-                }}
-                placeholder="예: 오늘 재견적 조건을 어떻게 말할까?"
-                rows={3}
-                value={customerAiQuestion}
-              />
-              <div>
-                <span>{formatNumber(customerAiQuestion.trim().length)} / 600</span>
-                <button
-                  disabled={!aiDepartment.canUseAi || customerAiQuestion.trim().length < 2 || customerAiQuestionLoading}
-                  type="submit"
-                >
-                  {customerAiQuestionLoading ? <Loader2 className="spin-icon" size={14} /> : <Send size={14} />}
-                  {customerAiQuestionLoading ? '분석 중' : '질문'}
-                </button>
-              </div>
-            </form>
-            {customerAiQuestionError ? (
-              <div className="dashboard-api-alert compact">
-                <AlertTriangle size={16} />
-                <span>{customerAiQuestionError}</span>
-              </div>
-            ) : null}
-            {!aiDepartment.canUseAi && !customerAiQuestionError ? (
-              <div className="dashboard-api-alert compact">
-                <AlertTriangle size={16} />
-                <span>{aiDepartment.message || 'AI 기능 사용 권한이 없습니다.'}</span>
-              </div>
-            ) : null}
-            {customerAiQuestionResult ? <CustomerAIQuestionAnswer result={customerAiQuestionResult} /> : null}
           </div>
 
           <div className="dashboard-panel-heading customer-detail-section-heading">
