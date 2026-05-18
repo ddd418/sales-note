@@ -11811,6 +11811,7 @@ function MailboxPage({
 }) {
   const mailbox = data ?? null;
   const counts = mailbox?.counts ?? { inbox: 0, sent: 0, scheduled: 0, starred: 0, archived: 0, trash: 0, unread: 0 };
+  const isScheduledBox = selectedBox === 'scheduled';
 
   return (
     <section className="mailbox-page">
@@ -11828,27 +11829,42 @@ function MailboxPage({
       <div className="mailbox-summary-band">
         <div>
           <span className="eyebrow">Customer mailbox</span>
-          <h2>{mailbox?.connection.address || '메일함'}</h2>
-          <p>{mailbox?.connection.connected ? `${mailbox.connection.provider} 연결됨` : '메일 계정 연결이 필요합니다'}</p>
+          <h2>{isScheduledBox ? '예약메일' : mailbox?.connection.address || '메일함'}</h2>
+          <p>
+            {isScheduledBox
+              ? '예약 대기 메일을 확인하고 취소합니다'
+              : mailbox?.connection.connected ? `${mailbox.connection.provider} 연결됨` : '메일 계정 연결이 필요합니다'}
+          </p>
         </div>
         <div className="mailbox-summary-actions">
           <button className="route-secondary-action" disabled={syncing || !mailbox?.connection.gmailConnected} onClick={onSync} type="button">
             {syncing ? <Loader2 className="spin-icon" size={16} /> : <RefreshCw size={16} />}
             동기화
           </button>
-          <button className="route-primary-action" onClick={() => onComposeOpenChange(true)} type="button">
+          <button
+            className="route-primary-action"
+            disabled={!mailbox?.connection.connected}
+            onClick={() => onComposeOpenChange(true)}
+            type="button"
+          >
             <Send size={16} />
             메일 작성
           </button>
         </div>
       </div>
 
-      {!mailbox?.connection.connected ? (
+      {!mailbox?.connection.connected && !isScheduledBox ? (
         <div className="dashboard-api-alert compact">
           <AlertTriangle size={16} />
           <span>Gmail 또는 IMAP 계정을 연결하면 React 메일함에서 고객 메일을 관리할 수 있습니다.</span>
           <a href={mailbox?.connection.connectHref || '/reporting/gmail/connect/'}>Gmail 연결</a>
           <a href={mailbox?.connection.imapConnectHref || '/reporting/imap/connect/'}>IMAP 연결</a>
+        </div>
+      ) : null}
+      {!mailbox?.connection.connected && isScheduledBox ? (
+        <div className="dashboard-api-alert compact success">
+          <Clock size={16} />
+          <span>예약메일 확인과 취소는 메일 계정 연결 없이도 가능합니다. 실제 발송 시점에는 Gmail 또는 IMAP 연결이 필요합니다.</span>
         </div>
       ) : null}
 

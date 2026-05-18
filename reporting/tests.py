@@ -230,6 +230,32 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(payload['emails'][0]['threadHref'], '/mailbox/thread/gmail-thread-react-1/')
         self.assertEqual(payload['create']['customers'][0]['email'], 'customer@example.com')
 
+    def test_mailbox_api_lists_scheduled_mail_without_connected_provider(self):
+        from datetime import timedelta
+
+        ScheduledEmail.objects.create(
+            user=self.user,
+            provider='gmail',
+            sender_email='sales@example.com',
+            to_email='customer@example.com',
+            subject='연결 없이 확인할 예약메일',
+            body='예약메일은 연결 상태와 별개로 목록 확인이 필요합니다.',
+            body_html='<div>예약메일은 연결 상태와 별개로 목록 확인이 필요합니다.</div>',
+            followup=self.followup,
+            scheduled_at=timezone.now() + timedelta(hours=1),
+            status='pending',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:mailbox_api_list'), {'box': 'scheduled'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['connection']['connected'])
+        self.assertEqual(payload['counts']['scheduled'], 1)
+        self.assertEqual(payload['emails'][0]['subject'], '연결 없이 확인할 예약메일')
+        self.assertTrue(payload['emails'][0]['isScheduled'])
+
     def test_mailbox_api_list_returns_schedule_auto_attachments_for_compose(self):
         schedule = Schedule.objects.create(
             user=self.user,

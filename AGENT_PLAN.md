@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Scheduled mailbox disconnected view fix plan
+
+**Background**:
+
+- User reported that the scheduled email view shows the generic Gmail/IMAP connection message and prevents checking scheduled emails.
+- Scheduled email review/cancel should be available even when the provider connection is missing; only actual sending requires Gmail or IMAP.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Frontend:
+  - Hide the generic connection-required banner on `box=scheduled`.
+  - Show a scheduled-mail-specific status message.
+  - Disable compose when no mail provider is connected.
+- Tests:
+  - Add backend regression coverage that scheduled mail API returns pending scheduled emails even without a connected provider.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\tests.py`
+- Focused scheduled mailbox API regression test.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- Local preview smoke for `/mailbox/?box=scheduled`.
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete. Commit, push, Railway deployment, and production smoke pending.
+
 ## 2026-05-18 AI mini-only + scheduled email plan
 
 **Background**:

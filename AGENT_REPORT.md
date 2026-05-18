@@ -1,5 +1,59 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Scheduled Mailbox Disconnected View Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+예약메일 탭에서도 공통 “Gmail 또는 IMAP 계정 연결” 안내가 떠서 예약메일 확인이 막혀 보이는 문제를 수정했습니다. 예약메일 확인/취소는 메일 연결 없이도 가능하고, 실제 발송 시점에만 Gmail 또는 IMAP 연결이 필요하다는 안내로 분리했습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: `box=scheduled`에서는 예약메일 전용 제목/안내를 표시하고 공통 연결 안내를 숨김. 연결이 없으면 새 메일 작성 버튼은 비활성화.
+- `reporting/tests.py`: 연결된 Gmail/IMAP이 없어도 예약메일 API가 pending 예약메일을 반환하는 회귀 테스트 추가.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_api_lists_scheduled_mail_without_connected_provider --verbosity=1
+→ Ran 1 test, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local preview smoke:
+→ `/mailbox/?box=scheduled` shows `예약메일`.
+→ Generic `Gmail 또는 IMAP 계정을 연결하면...` banner no longer appears on scheduled tab.
+→ Scheduled-specific guidance and disabled compose button display correctly when disconnected.
+```
+
+### 운영 배포 상태
+
+- 배포 전.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/mailbox/?box=scheduled`에 접속합니다.
+2. 상단 제목이 `예약메일`로 보이는지 확인합니다.
+3. 기존 `Gmail 또는 IMAP 계정을 연결하면 React 메일함...` 안내로 막히거나 리디렉트되지 않는지 확인합니다.
+4. 예약메일 목록과 취소 버튼이 표시되는지 확인합니다.
+
 ## 2026-05-18 — AI Mini-Only + Scheduled Email
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
