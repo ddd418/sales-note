@@ -3416,6 +3416,216 @@ def _customer_asset_summary_payload(request, followup, scope_users, can_edit):
     }
 
 
+def _customer_asset_directory_payload(asset, service_cases=None, calibration_records=None):
+    followup_id = asset.primary_followup_id
+    payload = _customer_asset_payload(
+        asset,
+        service_cases or [],
+        calibration_records or [],
+        followup_id,
+    )
+    payload.update({
+        'companyName': asset.company.name if asset.company else '',
+        'departmentName': asset.department.name if asset.department else '',
+        'customerName': asset.primary_followup.customer_name if asset.primary_followup else '',
+        'ownerName': _user_display_name(asset.created_by) if asset.created_by else '',
+        'customerHref': f'/customers/{followup_id}/' if followup_id else '',
+        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup_id]) if followup_id else '',
+        'assetDirectoryHref': '/assets/',
+    })
+    return payload
+
+
+def _customer_asset_directory_scope_label(user_profile, request_user, selected_user):
+    if selected_user:
+        return _user_display_name(selected_user)
+    if not user_profile.can_view_all_users():
+        return _user_display_name(request_user)
+    if user_profile.company:
+        return f'{user_profile.company.name} 팀'
+    return '전체'
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def customer_assets_summary_api(request):
+    """React 고객 장비 디렉터리용 읽기 전용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+    due_limit = today + timedelta(days=30)
+    open_service_statuses = ['received', 'in_progress', 'waiting']
+
+    q = request.GET.get('q', '').strip()
+    status = request.GET.get('status', '').strip()
+    owner = request.GET.get('owner', '').strip()
+    service = request.GET.get('service', '').strip()
+    calibration = request.GET.get('calibration', '').strip()
+
+    base_assets = CustomerAsset.objects.filter(
+        created_by__in=scope_users,
+    ).select_related(
+        'company',
+        'department',
+        'primary_followup',
+        'product',
+        'created_by',
+    )
+    queryset = base_assets
+
+    if owner:
+        try:
+            owner_id = int(owner)
+        except ValueError:
+            owner_id = None
+        if owner_id and scope_users.filter(id=owner_id).exists():
+            queryset = queryset.filter(created_by_id=owner_id)
+        else:
+            queryset = queryset.none()
+
+    if status:
+        queryset = queryset.filter(status=status)
+
+    if q:
+        queryset = queryset.filter(
+            Q(asset_name__icontains=q) |
+            Q(model_name__icontains=q) |
+            Q(serial_number__icontains=q) |
+            Q(install_location__icontains=q) |
+            Q(notes__icontains=q) |
+            Q(company__name__icontains=q) |
+            Q(department__name__icontains=q) |
+            Q(primary_followup__customer_name__icontains=q) |
+            Q(product__product_code__icontains=q) |
+            Q(product__description__icontains=q)
+        )
+
+    if service == 'open':
+        queryset = queryset.filter(service_cases__status__in=open_service_statuses)
+    elif service == 'overdue':
+        queryset = queryset.filter(
+            service_cases__status__in=open_service_statuses,
+            service_cases__due_date__lt=today,
+        )
+    elif service == 'none':
+        queryset = queryset.filter(service_cases__isnull=True)
+
+    if calibration == 'due30':
+        queryset = queryset.filter(
+            calibration_records__next_due_date__gte=today,
+            calibration_records__next_due_date__lte=due_limit,
+        )
+    elif calibration == 'overdue':
+        queryset = queryset.filter(
+            calibration_records__next_due_date__lt=today,
+        )
+    elif calibration == 'none':
+        queryset = queryset.filter(calibration_records__isnull=True)
+
+    filtered_assets_qs = queryset.distinct()
+    filtered_count = filtered_assets_qs.count()
+    assets = list(filtered_assets_qs.order_by('-updated_at', '-created_at', '-id')[:120])
+    asset_ids = [asset.id for asset in assets]
+    service_cases = list(
+        ServiceCase.objects.filter(asset_id__in=asset_ids).select_related(
+            'asset', 'followup', 'assigned_to'
+        ).order_by('-received_date', '-created_at')[:240]
+    )
+    calibrations = list(
+        CalibrationRecord.objects.filter(asset_id__in=asset_ids).select_related(
+            'asset', 'followup', 'performed_by'
+        ).order_by('-calibration_date', '-created_at')[:240]
+    )
+    service_by_asset = {}
+    for case in service_cases:
+        service_by_asset.setdefault(case.asset_id, []).append(case)
+    calibration_by_asset = {}
+    for record in calibrations:
+        calibration_by_asset.setdefault(record.asset_id, []).append(record)
+
+    owner_options = [
+        {
+            'id': user.id,
+            'name': _user_display_name(user),
+        }
+        for user in scope_users.order_by('username')
+    ]
+    total_assets = base_assets.count()
+    active_assets = base_assets.filter(status='active').count()
+    open_service_assets = base_assets.filter(
+        service_cases__status__in=open_service_statuses
+    ).distinct().count()
+    due_calibration_assets = base_assets.filter(
+        calibration_records__next_due_date__gte=today,
+        calibration_records__next_due_date__lte=due_limit,
+    ).distinct().count()
+    overdue_calibration_assets = base_assets.filter(
+        calibration_records__next_due_date__lt=today,
+    ).distinct().count()
+    no_calibration_assets = base_assets.filter(calibration_records__isnull=True).count()
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': _customer_asset_directory_scope_label(user_profile, request.user, selected_user),
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'filters': {
+            'q': q,
+            'status': status,
+            'owner': owner,
+            'service': service,
+            'calibration': calibration,
+        },
+        'options': {
+            'owners': owner_options,
+            'assetStatuses': [{'value': value, 'label': label} for value, label in CustomerAsset.STATUS_CHOICES],
+            'serviceFilters': [
+                {'value': 'open', 'label': '진행 서비스'},
+                {'value': 'overdue', 'label': '처리 지연'},
+                {'value': 'none', 'label': '서비스 이력 없음'},
+            ],
+            'calibrationFilters': [
+                {'value': 'due30', 'label': '30일 내 교정'},
+                {'value': 'overdue', 'label': '교정 지연'},
+                {'value': 'none', 'label': '교정 이력 없음'},
+            ],
+        },
+        'metrics': {
+            'totalAssets': total_assets,
+            'filteredAssets': filtered_count,
+            'activeAssets': active_assets,
+            'openServiceAssets': open_service_assets,
+            'dueCalibrationAssets': due_calibration_assets,
+            'overdueCalibrationAssets': overdue_calibration_assets,
+            'noCalibrationAssets': no_calibration_assets,
+            'returnedAssets': len(assets),
+            'truncated': filtered_count > len(assets),
+        },
+        'links': {
+            'assets': '/assets/',
+            'customers': '/customers/',
+        },
+        'assets': [
+            _customer_asset_directory_payload(
+                asset,
+                service_by_asset.get(asset.id, [])[:3],
+                calibration_by_asset.get(asset.id, [])[:3],
+            )
+            for asset in assets
+        ],
+    })
+
+
 def _get_customer_asset_for_mutation(request, followup, asset_id):
     user_profile = get_user_profile(request.user)
     scope_users, _selected_user = _dashboard_scope_users(request, user_profile)

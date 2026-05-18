@@ -624,6 +624,59 @@ export type CustomerAssetSummary = {
   assets: CustomerAssetItem[];
 };
 
+export type CustomerAssetDirectoryItem = CustomerAssetItem & {
+  companyName: string;
+  departmentName: string;
+  customerName: string;
+  ownerName: string;
+  customerHref: string;
+  djangoCustomerHref: string;
+  assetDirectoryHref: string;
+};
+
+export type CustomerAssetDirectoryData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    userCount: number;
+    canViewAll: boolean;
+    selectedUserId: number | null;
+  };
+  filters: {
+    q: string;
+    status: string;
+    owner: string;
+    service: string;
+    calibration: string;
+  };
+  options: {
+    owners: Array<{ id: number; name: string }>;
+    assetStatuses: Array<{ value: string; label: string }>;
+    serviceFilters: Array<{ value: string; label: string }>;
+    calibrationFilters: Array<{ value: string; label: string }>;
+  };
+  metrics: {
+    totalAssets: number;
+    filteredAssets: number;
+    activeAssets: number;
+    openServiceAssets: number;
+    dueCalibrationAssets: number;
+    overdueCalibrationAssets: number;
+    noCalibrationAssets: number;
+    returnedAssets: number;
+    truncated: boolean;
+  };
+  links: {
+    assets: string;
+    customers: string;
+  };
+  assets: CustomerAssetDirectoryItem[];
+};
+
 export type CustomerAssetPayload = {
   assetName: string;
   modelName?: string;
@@ -3558,6 +3611,55 @@ const emptyCustomerDetailData: CustomerDetailData = {
   recentSchedules: [],
 };
 
+const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    userCount: 0,
+    canViewAll: false,
+    selectedUserId: null,
+  },
+  filters: {
+    q: '',
+    status: '',
+    owner: '',
+    service: '',
+    calibration: '',
+  },
+  options: {
+    owners: [],
+    assetStatuses: [],
+    serviceFilters: [
+      { value: 'open', label: '진행 서비스' },
+      { value: 'overdue', label: '처리 지연' },
+      { value: 'none', label: '서비스 이력 없음' },
+    ],
+    calibrationFilters: [
+      { value: 'due30', label: '30일 내 교정' },
+      { value: 'overdue', label: '교정 지연' },
+      { value: 'none', label: '교정 이력 없음' },
+    ],
+  },
+  metrics: {
+    totalAssets: 0,
+    filteredAssets: 0,
+    activeAssets: 0,
+    openServiceAssets: 0,
+    dueCalibrationAssets: 0,
+    overdueCalibrationAssets: 0,
+    noCalibrationAssets: 0,
+    returnedAssets: 0,
+    truncated: false,
+  },
+  links: {
+    assets: '/assets/',
+    customers: '/customers/',
+  },
+  assets: [],
+};
+
 export function normalizeCustomerAiDepartment(payload?: Partial<CustomerAiDepartment> | null): CustomerAiDepartment {
   return {
     ...emptyCustomerDetailData.aiDepartment,
@@ -4899,6 +5001,75 @@ export async function saveCustomerCalibration(
   if (payload.notes) form.set('notes', payload.notes);
   if (payload.certificateFile) form.set('certificate_file', payload.certificateFile);
   return submitCustomerAssetForm(form, submitUrl);
+}
+
+export async function loadCustomerAssetDirectoryData(params: {
+  q?: string;
+  status?: string;
+  owner?: string;
+  service?: string;
+  calibration?: string;
+} = {}): Promise<CustomerAssetDirectoryData> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      query.set(key, value);
+    }
+  });
+
+  try {
+    const response = await fetch(`/reporting/api/customer-assets/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Customer assets API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<CustomerAssetDirectoryData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Customer assets API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyCustomerAssetDirectoryData,
+      ...payload,
+      scope: {
+        ...emptyCustomerAssetDirectoryData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyCustomerAssetDirectoryData.filters,
+        ...(payload.filters ?? {}),
+      },
+      options: {
+        ...emptyCustomerAssetDirectoryData.options,
+        ...(payload.options ?? {}),
+        owners: payload.options?.owners ?? emptyCustomerAssetDirectoryData.options.owners,
+        assetStatuses: payload.options?.assetStatuses ?? emptyCustomerAssetDirectoryData.options.assetStatuses,
+        serviceFilters: payload.options?.serviceFilters ?? emptyCustomerAssetDirectoryData.options.serviceFilters,
+        calibrationFilters: payload.options?.calibrationFilters ?? emptyCustomerAssetDirectoryData.options.calibrationFilters,
+      },
+      metrics: {
+        ...emptyCustomerAssetDirectoryData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyCustomerAssetDirectoryData.links,
+        ...(payload.links ?? {}),
+      },
+      assets: payload.assets ?? emptyCustomerAssetDirectoryData.assets,
+    };
+  } catch (error) {
+    return {
+      ...emptyCustomerAssetDirectoryData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Customer assets API unavailable',
+    };
+  }
 }
 
 export async function createCompany(name: string, submitUrl = '/reporting/api/companies/create/'): Promise<CompanyCreateResponse> {

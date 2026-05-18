@@ -47,6 +47,7 @@ import {
   Underline,
   Upload,
   Users,
+  Wrench,
   X,
 } from 'lucide-react';
 import { type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -54,6 +55,8 @@ import {
   DashboardData,
   DashboardHistoryItem,
   DashboardScheduleItem,
+  CustomerAssetDirectoryData,
+  CustomerAssetDirectoryItem,
   CustomerAssetSummary,
   CustomerAssetItem,
   CustomerAssetPayload,
@@ -164,6 +167,7 @@ import {
   generateWeeklyReportAiDraft,
   loadDashboardData,
   loadDocumentTemplatesData,
+  loadCustomerAssetDirectoryData,
   loadCustomerDetailData,
   loadCustomersData,
   loadMailboxData,
@@ -226,6 +230,7 @@ import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, Sta
 const navItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
+  { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
@@ -240,7 +245,7 @@ const navItems = [
 const scheduleCalendarUrl = '/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'customers' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'ai';
+type MainView = 'dashboard' | 'customers' | 'assets' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -1249,6 +1254,18 @@ const routeMeta: Record<
       { label: '고객 리포트', href: '/reporting/customer-report/' },
     ],
   },
+  assets: {
+    eyebrow: 'Sales CRM / Assets',
+    title: '장비',
+    summary: '고객 보유 장비, A/S 진행, 교정 예정 상태를 전체 범위에서 검색합니다.',
+    primaryHref: '/assets/',
+    primaryLabel: '장비 디렉터리 열기',
+    actions: [
+      { label: '고객 목록', href: '/customers/', primary: true },
+      { label: '일정 캘린더', href: scheduleCalendarUrl },
+      { label: '영업노트', href: '/notes/' },
+    ],
+  },
   pipeline: {
     eyebrow: 'Sales CRM / Pipeline',
     title: '파이프라인 관리',
@@ -1362,6 +1379,7 @@ function getCurrentView(): MainView {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
   if (pathname.startsWith('/customers/')) return 'customers';
+  if (pathname.startsWith('/assets/')) return 'assets';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/mailbox/')) return 'mail';
@@ -4249,6 +4267,227 @@ function CustomersPage({
           </div>
         </aside>
       </div>
+    </section>
+  );
+}
+
+function CustomerAssetDirectoryTable({ assets }: { assets: CustomerAssetDirectoryItem[] }) {
+  if (assets.length === 0) {
+    return <DashboardEmpty label="조건에 맞는 장비가 없습니다" />;
+  }
+
+  return (
+    <div className="customers-table-wrap assets-table-wrap">
+      <table className="customers-table assets-table">
+        <thead>
+          <tr>
+            <th>장비</th>
+            <th>고객/위치</th>
+            <th>A/S</th>
+            <th>교정</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          {assets.map((asset) => (
+            <tr key={asset.id}>
+              <td>
+                <div className="asset-directory-info">
+                  <strong>{asset.assetName}</strong>
+                  <span>{[asset.modelName, asset.serialNumber ? `SN ${asset.serialNumber}` : '', asset.productCode].filter(Boolean).join(' · ') || '모델/시리얼 없음'}</span>
+                  <span className={`customer-asset-status ${asset.status}`}>{asset.statusLabel}</span>
+                </div>
+              </td>
+              <td>
+                <div className="asset-directory-info">
+                  <strong>{asset.companyName || '업체 없음'}</strong>
+                  <span>{[asset.departmentName, asset.customerName || asset.primaryFollowupName, asset.installLocation].filter(Boolean).join(' · ') || '고객/위치 없음'}</span>
+                  <small>{asset.ownerName || asset.createdBy || '등록자 없음'}</small>
+                </div>
+              </td>
+              <td>
+                <div className="asset-directory-info">
+                  {asset.latestServiceCase ? (
+                    <>
+                      <strong>{asset.latestServiceCase.statusLabel}</strong>
+                      <span>{[asset.latestServiceCase.caseTypeLabel, asset.latestServiceCase.priorityLabel].filter(Boolean).join(' · ')}</span>
+                      <small>{asset.latestServiceCase.receivedDate ? formatDateLabel(asset.latestServiceCase.receivedDate) : '접수일 없음'}</small>
+                    </>
+                  ) : (
+                    <span>서비스 이력 없음</span>
+                  )}
+                </div>
+              </td>
+              <td>
+                <div className="asset-directory-info">
+                  {asset.latestCalibration ? (
+                    <>
+                      <strong>{asset.latestCalibration.resultLabel}</strong>
+                      <span>{asset.latestCalibration.nextDueDate ? `다음 ${formatDateLabel(asset.latestCalibration.nextDueDate)}` : '다음 예정일 없음'}</span>
+                      <small>{asset.latestCalibration.calibrationDate ? formatDateLabel(asset.latestCalibration.calibrationDate) : '교정일 없음'}</small>
+                    </>
+                  ) : (
+                    <span>교정 이력 없음</span>
+                  )}
+                </div>
+              </td>
+              <td>
+                <div className="customer-row-actions">
+                  {asset.customerHref ? <a className="customer-row-action" href={asset.customerHref}>고객 상세</a> : null}
+                  {asset.djangoCustomerHref ? <a className="customer-row-action" href={asset.djangoCustomerHref}>Django</a> : null}
+                </div>
+                <small className="asset-directory-updated">{asset.updatedAt ? formatDateTimeLabel(asset.updatedAt) : '-'}</small>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CustomerAssetsPage({
+  calibration,
+  data,
+  loading,
+  owner,
+  query,
+  service,
+  status,
+  onCalibrationChange,
+  onOwnerChange,
+  onQueryChange,
+  onServiceChange,
+  onStatusChange,
+}: {
+  calibration: string;
+  data: CustomerAssetDirectoryData | null;
+  loading: boolean;
+  owner: string;
+  query: string;
+  service: string;
+  status: string;
+  onCalibrationChange: (value: string) => void;
+  onOwnerChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onServiceChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>장비 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '전체 장비', value: `${formatNumber(data.metrics.totalAssets)}건`, detail: data.scope.label, icon: Wrench, tone: 'blue' as const },
+    { label: '검색 결과', value: `${formatNumber(data.metrics.filteredAssets)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
+    { label: '진행 서비스', value: `${formatNumber(data.metrics.openServiceAssets)}건`, detail: '접수/진행/대기', icon: Activity, tone: 'amber' as const },
+    {
+      label: '교정 예정',
+      value: `${formatNumber(data.metrics.dueCalibrationAssets)}건`,
+      detail: `지연 ${formatNumber(data.metrics.overdueCalibrationAssets)}건`,
+      icon: CalendarDays,
+      tone: data.metrics.overdueCalibrationAssets > 0 ? 'red' as const : 'green' as const,
+    },
+  ];
+
+  return (
+    <section className="customers-page assets-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>장비 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Customer assets</span>
+          <h2>{data.scope.label || '장비 디렉터리'}</h2>
+          <p>고객별 장비, 최근 A/S 상태, 다음 교정 예정일을 한 화면에서 검색합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href={data.links.customers || '/customers/'}>고객 목록</a>
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="장비 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="customers-filter-bar assets-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="장비명, 모델, 시리얼, 업체, 연구실 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onStatusChange(event.target.value)} value={status}>
+          <option value="">상태 전체</option>
+          {data.options.assetStatuses.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
+          <option value="">담당자 전체</option>
+          {data.options.owners.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onServiceChange(event.target.value)} value={service}>
+          <option value="">서비스 전체</option>
+          {data.options.serviceFilters.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onCalibrationChange(event.target.value)} value={calibration}>
+          <option value="">교정 전체</option>
+          {data.options.calibrationFilters.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {data.metrics.truncated ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>결과가 많아 최근 {formatNumber(data.metrics.returnedAssets)}건만 표시합니다. 검색어나 필터를 좁혀 확인하세요.</span>
+        </div>
+      ) : null}
+
+      <section className="dashboard-panel assets-main-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Asset list</span>
+            <h2>장비 목록</h2>
+          </div>
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <Wrench size={18} />}
+        </div>
+        <CustomerAssetDirectoryTable assets={data.assets} />
+      </section>
     </section>
   );
 }
@@ -15600,6 +15839,13 @@ export function App() {
   const [customerOwner, setCustomerOwner] = useState('');
   const [customerPriority, setCustomerPriority] = useState('');
   const [customerStage, setCustomerStage] = useState('');
+  const [assetsData, setAssetsData] = useState<CustomerAssetDirectoryData | null>(null);
+  const [assetsLoading, setAssetsLoading] = useState(currentView === 'assets');
+  const [assetDirectoryQuery, setAssetDirectoryQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [assetDirectoryStatus, setAssetDirectoryStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
+  const [assetDirectoryOwner, setAssetDirectoryOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
+  const [assetDirectoryService, setAssetDirectoryService] = useState(() => new URLSearchParams(window.location.search).get('service') || '');
+  const [assetDirectoryCalibration, setAssetDirectoryCalibration] = useState(() => new URLSearchParams(window.location.search).get('calibration') || '');
   const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && shouldOpenCreatePanel());
   const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
   const [customerCreating, setCustomerCreating] = useState(false);
@@ -15778,6 +16024,30 @@ export function App() {
       alive = false;
     };
   }, [currentView, customerDetailId, customerOwner, customerPriority, customerQuery, customerStage]);
+
+  useEffect(() => {
+    if (currentView !== 'assets') {
+      return;
+    }
+    let alive = true;
+    setAssetsLoading(true);
+    loadCustomerAssetDirectoryData({
+      q: assetDirectoryQuery,
+      status: assetDirectoryStatus,
+      owner: assetDirectoryOwner,
+      service: assetDirectoryService,
+      calibration: assetDirectoryCalibration,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setAssetsData(data);
+      setAssetsLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [assetDirectoryCalibration, assetDirectoryOwner, assetDirectoryQuery, assetDirectoryService, assetDirectoryStatus, currentView]);
 
   useEffect(() => {
     if (currentView !== 'customers' || !customerDetailId) {
@@ -17264,6 +17534,28 @@ export function App() {
           onPriorityChange={setCustomerPriority}
           onQueryChange={setCustomerQuery}
           onStageChange={setCustomerStage}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'assets') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <CustomerAssetsPage
+          calibration={assetDirectoryCalibration}
+          data={assetsData}
+          loading={assetsLoading}
+          owner={assetDirectoryOwner}
+          query={assetDirectoryQuery}
+          service={assetDirectoryService}
+          status={assetDirectoryStatus}
+          onCalibrationChange={setAssetDirectoryCalibration}
+          onOwnerChange={setAssetDirectoryOwner}
+          onQueryChange={setAssetDirectoryQuery}
+          onServiceChange={setAssetDirectoryService}
+          onStatusChange={setAssetDirectoryStatus}
         />
       </AppShell>
     );

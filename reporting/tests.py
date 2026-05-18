@@ -2278,6 +2278,146 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(other_response.status_code, 403)
         self.assertFalse(other_response.json()['success'])
 
+    def test_customer_assets_summary_api_requires_login_json(self):
+        response = self.client.get(reverse('reporting:customer_assets_summary_api'))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_customer_assets_summary_api_uses_manager_scope_and_metrics(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import CalibrationRecord, CustomerAsset, ServiceCase
+
+        own = self._create_customer(self.user, '장비목록내고객')
+        coworker = self._create_customer(self.coworker, '장비목록동료')
+        other = self._create_customer(self.other_user, '장비목록타사')
+        own_asset = CustomerAsset.objects.create(
+            company=own.company,
+            department=own.department,
+            primary_followup=own,
+            asset_name='Pipette Controller',
+            model_name='PC-100',
+            serial_number='PC-SN-001',
+            created_by=self.user,
+        )
+        coworker_asset = CustomerAsset.objects.create(
+            company=coworker.company,
+            department=coworker.department,
+            primary_followup=coworker,
+            asset_name='동료 원심분리기',
+            created_by=self.coworker,
+        )
+        other_asset = CustomerAsset.objects.create(
+            company=other.company,
+            department=other.department,
+            primary_followup=other,
+            asset_name='타사 장비',
+            created_by=self.other_user,
+        )
+        ServiceCase.objects.create(
+            asset=own_asset,
+            followup=own,
+            case_type='repair',
+            status='waiting',
+            priority='high',
+            received_date=timezone.localdate(),
+            due_date=timezone.localdate() - timedelta(days=1),
+            created_by=self.user,
+        )
+        CalibrationRecord.objects.create(
+            asset=own_asset,
+            followup=own,
+            calibration_date=timezone.localdate(),
+            next_due_date=timezone.localdate() + timedelta(days=10),
+            result='pass',
+            created_by=self.user,
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:customer_assets_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        asset_ids = {item['id'] for item in payload['assets']}
+        self.assertIn(own_asset.id, asset_ids)
+        self.assertIn(coworker_asset.id, asset_ids)
+        self.assertNotIn(other_asset.id, asset_ids)
+        self.assertEqual(payload['metrics']['totalAssets'], 2)
+        self.assertEqual(payload['metrics']['filteredAssets'], 2)
+        self.assertEqual(payload['metrics']['openServiceAssets'], 1)
+        self.assertEqual(payload['metrics']['dueCalibrationAssets'], 1)
+        self.assertEqual(payload['metrics']['overdueCalibrationAssets'], 0)
+        self.assertEqual(payload['metrics']['noCalibrationAssets'], 1)
+        self.assertTrue(payload['scope']['canViewAll'])
+        self.assertTrue(any(option['id'] == self.user.id for option in payload['options']['owners']))
+        own_payload = next(item for item in payload['assets'] if item['id'] == own_asset.id)
+        self.assertEqual(own_payload['customerHref'], f'/customers/{own.id}/')
+        self.assertEqual(own_payload['ownerName'], self.user.username)
+
+    def test_customer_assets_summary_api_filters_search_status_service_calibration(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import CalibrationRecord, CustomerAsset, ServiceCase
+
+        target = self._create_customer(self.user, 'PCR장비고객')
+        other = self._create_customer(self.user, '다른장비고객')
+        target_asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='PCR Cycler',
+            model_name='PCR-200',
+            serial_number='SN-PCR-200',
+            status='active',
+            created_by=self.user,
+        )
+        CustomerAsset.objects.create(
+            company=other.company,
+            department=other.department,
+            primary_followup=other,
+            asset_name='보관 장비',
+            model_name='STORE-1',
+            serial_number='STORE-001',
+            status='inactive',
+            created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            asset=target_asset,
+            followup=target,
+            case_type='inspection',
+            status='received',
+            priority='normal',
+            received_date=timezone.localdate(),
+            created_by=self.user,
+        )
+        CalibrationRecord.objects.create(
+            asset=target_asset,
+            followup=target,
+            calibration_date=timezone.localdate(),
+            next_due_date=timezone.localdate() + timedelta(days=20),
+            result='pending',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_assets_summary_api'), {
+            'q': 'SN-PCR',
+            'status': 'active',
+            'service': 'open',
+            'calibration': 'due30',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['filters']['q'], 'SN-PCR')
+        self.assertEqual(payload['filters']['status'], 'active')
+        self.assertEqual(payload['filters']['service'], 'open')
+        self.assertEqual(payload['filters']['calibration'], 'due30')
+        self.assertEqual([item['id'] for item in payload['assets']], [target_asset.id])
+        self.assertEqual(payload['assets'][0]['latestServiceCase']['caseType'], 'inspection')
+        self.assertEqual(payload['assets'][0]['latestCalibration']['result'], 'pending')
+
     def test_customer_detail_summary_api_includes_department_ai_action(self):
         from datetime import date
         from ai_chat.models import AIDepartmentAnalysis, PainPointCard

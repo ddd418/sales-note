@@ -1,5 +1,50 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Customer asset directory / search v1 plan
+
+**Background**:
+
+- User manually verified customer asset/service/calibration v1 and asked to continue.
+- V1 lets users manage equipment from a single customer detail page, but there is no React screen to search across all owned customer assets.
+- React migration direction favors a dedicated CRM workflow over sending users back to Django admin or per-customer pages.
+
+**DB change required**: No.
+
+- Reuse `CustomerAsset`, `ServiceCase`, and `CalibrationRecord`.
+- Add read-only list/search API and React page only.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `/reporting/api/customer-assets/` JSON API.
+  - Scope records by existing dashboard/user visibility rules.
+  - Support keyword, status, owner, service state, and calibration due filters.
+  - Return metrics, filter options, latest service/calibration payloads, and links to React customer detail.
+- Frontend:
+  - Add `/assets/` route and navigation item.
+  - Add React asset directory page with KPI cards, filters, and a dense asset table/card list.
+  - Keep asset creation/editing in customer detail v1; list rows deep-link to `/customers/<id>/`.
+- Tests:
+  - Add API login, scope, search/filter, and manager visibility tests.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused customer asset directory API tests.
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- Local smoke for `/assets/` where feasible.
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete.
+- Commit, push, Railway deployment, and production smoke are next.
+
 ## 2026-05-18 Customer asset / service / calibration v1 plan
 
 **Background**:

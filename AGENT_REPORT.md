@@ -1,5 +1,95 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Customer Asset Directory / Search V1
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+고객 상세에만 있던 장비, A/S, 교정 정보를 전체 범위에서 검색할 수 있도록 React `/assets/` 장비 디렉터리와 Django JSON API를 추가했습니다. DB 모델 변경 없이 기존 `CustomerAsset`, `ServiceCase`, `CalibrationRecord`를 재사용했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`, `reporting/urls.py`: `/reporting/api/customer-assets/` 읽기 전용 API 추가.
+- `reporting/tests.py`: 로그인, 권한 범위, 검색/상태/A/S/교정 필터 테스트 추가.
+- `frontend/src/api.ts`: 장비 디렉터리 타입과 API loader 추가.
+- `frontend/src/App.tsx`, `frontend/src/styles.css`: `/assets/` route, 좌측 nav, KPI/필터/장비 목록 화면 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 전체 장비, 검색 결과, 진행 서비스, 30일 내 교정/교정 지연 지표를 볼 수 있습니다.
+- 장비명, 모델명, 시리얼번호, 설치 위치, 고객사/부서/담당자, 최근 A/S, 최근 교정 기준으로 빠르게 확인할 수 있습니다.
+- 담당자, 장비 상태, 서비스 상태, 교정 상태 필터를 제공합니다.
+- 행에서 React 고객 상세와 Django 고객 상세로 이동할 수 있습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` legacy route와 기존 고객 상세 장비 등록/수정 API는 유지했습니다.
+- 신규 API는 기존 dashboard scope 규칙을 사용해 salesman은 본인 장비만, manager/admin은 접근 가능한 사용자 범위만 조회합니다.
+- DB 모델과 migration은 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_requires_login_json reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_uses_manager_scope_and_metrics reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_filters_search_status_service_calibration --verbosity=2
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 28 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local browser smoke:
+→ Django 127.0.0.1:8091 + frontend 127.0.0.1:4179.
+→ `/assets/` rendered KPI, filters, and smoke asset row.
+→ `/reporting/api/customer-assets/` returned 200 in browser network log.
+→ Browser console errors: 0.
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- v1은 조회/검색 화면입니다. 장비 생성/수정은 기존 고객 상세 화면에서 계속 처리합니다.
+- 장비별 파일 첨부, 교정 성적서 미리보기, 장비 전용 편집 drawer는 다음 단계 범위입니다.
+- AI 추천과 장비/교정 만료 알림 자동 액션은 아직 연결하지 않았습니다.
+
+### 운영 배포 상태
+
+- 커밋/푸시/배포 진행 예정.
+
+### 권장 다음 작업
+
+운영 배포 후 `/assets/`에서 장비 검색, 담당자/상태/A/S/교정 필터, 고객 상세 이동을 수동 검수합니다. 검수 후에는 Django → React 전환의 남은 화면을 계속 진행하는 것이 적절합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/assets/`에 접속합니다.
+2. 좌측 nav에 `장비` 메뉴가 보이고 active 상태인지 확인합니다.
+3. KPI에 전체 장비, 검색 결과, 진행 서비스, 교정 예정 값이 표시되는지 확인합니다.
+4. 검색어에 장비명/모델명/시리얼번호/업체명 중 하나를 입력해 목록이 줄어드는지 확인합니다.
+5. 상태, 담당자, 서비스, 교정 필터를 각각 변경해 목록과 검색 결과 수가 갱신되는지 확인합니다.
+6. 장비 행의 `고객 상세` 링크가 React 고객 상세로 이동하는지 확인합니다.
+7. 접근 권한 밖의 다른 회사 장비가 보이지 않는지 확인합니다.
+
 ## 2026-05-18 — Customer Asset / Service / Calibration V1
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
