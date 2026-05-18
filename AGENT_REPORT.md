@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — React Tasks/TODO V1 + Navigation API
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시 완료, 운영 배포는 Railway CLI 인증 만료로 대기
 
 ### 요약
 
@@ -70,7 +70,13 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending.
+- Git commit: `937a50e` (`feat: add react task workspace`)
+- Git push: `main` pushed to origin.
+- Railway deploy: blocked.
+- Blocker:
+  - `railway status` → `Unauthorized. Please run railway login again.`
+  - `railway service` → token refresh failed / unauthorized.
+  - `railway login --browserless` → interactive terminal required; non-interactive environments need `RAILWAY_API_TOKEN` or `RAILWAY_TOKEN`.
 
 ### 권장 다음 작업
 

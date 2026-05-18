@@ -62,7 +62,7 @@
 
 **Current status**:
 
-- Implemented and locally validated. Commit, push, and Railway deployment pending.
+- Implemented, locally validated, committed, and pushed. Railway deployment is blocked by expired CLI authentication.
 
 ## 2026-05-18 Weekly report paragraph spacing fix plan
 
