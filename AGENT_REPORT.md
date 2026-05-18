@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Scheduled Mailbox Disconnected View Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -45,7 +45,16 @@ Local preview smoke:
 
 ### 운영 배포 상태
 
-- 배포 전.
+- Git commit: `24ae941` (`fix: allow scheduled mailbox without provider connection`)
+- Git push: `main` pushed to origin.
+- Railway `web`: `b86a1191-43cd-4a7a-ba46-1ce3f159d8b6` SUCCESS, latest commit `24ae941`.
+- Railway `sales-note-frontend`: `5ee09535-3627-45f5-b089-b4662706980b` SUCCESS via CLI upload.
+- Frontend production bundle:
+  - Production now serves `/assets/index-Bvtts0Vu.js` and `/assets/index-De_Qoh-H.css`.
+- Production smoke:
+  - `https://sales-note-frontend-production.up.railway.app/mailbox/?box=scheduled` → 200.
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/reporting/api/mailbox/?box=scheduled` anonymous request → expected `302` to login.
 
 ### 운영 수동 검수 절차
 
