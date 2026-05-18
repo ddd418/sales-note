@@ -233,7 +233,7 @@ class ReactMailboxApiTests(TestCase):
     def test_mailbox_api_lists_scheduled_mail_without_connected_provider(self):
         from datetime import timedelta
 
-        ScheduledEmail.objects.create(
+        scheduled_email = ScheduledEmail.objects.create(
             user=self.user,
             provider='gmail',
             sender_email='sales@example.com',
@@ -255,6 +255,37 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(payload['counts']['scheduled'], 1)
         self.assertEqual(payload['emails'][0]['subject'], '연결 없이 확인할 예약메일')
         self.assertTrue(payload['emails'][0]['isScheduled'])
+        self.assertEqual(payload['emails'][0]['threadHref'], f'/mailbox/scheduled/{scheduled_email.id}/')
+
+    def test_mailbox_api_returns_scheduled_email_detail(self):
+        from datetime import timedelta
+
+        scheduled_email = ScheduledEmail.objects.create(
+            user=self.user,
+            provider='gmail',
+            sender_email='sales@example.com',
+            to_email='customer@example.com',
+            subject='예약메일 상세',
+            body='예약메일 상세 본문입니다.',
+            body_html='<div>예약메일 상세 본문입니다.</div>',
+            followup=self.followup,
+            scheduled_at=timezone.now() + timedelta(hours=1),
+            status='pending',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:mailbox_api_scheduled_detail', args=[scheduled_email.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['thread']['id'], f'scheduled-{scheduled_email.id}')
+        self.assertEqual(payload['thread']['subject'], '예약메일 상세')
+        self.assertTrue(payload['thread']['isScheduled'])
+        self.assertEqual(payload['links']['mailbox'], '/mailbox/?box=scheduled')
+        self.assertEqual(payload['links']['reply'], '')
+        self.assertEqual(payload['emails'][0]['bodyText'], '예약메일 상세 본문입니다.')
+        self.assertEqual(payload['emails'][0]['cancelHref'], reverse('reporting:mailbox_api_cancel_scheduled', args=[scheduled_email.id]))
 
     def test_mailbox_api_list_returns_schedule_auto_attachments_for_compose(self):
         schedule = Schedule.objects.create(

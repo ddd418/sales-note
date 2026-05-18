@@ -1979,7 +1979,7 @@ def _serialize_scheduled_email_item(scheduled_email):
         'scheduledAt': scheduled_at.isoformat() if scheduled_at else None,
         'isScheduled': scheduled_email.status == 'pending',
         'threadId': f'scheduled-{scheduled_email.id}',
-        'threadHref': '/mailbox/?box=scheduled',
+        'threadHref': f'/mailbox/scheduled/{scheduled_email.id}/',
         'djangoThreadHref': '',
         'replyHref': '',
         'toggleStarHref': '',
@@ -2265,6 +2265,43 @@ def mailbox_api_thread(request, thread_id):
         },
         'create': _mailbox_create_payload(request.user),
         'emails': [_serialize_email_item(email) for email in email_rows],
+    })
+
+
+@login_required
+def mailbox_api_scheduled_detail(request, scheduled_email_id):
+    """React 예약메일 상세 API"""
+    scheduled_email = ScheduledEmail.objects.filter(
+        _scheduled_email_q(request.user),
+        id=scheduled_email_id,
+        status='pending',
+    ).select_related(
+        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'business_card'
+    ).prefetch_related('attachments').first()
+    if not scheduled_email:
+        return JsonResponse({'success': False, 'error': '예약 메일을 찾을 수 없습니다.'}, status=404)
+
+    profile = request.user.userprofile
+    item = _serialize_scheduled_email_item(scheduled_email)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'thread': {
+            'id': f'scheduled-{scheduled_email.id}',
+            'subject': scheduled_email.subject,
+            'followup': item['followup'],
+            'messageCount': 1,
+            'lastReceivedEmailId': None,
+            'isScheduled': True,
+        },
+        'connection': _mailbox_connection_payload(profile),
+        'links': {
+            'mailbox': '/mailbox/?box=scheduled',
+            'djangoThread': '',
+            'reply': '',
+        },
+        'create': _mailbox_create_payload(request.user),
+        'emails': [item],
     })
 
 

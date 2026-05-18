@@ -314,6 +314,7 @@ export type MailboxThreadData = {
     followup: MailboxEmailItem['followup'] | null;
     messageCount: number;
     lastReceivedEmailId: number | null;
+    isScheduled?: boolean;
   };
   connection: MailboxData['connection'];
   links: {
@@ -5000,6 +5001,65 @@ export async function loadMailboxThreadData(threadId: string): Promise<MailboxTh
       thread: {
         ...emptyMailboxThreadData.thread,
         id: threadId,
+      },
+    };
+  }
+}
+
+export async function loadMailboxScheduledEmailData(scheduledEmailId: number): Promise<MailboxThreadData> {
+  try {
+    const response = await fetch(`/reporting/api/mailbox/scheduled/${scheduledEmailId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Scheduled email API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<MailboxThreadData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || `Scheduled email API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyMailboxThreadData,
+      ...payload,
+      thread: {
+        ...emptyMailboxThreadData.thread,
+        ...(payload.thread ?? {}),
+      },
+      connection: {
+        ...emptyMailboxData.connection,
+        ...(payload.connection ?? {}),
+      },
+      links: {
+        ...emptyMailboxThreadData.links,
+        ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptyMailboxCreateOptions,
+        ...(payload.create ?? {}),
+        autoAttachments: payload.create?.autoAttachments ?? emptyMailboxCreateOptions.autoAttachments,
+        autoAttachLabel: payload.create?.autoAttachLabel ?? emptyMailboxCreateOptions.autoAttachLabel,
+        schedule: payload.create?.schedule ?? emptyMailboxCreateOptions.schedule,
+        internalCcEmails: payload.create?.internalCcEmails ?? emptyMailboxCreateOptions.internalCcEmails,
+        internalCcContacts: payload.create?.internalCcContacts ?? emptyMailboxCreateOptions.internalCcContacts,
+        customers: payload.create?.customers ?? emptyMailboxCreateOptions.customers,
+        businessCards: payload.create?.businessCards ?? emptyMailboxCreateOptions.businessCards,
+      },
+      emails: payload.emails ?? emptyMailboxThreadData.emails,
+    };
+  } catch (error) {
+    return {
+      ...emptyMailboxThreadData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Scheduled email API unavailable',
+      thread: {
+        ...emptyMailboxThreadData.thread,
+        id: `scheduled-${scheduledEmailId}`,
       },
     };
   }

@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Scheduled Mailbox Detail Route Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+예약메일 목록에서 메일을 클릭하면 다시 `/mailbox/?box=scheduled` 목록으로 돌아가던 문제를 수정했습니다. 예약메일 목록 item의 `threadHref`를 `/mailbox/scheduled/<id>/`로 변경하고, Django 예약메일 상세 API와 React 상세 route를 추가했습니다.
+
+### 변경된 파일
+
+- `reporting/gmail_views.py`: 예약메일 상세 API 추가, 예약메일 목록 href를 상세 route로 변경.
+- `reporting/urls.py`: `/reporting/api/mailbox/scheduled/<id>/` API route 추가.
+- `reporting/tests.py`: 예약메일 목록 href와 상세 API 회귀 테스트 추가.
+- `frontend/src/api.ts`: 예약메일 상세 API client 추가 및 thread payload type 보강.
+- `frontend/src/App.tsx`: `/mailbox/scheduled/<id>/` route 감지, 예약메일 상세 렌더링, 예약 취소 전용 액션 적용.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 검증 결과 기록.
+
+### CRM 개선
+
+- 예약메일 목록에서 항목 클릭 시 예약메일 상세 화면으로 이동합니다.
+- 예약메일 상세에서는 답장/중요/휴지통 액션을 숨기고 `예약 취소`만 제공합니다.
+- 예약메일 취소 후 예약메일 목록으로 복귀합니다.
+
+### 기존 기능 보존
+
+- 기존 `/mailbox/thread/<thread_id>/` 일반 메일 상세 route는 유지했습니다.
+- `/reporting/*` legacy/API route와 인증 요구사항은 유지했습니다.
+- DB 모델 변경과 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\gmail_views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_api_lists_scheduled_mail_without_connected_provider reporting.tests.ReactMailboxApiTests.test_mailbox_api_returns_scheduled_email_detail --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local frontend server smoke:
+→ `/mailbox/scheduled/1/` returns 200 and serves the React app shell.
+
+git diff --check
+→ OK, only expected CRLF warnings.
+```
+
+### 운영 배포 상태
+
+- Pending: 커밋/푸시 후 `web`과 `sales-note-frontend`를 Railway에 배포해야 합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/mailbox/?box=scheduled`에 접속합니다.
+2. 예약메일 목록에서 아무 예약메일 하나를 클릭합니다.
+3. URL이 `/mailbox/scheduled/<id>/`로 바뀌고 상세 본문/첨부/고객 링크가 보이는지 확인합니다.
+4. 상세 화면에 답장/중요/휴지통 대신 `예약 취소`만 보이는지 확인합니다.
+5. `예약 취소`를 누르면 예약메일 목록으로 돌아오는지 확인합니다.
+
 ## 2026-05-18 — Scheduled Mailbox Disconnected View Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기

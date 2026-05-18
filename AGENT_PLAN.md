@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Scheduled mailbox detail route fix plan
+
+**Background**:
+
+- User reported that clicking a scheduled email row on `/mailbox/?box=scheduled` navigates back to the same scheduled mailbox list.
+- Root cause: scheduled email list items use `/mailbox/?box=scheduled` as their `threadHref` because no detail route/API existed.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a scheduled email detail API returning the same thread-like payload shape React already uses for email detail pages.
+  - Change scheduled list item `threadHref` to `/mailbox/scheduled/<id>/`.
+- Frontend:
+  - Detect `/mailbox/scheduled/<id>/`.
+  - Load scheduled email detail data.
+  - Reuse the thread detail page but hide reply/star/trash actions and show cancel action for pending scheduled mail.
+- Tests:
+  - Add regression coverage for scheduled list row detail href and scheduled detail API.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\gmail_views.py reporting\urls.py reporting\tests.py`
+- Focused scheduled mailbox list/detail API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- Local preview smoke for `/mailbox/scheduled/<id>/` route rendering.
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete. Commit, push, Railway deployment, and production smoke are next.
+
 ## 2026-05-18 Scheduled mailbox disconnected view fix plan
 
 **Background**:
