@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Scheduled email automatic dispatch plan
+
+**Background**:
+
+- User completed manual verification for scheduled mailbox detail.
+- Scheduled email creation/list/detail/cancel now works, but production still needs an always-on execution path for due scheduled email dispatch.
+- Current Railway services are `web`, `sales-note-frontend`, and `Postgres`; there is no dedicated worker/beat service.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a guarded inline scheduled-email dispatcher loop that can run inside the production web process only when explicitly enabled by environment variable.
+  - Extend `process_scheduled_emails` management command with `--loop` and `--interval` so a future Railway worker/cron service can run the same logic without code changes.
+  - Preserve existing Celery task path.
+- Production:
+  - Enable the inline dispatcher on the `web` service with a non-secret environment variable.
+  - Keep this documented as a pragmatic bridge until a dedicated worker/cron service is added.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\apps.py reporting\scheduled_email_worker.py reporting\management\commands\process_scheduled_emails.py`
+- Focused scheduled email tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete. Commit, push, Railway deployment, and production environment enablement are next.
+
 ## 2026-05-18 Scheduled mailbox detail route fix plan
 
 **Background**:

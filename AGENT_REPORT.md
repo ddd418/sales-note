@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Scheduled Email Automatic Dispatch
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+
+### 요약
+
+예약메일 UI/상세 검수 후 남은 핵심인 “예약 시각 이후 실제 발송” 실행 경로를 추가했습니다. 현재 Railway에는 별도 worker/beat 서비스가 없으므로, 운영 `web` 프로세스 안에서 명시적으로 켤 수 있는 guarded inline dispatcher를 추가하고, 향후 별도 worker로 분리할 수 있도록 `process_scheduled_emails --loop` 모드도 확장했습니다.
+
+### 변경된 파일
+
+- `reporting/scheduled_email_worker.py`: env로 켜는 예약메일 자동 처리 백그라운드 루프 추가.
+- `reporting/apps.py`: Django server process에서만 자동 루프를 시작하도록 연결.
+- `reporting/management/commands/process_scheduled_emails.py`: `--loop`, `--interval` 옵션 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 검증 결과 기록.
+
+### CRM 개선
+
+- 예약메일이 pending 상태로 저장된 뒤 예약 시각이 지나면 자동 처리될 수 있는 운영 경로를 마련했습니다.
+- 별도 worker 서비스가 생기면 같은 명령을 `python manage.py process_scheduled_emails --loop --interval 60`로 그대로 사용할 수 있습니다.
+
+### 기존 기능 보존
+
+- 기존 예약메일 저장/목록/상세/취소 API를 유지했습니다.
+- 기존 Celery task 경로도 유지했습니다.
+- 기본값은 자동 루프 OFF라 로컬 관리 명령, 테스트, migration/collectstatic 중에는 실행되지 않습니다.
+- DB 모델 변경과 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\apps.py reporting\scheduled_email_worker.py reporting\management\commands\process_scheduled_emails.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_schedules_email_without_immediate_send reporting.tests.ReactMailboxApiTests.test_process_due_scheduled_emails_sends_and_creates_email_log --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py migrate --noinput
+→ Local SQLite dev DB applied existing reporting.0104 migration so the management command can be smoke-tested locally.
+
+python manage.py process_scheduled_emails --limit 1
+→ processed=0 sent=0 failed=0
+
+git diff --check
+→ OK, only expected CRLF warnings.
+```
+
+### 운영 배포 상태
+
+- Pending: 커밋/푸시 후 Railway `web` 배포 및 `SCHEDULED_EMAIL_INLINE_WORKER=1` 설정 필요.
+
+### 알려진 제한
+
+- Inline dispatcher는 현재 서비스 구성을 고려한 운영 브릿지입니다. 장기적으로는 별도 Railway worker/cron 서비스에서 `python manage.py process_scheduled_emails --loop --interval 60`을 실행하는 구조가 더 깔끔합니다.
+- Gunicorn worker가 2개라 루프가 worker별로 뜰 수 있지만, 발송 처리 시 DB row 상태를 `pending → sending`으로 잠그고 전환하므로 중복 발송은 방지됩니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `/mailbox/`에서 예약메일을 현재보다 2분 이상 뒤로 예약합니다.
+2. `/mailbox/?box=scheduled`에 예약메일이 표시되는지 확인합니다.
+3. 예약 시각이 지난 뒤 몇 분 내 보낸메일 또는 메일 로그에 발송 결과가 생성되는지 확인합니다.
+4. 실패 시 예약메일 상태가 `failed`로 바뀌는지 관리자 화면 또는 DB 로그에서 확인합니다.
+
 ## 2026-05-18 — Scheduled Mailbox Detail Route Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기

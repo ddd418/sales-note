@@ -8,3 +8,6 @@ class ReportingConfig(AppConfig):
     def ready(self):
         """앱 초기화 시 시그널 등록"""
         import reporting.signals
+        from reporting.scheduled_email_worker import start_scheduled_email_inline_worker
+
+        start_scheduled_email_inline_worker()
