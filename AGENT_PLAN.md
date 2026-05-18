@@ -42,7 +42,8 @@
 
 **Current status**:
 
-- Implementation and local validation complete. Commit, push, Railway deployment, and production smoke pending.
+- Implementation, local validation, commit, push, Railway backend/frontend deployment, and production smoke complete.
+- User production manual verification pending.
 
 ## 2026-05-18 React tasks/TODO v1 + navigation API plan
 

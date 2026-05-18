@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — AI Mini-Only + Scheduled Email
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -72,7 +72,19 @@ Local browser smoke:
 
 ### 운영 배포 상태
 
-- 배포 전.
+- Git commit: `fc10e23` (`feat: add scheduled email workflow`)
+- Git push: `main` pushed to origin.
+- Railway `web`: `e5c6f4d8-5e1f-49f3-91fe-df5eb0f6c0b1` SUCCESS, latest feature commit `fc10e23`.
+- Railway deploy log confirmed migration:
+  - `Applying reporting.0104_scheduledemail_scheduledemailattachment_and_more... OK`
+- Railway `sales-note-frontend`: `67d11496-c05c-453d-8289-26ac1d081cde` SUCCESS via CLI upload.
+- Frontend production bundle:
+  - Production now serves `/assets/index-FdFkCr_G.js` and `/assets/index-De_Qoh-H.css`, matching the scheduled email workflow build.
+- Production smoke:
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/mailbox/` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/ai-workspace/` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/reporting/api/mailbox/?box=scheduled` anonymous request → expected `302` to `/reporting/login/?next=...`.
 
 ### 권장 다음 작업
 
