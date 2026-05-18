@@ -1,12 +1,13 @@
 import json
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from reporting.models import Company, Department, FollowUp, UserCompany, UserProfile
-from .models import Todo, TodoLog
+from .models import Todo, TodoAttachment, TodoLog
 
 
 def make_user(username, role='salesman', company=None, can_use_ai=False):
@@ -209,3 +210,83 @@ class ReactTasksApiTests(TestCase):
         self.assertEqual(hold.status_code, 200)
         task.refresh_from_db()
         self.assertEqual(task.status, Todo.Status.ON_HOLD)
+
+    def test_task_detail_api_returns_attachments_and_logs_with_scope(self):
+        task = Todo.objects.create(
+            title='상세 확인 업무',
+            description='상세 본문',
+            created_by=self.user,
+            assigned_to=self.colleague,
+            requested_by=self.user,
+            source_type=Todo.SourceType.PEER_REQUEST,
+            status=Todo.Status.PENDING,
+            related_client=self.followup,
+        )
+        TodoLog.objects.create(todo=task, actor=self.user, action_type=TodoLog.ActionType.CREATED, message='생성 로그')
+        TodoAttachment.objects.create(
+            todo=task,
+            file=SimpleUploadedFile('detail.txt', b'detail', content_type='text/plain'),
+            filename='detail.txt',
+            uploaded_by=self.user,
+        )
+
+        self.client.force_login(self.colleague)
+        response = self.client.get(reverse('reporting:tasks_detail_api', args=[task.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['task']['id'], task.id)
+        self.assertEqual(payload['task']['detailHref'], f'/tasks/{task.id}/')
+        self.assertEqual(payload['task']['relatedClient']['customer'], '업무 고객')
+        self.assertEqual(payload['attachments'][0]['filename'], 'detail.txt')
+        self.assertEqual(payload['logs'][0]['message'], '생성 로그')
+
+        self.client.force_login(self.other_user)
+        forbidden = self.client.get(reverse('reporting:tasks_detail_api', args=[task.id]))
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_task_update_delete_and_attachment_api_permissions(self):
+        task = Todo.objects.create(
+            title='수정할 업무',
+            description='이전 내용',
+            due_date=timezone.localdate(),
+            created_by=self.user,
+            source_type=Todo.SourceType.SELF,
+            status=Todo.Status.ONGOING,
+        )
+        self.client.force_login(self.colleague)
+        forbidden_update = self.client.post(
+            reverse('reporting:tasks_update_api', args=[task.id]),
+            data=json.dumps({'title': '권한 없음'}),
+            content_type='application/json',
+        )
+        self.assertEqual(forbidden_update.status_code, 403)
+
+        self.client.force_login(self.user)
+        update = self.client.post(
+            reverse('reporting:tasks_update_api', args=[task.id]),
+            data=json.dumps({
+                'title': '수정된 업무',
+                'description': '새 내용',
+                'expectedDuration': 60,
+                'relatedClientId': self.followup.id,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(update.status_code, 200)
+        task.refresh_from_db()
+        self.assertEqual(task.title, '수정된 업무')
+        self.assertEqual(task.expected_duration, 60)
+        self.assertEqual(task.related_client, self.followup)
+
+        upload = self.client.post(
+            reverse('reporting:tasks_attachment_upload_api', args=[task.id]),
+            data={'files': [SimpleUploadedFile('react-task.txt', b'react task', content_type='text/plain')]},
+        )
+        self.assertEqual(upload.status_code, 200)
+        self.assertEqual(TodoAttachment.objects.filter(todo=task).count(), 1)
+        self.assertEqual(upload.json()['attachments'][0]['filename'], 'react-task.txt')
+
+        delete = self.client.post(reverse('reporting:tasks_delete_api', args=[task.id]))
+        self.assertEqual(delete.status_code, 200)
+        self.assertFalse(Todo.objects.filter(id=task.id).exists())

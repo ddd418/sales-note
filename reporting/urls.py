@@ -55,6 +55,10 @@ urlpatterns = [
     path('api/tasks/manager/', lazy_view('todos.views.tasks_manager_api'), name='tasks_manager_api'),
     path('api/tasks/manager/assign/', lazy_view('todos.views.tasks_manager_assign_api'), name='tasks_manager_assign_api'),
     path('api/tasks/manager/<int:pk>/status/', lazy_view('todos.views.tasks_manager_status_api'), name='tasks_manager_status_api'),
+    path('api/tasks/<int:pk>/', lazy_view('todos.views.tasks_detail_api'), name='tasks_detail_api'),
+    path('api/tasks/<int:pk>/update/', lazy_view('todos.views.tasks_update_api'), name='tasks_update_api'),
+    path('api/tasks/<int:pk>/delete/', lazy_view('todos.views.tasks_delete_api'), name='tasks_delete_api'),
+    path('api/tasks/<int:pk>/attachments/', lazy_view('todos.views.tasks_attachment_upload_api'), name='tasks_attachment_upload_api'),
     path('api/tasks/<int:pk>/status/', lazy_view('todos.views.tasks_status_api'), name='tasks_status_api'),
       # 히스토리 URL들
     path('histories/', views.history_list_view, name='history_list'),

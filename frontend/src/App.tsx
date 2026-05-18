@@ -133,6 +133,7 @@ import {
   AIWorkspacePromptTarget,
   NavigationData,
   NavigationItem,
+  TaskDetailData,
   TaskFormPayload,
   TaskItem,
   TaskManagerAssignPayload,
@@ -174,6 +175,7 @@ import {
   deleteScheduleFile,
   deleteGeneratedDocument,
   deleteDocumentTemplate,
+  deleteTask,
   deleteWeeklyReport,
   downloadScheduleDocument,
   generateWeeklyReportAiDraft,
@@ -200,6 +202,7 @@ import {
   loadScheduleDocumentPreview,
   loadScheduleDetailData,
   loadFollowupQuoteItems,
+  loadTaskDetailData,
   loadSchedulesData,
   loadTaskManagerData,
   loadTasksData,
@@ -241,6 +244,8 @@ import {
   saveWeeklyReportManagerComment,
   toggleDocumentTemplateDefault,
   updateDocumentTemplate,
+  updateTask,
+  uploadTaskAttachments,
 } from './api';
 import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 
@@ -1464,6 +1469,15 @@ function getCurrentView(): MainView {
 
 function isTaskManagerRoute(): boolean {
   return /^\/tasks\/manager\/?$/.test(window.location.pathname);
+}
+
+function getTaskDetailId(): number | null {
+  const match = window.location.pathname.match(/^\/tasks\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
 }
 
 function getCustomerDetailId(): number | null {
@@ -12211,6 +12225,16 @@ function taskFormPayload(form: TaskFormState): TaskFormPayload {
   };
 }
 
+function makeTaskEditForm(task: TaskItem | null): TaskFormState {
+  return {
+    title: task?.title || '',
+    description: task?.description || '',
+    dueDate: task?.dueDate || '',
+    expectedDuration: task?.expectedDuration ? String(task.expectedDuration) : '',
+    assignedToId: '',
+  };
+}
+
 function taskStatusClass(status: string) {
   if (status === 'done') return 'done';
   if (status === 'pending') return 'pending';
@@ -12233,6 +12257,7 @@ function TaskCard({
   task: TaskItem;
 }) {
   const busy = actioningId === task.id;
+  const detailHref = task.detailHref || `/tasks/${task.id}/`;
   return (
     <article className={`task-card ${task.isOverdue ? 'overdue' : ''}`}>
       <div className="task-card-main">
@@ -12241,11 +12266,13 @@ function TaskCard({
           <span className="task-source">{task.sourceLabel}</span>
           {task.isOverdue ? <span className="task-overdue">지연</span> : null}
         </div>
-        <h3>{task.title}</h3>
+        <h3><a href={detailHref}>{task.title}</a></h3>
         {task.description ? <p>{task.description}</p> : null}
         <div className="task-meta-row">
           {task.dueDate ? <span>마감 {formatDateLabel(task.dueDate)}</span> : <span>마감 없음</span>}
           {task.expectedDurationLabel ? <span>{task.expectedDurationLabel}</span> : null}
+          {task.attachmentCount ? <span>첨부 {task.attachmentCount}</span> : null}
+          {task.logCount ? <span>기록 {task.logCount}</span> : null}
           {task.relatedClient ? <a href={task.relatedClient.href}>{[task.relatedClient.company, task.relatedClient.department, task.relatedClient.customer].filter(Boolean).join(' · ')}</a> : null}
         </div>
         <div className="task-people-row">
@@ -12263,6 +12290,7 @@ function TaskCard({
         {task.canSetOngoing ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'ongoing' })}>진행</button> : null}
         {task.canSetOnHold ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'on_hold' })}>보류</button> : null}
         {task.canComplete ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'done' })}>완료</button> : null}
+        <a href={detailHref}>상세</a>
         <a href={task.djangoHref}>Django</a>
       </div>
     </article>
@@ -12657,6 +12685,359 @@ function TaskManagerPage({ routeData }: { routeData: PipelineData }) {
           </form>
         </aside>
       </section>
+    </div>
+  );
+}
+
+function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId: number }) {
+  const [data, setData] = useState<TaskDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
+  const [saving, setSaving] = useState(false);
+  const [actioning, setActioning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const applyDetailData = (result: TaskDetailData) => {
+    setData(result);
+    setForm(makeTaskEditForm(result.task));
+  };
+
+  const refresh = async () => {
+    setLoading(true);
+    const result = await loadTaskDetailData(taskId);
+    applyDetailData(result);
+    setLoading(false);
+    return result;
+  };
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError('');
+    setMessage('');
+    loadTaskDetailData(taskId).then((result) => {
+      if (!alive) {
+        return;
+      }
+      applyDetailData(result);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [taskId]);
+
+  const task = data?.task ?? null;
+  const attachments = data?.attachments ?? [];
+  const logs = data?.logs ?? [];
+  const durations = data?.options.durations ?? [];
+  const routeActions = [
+    { label: '업무 목록', href: data?.links.list || '/tasks/', primary: true },
+    { label: 'Django 상세', href: data?.links.djangoDetail || task?.djangoHref || '/todos/' },
+  ];
+
+  const handleEditFieldChange = (field: keyof TaskFormState, value: string) => {
+    setForm((previous) => ({ ...previous, [field]: value }));
+    setError('');
+    setMessage('');
+  };
+
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!task || saving) return;
+    if (!task.canUpdate || !task.updateHref) {
+      setError('업무 수정 권한이 없습니다.');
+      setMessage('');
+      return;
+    }
+    if (!form.title.trim()) {
+      setError('업무 제목을 입력하세요.');
+      setMessage('');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await updateTask(task.updateHref, taskFormPayload(form));
+      applyDetailData(updated);
+      setEditOpen(false);
+      setMessage(updated.message || '업무를 수정했습니다.');
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : '업무 수정에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStatus = async (payload: { action?: string; status?: string; reason?: string }) => {
+    if (!task || actioning) return;
+    setActioning(true);
+    setError('');
+    setMessage('');
+    try {
+      await changeTaskStatus(task.statusHref, payload);
+      const result = await refresh();
+      setMessage(result.message || '업무 상태를 변경했습니다.');
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : '상태 변경에 실패했습니다.');
+    } finally {
+      setActioning(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!task || deleting) return;
+    if (!task.canDelete || !task.deleteHref) {
+      setError('업무 삭제 권한이 없습니다.');
+      setMessage('');
+      return;
+    }
+    if (!window.confirm('이 업무를 삭제하시겠습니까?')) {
+      return;
+    }
+    setDeleting(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await deleteTask(task.deleteHref);
+      window.location.href = result.href || data?.links.list || '/tasks/';
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : '업무 삭제에 실패했습니다.');
+      setDeleting(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    if (!task?.canUploadAttachment || !task.uploadHref) {
+      setError('첨부파일 업로드 권한이 없습니다.');
+      setMessage('');
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    if (!selectedFiles.length) return;
+    if (!task?.canUploadAttachment || !task.uploadHref) {
+      setError('첨부파일 업로드 권한이 없습니다.');
+      setMessage('');
+      event.target.value = '';
+      return;
+    }
+    setUploading(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await uploadTaskAttachments(task.uploadHref, selectedFiles);
+      applyDetailData(updated);
+      setMessage('첨부파일을 업로드했습니다.');
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : '첨부파일 업로드에 실패했습니다.');
+    } finally {
+      setUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  return (
+    <div className="tasks-page task-detail-page">
+      <WorkspaceRoutePage actions={routeActions} data={routeData} view="tasks" />
+      {loading ? (
+        <section className="table-card">
+          <div className="empty-state">업무 상세를 불러오는 중입니다.</div>
+        </section>
+      ) : data?.error ? (
+        <section className="table-card">
+          <div className="empty-state error">{data.error}</div>
+        </section>
+      ) : task ? (
+        <>
+          <section className="dashboard-metric-grid task-metrics">
+            <DashboardMetricCard label="상태" value={task.statusLabel || '-'} detail={task.sourceLabel || '업무'} icon={CheckCircle2} tone="blue" />
+            <DashboardMetricCard label="마감" value={task.dueDate ? formatDateLabel(task.dueDate) : '없음'} detail={task.isOverdue ? '지연' : '일정'} icon={Clock} tone={task.isOverdue ? 'red' : 'green'} />
+            <DashboardMetricCard label="첨부" value={`${formatNumber(attachments.length)}개`} detail="업무 파일" icon={Upload} tone="teal" />
+            <DashboardMetricCard label="기록" value={`${formatNumber(logs.length)}건`} detail="변경 로그" icon={MessageSquareText} tone="amber" />
+          </section>
+
+          <section className="task-detail-layout">
+            <article className="table-card task-detail-main">
+              <div className="section-heading-row">
+                <div>
+                  <p className="eyebrow">Task Detail</p>
+                  <h2>{task.title}</h2>
+                </div>
+                <div className="task-card-heading">
+                  <span className={`task-status ${taskStatusClass(task.status)}`}>{task.statusLabel}</span>
+                  <span className="task-source">{task.sourceLabel}</span>
+                  {task.isOverdue ? <span className="task-overdue">지연</span> : null}
+                </div>
+              </div>
+
+              <div className="task-detail-description">
+                {task.description ? task.description : '상세 내용이 없습니다.'}
+              </div>
+
+              <div className="task-detail-meta">
+                <div>
+                  <span>마감일</span>
+                  <strong>{task.dueDate ? formatDateLabel(task.dueDate) : '없음'}</strong>
+                </div>
+                <div>
+                  <span>예상 소요</span>
+                  <strong>{task.expectedDurationLabel || '-'}</strong>
+                </div>
+                <div>
+                  <span>생성일</span>
+                  <strong>{formatDateTimeLabel(task.createdAt) || '-'}</strong>
+                </div>
+                <div>
+                  <span>완료일</span>
+                  <strong>{formatDateTimeLabel(task.completedAt) || '-'}</strong>
+                </div>
+              </div>
+
+              {task.relatedClient ? (
+                <div className="task-detail-customer">
+                  <span>연결 고객</span>
+                  <a href={task.relatedClient.href}>
+                    {[task.relatedClient.company, task.relatedClient.department, task.relatedClient.customer].filter(Boolean).join(' · ')}
+                  </a>
+                </div>
+              ) : null}
+
+              <div className="task-actions task-detail-actions">
+                {task.canApprove ? <button type="button" disabled={actioning} onClick={() => handleStatus({ action: 'approve' })}>승인</button> : null}
+                {task.canReject ? <button type="button" disabled={actioning} onClick={() => {
+                  const reason = window.prompt('반려 사유를 입력하세요.', '');
+                  if (reason !== null) handleStatus({ action: 'reject', reason });
+                }}>반려</button> : null}
+                {task.canSetOngoing ? <button type="button" disabled={actioning} onClick={() => handleStatus({ status: 'ongoing' })}>진행</button> : null}
+                {task.canSetOnHold ? <button type="button" disabled={actioning} onClick={() => handleStatus({ status: 'on_hold' })}>보류</button> : null}
+                {task.canComplete ? <button type="button" disabled={actioning} onClick={() => handleStatus({ status: 'done' })}>완료</button> : null}
+                {task.canUpdate ? <button type="button" onClick={() => setEditOpen((open) => !open)}><Pencil size={14} />수정</button> : null}
+                {task.canDelete ? <button className="task-danger-button" type="button" disabled={deleting} onClick={handleDelete}><Trash2 size={14} />{deleting ? '삭제 중' : '삭제'}</button> : null}
+              </div>
+
+              {editOpen ? (
+                <form className="task-composer task-detail-edit-form" onSubmit={handleEditSubmit}>
+                  <label>
+                    <span>제목</span>
+                    <input value={form.title} onChange={(event) => handleEditFieldChange('title', event.target.value)} />
+                  </label>
+                  <label>
+                    <span>상세</span>
+                    <textarea rows={5} value={form.description} onChange={(event) => handleEditFieldChange('description', event.target.value)} />
+                  </label>
+                  <div className="form-grid two-columns">
+                    <label>
+                      <span>마감일</span>
+                      <input type="date" value={form.dueDate} onChange={(event) => handleEditFieldChange('dueDate', event.target.value)} />
+                    </label>
+                    <label>
+                      <span>예상 소요</span>
+                      <select value={form.expectedDuration} onChange={(event) => handleEditFieldChange('expectedDuration', event.target.value)}>
+                        <option value="">선택 안 함</option>
+                        {durations.map((duration) => (
+                          <option key={duration.value} value={duration.value}>{duration.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="route-actions">
+                    <button className="primary-button" type="submit" disabled={saving}>{saving ? '저장 중' : '저장'}</button>
+                    <button className="route-secondary-action" type="button" onClick={() => {
+                      setForm(makeTaskEditForm(task));
+                      setEditOpen(false);
+                      setError('');
+                      setMessage('');
+                    }}>취소</button>
+                  </div>
+                </form>
+              ) : null}
+
+              {error ? <p className="form-error">{error}</p> : null}
+              {message ? <p className="form-success">{message}</p> : null}
+            </article>
+
+            <aside className="task-detail-aside">
+              <div className="side-card task-detail-people">
+                <h3>담당 정보</h3>
+                <dl>
+                  <div>
+                    <dt>생성</dt>
+                    <dd>{task.createdBy ? tasksUserLabel(task.createdBy) : '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>담당</dt>
+                    <dd>{task.assignedTo ? tasksUserLabel(task.assignedTo) : '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>요청</dt>
+                    <dd>{task.requestedBy ? tasksUserLabel(task.requestedBy) : '-'}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="side-card task-detail-attachments">
+                <div className="section-heading-row compact">
+                  <div>
+                    <p className="eyebrow">Files</p>
+                    <h3>첨부파일</h3>
+                  </div>
+                  <button type="button" disabled={uploading} onClick={handleUploadClick}>
+                    <Upload size={15} />
+                    {uploading ? '업로드 중' : '업로드'}
+                  </button>
+                </div>
+                <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilesSelected} />
+                {attachments.length ? (
+                  <div className="task-attachment-list">
+                    {attachments.map((attachment) => (
+                      <a href={attachment.downloadHref} key={attachment.id}>
+                        <FileText size={16} />
+                        <span>{attachment.filename}</span>
+                        <small>{formatFileSize(attachment.fileSize)}</small>
+                        <Download size={15} />
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state small">등록된 첨부파일이 없습니다.</div>
+                )}
+              </div>
+
+              <div className="side-card task-detail-logs">
+                <h3>변경 기록</h3>
+                {logs.length ? (
+                  <div className="task-log-list">
+                    {logs.map((log) => (
+                      <div className="task-log-item" key={log.id}>
+                        <strong>{log.actionLabel || log.actionType}</strong>
+                        <span>{log.message || [log.prevStatus, log.newStatus].filter(Boolean).join(' → ')}</span>
+                        <small>{[log.actor ? tasksUserLabel(log.actor) : '', formatDateTimeLabel(log.createdAt)].filter(Boolean).join(' · ')}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state small">표시할 기록이 없습니다.</div>
+                )}
+              </div>
+            </aside>
+          </section>
+        </>
+      ) : (
+        <section className="table-card">
+          <div className="empty-state">업무를 찾을 수 없습니다.</div>
+        </section>
+      )}
     </div>
   );
 }
@@ -16478,6 +16859,7 @@ export function App() {
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
+  const taskDetailId = currentView === 'tasks' ? getTaskDetailId() : null;
   const scheduleCalendarRoute = currentView === 'schedules' && isScheduleCalendarRoute();
   const mailboxThreadId = currentView === 'mail' ? getMailboxThreadId() : '';
   const mailboxScheduledId = currentView === 'mail' ? getMailboxScheduledId() : null;
@@ -18372,6 +18754,15 @@ export function App() {
   }
 
   if (currentView === 'tasks') {
+    if (taskDetailId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <TaskDetailPage routeData={pipelineData} taskId={taskDetailId} />
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

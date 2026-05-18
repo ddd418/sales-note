@@ -1,5 +1,44 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 React tasks/TODO v2 detail plan
+
+**Background**:
+
+- User completed manual verification for React Tasks/TODO v1.
+- V1 covers list/create/request/status/manager assignment, but task rows still fall back to Django for detail, edit/delete, logs, and attachments.
+- Existing `todos` models already include `TodoAttachment` and `TodoLog`, so v2 can extend React without DB changes.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add React task detail API for `/tasks/<id>/`.
+  - Return task metadata, attachments, and recent activity logs.
+  - Add scoped update, delete, and attachment upload APIs.
+  - Preserve existing `/todos/*` legacy screens as fallback.
+- Frontend:
+  - Add `/tasks/<id>/` React detail route.
+  - Link task cards to React detail.
+  - Show task summary, description, related customer, people, attachments, logs, status actions, edit form, and delete/upload actions when permitted.
+- Tests:
+  - Add focused API coverage for task detail permissions, update/delete, and attachment upload.
+
+**Validation plan**:
+
+- `python -m py_compile todos\views.py todos\tests.py reporting\urls.py`
+- Focused `todos.tests.ReactTasksApiTests` detail/update/delete/upload tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete. Commit/push/Railway deployment is next.
+
 ## 2026-05-18 Scheduled email automatic dispatch plan
 
 **Background**:

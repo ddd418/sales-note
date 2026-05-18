@@ -3363,8 +3363,37 @@ export type TaskItem = {
   canComplete: boolean;
   canSetOngoing: boolean;
   canSetOnHold: boolean;
+  canUpdate?: boolean;
+  canDelete?: boolean;
+  canUploadAttachment?: boolean;
+  attachmentCount?: number;
+  logCount?: number;
+  detailHref?: string;
   statusHref: string;
+  updateHref?: string;
+  deleteHref?: string;
+  uploadHref?: string;
   djangoHref: string;
+};
+
+export type TaskAttachment = {
+  id: number;
+  filename: string;
+  fileSize: number;
+  uploadedAt: string | null;
+  uploadedBy: TaskUser | null;
+  downloadHref: string;
+};
+
+export type TaskLog = {
+  id: number;
+  actionType: string;
+  actionLabel: string;
+  actor: TaskUser | null;
+  message: string;
+  prevStatus: string;
+  newStatus: string;
+  createdAt: string | null;
 };
 
 export type TaskFormPayload = {
@@ -3469,8 +3498,26 @@ export type TaskMutationResponse = {
   source?: 'django';
   message?: string;
   error?: string;
+  href?: string;
   task?: TaskItem;
   tasks?: TaskItem[];
+};
+
+export type TaskDetailData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  task: TaskItem | null;
+  attachments: TaskAttachment[];
+  logs: TaskLog[];
+  options: TasksData['options'];
+  links: {
+    list: string;
+    manager: string;
+    djangoDetail: string;
+  };
 };
 
 const emptyDashboardData: DashboardData = {
@@ -4748,6 +4795,21 @@ const emptyTaskManagerData: TaskManagerData = {
   },
   teamSummary: [],
   tasks: [],
+};
+
+const emptyTaskDetailData: TaskDetailData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  task: null,
+  attachments: [],
+  logs: [],
+  options: emptyTaskOptions,
+  links: {
+    list: '/tasks/',
+    manager: '/tasks/manager/',
+    djangoDetail: '/todos/',
+  },
 };
 
 function getCookie(name: string): string {
@@ -7869,6 +7931,52 @@ export async function loadTasksData(params: { status?: string } = {}): Promise<T
   }
 }
 
+export async function loadTaskDetailData(taskId: number): Promise<TaskDetailData> {
+  try {
+    const response = await fetch(`/reporting/api/tasks/${taskId}/`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Task detail API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<TaskDetailData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Task detail API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyTaskDetailData,
+      ...payload,
+      task: payload.task ?? null,
+      attachments: payload.attachments ?? [],
+      logs: payload.logs ?? [],
+      options: {
+        ...emptyTaskOptions,
+        ...(payload.options ?? {}),
+        statuses: payload.options?.statuses ?? [],
+        statusFilters: payload.options?.statusFilters ?? emptyTaskOptions.statusFilters,
+        durations: payload.options?.durations ?? [],
+        assignees: payload.options?.assignees ?? [],
+      },
+      links: {
+        ...emptyTaskDetailData.links,
+        ...(payload.links ?? {}),
+      },
+    };
+  } catch (error) {
+    return {
+      ...emptyTaskDetailData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Task detail API unavailable',
+    };
+  }
+}
+
 export async function loadTaskManagerData(params: { status?: string; assignee?: string } = {}): Promise<TaskManagerData> {
   const query = new URLSearchParams();
   if (params.status) query.set('status', params.status);
@@ -7960,6 +8068,56 @@ export const requestTask = (submitUrl: string, payload: TaskRequestPayload) =>
 
 export const changeTaskStatus = (submitUrl: string, payload: { action?: string; status?: string; reason?: string }) =>
   postTaskJson<{ action?: string; status?: string; reason?: string }>(submitUrl, payload);
+
+export const updateTask = (submitUrl: string, payload: TaskFormPayload) =>
+  postTaskJson<TaskFormPayload, TaskDetailData>(submitUrl, payload);
+
+export const deleteTask = (submitUrl: string) =>
+  postTaskJson<Record<string, never>, TaskMutationResponse>(submitUrl, {});
+
+export async function uploadTaskAttachments(submitUrl: string, files: File[]): Promise<TaskDetailData> {
+  const csrfToken = getCookie('csrftoken');
+  const formData = new FormData();
+  files.forEach((file) => formData.append('files', file));
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: formData,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Task attachment API unavailable: ${response.status}`);
+  }
+  const payload = (await response.json()) as Partial<TaskDetailData>;
+  redirectIfLoginRequired(response, payload);
+  if (!response.ok || payload.success === false || payload.source !== 'django') {
+    throw new Error(payload.error || payload.message || `Task attachment upload failed: ${response.status}`);
+  }
+  return {
+    ...emptyTaskDetailData,
+    ...payload,
+    task: payload.task ?? null,
+    attachments: payload.attachments ?? [],
+    logs: payload.logs ?? [],
+    options: {
+      ...emptyTaskOptions,
+      ...(payload.options ?? {}),
+      statuses: payload.options?.statuses ?? [],
+      statusFilters: payload.options?.statusFilters ?? emptyTaskOptions.statusFilters,
+      durations: payload.options?.durations ?? [],
+      assignees: payload.options?.assignees ?? [],
+    },
+    links: {
+      ...emptyTaskDetailData.links,
+      ...(payload.links ?? {}),
+    },
+  };
+}
 
 export const assignManagerTask = (submitUrl: string, payload: TaskManagerAssignPayload) =>
   postTaskJson<TaskManagerAssignPayload>(submitUrl, payload);

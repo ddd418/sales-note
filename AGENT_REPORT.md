@@ -1,5 +1,81 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — React Tasks/TODO Detail Workflow
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+React 업무 목록에서 Django 상세로 빠지던 TODO 상세 흐름을 React CRM 안으로 확장했습니다. `/tasks/<id>/`에서 업무 상세, 연결 고객, 담당자, 첨부파일, 변경 기록을 확인하고 권한에 따라 수정/삭제/상태변경/첨부 업로드를 처리할 수 있습니다.
+
+### 변경된 파일
+
+- `todos/views.py`: 업무 상세, 수정, 삭제, 첨부 업로드 API 및 권한 helper 추가.
+- `reporting/urls.py`: React 업무 상세 관련 API route 추가.
+- `todos/tests.py`: 상세 조회 권한, 첨부/로그 응답, 수정/삭제/업로드 권한 회귀 테스트 추가.
+- `frontend/src/api.ts`: 업무 상세/수정/삭제/첨부 업로드 API client 추가.
+- `frontend/src/App.tsx`: `/tasks/<id>/` 상세 화면, 업무 카드 상세 링크, 상세 액션 UI 추가.
+- `frontend/src/styles.css`: 업무 상세 화면, 첨부/로그/반응형 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 검증 결과 기록.
+
+### CRM 개선
+
+- 업무 카드에서 React 상세 화면으로 바로 이동합니다.
+- 상세 화면에서 업무 본문, 마감, 예상 소요, 연결 고객, 생성/담당/요청자를 한 화면에서 확인합니다.
+- 첨부파일 다운로드와 업로드, 변경 로그 확인을 React에서 처리합니다.
+- 업무 권한에 따라 수정, 삭제, 승인/반려, 진행/보류/완료 액션을 노출합니다.
+
+### 기존 기능 보존
+
+- 기존 `/todos/*` Django 화면과 route는 유지했습니다.
+- `/reporting/*` API/auth 흐름은 유지했습니다.
+- DB 모델 변경과 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile todos\views.py todos\tests.py reporting\urls.py
+→ OK
+
+python manage.py test todos.tests.ReactTasksApiTests --verbosity=1
+→ Ran 8 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-DPh_ji3K.js. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local frontend server smoke:
+→ `/tasks/1/` returns 200, `/assets/index-DPh_ji3K.js` returns 200, bundle contains `/reporting/api/tasks/`.
+```
+
+### 운영 배포 상태
+
+- Pending: commit, push, Railway backend/frontend deploy, production smoke.
+
+### 알려진 제한
+
+- React 상세 화면은 현재 업무 필드의 핵심 편집만 제공합니다. 담당자 재배정, 카테고리 변경 같은 고급 관리는 기존 Django 화면을 fallback으로 유지합니다.
+- 로컬 브라우저 플러그인은 이번 세션에서 제어 도구가 노출되지 않아 HTTP smoke로 대체했습니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/tasks/`에 접속합니다.
+2. 업무 카드 제목 또는 `상세`를 클릭해 `/tasks/<id>/`로 이동하는지 확인합니다.
+3. 상세, 연결 고객, 담당자, 첨부파일, 변경 기록이 보이는지 확인합니다.
+4. 권한이 있는 업무에서 수정, 상태 변경, 첨부 업로드가 정상 동작하는지 확인합니다.
+5. 삭제 권한이 있는 테스트 업무에서 삭제 후 업무 목록으로 돌아오는지 확인합니다.
+
 ## 2026-05-18 — Scheduled Email Automatic Dispatch
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기

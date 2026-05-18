@@ -5,6 +5,7 @@ TODOLIST 뷰
 """
 import json
 
+from django.contrib.auth.models import User
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
@@ -1514,12 +1515,76 @@ def _tasks_can_manager_set_status(todo, user):
     )
 
 
+def _tasks_can_view(todo, user):
+    if todo.created_by_id == user.id or todo.assigned_to_id == user.id or todo.requested_by_id == user.id:
+        return True
+    profile = _tasks_user_profile(user)
+    if profile.role != 'manager' or not profile.company:
+        return False
+    participant_ids = [todo.created_by_id, todo.assigned_to_id, todo.requested_by_id]
+    return User.objects.filter(
+        id__in=[value for value in participant_ids if value],
+        userprofile__company=profile.company,
+    ).exists()
+
+
+def _tasks_can_update(todo, user):
+    if todo.source_type == Todo.SourceType.MANAGER_ASSIGN:
+        return todo.requested_by_id == user.id
+    return todo.created_by_id == user.id and todo.assigned_to_id is None
+
+
+def _tasks_can_delete(todo, user):
+    if todo.source_type == Todo.SourceType.MANAGER_ASSIGN:
+        return todo.requested_by_id == user.id
+    if todo.assigned_to_id == user.id and todo.requested_by_id and todo.requested_by_id != user.id:
+        return True
+    if todo.requested_by_id == user.id and todo.assigned_to_id and todo.assigned_to_id != user.id:
+        return True
+    return todo.created_by_id == user.id
+
+
+def _tasks_can_upload_attachment(todo, user):
+    return _tasks_can_update(todo, user) or (
+        todo.source_type == Todo.SourceType.MANAGER_ASSIGN
+        and todo.assigned_to_id == user.id
+    )
+
+
+def _tasks_attachment_payload(attachment):
+    return {
+        'id': attachment.id,
+        'filename': attachment.filename,
+        'fileSize': attachment.file_size,
+        'uploadedAt': attachment.uploaded_at.isoformat() if attachment.uploaded_at else None,
+        'uploadedBy': _tasks_user_payload(attachment.uploaded_by),
+        'downloadHref': attachment.file.url if attachment.file else '',
+    }
+
+
+def _tasks_log_payload(log):
+    action_labels = dict(TodoLog.ActionType.choices)
+    return {
+        'id': log.id,
+        'actionType': log.action_type,
+        'actionLabel': action_labels.get(log.action_type, log.action_type),
+        'actor': _tasks_user_payload(log.actor),
+        'message': log.message or '',
+        'prevStatus': log.prev_status or '',
+        'newStatus': log.new_status or '',
+        'createdAt': log.created_at.isoformat() if log.created_at else None,
+    }
+
+
 def _tasks_payload(todo, user):
     status_labels = dict(Todo.Status.choices)
     source_labels = dict(Todo.SourceType.choices)
     duration_labels = dict(Todo.Duration.choices)
     can_status = _tasks_can_set_status(todo, user) or _tasks_can_manager_set_status(todo, user)
     can_complete = can_status and todo.status not in [Todo.Status.DONE, Todo.Status.PENDING, Todo.Status.REJECTED]
+    can_update = _tasks_can_update(todo, user)
+    can_delete = _tasks_can_delete(todo, user)
+    can_upload = _tasks_can_upload_attachment(todo, user)
     return {
         'id': todo.id,
         'title': todo.title,
@@ -1550,8 +1615,34 @@ def _tasks_payload(todo, user):
         'canComplete': can_complete,
         'canSetOngoing': can_status and todo.status != Todo.Status.ONGOING,
         'canSetOnHold': can_status and todo.status != Todo.Status.ON_HOLD,
+        'canUpdate': can_update,
+        'canDelete': can_delete,
+        'canUploadAttachment': can_upload,
+        'attachmentCount': getattr(todo, 'attachment_count', None) if hasattr(todo, 'attachment_count') else todo.attachments.count(),
+        'logCount': getattr(todo, 'log_count', None) if hasattr(todo, 'log_count') else todo.logs.count(),
+        'detailHref': f'/tasks/{todo.id}/',
         'statusHref': reverse('reporting:tasks_status_api', args=[todo.id]),
+        'updateHref': reverse('reporting:tasks_update_api', args=[todo.id]),
+        'deleteHref': reverse('reporting:tasks_delete_api', args=[todo.id]),
+        'uploadHref': reverse('reporting:tasks_attachment_upload_api', args=[todo.id]),
         'djangoHref': reverse('todos:detail', args=[todo.id]),
+    }
+
+
+def _tasks_detail_payload(todo, user):
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'task': _tasks_payload(todo, user),
+        'attachments': [_tasks_attachment_payload(attachment) for attachment in todo.attachments.all()],
+        'logs': [_tasks_log_payload(log) for log in todo.logs.all()[:30]],
+        'options': _tasks_options_payload(user),
+        'links': {
+            'list': '/tasks/',
+            'manager': '/tasks/manager/',
+            'djangoDetail': reverse('todos:detail', args=[todo.id]),
+        },
     }
 
 
@@ -1623,6 +1714,143 @@ def tasks_api(request):
             'received': [_tasks_payload(todo, request.user) for todo in list(received_filtered[:80])],
             'requested': [_tasks_payload(todo, request.user) for todo in list(requested_filtered[:80])],
         },
+    })
+
+
+@require_http_methods(["GET"])
+def tasks_detail_api(request, pk):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    todo = get_object_or_404(
+        Todo.objects.select_related(
+            'created_by', 'created_by__userprofile', 'assigned_to', 'assigned_to__userprofile',
+            'requested_by', 'requested_by__userprofile', 'related_client', 'related_client__company',
+            'related_client__department', 'category',
+        ).prefetch_related('attachments__uploaded_by', 'attachments__uploaded_by__userprofile', 'logs__actor', 'logs__actor__userprofile'),
+        pk=pk,
+    )
+    if not _tasks_can_view(todo, request.user):
+        return JsonResponse({'success': False, 'error': '업무 조회 권한이 없습니다.'}, status=403)
+    return JsonResponse(_tasks_detail_payload(todo, request.user))
+
+
+@require_http_methods(["POST"])
+def tasks_update_api(request, pk):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error = _tasks_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+    todo = get_object_or_404(
+        Todo.objects.select_related('created_by', 'assigned_to', 'requested_by', 'related_client'),
+        pk=pk,
+    )
+    if not _tasks_can_update(todo, request.user):
+        return JsonResponse({'success': False, 'error': '업무 수정 권한이 없습니다.'}, status=403)
+
+    title = str(payload.get('title') or '').strip()
+    if not title:
+        return JsonResponse({'success': False, 'error': '제목을 입력하세요.'}, status=400)
+
+    old_title = todo.title
+    todo.title = title[:200]
+    todo.description = str(payload.get('description') or '').strip()
+    todo.due_date = _tasks_parse_date(payload.get('dueDate') or payload.get('due_date'))
+    todo.expected_duration = _tasks_parse_duration(payload.get('expectedDuration') or payload.get('expected_duration'))
+    todo.related_client = _tasks_customer_for_user(request.user, payload.get('relatedClientId') or payload.get('related_client'))
+    todo.save()
+
+    TodoLog.objects.create(
+        todo=todo,
+        actor=request.user,
+        action_type=TodoLog.ActionType.UPDATED,
+        message=f"React CRM에서 수정됨 (이전 제목: {old_title})" if old_title != todo.title else 'React CRM에서 내용 수정됨',
+    )
+    todo = Todo.objects.select_related(
+        'created_by', 'created_by__userprofile', 'assigned_to', 'assigned_to__userprofile',
+        'requested_by', 'requested_by__userprofile', 'related_client', 'related_client__company',
+        'related_client__department', 'category',
+    ).prefetch_related('attachments__uploaded_by', 'attachments__uploaded_by__userprofile', 'logs__actor', 'logs__actor__userprofile').get(pk=todo.pk)
+    return JsonResponse({
+        **_tasks_detail_payload(todo, request.user),
+        'message': '업무를 수정했습니다.',
+    })
+
+
+@require_http_methods(["POST"])
+def tasks_delete_api(request, pk):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    todo = get_object_or_404(Todo.objects.select_related('created_by', 'assigned_to', 'requested_by'), pk=pk)
+    if not _tasks_can_delete(todo, request.user):
+        return JsonResponse({'success': False, 'error': '업무 삭제 권한이 없습니다.'}, status=403)
+
+    if todo.source_type == Todo.SourceType.MANAGER_ASSIGN and todo.requested_by_id == request.user.id:
+        todo.delete()
+        return JsonResponse({'success': True, 'source': 'django', 'message': '업무를 취소했습니다.', 'href': '/tasks/manager/'})
+
+    if todo.assigned_to_id == request.user.id and todo.requested_by_id and todo.requested_by_id != request.user.id:
+        todo.assigned_to = None
+        todo.requested_by = None
+        todo.status = Todo.Status.ONGOING
+        todo.save()
+        TodoLog.objects.create(
+            todo=todo,
+            actor=request.user,
+            action_type=TodoLog.ActionType.ASSIGNED,
+            message=f'{_tasks_user_name(request.user)}님이 받은 일에서 삭제함',
+        )
+        return JsonResponse({'success': True, 'source': 'django', 'message': '받은 일에서 삭제했습니다.', 'href': '/tasks/'})
+
+    todo.delete()
+    return JsonResponse({'success': True, 'source': 'django', 'message': '업무를 삭제했습니다.', 'href': '/tasks/'})
+
+
+@require_http_methods(["POST"])
+def tasks_attachment_upload_api(request, pk):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    todo = get_object_or_404(
+        Todo.objects.select_related('created_by', 'assigned_to', 'requested_by'),
+        pk=pk,
+    )
+    if not _tasks_can_upload_attachment(todo, request.user):
+        return JsonResponse({'success': False, 'error': '첨부 업로드 권한이 없습니다.'}, status=403)
+
+    files = request.FILES.getlist('files') or request.FILES.getlist('attachments')
+    if not files:
+        return JsonResponse({'success': False, 'error': '업로드할 파일을 선택하세요.'}, status=400)
+
+    attachments = []
+    for uploaded_file in files:
+        attachments.append(TodoAttachment.objects.create(
+            todo=todo,
+            file=uploaded_file,
+            filename=uploaded_file.name,
+            uploaded_by=request.user,
+        ))
+    TodoLog.objects.create(
+        todo=todo,
+        actor=request.user,
+        action_type=TodoLog.ActionType.COMMENTED,
+        message=f'React CRM에서 첨부파일 {len(attachments)}개 업로드',
+    )
+    todo = Todo.objects.select_related(
+        'created_by', 'created_by__userprofile', 'assigned_to', 'assigned_to__userprofile',
+        'requested_by', 'requested_by__userprofile', 'related_client', 'related_client__company',
+        'related_client__department', 'category',
+    ).prefetch_related('attachments__uploaded_by', 'attachments__uploaded_by__userprofile', 'logs__actor', 'logs__actor__userprofile').get(pk=todo.pk)
+    return JsonResponse({
+        **_tasks_detail_payload(todo, request.user),
+        'message': f'첨부파일 {len(attachments)}개를 업로드했습니다.',
     })
 
 
