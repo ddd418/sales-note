@@ -1,5 +1,96 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — AI Workspace Verified Memory Foundation
+
+**상태**: 구현/로컬 검증 완료, 커밋/배포 대기
+
+### 요약
+
+AI Workspace를 다른 작업보다 우선 안정화하기 위해 검수 기반 기억 구조를 추가했습니다. AI가 자기 답변을 자동으로 장기 기억하지 않고, 사용자가 `맞음`, `틀림`, `정정 저장`, `앞으로 기억`으로 검수한 내용만 다음 답변에 강하게 반영하도록 했습니다.
+
+### 변경된 파일
+
+- `reporting/models.py`: `AIWorkspaceMemory` 모델 추가.
+- `reporting/migrations/0105_aiworkspacememory.py`: 검수 기억 테이블 migration 추가.
+- `reporting/admin.py`: 검수 기억 admin 관리 추가.
+- `reporting/views.py`: 기억 저장 API, 검수 기억/최근 대화 컨텍스트, 프롬프트 규칙 추가.
+- `reporting/urls.py`: `/reporting/api/ai-workspace/memories/create/` 추가.
+- `reporting/tests.py`: 기억 저장 권한, 스코프, 컨텍스트 주입 테스트 추가.
+- `frontend/src/api.ts`: 질문 피드백/기억 저장 타입과 API client 추가.
+- `frontend/src/App.tsx`: AI 답변 검수/정정/기억 UI 연결.
+- `frontend/src/styles.css`: 검수 기억 입력 스타일 보강.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: AI 우선 집중 계획과 결과 기록.
+
+### CRM 개선
+
+- AI 답변 기록은 계속 저장하지만, raw AI 답변은 장기 사실로 자동 승격하지 않습니다.
+- 사용자가 저장한 `AIWorkspaceMemory`만 다음 질문의 강한 기준으로 들어갑니다.
+- 같은 부서 질문에서는 부서 검수 기억 + 전체 범위 기억을 함께 참고합니다.
+- 전체 부서 질문에서는 전체 범위 검수 기억만 참고해 부서별 기억이 무분별하게 섞이지 않게 했습니다.
+- 최근 질문/답변 기록은 대화 연속성용 약한 문맥으로만 들어갑니다.
+- 프롬프트에서 CRM 원자료, 메일, 제품 마스터, 검수 기억, raw AI history의 우선순위를 명확히 분리했습니다.
+
+### 기존 기능 보존
+
+- 기존 질문/답변 기록, 상세, 삭제 API는 유지했습니다.
+- 기존 질문 피드백 API는 유지하고 실제 React UI에서 사용하도록 연결했습니다.
+- `/reporting/*` 인증/권한/CSRF 흐름은 유지했습니다.
+- 기존 AI Workspace 모델 선택은 `gpt-5.4-mini` 단일 선택 구조를 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ Expected model change detected: AIWorkspaceMemory
+
+python manage.py makemigrations reporting
+→ Created reporting/migrations/0105_aiworkspacememory.py
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 73 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-DS8A06La.js and /assets/index-DvJ1A2J9.css. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 검수 기억 삭제/비활성화 UI는 아직 없습니다. admin에서는 관리할 수 있습니다.
+- 저장된 기억은 현재 사용자 단위입니다. 회사 공용 검수 기억은 별도 권한 정책이 필요합니다.
+- 운영 배포 전까지 production 프론트에는 새 검수 UI가 보이지 않습니다.
+
+### 권장 다음 단계
+
+이번 배포 후 운영에서 `P4345N00은 튜브가 아니라 팁` 같은 정정을 저장하고, 같은 부서 AI 질문에서 반복 오류가 줄어드는지 확인해야 합니다. 이후에는 기억 목록/비활성화 UI와 회사 공용 기억 정책을 추가하는 것이 좋습니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/?department_id=146`에 접속합니다.
+2. AI에게 제품/메일/고객 상황 관련 질문을 합니다.
+3. 답변 아래 `맞음`, `틀림`, `정정 저장`, `앞으로 기억` 버튼이 보이는지 확인합니다.
+4. 틀린 답변이면 `정정 저장`을 누르고 예: `P4345N00은 튜브가 아니라 팁으로 판단한다.`를 저장합니다.
+5. 같은 부서에서 다시 관련 질문을 해서 정정 내용이 우선 반영되는지 확인합니다.
+6. `틀림` 버튼은 코멘트 없이 저장되지 않는지 확인합니다.
+7. 질문/답변 기록 삭제 기능이 기존처럼 동작하는지 확인합니다.
+
 ## 2026-05-18 — React Tasks/TODO Detail Workflow
 
 **상태**: 구현/로컬 검증/커밋/푸시 완료, Railway 404 운영 장애 복구 완료, 최신 프론트 번들 배포는 안정화 후 진행

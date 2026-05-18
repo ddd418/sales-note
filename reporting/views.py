@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -11190,6 +11190,10 @@ AI_WORKSPACE_DEPARTMENT_QUESTION_OUTPUT_TOKENS = 2400
 AI_WORKSPACE_QUESTION_FEEDBACK_COMMENT_MAX_LENGTH = 1000
 AI_WORKSPACE_QUESTION_FEEDBACK_LIMIT = 6
 AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE = 5
+AI_WORKSPACE_MEMORY_TITLE_MAX_LENGTH = 180
+AI_WORKSPACE_MEMORY_CONTENT_MAX_LENGTH = 1600
+AI_WORKSPACE_MEMORY_LIMIT = 12
+AI_WORKSPACE_RECENT_CONVERSATION_LIMIT = 5
 AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT = """
 Act like a CRM strategy architect, senior growth consultant, and “Zhuge Liang”-level tactician who analyzes CRM programs, customer data, operational constraints, and business goals to recommend the most effective CRM strategy.
 
@@ -11290,6 +11294,14 @@ def _ai_workspace_question_feedback_rating_label(rating):
         'needs_style': '방향 수정',
         'incorrect': '틀림',
     }.get(rating, rating or '')
+
+
+def _ai_workspace_memory_type_label(memory_type):
+    return {
+        'fact': '검수 사실',
+        'correction': '정정',
+        'preference': '답변 선호',
+    }.get(memory_type, memory_type or '')
 
 
 def _ai_workspace_question_model_choices_payload():
@@ -11424,6 +11436,94 @@ def _ai_workspace_question_feedback_payload(feedback):
         'createdAt': _datetime_or_none(feedback.created_at),
         'updatedAt': _datetime_or_none(feedback.updated_at),
     }
+
+
+def _ai_workspace_memory_payload(memory):
+    department = memory.department
+    source_log = memory.source_question_log
+    return {
+        'id': memory.id,
+        'scopeType': memory.scope_type,
+        'memoryType': memory.memory_type,
+        'memoryTypeLabel': _ai_workspace_memory_type_label(memory.memory_type),
+        'title': _ai_workspace_question_text(memory.title, AI_WORKSPACE_MEMORY_TITLE_MAX_LENGTH),
+        'content': _ai_workspace_question_text(memory.content, AI_WORKSPACE_MEMORY_CONTENT_MAX_LENGTH),
+        'isActive': bool(memory.is_active),
+        'department': {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+        } if department else None,
+        'sourceQuestionLogId': source_log.id if source_log else None,
+        'sourceQuestion': _ai_workspace_question_text(source_log.question, 360) if source_log else '',
+        'createdAt': _datetime_or_none(memory.created_at),
+        'updatedAt': _datetime_or_none(memory.updated_at),
+    }
+
+
+def _ai_workspace_verified_memories(user, department_id=None, scope_type='department', limit=AI_WORKSPACE_MEMORY_LIMIT):
+    if not user:
+        return []
+
+    normalized_scope = 'all' if scope_type == 'all' else 'department'
+    queryset = AIWorkspaceMemory.objects.filter(
+        user=user,
+        is_active=True,
+    ).select_related(
+        'department',
+        'department__company',
+        'source_question_log',
+    )
+    if normalized_scope == 'department':
+        queryset = queryset.filter(
+            Q(scope_type='all', department__isnull=True) |
+            Q(scope_type='department', department_id=department_id)
+        )
+    else:
+        queryset = queryset.filter(scope_type='all', department__isnull=True)
+
+    return [
+        _ai_workspace_memory_payload(memory)
+        for memory in queryset.order_by('-updated_at')[:limit]
+    ]
+
+
+def _ai_workspace_recent_question_log_context(user, department=None, scope_type='department', limit=AI_WORKSPACE_RECENT_CONVERSATION_LIMIT):
+    if not user:
+        return []
+
+    normalized_scope = 'all' if scope_type == 'all' else 'department'
+    queryset = AIWorkspaceQuestionLog.objects.filter(user=user).select_related(
+        'department',
+        'department__company',
+    )
+    if normalized_scope == 'department':
+        if not department:
+            return []
+        queryset = queryset.filter(scope_type='department', department=department)
+    else:
+        queryset = queryset.filter(scope_type='all', department__isnull=True)
+
+    items = []
+    for log in queryset.order_by('-created_at')[:limit]:
+        answer = log.answer_snapshot if isinstance(log.answer_snapshot, dict) else {}
+        decision = answer.get('decision') if isinstance(answer.get('decision'), dict) else {}
+        items.append({
+            'id': log.id,
+            'scopeType': log.scope_type,
+            'createdAt': _datetime_or_none(log.created_at),
+            'question': _ai_workspace_question_text(log.question, 420),
+            'answerSummary': _ai_workspace_question_text(answer.get('summary'), 700),
+            'recommendedChoice': _ai_workspace_question_text(decision.get('recommendedChoice'), 260),
+            'source': log.source or '',
+            'model': _ai_workspace_question_model_label(log.model),
+            'department': {
+                'id': log.department.id,
+                'name': log.department.name,
+                'company': log.department.company.name if log.department.company else '',
+            } if log.department else None,
+        })
+    return items
 
 
 def _ai_workspace_question_log_payload(log):
@@ -12169,6 +12269,8 @@ def _ai_workspace_department_question_context(department, user):
         'recentEmails': _ai_workspace_recent_email_context(user, followup_ids=followup_ids, department_id=department.id, limit=10),
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user, department_id=department.id),
+        'verifiedMemories': _ai_workspace_verified_memories(user, department_id=department.id, scope_type='department'),
+        'recentQuestionLogs': _ai_workspace_recent_question_log_context(user, department=department, scope_type='department'),
         'recentSchedules': recent_schedules,
     }
 
@@ -12428,6 +12530,8 @@ def _ai_workspace_global_question_context(user):
         'recentEmails': _ai_workspace_recent_email_context(user, followup_ids=followup_ids, limit=16),
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user),
+        'verifiedMemories': _ai_workspace_verified_memories(user, scope_type='all'),
+        'recentQuestionLogs': _ai_workspace_recent_question_log_context(user, scope_type='all'),
         'recentSchedules': recent_schedules,
         'openFollowups': open_followups,
         'recommendedActions': [
@@ -13054,6 +13158,9 @@ def _ai_workspace_generate_department_question_answer(question, context, model=N
                 'crmContext.recentEmails는 CRM에 연결된 최근 메일 이력이다. 메일/이메일/회신/답장을 참고하라는 질문에서는 recentEmails의 subject, body, directionLabel, date를 우선 근거로 사용한다.',
                 'recentEmails가 있는데 "메일 기록을 볼 수 없다"고 답하지 않는다. recentEmails가 비어 있을 때만 연결된 메일 기록이 없다고 말한다.',
                 '메일은 보낸 메일과 받은 메일을 구분하고, 본문에 없는 구매 의도/확정 일정/회신 여부를 추측하지 않는다.',
+                'crmContext.verifiedMemories는 사용자가 검수해서 저장한 장기 기억이다. 같은 주제에서는 원본 AI 답변 기록보다 verifiedMemories를 우선 적용한다.',
+                'verifiedMemories가 CRM 원자료나 제품 마스터와 충돌하면 충돌을 숨기지 말고 어느 근거가 최신/검수 근거인지 분리해서 설명한다.',
+                'crmContext.recentQuestionLogs는 현재 대화 흐름을 이어가기 위한 약한 문맥이다. recentQuestionLogs의 과거 AI 답변은 사실 근거가 아니며 CRM 원자료, 메일, 제품 마스터, verifiedMemories보다 우선하지 않는다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
                 'crmContext.productFacts는 제품 코드별 제품 마스터 설명/규격/단위다. 제품 코드의 품목 성격은 productFacts와 CRM 품목 메모를 우선 근거로 삼는다.',
@@ -13780,6 +13887,8 @@ def ai_workspace_department_question_api(request):
             'recentEmailCount': len(context.get('recentEmails') or []),
             'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
             'questionFeedbackCount': len(context.get('questionFeedbacks') or []),
+            'verifiedMemoryCount': len(context.get('verifiedMemories') or []),
+            'recentQuestionLogCount': len(context.get('recentQuestionLogs') or []),
         },
         'requiresHumanReview': True,
     })
@@ -13882,6 +13991,147 @@ def ai_workspace_question_feedback_api(request):
         'generatedAt': timezone.now().isoformat(),
         'feedback': _ai_workspace_question_feedback_payload(feedback),
         'message': 'AI 답변 피드백을 저장했습니다. 다음 질문 답변에 반영됩니다.',
+    })
+
+
+@never_cache
+@require_POST
+def ai_workspace_memory_create_api(request):
+    """Persist user-approved AI Workspace memory/correction for future answers."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_json',
+            'message': '요청 JSON 형식이 올바르지 않습니다.',
+        }, status=400)
+
+    source_question_log = None
+    raw_question_log_id = payload.get('questionLogId') or payload.get('question_log_id')
+    if raw_question_log_id:
+        try:
+            question_log_id = int(raw_question_log_id)
+        except (TypeError, ValueError):
+            question_log_id = 0
+        source_question_log = AIWorkspaceQuestionLog.objects.filter(
+            id=question_log_id,
+            user=request.user,
+        ).select_related('department', 'department__company').first()
+        if not source_question_log:
+            return JsonResponse({
+                'success': False,
+                'error': 'question_log_not_found',
+                'message': '출처 질문 기록을 찾을 수 없습니다.',
+            }, status=404)
+
+    source_feedback = None
+    raw_feedback_id = payload.get('feedbackId') or payload.get('feedback_id')
+    if raw_feedback_id:
+        try:
+            feedback_id = int(raw_feedback_id)
+        except (TypeError, ValueError):
+            feedback_id = 0
+        source_feedback = AIWorkspaceQuestionFeedback.objects.filter(
+            id=feedback_id,
+            user=request.user,
+        ).first()
+        if not source_feedback:
+            return JsonResponse({
+                'success': False,
+                'error': 'feedback_not_found',
+                'message': '출처 피드백을 찾을 수 없습니다.',
+            }, status=404)
+
+    memory_type = str(payload.get('memoryType') or payload.get('memory_type') or 'fact').strip()
+    if memory_type not in {'fact', 'correction', 'preference'}:
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_memory_type',
+            'message': '기억 유형이 올바르지 않습니다.',
+        }, status=400)
+
+    scope_type = str(payload.get('scopeType') or payload.get('scope_type') or '').strip().lower()
+    if not scope_type and source_question_log:
+        scope_type = source_question_log.scope_type
+    if scope_type not in {'all', 'department'}:
+        scope_type = 'department'
+
+    department = None
+    if scope_type == 'department':
+        department_id = payload.get('departmentId') or payload.get('department_id')
+        if not department_id and source_question_log and source_question_log.department_id:
+            department_id = source_question_log.department_id
+        department = _ai_workspace_question_department_for_user(request.user, department_id)
+        if not department:
+            return JsonResponse({
+                'success': False,
+                'error': 'department_not_found',
+                'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
+            }, status=404)
+        if source_question_log and source_question_log.scope_type == 'department' and source_question_log.department_id != department.id:
+            return JsonResponse({
+                'success': False,
+                'error': 'scope_mismatch',
+                'message': '출처 질문 기록과 저장 범위가 일치하지 않습니다.',
+            }, status=400)
+    elif source_question_log and source_question_log.scope_type == 'department':
+        return JsonResponse({
+            'success': False,
+            'error': 'scope_mismatch',
+            'message': '부서 질문 기록은 부서 범위 기억으로 저장해야 합니다.',
+        }, status=400)
+
+    title = _ai_workspace_question_text(
+        payload.get('title'),
+        AI_WORKSPACE_MEMORY_TITLE_MAX_LENGTH,
+    )
+    content = _ai_workspace_question_text(
+        payload.get('content') or payload.get('memory') or payload.get('comment'),
+        AI_WORKSPACE_MEMORY_CONTENT_MAX_LENGTH,
+    )
+    if len(content) < 2:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_content',
+            'message': '기억할 내용을 입력하세요.',
+        }, status=400)
+
+    if not title:
+        title = {
+            'fact': '검수 사실',
+            'correction': '정정 기억',
+            'preference': '답변 선호',
+        }[memory_type]
+
+    memory = AIWorkspaceMemory.objects.create(
+        user=request.user,
+        department=department,
+        source_question_log=source_question_log,
+        source_feedback=source_feedback,
+        scope_type=scope_type,
+        memory_type=memory_type,
+        title=title,
+        content=content,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'generatedAt': timezone.now().isoformat(),
+        'memory': _ai_workspace_memory_payload(memory),
+        'message': '검수한 내용을 AI 기억에 저장했습니다. 다음 질문부터 우선 반영됩니다.',
     })
 
 

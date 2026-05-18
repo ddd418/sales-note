@@ -128,6 +128,8 @@ import {
   AIWorkspaceQuestionScope,
   AIWorkspaceQuestionLog,
   AIWorkspaceQuestionLogDetailData,
+  AIWorkspaceMemoryType,
+  AIWorkspaceQuestionFeedbackRating,
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
@@ -221,8 +223,10 @@ import {
   saveCustomerAsset,
   saveCustomerCalibration,
   saveCustomerServiceCase,
+  saveAIWorkspaceMemory,
   sendMailboxEmail,
   submitAIWorkspaceActionFeedback,
+  submitAIWorkspaceQuestionFeedback,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateCustomer as updateCustomerRecord,
@@ -14913,9 +14917,14 @@ function AIWorkspaceDepartmentQuestionPanel({
   onModelChange,
   onQuestionChange,
   onQuestionScopeChange,
+  onSaveMemory,
   onSubmit,
+  onSubmitReview,
   question,
   questionScope,
+  reviewError,
+  reviewMessage,
+  reviewSaving,
   result,
 }: {
   data: AIWorkspaceData;
@@ -14931,12 +14940,21 @@ function AIWorkspaceDepartmentQuestionPanel({
   onModelChange: (value: AIWorkspaceQuestionModel | string) => void;
   onQuestionChange: (value: string) => void;
   onQuestionScopeChange: (value: AIWorkspaceQuestionScope) => void;
+  onSaveMemory: (memoryType: AIWorkspaceMemoryType, title: string, content: string) => Promise<void>;
   onSubmit: () => void;
+  onSubmitReview: (rating: AIWorkspaceQuestionFeedbackRating, comment?: string) => Promise<void>;
   question: string;
   questionScope: AIWorkspaceQuestionScope;
+  reviewError: string;
+  reviewMessage: string;
+  reviewSaving: string;
   result: AIWorkspaceDepartmentQuestionResponse | null;
 }) {
   const scope = data.feedbackHistory.scope;
+  const [reviewMode, setReviewMode] = useState<'incorrect' | 'correction' | 'memory' | ''>('');
+  const [reviewComment, setReviewComment] = useState('');
+  const [memoryTitle, setMemoryTitle] = useState('');
+  const [memoryContent, setMemoryContent] = useState('');
 
   const selectedDepartmentLabel = [
     data.featuredDepartment?.companyName,
@@ -14975,11 +14993,48 @@ function AIWorkspaceDepartmentQuestionPanel({
       { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
     ];
 
+  useEffect(() => {
+    setReviewMode('');
+    setReviewComment('');
+    setMemoryTitle('');
+    setMemoryContent('');
+  }, [result?.questionLog?.id]);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (canSubmit) {
       onSubmit();
     }
+  };
+
+  const handleHelpfulReview = async () => {
+    await onSubmitReview('helpful');
+    setReviewMode('');
+    setReviewComment('');
+  };
+
+  const handleIncorrectReview = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const comment = reviewComment.trim();
+    if (!comment) {
+      return;
+    }
+    await onSubmitReview('incorrect', comment);
+    setReviewMode('');
+    setReviewComment('');
+  };
+
+  const handleMemorySave = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const content = memoryContent.trim();
+    if (!content) {
+      return;
+    }
+    const memoryType: AIWorkspaceMemoryType = reviewMode === 'correction' ? 'correction' : 'fact';
+    await onSaveMemory(memoryType, memoryTitle.trim(), content);
+    setReviewMode('');
+    setMemoryTitle('');
+    setMemoryContent('');
   };
 
   return (
@@ -15150,6 +15205,101 @@ function AIWorkspaceDepartmentQuestionPanel({
               ))}
             </div>
           ) : null}
+          <section className="ai-question-feedback-box">
+            <div className="ai-question-feedback-head">
+              <strong>답변 검수</strong>
+              <span>검수된 내용만 다음 답변에 강하게 반영됩니다</span>
+            </div>
+            <div className="ai-question-feedback-options">
+              <button disabled={Boolean(reviewSaving)} onClick={handleHelpfulReview} type="button">
+                <CheckCircle2 size={14} />
+                맞음
+              </button>
+              <button
+                className={reviewMode === 'incorrect' ? 'active' : ''}
+                disabled={Boolean(reviewSaving)}
+                onClick={() => {
+                  setReviewMode(reviewMode === 'incorrect' ? '' : 'incorrect');
+                  setReviewComment('');
+                }}
+                type="button"
+              >
+                <AlertTriangle size={14} />
+                틀림
+              </button>
+              <button
+                className={reviewMode === 'correction' ? 'active' : ''}
+                disabled={Boolean(reviewSaving)}
+                onClick={() => {
+                  setReviewMode(reviewMode === 'correction' ? '' : 'correction');
+                  setMemoryTitle('정정 기억');
+                  setMemoryContent('');
+                }}
+                type="button"
+              >
+                <FileText size={14} />
+                정정 저장
+              </button>
+              <button
+                className={reviewMode === 'memory' ? 'active' : ''}
+                disabled={Boolean(reviewSaving)}
+                onClick={() => {
+                  setReviewMode(reviewMode === 'memory' ? '' : 'memory');
+                  setMemoryTitle('검수 사실');
+                  setMemoryContent(answer.summary || '');
+                }}
+                type="button"
+              >
+                <Sparkles size={14} />
+                앞으로 기억
+              </button>
+            </div>
+            {reviewMode === 'incorrect' ? (
+              <form className="ai-question-feedback-form" onSubmit={handleIncorrectReview}>
+                <textarea
+                  maxLength={1000}
+                  onChange={(event) => setReviewComment(event.target.value)}
+                  placeholder="무엇이 틀렸는지 적어주세요. 이 내용은 반복 오류 방지 기준으로 쓰입니다."
+                  rows={3}
+                  value={reviewComment}
+                />
+                <div>
+                  <span>{formatNumber(reviewComment.trim().length)} / 1000</span>
+                  <button disabled={Boolean(reviewSaving) || reviewComment.trim().length < 2} type="submit">
+                    {reviewSaving === 'incorrect' ? <Loader2 className="spin-icon" size={14} /> : <AlertTriangle size={14} />}
+                    틀림 기록
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            {reviewMode === 'correction' || reviewMode === 'memory' ? (
+              <form className="ai-question-feedback-form" onSubmit={handleMemorySave}>
+                <input
+                  maxLength={180}
+                  onChange={(event) => setMemoryTitle(event.target.value)}
+                  placeholder="기억 제목"
+                  type="text"
+                  value={memoryTitle}
+                />
+                <textarea
+                  maxLength={1600}
+                  onChange={(event) => setMemoryContent(event.target.value)}
+                  placeholder={reviewMode === 'correction' ? '정정할 사실을 적어주세요. 예: P4345N00은 튜브가 아니라 팁이다.' : '다음 답변에 계속 반영할 검수 내용을 적어주세요.'}
+                  rows={4}
+                  value={memoryContent}
+                />
+                <div>
+                  <span>{formatNumber(memoryContent.trim().length)} / 1600</span>
+                  <button disabled={Boolean(reviewSaving) || memoryContent.trim().length < 2} type="submit">
+                    {reviewSaving === reviewMode ? <Loader2 className="spin-icon" size={14} /> : <CheckCircle2 size={14} />}
+                    {reviewMode === 'correction' ? '정정 기억 저장' : '기억 저장'}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            {reviewMessage ? <div className="ai-question-feedback-message success">{reviewMessage}</div> : null}
+            {reviewError ? <div className="ai-question-feedback-message error">{reviewError}</div> : null}
+          </section>
         </article>
       ) : null}
       <section className="ai-question-history">
@@ -15702,6 +15852,9 @@ function AIWorkspacePage({
   const [deletingQuestionLogId, setDeletingQuestionLogId] = useState<number | null>(null);
   const [deleteQuestionLogMessage, setDeleteQuestionLogMessage] = useState('');
   const [deleteQuestionLogError, setDeleteQuestionLogError] = useState('');
+  const [questionReviewSaving, setQuestionReviewSaving] = useState('');
+  const [questionReviewMessage, setQuestionReviewMessage] = useState('');
+  const [questionReviewError, setQuestionReviewError] = useState('');
   const activeDepartmentId = data?.featuredDepartment?.departmentId ?? selectedDepartmentId ?? data?.selectedDepartmentId ?? null;
 
   useEffect(() => {
@@ -15710,6 +15863,9 @@ function AIWorkspacePage({
     setQuestionHistoryPage(1);
     setDeleteQuestionLogMessage('');
     setDeleteQuestionLogError('');
+    setQuestionReviewMessage('');
+    setQuestionReviewError('');
+    setQuestionReviewSaving('');
   }, [activeDepartmentId, questionScope]);
 
   useEffect(() => {
@@ -15818,6 +15974,9 @@ function AIWorkspacePage({
 
     setDepartmentQuestionLoading(true);
     setDepartmentQuestionError('');
+    setQuestionReviewMessage('');
+    setQuestionReviewError('');
+    setQuestionReviewSaving('');
     try {
       const questionDepartmentId = questionScope === 'department' ? activeDepartmentId : null;
       const result = await askAIWorkspaceDepartmentQuestion(
@@ -15833,6 +15992,58 @@ function AIWorkspacePage({
       setDepartmentQuestionError(error instanceof Error ? error.message : '부서 질문 답변에 실패했습니다.');
     } finally {
       setDepartmentQuestionLoading(false);
+    }
+  };
+
+  const handleSubmitQuestionReview = async (rating: AIWorkspaceQuestionFeedbackRating, comment = '') => {
+    if (!departmentQuestionResult || questionReviewSaving) {
+      return;
+    }
+    setQuestionReviewSaving(rating);
+    setQuestionReviewMessage('');
+    setQuestionReviewError('');
+    try {
+      const result = await submitAIWorkspaceQuestionFeedback({
+        departmentId: questionScope === 'department' ? activeDepartmentId : null,
+        scopeType: questionScope,
+        question: departmentQuestionResult.question,
+        answer: departmentQuestionResult.answer,
+        source: departmentQuestionResult.source,
+        rating,
+        comment,
+      });
+      setQuestionReviewMessage(result.message || 'AI 답변 검수를 저장했습니다.');
+      await onRefresh({ departmentId: activeDepartmentId, questionPage: questionHistoryPage, questionScope });
+    } catch (error) {
+      setQuestionReviewError(error instanceof Error ? error.message : 'AI 답변 검수 저장에 실패했습니다.');
+    } finally {
+      setQuestionReviewSaving('');
+    }
+  };
+
+  const handleSaveQuestionMemory = async (memoryType: AIWorkspaceMemoryType, title: string, content: string) => {
+    if (!departmentQuestionResult || questionReviewSaving) {
+      return;
+    }
+    const questionLogId = departmentQuestionResult.questionLog?.id ?? null;
+    setQuestionReviewSaving(memoryType === 'correction' ? 'correction' : 'memory');
+    setQuestionReviewMessage('');
+    setQuestionReviewError('');
+    try {
+      const result = await saveAIWorkspaceMemory({
+        departmentId: questionScope === 'department' ? activeDepartmentId : null,
+        scopeType: questionScope,
+        questionLogId,
+        memoryType,
+        title,
+        content,
+      });
+      setQuestionReviewMessage(result.message || '검수 기억을 저장했습니다.');
+      await onRefresh({ departmentId: activeDepartmentId, questionPage: questionHistoryPage, questionScope });
+    } catch (error) {
+      setQuestionReviewError(error instanceof Error ? error.message : '검수 기억 저장에 실패했습니다.');
+    } finally {
+      setQuestionReviewSaving('');
     }
   };
 
@@ -15959,9 +16170,14 @@ function AIWorkspacePage({
               onModelChange={setDepartmentQuestionModel}
               onQuestionChange={setDepartmentQuestion}
               onQuestionScopeChange={onQuestionScopeChange}
+              onSaveMemory={handleSaveQuestionMemory}
               onSubmit={handleAskDepartmentQuestion}
+              onSubmitReview={handleSubmitQuestionReview}
               question={departmentQuestion}
               questionScope={questionScope}
+              reviewError={questionReviewError}
+              reviewMessage={questionReviewMessage}
+              reviewSaving={questionReviewSaving}
               result={departmentQuestionResult}
             />
           </div>

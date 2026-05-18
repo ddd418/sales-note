@@ -2908,6 +2908,8 @@ export type AIWorkspaceDepartmentQuestionResponse = {
     recommendedActionCount?: number;
     recentFeedbackCount?: number;
     questionFeedbackCount?: number;
+    verifiedMemoryCount?: number;
+    recentQuestionLogCount?: number;
   };
   requiresHumanReview: boolean;
   error?: string;
@@ -2943,6 +2945,43 @@ export type AIWorkspaceQuestionFeedbackResponse = {
       name: string;
       company: string;
     } | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  };
+  error?: string;
+  message?: string;
+};
+
+export type AIWorkspaceMemoryType = 'fact' | 'correction' | 'preference';
+
+export type AIWorkspaceMemoryPayload = {
+  departmentId?: number | null;
+  scopeType?: 'all' | 'department';
+  questionLogId?: number | null;
+  feedbackId?: number | null;
+  memoryType: AIWorkspaceMemoryType;
+  title?: string;
+  content: string;
+};
+
+export type AIWorkspaceMemoryResponse = {
+  success?: boolean;
+  generatedAt: string;
+  memory: {
+    id: number;
+    scopeType: 'all' | 'department' | string;
+    memoryType: AIWorkspaceMemoryType | string;
+    memoryTypeLabel: string;
+    title: string;
+    content: string;
+    isActive: boolean;
+    department: {
+      id: number;
+      name: string;
+      company: string;
+    } | null;
+    sourceQuestionLogId: number | null;
+    sourceQuestion: string;
     createdAt: string | null;
     updatedAt: string | null;
   };
@@ -7824,6 +7863,31 @@ export async function submitAIWorkspaceQuestionFeedback(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI question feedback failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function saveAIWorkspaceMemory(payload: AIWorkspaceMemoryPayload): Promise<AIWorkspaceMemoryResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/api/ai-workspace/memories/create/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI memory API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceMemoryResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI memory save failed: ${response.status}`);
   }
   return data;
 }

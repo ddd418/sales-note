@@ -886,6 +886,68 @@ class AIWorkspaceQuestionLog(models.Model):
         ]
 
 
+class AIWorkspaceMemory(models.Model):
+    """사용자가 검수해서 다음 AI 답변에 반영하도록 승인한 기억."""
+
+    SCOPE_CHOICES = [
+        ('all', '전체 부서'),
+        ('department', '부서'),
+    ]
+
+    MEMORY_TYPE_CHOICES = [
+        ('fact', '검수 사실'),
+        ('correction', '정정'),
+        ('preference', '답변 선호'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_workspace_memories', verbose_name="사용자")
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ai_workspace_memories',
+        verbose_name="관련 부서",
+    )
+    source_question_log = models.ForeignKey(
+        AIWorkspaceQuestionLog,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_memories',
+        verbose_name="출처 질문 기록",
+    )
+    source_feedback = models.ForeignKey(
+        AIWorkspaceQuestionFeedback,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_memories',
+        verbose_name="출처 피드백",
+    )
+    scope_type = models.CharField(max_length=20, choices=SCOPE_CHOICES, default='department', verbose_name="기억 범위")
+    memory_type = models.CharField(max_length=20, choices=MEMORY_TYPE_CHOICES, default='fact', verbose_name="기억 유형")
+    title = models.CharField(max_length=180, blank=True, default='', verbose_name="제목")
+    content = models.TextField(verbose_name="검수 기억")
+    is_active = models.BooleanField(default=True, verbose_name="활성")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        title = self.title or self.content[:40]
+        return f"{self.user.username} - {self.get_memory_type_display()} - {title}"
+
+    class Meta:
+        verbose_name = "AI 검수 기억"
+        verbose_name_plural = "AI 검수 기억 목록"
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user', 'department', 'is_active', '-updated_at'], name='ai_mem_user_dept_active_idx'),
+            models.Index(fields=['user', 'scope_type', 'is_active', '-updated_at'], name='ai_mem_user_scope_active_idx'),
+            models.Index(fields=['source_question_log'], name='ai_mem_source_qlog_idx'),
+        ]
+
+
 class AIWorkspaceAnswerDirection(models.Model):
     """AI Workspace 부서별 현재 답변 방향성."""
 

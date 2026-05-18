@@ -9115,6 +9115,149 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.json()['error'], 'missing_comment')
         self.assertEqual(AIWorkspaceQuestionFeedback.objects.count(), 0)
 
+    def test_ai_workspace_memory_create_api_records_verified_memory(self):
+        from reporting.models import AIWorkspaceMemory, AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.user, '검수기억저장')
+        log = AIWorkspaceQuestionLog.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            question='P4345N00이 튜브야?',
+            answer_snapshot={'summary': '잘못된 답변'},
+            source='openai',
+            model='gpt-5.4-mini',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_memory_create_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'scopeType': 'department',
+                'questionLogId': log.id,
+                'memoryType': 'correction',
+                'title': 'P4345N00 품목 정정',
+                'content': 'P4345N00은 튜브가 아니라 팁으로 취급한다.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['memory']['memoryType'], 'correction')
+        self.assertEqual(payload['memory']['department']['id'], department.id)
+        self.assertIn('다음 질문', payload['message'])
+
+        memory = AIWorkspaceMemory.objects.get(user=self.user)
+        self.assertEqual(memory.department, department)
+        self.assertEqual(memory.source_question_log, log)
+        self.assertEqual(memory.scope_type, 'department')
+        self.assertEqual(memory.memory_type, 'correction')
+        self.assertIn('튜브가 아니라 팁', memory.content)
+        self.assertTrue(memory.is_active)
+
+    def test_ai_workspace_memory_create_api_blocks_other_users_question_log(self):
+        from reporting.models import AIWorkspaceMemory, AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.coworker, '동료검수기억')
+        log = AIWorkspaceQuestionLog.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            question='동료 질문',
+            answer_snapshot={'summary': '동료 답변'},
+            source='fallback',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_memory_create_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'scopeType': 'department',
+                'questionLogId': log.id,
+                'memoryType': 'correction',
+                'content': '동료 기록은 내 기억으로 저장되면 안 됩니다.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['error'], 'question_log_not_found')
+        self.assertEqual(AIWorkspaceMemory.objects.count(), 0)
+
+    def test_ai_workspace_question_context_includes_verified_memories_and_recent_question_logs(self):
+        from reporting.models import AIWorkspaceMemory, AIWorkspaceQuestionLog
+        from reporting.views import _ai_workspace_department_question_context
+
+        _followup, department = self._create_customer(self.user, '검수기억문맥')
+        _other_followup, other_department = self._create_customer(self.user, '검수기억다른부서')
+        AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            memory_type='correction',
+            title='P4345N00 정정',
+            content='P4345N00은 튜브가 아니라 팁으로 판단한다.',
+        )
+        AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=None,
+            scope_type='all',
+            memory_type='preference',
+            title='근거 우선',
+            content='제품 판단은 제품 마스터와 검수 기억을 먼저 사용한다.',
+        )
+        AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=other_department,
+            scope_type='department',
+            memory_type='fact',
+            title='다른 부서 기억',
+            content='다른 부서 기억은 섞이면 안 됩니다.',
+        )
+        AIWorkspaceMemory.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            memory_type='correction',
+            title='동료 기억',
+            content='동료 기억은 섞이면 안 됩니다.',
+        )
+        AIWorkspaceQuestionLog.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            question='이전 질문',
+            answer_snapshot={'summary': '이전 답변', 'decision': {'recommendedChoice': '샘플 확인'}},
+            source='openai',
+            model='gpt-5.4-mini',
+        )
+        AIWorkspaceQuestionLog.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            question='동료 이전 질문',
+            answer_snapshot={'summary': '동료 이전 답변'},
+            source='fallback',
+        )
+
+        context = _ai_workspace_department_question_context(department, self.user)
+
+        memory_text = json.dumps(context['verifiedMemories'], ensure_ascii=False)
+        log_text = json.dumps(context['recentQuestionLogs'], ensure_ascii=False)
+        self.assertEqual(len(context['verifiedMemories']), 2)
+        self.assertIn('튜브가 아니라 팁', memory_text)
+        self.assertIn('제품 마스터와 검수 기억', memory_text)
+        self.assertNotIn('다른 부서 기억', memory_text)
+        self.assertNotIn('동료 기억', memory_text)
+        self.assertEqual(len(context['recentQuestionLogs']), 1)
+        self.assertIn('이전 질문', log_text)
+        self.assertIn('샘플 확인', log_text)
+        self.assertNotIn('동료 이전 질문', log_text)
+
     def test_ai_workspace_question_context_includes_only_own_question_feedback(self):
         from reporting.models import AIWorkspaceQuestionFeedback
         from reporting.views import _ai_workspace_department_question_context

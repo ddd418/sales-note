@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
+    AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
     CalibrationRecord, CustomerAsset,
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage, ServiceCase,
@@ -178,6 +178,17 @@ class AIWorkspaceQuestionLogAdmin(admin.ModelAdmin):
     autocomplete_fields = ['user', 'department']
     readonly_fields = ('created_at', 'updated_at')
     date_hierarchy = 'created_at'
+    list_per_page = 20
+
+
+@admin.register(AIWorkspaceMemory)
+class AIWorkspaceMemoryAdmin(admin.ModelAdmin):
+    list_display = ('user', 'department', 'scope_type', 'memory_type', 'title', 'is_active', 'updated_at')
+    list_filter = ('scope_type', 'memory_type', 'is_active', 'updated_at')
+    search_fields = ('title', 'content', 'user__username', 'department__name', 'department__company__name')
+    autocomplete_fields = ['user', 'department', 'source_question_log', 'source_feedback']
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'updated_at'
     list_per_page = 20
 
 

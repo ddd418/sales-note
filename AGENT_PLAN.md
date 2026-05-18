@@ -1,5 +1,53 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 AI Workspace quality and verified memory plan
+
+**Background**:
+
+- User wants AI quality to be stabilized before moving to other CRM/React migration work.
+- Current AI Workspace already stores question/answer logs and has backend support for answer feedback, but there is no explicit user-approved long-term memory UI.
+- AI must not automatically treat its own previous answers as facts. CRM records, product facts, emails, and user-verified corrections must outrank raw AI history.
+
+**DB change required**: Yes.
+
+- Add a scoped `AIWorkspaceMemory` table for user-approved memories/corrections.
+- Store user, optional department, scope type, memory type, title, content, source question log, source feedback, active flag, and timestamps.
+- Do not alter existing CRM data tables or delete existing AI question logs.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `AIWorkspaceMemory` model, admin registration, migration, and payload helper.
+  - Add API endpoint to save verified memories from an AI question answer.
+  - Include active verified memories in department/all-department AI question context.
+  - Include recent same-scope question logs only as conversation context, explicitly lower priority than CRM facts and verified memories.
+  - Tighten prompt rules so verified memory is strong guidance, while raw AI history is weak continuity only.
+- Frontend:
+  - Add answer review controls in AI Workspace: `맞음`, `틀림`, `정정 저장`, `앞으로 기억`.
+  - Use existing question feedback API for `맞음`/`틀림`/style feedback.
+  - Use the new memory API for approved corrections and durable memory.
+  - Show saved memory confirmation without leaving the AI page.
+- Tests:
+  - Cover memory permission, department scoping, source question ownership, and context injection.
+  - Cover existing question feedback API enough to ensure `incorrect` requires a comment.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py`
+- `python manage.py makemigrations --check --dry-run` before migration creation to confirm only intended change.
+- `python manage.py makemigrations reporting`
+- Focused AI Workspace tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+**Current status**:
+
+- Backend model/API/context, React review UI, focused tests, Django checks, and frontend build complete. Commit/deploy is next.
+
 ## 2026-05-18 React tasks/TODO v2 detail plan
 
 **Background**:
