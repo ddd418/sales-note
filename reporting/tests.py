@@ -11156,6 +11156,46 @@ class WeeklyReportReactApiTests(TestCase):
         self.assertIn('<br>', response_report['activityNotesHtml'])
         self.assertEqual(response_report['href'], f'/weekly-reports/{report.id}/')
 
+    def test_create_api_preserves_blank_lines_between_schedule_blocks(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        activity_notes = (
+            '- 05/11(월): 김태균 - 고객 미팅\n'
+            '고객/부서: 국민대학교 · 식품기능성연구실\n\n'
+            '- 05/15(금): 이다민 - 고객 미팅\n'
+            '고객/부서: 서울대학교 · 미생물공생및면역연구실 · 박주홍\n\n'
+            '- 05/15(금): 박준현 - 고객 미팅\n'
+            '고객/부서: 서울대학교 · 면역제어시스템연구실 · 안광석'
+        )
+
+        self.client.force_login(self.salesman)
+        response = self.client.post(
+            reverse('reporting:weekly_report_create_api'),
+            data=json.dumps({
+                'weekStart': '2026-05-11',
+                'weekEnd': '2026-05-15',
+                'title': '일정 블록 빈 줄 테스트',
+                'activityNotes': activity_notes,
+                'quoteDeliveryNotes': '',
+                'otherNotes': '',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        report = WeeklyReport.objects.get(
+            user=self.salesman,
+            week_start=datetime.date(2026, 5, 11),
+        )
+        self.assertEqual(report.activity_notes.count('<p>'), 3)
+        self.assertIn('</p><p>- 05/15(금): 이다민', report.activity_notes)
+
+        response_report = response.json()['report']
+        self.assertEqual(response_report['activityNotes'], activity_notes)
+        self.assertEqual(response_report['activityNotesHtml'].count('<p>'), 3)
+        self.assertIn('</p><p>- 05/15(금): 이다민', response_report['activityNotesHtml'])
+
     def test_detail_api_returns_html_and_editor_text(self):
         import datetime
         from reporting.models import WeeklyReport

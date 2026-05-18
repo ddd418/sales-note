@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Weekly report paragraph spacing fix plan
+
+**Background**:
+
+- User manually checked the previous weekly report line-break fix and reported a remaining issue:
+  entries separated by a blank line in the textarea are saved/displayed as visually adjacent blocks on `/weekly-reports/3/`.
+- React weekly report saving already converts blank lines into separate `<p>` blocks, but the React detail CSS made adjacent paragraphs appear too tight to read as an intentional blank line.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Preserve adjacent paragraph boundaries in the safe fallback renderer used when full `bleach` CSS sanitization is unavailable.
+- Backend tests:
+  - Add regression coverage that schedule-like blocks separated by blank lines are saved as distinct paragraphs and round-trip to textarea text with blank lines intact.
+- Frontend:
+  - Adjust React weekly report detail paragraph spacing so adjacent `<p>` blocks show a clear blank-line gap.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\tests.py`
+- Focused weekly report paragraph spacing regression test.
+- `python manage.py test reporting.tests.WeeklyReportReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete.
+- Commit, push, Railway deployment, and production smoke pending.
+
 ## 2026-05-18 Weekly report line break rendering fix plan
 
 **Background**:

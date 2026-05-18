@@ -1,5 +1,78 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Weekly Report Paragraph Spacing Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+React 주간보고 상세(`/weekly-reports/<id>/`)에서 textarea에 빈 줄로 구분해 입력한 일정 블록들이 저장 후 붙어 보이는 문제를 수정했습니다. 현재 환경에서는 HTML fallback 렌더러가 `</p><p>` 문단 경계를 단일 줄바꿈으로 접고 있었고, React 상세 화면의 문단 간격도 빈 줄처럼 보이기에는 부족했습니다.
+
+### 변경된 파일
+
+- `reporting/utils_html.py`: fallback HTML 렌더러가 인접한 `<p>`, `<div>`, heading, blockquote 경계를 빈 문단 간격으로 보존하도록 수정.
+- `reporting/tests.py`: 사용자가 제시한 일정 블록 형태의 빈 줄 보존 회귀 테스트 추가.
+- `frontend/src/styles.css`: React 주간보고 상세의 인접 문단 사이에 명확한 간격 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 주간보고에서 일정/고객 블록을 빈 줄로 구분해 작성하면 상세 화면에서도 블록 사이가 구분됩니다.
+- 수정 화면으로 다시 열 때도 textarea의 빈 줄이 유지됩니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` legacy route와 React `/weekly-reports/*` route를 유지했습니다.
+- DB 모델과 migration은 변경하지 않았습니다.
+- HTML 정화 및 fallback 렌더링은 계속 안전한 태그/텍스트 변환 경로를 사용합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\utils_html.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.WeeklyReportReactApiTests.test_create_api_preserves_blank_lines_between_schedule_blocks --verbosity=2
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.WeeklyReportReactApiTests --verbosity=1
+→ Ran 9 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built. Existing large chunk warning remains.
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- 운영 보고서 `#3`의 실제 화면 간격은 로그인된 운영 세션에서 최종 육안 확인이 필요합니다.
+
+### 운영 배포 상태
+
+- Pending.
+
+### 권장 다음 작업
+
+운영 배포 후 `https://sales-note-frontend-production.up.railway.app/weekly-reports/3/`에서 항목 사이 빈 줄이 보존되는지 수동 검수합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/weekly-reports/3/`에 접속합니다.
+2. 사용자가 제시한 형태처럼 각 일정 블록 사이에 빈 줄 간격이 보이는지 확인합니다.
+3. 수정 화면에서 같은 본문을 열었을 때 textarea에 빈 줄이 유지되는지 확인합니다.
+4. 화면에 `<br>` 또는 `<p>` 같은 HTML 문자열이 노출되지 않는지 확인합니다.
+
 ## 2026-05-18 — Weekly Report Line Break Rendering Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기

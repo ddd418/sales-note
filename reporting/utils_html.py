@@ -134,6 +134,12 @@ def _html_to_plain_paragraphs(value: str) -> str:
         return ''
 
     text = normalize_report_html_input(value)
+    text = re.sub(
+        r'</\s*(p|div|h2|h3|h4|blockquote)\s*>\s*<\s*(p|div|h2|h3|h4|blockquote)(?:\s[^>]*)?>',
+        '\n\n',
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r'<\s*br\s*/?\s*>', '\n', text, flags=re.IGNORECASE)
     text = re.sub(r'</\s*(p|div|li|h2|h3|h4|blockquote)\s*>', '\n', text, flags=re.IGNORECASE)
     text = re.sub(r'<\s*(p|div|li|h2|h3|h4|blockquote)(?:\s[^>]*)?>', '', text, flags=re.IGNORECASE)

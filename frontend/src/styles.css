@@ -9250,7 +9250,11 @@ tbody tr:hover {
 }
 
 .weekly-html-content p {
-  margin: 0 0 10px;
+  margin: 0;
+}
+
+.weekly-html-content p + p {
+  padding-top: 0.9em;
 }
 
 .weekly-html-content p,
