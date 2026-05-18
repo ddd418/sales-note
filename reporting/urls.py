@@ -337,6 +337,7 @@ urlpatterns = [
     path('api/mailbox/thread/<str:thread_id>/', lazy_view('reporting.gmail_views.mailbox_api_thread'), name='mailbox_api_thread'),
     path('api/mailbox/send/', lazy_view('reporting.gmail_views.mailbox_api_send'), name='mailbox_api_send'),
     path('api/mailbox/reply/<int:email_id>/', lazy_view('reporting.gmail_views.mailbox_api_reply'), name='mailbox_api_reply'),
+    path('api/mailbox/scheduled/<int:scheduled_email_id>/cancel/', lazy_view('reporting.gmail_views.mailbox_api_cancel_scheduled'), name='mailbox_api_cancel_scheduled'),
     path('api/mailbox/sync/', lazy_view('reporting.gmail_views.mailbox_api_sync'), name='mailbox_api_sync'),
     path('api/mailbox/<int:email_id>/toggle-star/', lazy_view('reporting.gmail_views.mailbox_api_toggle_star'), name='mailbox_api_toggle_star'),
     path('api/mailbox/<int:email_id>/archive/', lazy_view('reporting.gmail_views.mailbox_api_archive'), name='mailbox_api_archive'),

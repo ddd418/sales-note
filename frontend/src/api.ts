@@ -152,7 +152,7 @@ export type DashboardData = {
   }>;
 };
 
-export type MailboxType = 'inbox' | 'sent' | 'starred' | 'archived' | 'trash';
+export type MailboxType = 'inbox' | 'sent' | 'scheduled' | 'starred' | 'archived' | 'trash';
 
 export type MailboxEmailItem = {
   id: number;
@@ -172,6 +172,10 @@ export type MailboxEmailItem = {
   isStarred: boolean;
   isArchived: boolean;
   isTrashed: boolean;
+  status?: string;
+  statusLabel?: string;
+  scheduledAt?: string | null;
+  isScheduled?: boolean;
   threadId: string;
   threadHref: string;
   djangoThreadHref: string;
@@ -181,6 +185,7 @@ export type MailboxEmailItem = {
   trashHref: string;
   restoreHref: string;
   deleteHref: string;
+  cancelHref?: string;
   followup: {
     id: number | null;
     customer: string;
@@ -285,8 +290,9 @@ export type MailboxData = {
   };
   links: {
     inbox: string;
-    sent: string;
-    starred: string;
+  sent: string;
+  scheduled: string;
+  starred: string;
     archived: string;
     trash: string;
     sync: string;
@@ -328,6 +334,7 @@ export type MailboxSendPayload = {
   subject: string;
   bodyText: string;
   bodyHtml?: string;
+  scheduledAt?: string;
   followupId?: number;
   scheduleId?: number;
   businessCardId?: number;
@@ -341,6 +348,7 @@ export type MailboxActionResponse = {
   message?: string;
   href?: string;
   djangoHref?: string;
+  scheduled?: boolean;
   is_starred?: boolean;
   is_archived?: boolean;
   synced?: number;
@@ -2788,7 +2796,7 @@ export type AIWorkspaceActionFeedbackResponse = {
   message?: string;
 };
 
-export type AIWorkspaceQuestionModel = 'gpt-5.5' | 'gpt-5.4-mini';
+export type AIWorkspaceQuestionModel = 'gpt-5.4-mini';
 
 export type AIWorkspaceQuestionScope = 'department' | 'all';
 
@@ -3567,6 +3575,7 @@ const emptyMailboxData: MailboxData = {
   counts: {
     inbox: 0,
     sent: 0,
+    scheduled: 0,
     starred: 0,
     archived: 0,
     trash: 0,
@@ -3584,6 +3593,7 @@ const emptyMailboxData: MailboxData = {
   links: {
     inbox: '/mailbox/?box=inbox',
     sent: '/mailbox/?box=sent',
+    scheduled: '/mailbox/?box=scheduled',
     starred: '/mailbox/?box=starred',
     archived: '/mailbox/?box=archived',
     trash: '/mailbox/?box=trash',
@@ -4510,10 +4520,9 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     items: [],
   },
   questionModelChoices: [
-    { id: 'gpt-5.5', label: 'GPT-5.5' },
     { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
   ],
-  defaultQuestionModel: 'gpt-5.5',
+  defaultQuestionModel: 'gpt-5.4-mini',
   recentDepartmentAnalyses: [],
   painpoints: [],
   followupTargets: [],
@@ -5002,6 +5011,7 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
   body.set('subject', payload.subject);
   body.set('body_text', payload.bodyText);
   if (payload.bodyHtml) body.set('body_html', payload.bodyHtml);
+  if (payload.scheduledAt) body.set('scheduled_at', payload.scheduledAt);
   if (payload.ccEmails) body.set('cc_emails', payload.ccEmails);
   if (payload.bccEmails) body.set('bcc_emails', payload.bccEmails);
   if (payload.includeInternalCc) body.set('include_internal_cc', '1');

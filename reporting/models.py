@@ -2028,6 +2028,114 @@ class EmailLog(models.Model):
         ]
 
 
+class ScheduledEmail(models.Model):
+    """발송 예정 메일 큐."""
+    STATUS_CHOICES = [
+        ('pending', '예약 대기'),
+        ('sending', '발송 중'),
+        ('sent', '발송 완료'),
+        ('failed', '발송 실패'),
+        ('cancelled', '예약 취소'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scheduled_emails', verbose_name="예약자", db_index=True)
+    provider = models.CharField(max_length=20, choices=EmailLog.PROVIDER_CHOICES, default='gmail', verbose_name="이메일 제공자")
+    sender_email = models.EmailField(blank=True, verbose_name="발신자 이메일")
+    to_email = models.EmailField(verbose_name="수신자 이메일")
+    cc_emails = models.TextField(blank=True, verbose_name="참조 (CC)", help_text="쉼표로 구분")
+    bcc_emails = models.TextField(blank=True, verbose_name="숨은 참조 (BCC)", help_text="쉼표로 구분")
+    subject = models.CharField(max_length=500, verbose_name="제목")
+    body = models.TextField(verbose_name="본문")
+    body_html = models.TextField(blank=True, verbose_name="HTML 본문")
+
+    followup = models.ForeignKey(
+        'FollowUp',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scheduled_emails',
+        verbose_name="관련 팔로우업",
+    )
+    schedule = models.ForeignKey(
+        'Schedule',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scheduled_emails',
+        verbose_name="관련 일정",
+    )
+    reply_to = models.ForeignKey(
+        'EmailLog',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scheduled_replies',
+        verbose_name="답장 대상 메일",
+    )
+    business_card = models.ForeignKey(
+        'BusinessCard',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="사용된 명함",
+    )
+    sent_email = models.OneToOneField(
+        'EmailLog',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='scheduled_source',
+        verbose_name="발송 완료 메일",
+    )
+
+    scheduled_at = models.DateTimeField(verbose_name="예약 발송 일시", db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="상태", db_index=True)
+    attempt_count = models.PositiveIntegerField(default=0, verbose_name="발송 시도 횟수")
+    last_attempt_at = models.DateTimeField(null=True, blank=True, verbose_name="마지막 시도 일시")
+    sent_at = models.DateTimeField(null=True, blank=True, verbose_name="실제 발송 일시", db_index=True)
+    error_message = models.TextField(blank=True, verbose_name="오류 메시지")
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="예약 메타데이터")
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"[{self.get_status_display()}] {self.subject} → {self.to_email}"
+
+    class Meta:
+        verbose_name = "예약 메일"
+        verbose_name_plural = "예약 메일 목록"
+        ordering = ['scheduled_at', 'created_at']
+        indexes = [
+            models.Index(fields=['status', 'scheduled_at']),
+            models.Index(fields=['user', 'status', 'scheduled_at']),
+        ]
+
+
+class ScheduledEmailAttachment(models.Model):
+    """예약 메일 첨부파일."""
+    scheduled_email = models.ForeignKey(
+        ScheduledEmail,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name="예약 메일",
+    )
+    file = models.FileField(upload_to='scheduled_email_attachments/%Y/%m/', verbose_name="첨부 파일")
+    filename = models.CharField(max_length=255, verbose_name="파일명")
+    mimetype = models.CharField(max_length=255, default='application/octet-stream', verbose_name="MIME 타입")
+    size = models.PositiveIntegerField(default=0, verbose_name="파일 크기")
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="첨부 메타데이터")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+
+    def __str__(self):
+        return self.filename
+
+    class Meta:
+        verbose_name = "예약 메일 첨부파일"
+        verbose_name_plural = "예약 메일 첨부파일 목록"
+        ordering = ['id']
+
+
 # 명함 관리 (BusinessCard) 모델
 class BusinessCard(models.Model):
     """

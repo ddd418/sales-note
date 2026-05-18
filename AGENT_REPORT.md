@@ -1,5 +1,92 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — AI Mini-Only + Scheduled Email
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+AI 워크스페이스 질문 모델 선택에서 GPT-5.5를 제거하고 GPT-5.4 mini만 기본/선택 모델로 남겼습니다. 메일 작성/답장 화면에는 바로 발송/예약 발송 선택을 추가했고, 예약 메일은 별도 큐 모델에 저장한 뒤 발송 시각이 되면 `EmailLog`로 전환되도록 구현했습니다.
+
+### 변경된 파일
+
+- `reporting/models.py`, `reporting/migrations/0104_scheduledemail_scheduledemailattachment_and_more.py`: `ScheduledEmail`, `ScheduledEmailAttachment` 큐 모델 추가.
+- `reporting/gmail_views.py`, `reporting/urls.py`: 예약메일 저장/목록/취소 API, due 발송 처리, 첨부파일 보존 경로 추가.
+- `reporting/tasks.py`, `sales_project/celery.py`, `reporting/management/commands/process_scheduled_emails.py`: 예약메일 Celery task, beat 등록, Railway cron/수동 실행용 command 추가.
+- `reporting/views.py`: AI 질문 모델 choices/default를 `gpt-5.4-mini`로 고정하고 legacy/잘못된 모델값은 mini로 정규화.
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: 예약메일 탭, 작성 패널 예약 일시 입력, 예약 취소 액션, mini-only 모델 fallback 반영.
+- `reporting/admin.py`: 예약메일 admin 조회 추가 및 기존 `EmailLogAdmin`의 잘못된 `body_text` 참조를 `body`로 정정.
+- `reporting/tests.py`: 예약메일 저장/발송 및 AI mini-only 회귀 테스트 추가.
+
+### CRM 개선
+
+- React 메일 작성/답장에서 “바로 발송”과 “예약 발송”을 선택할 수 있습니다.
+- 예약 메일함에서 대기 중인 예약 메일을 확인하고 취소할 수 있습니다.
+- 예약 첨부파일은 별도 파일로 보관되며, 실제 발송 후 보낸메일 로그와 연결됩니다.
+- AI 질문 모델 선택에서 혼선을 주던 5.5 옵션을 제거했습니다.
+
+### 기존 기능 보존
+
+- 기존 즉시 발송, 답장, 내부 참조, 자동 문서 첨부, Gmail/SMTP 발송 경로를 유지했습니다.
+- `/reporting/*` legacy route와 React `/mailbox/`, `/ai-workspace/` route를 유지했습니다.
+- 기존 AI 질문 로그의 과거 모델값은 조회 이력으로만 유지하고, 새 질문 요청은 mini로 정규화합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\admin.py reporting\gmail_views.py reporting\tasks.py sales_project\celery.py reporting\tests.py reporting\management\commands\process_scheduled_emails.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests --verbosity=1
+→ Ran 26 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 70 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local browser smoke:
+→ `/mailbox/` rendered, 예약메일 tab displayed.
+→ Compose panel opened, 발송 방식 segmented control displayed.
+→ 예약 발송 선택 시 예약 일시 input and 예약하기 button displayed.
+→ Local preview API calls returned expected 502 because Django server was not running for this visual smoke.
+```
+
+### 알려진 제한
+
+- 예약메일 자동 발송은 `reporting.tasks.send_due_scheduled_emails`를 실행하는 Celery worker/beat 또는 Railway cron이 있어야 실제 예약 시각에 자동 처리됩니다.
+- 현재 Railway 환경은 `web`, `sales-note-frontend`, `Postgres`만 확인되어 코드 배포만으로는 백그라운드 예약 발송 프로세스가 계속 실행되지 않습니다. 운영 자동화를 위해서는 `python manage.py process_scheduled_emails`를 주기 실행하는 Railway cron/worker 서비스 구성이 필요합니다.
+
+### 운영 배포 상태
+
+- 배포 전.
+
+### 권장 다음 작업
+
+운영 배포 후 예약메일 등록/취소를 먼저 수동 검수하고, 이어서 Railway cron 또는 worker/beat 서비스를 연결해 실제 자동 발송까지 검증합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 질문 모델 선택에 `GPT-5.4 mini`만 보이는지 확인합니다.
+3. `https://sales-note-frontend-production.up.railway.app/mailbox/`에서 메일 작성을 열고 “예약 발송”을 선택합니다.
+4. 예약 일시를 현재보다 2분 이상 뒤로 설정해 저장하고, `예약메일` 탭에 표시되는지 확인합니다.
+5. 예약 취소 버튼이 정상 동작하는지 확인합니다.
+6. 자동 발송 검수는 Railway cron/worker 연결 후 같은 예약메일이 발송 시각 이후 보낸메일로 전환되는지 확인합니다.
+
 ## 2026-05-18 — React Tasks/TODO V1 + Navigation API
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기

@@ -15,6 +15,8 @@ from reporting.models import (
     EmailLog,
     FollowUp,
     Schedule,
+    ScheduledEmail,
+    ScheduledEmailAttachment,
     ScheduleQuoteGroupNote,
     UserProfile,
     UserCompany,
@@ -541,6 +543,107 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.attachments_info[0]['filename'], 'quote.txt')
         self.assertEqual(email_log.attachments_info[0]['size'], len(b'quote attachment body'))
         self.assertEqual(email_log.attachments_info[0]['mimetype'], 'text/plain')
+
+    def test_mailbox_send_api_schedules_email_without_immediate_send(self):
+        from datetime import timedelta
+
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+        uploaded_file = SimpleUploadedFile('scheduled.txt', b'scheduled attachment', content_type='text/plain')
+        scheduled_at = timezone.now() + timedelta(hours=1)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': '예약 발송 테스트',
+                    'body_text': '예약 발송 본문입니다.',
+                    'selected_followup_id': str(self.followup.id),
+                    'scheduled_at': scheduled_at.isoformat(),
+                    'attachments': uploaded_file,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['scheduled'])
+        self.assertEqual(payload['href'], '/mailbox/?box=scheduled')
+        gmail_service_class.assert_not_called()
+        self.assertFalse(EmailLog.objects.filter(subject='예약 발송 테스트').exists())
+
+        scheduled_email = ScheduledEmail.objects.get(subject='예약 발송 테스트')
+        self.assertEqual(scheduled_email.status, 'pending')
+        self.assertEqual(scheduled_email.followup, self.followup)
+        self.assertEqual(scheduled_email.to_email, 'customer@example.com')
+        attachment = ScheduledEmailAttachment.objects.get(scheduled_email=scheduled_email)
+        self.addCleanup(attachment.file.delete, False)
+        self.assertEqual(attachment.filename, 'scheduled.txt')
+        with attachment.file.open('rb') as file_handle:
+            self.assertEqual(file_handle.read(), b'scheduled attachment')
+
+        list_response = self.client.get(reverse('reporting:mailbox_api_list'), {'box': 'scheduled'})
+        self.assertEqual(list_response.status_code, 200)
+        list_payload = list_response.json()
+        self.assertEqual(list_payload['counts']['scheduled'], 1)
+        self.assertEqual(list_payload['emails'][0]['subject'], '예약 발송 테스트')
+        self.assertTrue(list_payload['emails'][0]['isScheduled'])
+        self.assertIn('/api/mailbox/scheduled/', list_payload['emails'][0]['cancelHref'])
+
+    def test_process_due_scheduled_emails_sends_and_creates_email_log(self):
+        from datetime import timedelta
+        from reporting.gmail_views import process_due_scheduled_emails
+
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        scheduled_email = ScheduledEmail.objects.create(
+            user=self.user,
+            provider='gmail',
+            sender_email='sales@example.com',
+            to_email='customer@example.com',
+            subject='만기 예약 메일',
+            body='지금 발송할 본문입니다.',
+            body_html='<div>지금 발송할 본문입니다.</div>',
+            followup=self.followup,
+            scheduled_at=timezone.now() - timedelta(minutes=5),
+            status='pending',
+        )
+        attachment = ScheduledEmailAttachment.objects.create(
+            scheduled_email=scheduled_email,
+            file=SimpleUploadedFile('due.txt', b'due attachment', content_type='text/plain'),
+            filename='due.txt',
+            mimetype='text/plain',
+            size=len(b'due attachment'),
+            metadata={'filename': 'due.txt', 'size': len(b'due attachment'), 'mimetype': 'text/plain', 'source': 'uploaded'},
+        )
+        self.addCleanup(attachment.file.delete, False)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-scheduled-sent',
+                'thread_id': 'gmail-scheduled-thread',
+            }
+            result = process_due_scheduled_emails(limit=10)
+
+        self.assertEqual(result, {'processed': 1, 'sent': 1, 'failed': 0})
+        sent_kwargs = gmail_service.send_email.call_args.kwargs
+        self.assertEqual(sent_kwargs['to_email'], 'customer@example.com')
+        self.assertEqual(sent_kwargs['attachments'][0]['content'], b'due attachment')
+
+        scheduled_email.refresh_from_db()
+        self.assertEqual(scheduled_email.status, 'sent')
+        self.assertIsNotNone(scheduled_email.sent_email)
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-scheduled-sent')
+        self.assertEqual(email_log.subject, '만기 예약 메일')
+        self.assertEqual(email_log.followup, self.followup)
+        self.assertEqual(email_log.attachments_info[0]['scheduledAttachmentId'], attachment.id)
 
     def test_mailbox_send_api_includes_internal_cc_only_when_requested(self):
         self.user.email = 'sales@example.com'
@@ -7252,6 +7355,18 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIsNone(payload['featuredDepartment'])
         self.assertEqual(payload['metrics']['departmentsWithCustomers'], 0)
 
+    def test_ai_workspace_summary_uses_mini_only_question_model_choices(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['defaultQuestionModel'], 'gpt-5.4-mini')
+        self.assertEqual(payload['questionModelChoices'], [
+            {'id': 'gpt-5.4-mini', 'label': 'GPT-5.4 mini'},
+        ])
+
     def test_ai_workspace_summary_api_lists_own_ai_operational_data(self):
         followup, department = self._create_customer(self.user, 'PCR핵심')
         self._create_department_analysis(self.user, department)
@@ -8487,6 +8602,28 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(log.question, '마지막 주문일 알려줘')
         self.assertIn('summary', log.answer_snapshot)
 
+    def test_ai_workspace_department_question_normalizes_legacy_model_to_mini(self):
+        from reporting.models import AIWorkspaceQuestionLog
+
+        _followup, department = self._create_customer(self.user, '질문모델정리')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '기존 5.5 선택값이 남아 있어도 답변해줘',
+                'model': 'gpt-5.5',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['model'], 'gpt-5.4-mini')
+        log = AIWorkspaceQuestionLog.objects.get(user=self.user)
+        self.assertEqual(log.model, 'gpt-5.4-mini')
+
     def test_ai_workspace_department_question_records_all_scope_question_log(self):
         from reporting.models import AIWorkspaceQuestionLog
 
@@ -8703,7 +8840,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('JSON 객체만 반환', rules_text)
         self.assertIn('"answer": string', rules_text)
 
-    def test_ai_workspace_department_question_rejects_unsupported_model(self):
+    def test_ai_workspace_department_question_normalizes_unsupported_model_to_mini(self):
         from reporting.models import AIWorkspaceQuestionLog
 
         _followup, department = self._create_customer(self.user, '질문모델검증')
@@ -8719,9 +8856,10 @@ class AIWorkspaceSummaryApiTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()['error'], 'invalid_model')
-        self.assertEqual(AIWorkspaceQuestionLog.objects.count(), 0)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['model'], 'gpt-5.4-mini')
+        self.assertEqual(AIWorkspaceQuestionLog.objects.get().model, 'gpt-5.4-mini')
 
     def test_ai_workspace_summary_includes_department_question_history_with_pagination(self):
         from datetime import timedelta

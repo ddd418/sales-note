@@ -11224,10 +11224,9 @@ Before finalizing, check whether the answer is specific, actionable, logically p
 Take a deep breath and work on this problem step-by-step.
 """.strip()
 AI_WORKSPACE_QUESTION_MODELS = {
-    'gpt-5.5': 'GPT-5.5',
     'gpt-5.4-mini': 'GPT-5.4 mini',
 }
-AI_WORKSPACE_DEFAULT_QUESTION_MODEL = 'gpt-5.5'
+AI_WORKSPACE_DEFAULT_QUESTION_MODEL = 'gpt-5.4-mini'
 
 
 def _ai_workspace_question_department_for_user(user, department_id):
@@ -11306,7 +11305,7 @@ def _ai_workspace_question_model_label(model):
 
 def _ai_workspace_normalize_question_model(value):
     model = str(value or '').strip()
-    if not model:
+    if not model or model not in AI_WORKSPACE_QUESTION_MODELS:
         return AI_WORKSPACE_DEFAULT_QUESTION_MODEL
     return model
 

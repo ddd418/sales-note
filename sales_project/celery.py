@@ -30,6 +30,11 @@ app.conf.beat_schedule = {
         'task': 'reporting.tasks.refresh_gmail_tokens',
         'schedule': crontab(hour=4, minute=0),
     },
+    # 매분 예약 메일 발송 큐 처리
+    'send-due-scheduled-emails': {
+        'task': 'reporting.tasks.send_due_scheduled_emails',
+        'schedule': crontab(minute='*/1'),
+    },
 }
 
 @app.task(bind=True, ignore_result=True)

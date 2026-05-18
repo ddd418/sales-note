@@ -390,6 +390,8 @@ type MailComposeFormState = {
   includeInternalCc: boolean;
   internalCcEmails: string[];
   scheduleId: string;
+  scheduledAt: string;
+  sendMode: 'now' | 'scheduled';
   subject: string;
   toEmail: string;
 };
@@ -960,6 +962,8 @@ const makeEmptyMailComposeForm = (): MailComposeFormState => ({
   includeInternalCc: false,
   internalCcEmails: [],
   scheduleId: '',
+  scheduledAt: '',
+  sendMode: 'now',
   subject: '',
   toEmail: '',
 });
@@ -1499,7 +1503,7 @@ function getMailboxThreadId(): string {
 
 function getMailboxTypeParam(): MailboxType {
   const value = new URLSearchParams(window.location.search).get('box');
-  if (value === 'sent' || value === 'starred' || value === 'archived' || value === 'trash') {
+  if (value === 'sent' || value === 'scheduled' || value === 'starred' || value === 'archived' || value === 'trash') {
     return value;
   }
   return 'inbox';
@@ -1658,6 +1662,11 @@ const formatDateTimeLabel = (value?: string | null) => {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+};
+
+const formatDateTimeLocalInputValue = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
 const sortScheduleItems = (items: DashboardScheduleItem[]) =>
@@ -11045,6 +11054,7 @@ function AIWorkspacePromptQueue({
 const mailboxTabs: Array<{ id: MailboxType; label: string; icon: typeof Inbox }> = [
   { id: 'inbox', label: '받은편지함', icon: Inbox },
   { id: 'sent', label: '보낸편지함', icon: Send },
+  { id: 'scheduled', label: '예약메일', icon: Clock },
   { id: 'starred', label: '중요편지함', icon: Star },
   { id: 'archived', label: '보관함', icon: Archive },
   { id: 'trash', label: '휴지통', icon: Trash2 },
@@ -11700,13 +11710,45 @@ function MailComposePanel({
             </select>
           </label>
         ) : null}
+        <div className="mail-schedule-control">
+          <span>발송 방식</span>
+          <div className="segmented-control">
+            <button
+              className={form.sendMode === 'now' ? 'active' : ''}
+              onClick={() => onChange('sendMode', 'now')}
+              type="button"
+            >
+              <Send size={14} />
+              바로 발송
+            </button>
+            <button
+              className={form.sendMode === 'scheduled' ? 'active' : ''}
+              onClick={() => onChange('sendMode', 'scheduled')}
+              type="button"
+            >
+              <Clock size={14} />
+              예약 발송
+            </button>
+          </div>
+          {form.sendMode === 'scheduled' ? (
+            <label>
+              <span>예약 일시</span>
+              <input
+                min={formatDateTimeLocalInputValue(new Date(Date.now() + 2 * 60 * 1000))}
+                onChange={(event) => onChange('scheduledAt', event.target.value)}
+                type="datetime-local"
+                value={form.scheduledAt}
+              />
+            </label>
+          ) : null}
+        </div>
         {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
         {message ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{message}</span></div> : null}
         <div className="mail-compose-actions">
           <button className="route-secondary-action" type="button" onClick={() => onOpenChange(false)}>취소</button>
           <button className="route-primary-action" disabled={saving} type="submit">
-            {saving ? <Loader2 className="spin-icon" size={16} /> : <Send size={16} />}
-            {submitLabel}
+            {saving ? <Loader2 className="spin-icon" size={16} /> : form.sendMode === 'scheduled' ? <Clock size={16} /> : <Send size={16} />}
+            {form.sendMode === 'scheduled' ? '예약하기' : submitLabel}
           </button>
         </div>
       </form>
@@ -11752,7 +11794,7 @@ function MailboxPage({
   composeMessage: string;
   syncing: boolean;
   actioningId: number | null;
-  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
+  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel') => void;
   onComposeAutoAttachmentRemove: (key: string) => void;
   onComposeAttachmentRemove: (index: number) => void;
   onComposeAttachmentsChange: (files: File[]) => void;
@@ -11768,7 +11810,7 @@ function MailboxPage({
   onSync: () => void;
 }) {
   const mailbox = data ?? null;
-  const counts = mailbox?.counts ?? { inbox: 0, sent: 0, starred: 0, archived: 0, trash: 0, unread: 0 };
+  const counts = mailbox?.counts ?? { inbox: 0, sent: 0, scheduled: 0, starred: 0, archived: 0, trash: 0, unread: 0 };
 
   return (
     <section className="mailbox-page">
@@ -11880,6 +11922,9 @@ function MailboxPage({
                       <span>{email.contact || email.senderEmail || email.recipientEmail}</span>
                     </div>
                     <p>{email.preview || '본문 미리보기가 없습니다.'}</p>
+                    {email.isScheduled ? (
+                      <small className="mail-status-badge">예약 발송 · {formatDateTimeLabel(email.scheduledAt || email.happenedAt)}</small>
+                    ) : null}
                     {(email.attachments ?? []).length > 0 ? (
                       <small className="mail-row-attachment-count">첨부 {formatNumber(email.attachments.length)}개</small>
                     ) : null}
@@ -11891,21 +11936,29 @@ function MailboxPage({
                   <div className="mail-row-side">
                     <time>{formatDateTimeLabel(email.happenedAt)}</time>
                     <div className="mail-row-actions">
-                      <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
-                        <Star size={15} className={email.isStarred ? 'filled-icon' : ''} />
-                      </button>
-                      {selectedBox === 'trash' ? (
-                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'restore')} type="button" aria-label="복원">
-                          <Archive size={15} />
+                      {selectedBox === 'scheduled' ? (
+                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'cancel')} type="button" aria-label="예약 취소">
+                          <X size={15} />
                         </button>
                       ) : (
-                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'archive')} type="button" aria-label="보관">
-                          <Archive size={15} />
-                        </button>
+                        <>
+                          <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
+                            <Star size={15} className={email.isStarred ? 'filled-icon' : ''} />
+                          </button>
+                          {selectedBox === 'trash' ? (
+                            <button disabled={actioningId === email.id} onClick={() => onAction(email, 'restore')} type="button" aria-label="복원">
+                              <Archive size={15} />
+                            </button>
+                          ) : (
+                            <button disabled={actioningId === email.id} onClick={() => onAction(email, 'archive')} type="button" aria-label="보관">
+                              <Archive size={15} />
+                            </button>
+                          )}
+                          <button disabled={actioningId === email.id} onClick={() => onAction(email, selectedBox === 'trash' ? 'delete' : 'trash')} type="button" aria-label="삭제">
+                            <Trash2 size={15} />
+                          </button>
+                        </>
                       )}
-                      <button disabled={actioningId === email.id} onClick={() => onAction(email, selectedBox === 'trash' ? 'delete' : 'trash')} type="button" aria-label="삭제">
-                        <Trash2 size={15} />
-                      </button>
                     </div>
                   </div>
                 </article>
@@ -11957,7 +12010,7 @@ function MailboxThreadPage({
   replyError: string;
   replyMessage: string;
   actioningId: number | null;
-  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete') => void;
+  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel') => void;
   onReplyAttachmentRemove: (index: number) => void;
   onReplyAttachmentsChange: (files: File[]) => void;
   onReplyBodyChange: (bodyText: string, bodyHtml: string) => void;
@@ -14486,7 +14539,6 @@ function AIWorkspaceDepartmentQuestionPanel({
   const modelChoices = data.questionModelChoices.length > 0
     ? data.questionModelChoices
     : [
-      { id: 'gpt-5.5', label: 'GPT-5.5' },
       { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
     ];
 
@@ -15209,7 +15261,7 @@ function AIWorkspacePage({
   const [actionFeedbackMessage, setActionFeedbackMessage] = useState('');
   const [actionFeedbackError, setActionFeedbackError] = useState('');
   const [departmentQuestion, setDepartmentQuestion] = useState('');
-  const [departmentQuestionModel, setDepartmentQuestionModel] = useState<AIWorkspaceQuestionModel | string>('gpt-5.5');
+  const [departmentQuestionModel, setDepartmentQuestionModel] = useState<AIWorkspaceQuestionModel | string>('gpt-5.4-mini');
   const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
   const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
   const [departmentQuestionError, setDepartmentQuestionError] = useState('');
@@ -17862,6 +17914,7 @@ export function App() {
     subject: form.subject.trim(),
     bodyText: form.bodyText.trim(),
     bodyHtml: form.bodyHtml.trim() || undefined,
+    scheduledAt: form.sendMode === 'scheduled' ? form.scheduledAt : undefined,
     followupId: form.followupId ? Number(form.followupId) : undefined,
     scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
     businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
@@ -17880,14 +17933,25 @@ export function App() {
       setMailComposeError('받는 사람, 제목, 본문을 입력하세요.');
       return;
     }
+    if (mailComposeForm.sendMode === 'scheduled' && !mailComposeForm.scheduledAt) {
+      setMailComposeError('예약 발송 일시를 선택하세요.');
+      return;
+    }
     setMailComposing(true);
     setMailComposeError('');
     setMailComposeMessage('');
     try {
-      await sendMailboxEmail(payload, mailboxData.create.submitUrl);
-      setMailComposeMessage('메일을 발송했습니다.');
+      const result = await sendMailboxEmail(payload, mailboxData.create.submitUrl);
+      setMailComposeMessage(result.message || (payload.scheduledAt ? '메일을 예약했습니다.' : '메일을 발송했습니다.'));
       setMailComposeForm(makeEmptyMailComposeForm());
-      await refreshMailboxData();
+      if (payload.scheduledAt) {
+        setMailboxBox('scheduled');
+        setMailboxPage(1);
+        window.history.replaceState(null, '', '/mailbox/?box=scheduled');
+        setMailboxData(await loadMailboxData({ box: 'scheduled', q: mailboxQuery, page: 1 }));
+      } else {
+        await refreshMailboxData();
+      }
     } catch (error) {
       setMailComposeError(error instanceof Error ? error.message : '메일 발송에 실패했습니다.');
     } finally {
@@ -17913,7 +17977,7 @@ export function App() {
   };
   const handleMailboxAction = async (
     email: MailboxEmailItem,
-    action: 'star' | 'archive' | 'trash' | 'restore' | 'delete',
+    action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel',
   ) => {
     if (mailActioningId !== null) {
       return;
@@ -17924,8 +17988,12 @@ export function App() {
       trash: email.trashHref,
       restore: email.restoreHref,
       delete: email.deleteHref,
+      cancel: email.cancelHref || '',
     }[action];
     if (!url) {
+      return;
+    }
+    if (action === 'cancel' && !window.confirm('예약 메일을 취소하시겠습니까?')) {
       return;
     }
     if (action === 'delete' && !window.confirm('메일을 영구 삭제하시겠습니까?')) {
@@ -18028,6 +18096,10 @@ export function App() {
       setMailReplyError('받는 사람, 제목, 본문을 입력하세요.');
       return;
     }
+    if (mailReplyForm.sendMode === 'scheduled' && !mailReplyForm.scheduledAt) {
+      setMailReplyError('예약 발송 일시를 선택하세요.');
+      return;
+    }
     const received = [...mailboxThreadData.emails].reverse().find((email) => email.type === 'received');
     const target = received ?? mailboxThreadData.emails[mailboxThreadData.emails.length - 1];
     const submitUrl = mailboxThreadData.links.reply || target?.replyHref;
@@ -18039,8 +18111,8 @@ export function App() {
     setMailReplyError('');
     setMailReplyMessage('');
     try {
-      await replyMailboxEmail(submitUrl, payload);
-      setMailReplyMessage('답장을 발송했습니다.');
+      const result = await replyMailboxEmail(submitUrl, payload);
+      setMailReplyMessage(result.message || (payload.scheduledAt ? '답장을 예약했습니다.' : '답장을 발송했습니다.'));
       setMailReplyForm(makeEmptyMailComposeForm());
       await refreshMailboxThreadData();
     } catch (error) {

@@ -8249,6 +8249,17 @@ tbody tr:hover {
   color: #334155;
 }
 
+.mail-status-badge {
+  justify-self: start;
+  max-width: 100%;
+  padding: 3px 7px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--primary-strong) !important;
+  font-weight: 900;
+}
+
 .mail-row-side {
   display: grid;
   justify-items: end;
@@ -8534,6 +8545,22 @@ tbody tr:hover {
   font-size: 11px;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.mail-schedule-control {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mail-schedule-control .segmented-control {
+  justify-self: start;
+}
+
+.mail-schedule-control label {
+  max-width: 320px;
 }
 
 .mail-internal-cc-picker {

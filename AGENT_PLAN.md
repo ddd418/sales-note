@@ -1,5 +1,49 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 AI mini-only + scheduled email plan
+
+**Background**:
+
+- User asked to remove GPT-5.5 from AI model selection and center AI question answering on GPT-5.4 mini.
+- User also asked to add scheduled email sending after Gmail re-authentication.
+- These affect runtime behavior in both Django APIs and the React CRM frontend.
+
+**DB change required**: Yes.
+
+- AI model cleanup does not need a migration.
+- Scheduled email needs pending outbound mail to persist before sending, so add a separate `ScheduledEmail` queue model instead of overloading delivered `EmailLog` rows.
+
+**Implementation scope**:
+
+- Backend:
+  - Limit AI workspace question model choices/defaults to `gpt-5.4-mini`.
+  - Keep old/stale client values from breaking by normalizing invalid AI model ids to the default mini model.
+  - Add scheduled email persistence and due-send execution path.
+  - Keep delivered mail in `EmailLog`; create `EmailLog` only after a scheduled email is actually sent.
+  - Add a Celery task and management command so production can send due scheduled emails through a worker/beat or Railway cron process.
+- Frontend:
+  - Remove GPT-5.5 from AI model choice fallbacks and defaults.
+  - Add send-now vs scheduled-send controls to the mailbox compose panel.
+  - Show scheduled/pending status in mailbox lists.
+- Tests:
+  - Add focused coverage for mini-only AI selection.
+  - Add focused coverage for scheduling an email without immediate provider send and sending due scheduled mail later.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\gmail_views.py reporting\tasks.py sales_project\celery.py reporting\tests.py`
+- Focused Django tests for AI workspace model selection and scheduled email APIs/tasks.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete. Commit, push, Railway deployment, and production smoke pending.
+
 ## 2026-05-18 React tasks/TODO v1 + navigation API plan
 
 **Background**:

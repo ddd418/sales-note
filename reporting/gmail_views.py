@@ -13,9 +13,13 @@ from django.conf import settings
 from django.urls import reverse
 from django.db import transaction
 from django.core.paginator import Paginator
+from datetime import timedelta
 import json
 
-from .models import UserProfile, EmailLog, BusinessCard, Schedule, FollowUp, DocumentGenerationLog
+from .models import (
+    UserProfile, EmailLog, ScheduledEmail, ScheduledEmailAttachment,
+    BusinessCard, Schedule, FollowUp, DocumentGenerationLog,
+)
 from .gmail_utils import GmailService, get_authorization_url, exchange_code_for_token
 
 
@@ -343,9 +347,10 @@ def _attachment_info(attachment):
         'size': attachment['size'],
         'mimetype': attachment['mimetype'],
     }
+    if attachment.get('source'):
+        info['source'] = attachment.get('source')
     if attachment.get('source') in {'quote_document', 'transaction_statement_document', 'document'}:
         document_type = attachment.get('documentType') or 'quotation'
-        info['source'] = attachment.get('source')
         info['label'] = f'자동 첨부 {_document_type_label(document_type)}'
         info['documentType'] = document_type
         info['documentTypeLabel'] = _document_type_label(document_type)
@@ -354,6 +359,89 @@ def _attachment_info(attachment):
         if attachment.get('autoAttachmentKey'):
             info['autoAttachmentKey'] = attachment['autoAttachmentKey']
     return info
+
+
+def _mailbox_scheduled_at_value(request):
+    return request.POST.get('scheduled_at') or request.POST.get('scheduledAt') or ''
+
+
+def _parse_mailbox_scheduled_at(value):
+    from django.utils import timezone
+    from django.utils.dateparse import parse_datetime
+
+    raw_value = str(value or '').strip()
+    if not raw_value:
+        return None, ''
+    scheduled_at = parse_datetime(raw_value)
+    if scheduled_at is None:
+        return None, '예약 발송 일시 형식이 올바르지 않습니다.'
+    if timezone.is_naive(scheduled_at):
+        scheduled_at = timezone.make_aware(scheduled_at, timezone.get_current_timezone())
+    if scheduled_at <= timezone.now() + timedelta(minutes=1):
+        return None, '예약 발송 일시는 현재보다 1분 이후로 선택하세요.'
+    return scheduled_at, ''
+
+
+def _scheduled_email_attachment_payloads(scheduled_email):
+    rows = []
+    for attachment in scheduled_email.attachments.all():
+        metadata = attachment.metadata if isinstance(attachment.metadata, dict) else {}
+        rows.append({
+            'filename': attachment.filename,
+            'size': attachment.size,
+            'mimetype': attachment.mimetype,
+            'source': metadata.get('source') or '',
+            'downloadHref': '',
+        })
+    return rows
+
+
+def _save_scheduled_email_attachments(scheduled_email, attachment_entries):
+    from django.core.files.base import ContentFile
+
+    for attachment in attachment_entries:
+        filename = str(attachment.get('filename') or 'attachment').strip()[:255] or 'attachment'
+        content = attachment.get('content') or b''
+        row = ScheduledEmailAttachment(
+            scheduled_email=scheduled_email,
+            filename=filename,
+            mimetype=attachment.get('mimetype') or 'application/octet-stream',
+            size=int(attachment.get('size') or len(content) or 0),
+            metadata=_attachment_info(attachment),
+        )
+        row.file.save(filename, ContentFile(content), save=False)
+        row.save()
+
+
+def _scheduled_attachment_entries(scheduled_email):
+    rows = []
+    for attachment in scheduled_email.attachments.all():
+        content = b''
+        if attachment.file:
+            with attachment.file.open('rb') as file_handle:
+                content = file_handle.read()
+        rows.append({
+            'id': attachment.id,
+            'filename': attachment.filename,
+            'content': content,
+            'mimetype': attachment.mimetype or 'application/octet-stream',
+            'size': attachment.size or len(content),
+            'metadata': attachment.metadata if isinstance(attachment.metadata, dict) else {},
+        })
+    return rows
+
+
+def _email_log_attachment_info_from_scheduled(entries):
+    rows = []
+    for entry in entries:
+        info = dict(entry.get('metadata') or {})
+        info.setdefault('filename', entry.get('filename') or 'attachment')
+        info.setdefault('size', entry.get('size') or 0)
+        info.setdefault('mimetype', entry.get('mimetype') or 'application/octet-stream')
+        if entry.get('id'):
+            info['scheduledAttachmentId'] = entry['id']
+        rows.append(info)
+    return rows
 
 
 def _post_json_list(request, *names):
@@ -1265,8 +1353,53 @@ def _handle_email_send(
             attachment_entries.extend(_auto_quote_pdf_attachments(request, schedule))
         attachments_info = [_attachment_info(attachment) for attachment in attachment_entries]
 
-        # Gmail 또는 IMAP/SMTP로 이메일 발송
         profile = request.user.userprofile
+        scheduled_at, scheduled_error = _parse_mailbox_scheduled_at(_mailbox_scheduled_at_value(request))
+        if scheduled_error:
+            messages.error(request, scheduled_error)
+            return {
+                'error': True,
+                'exception': scheduled_error,
+                'form_data': {
+                    'to_email': to_email,
+                    'cc_emails': cc_emails,
+                    'bcc_emails': bcc_emails,
+                    'subject': subject,
+                    'body_text': body_text,
+                    'body_html': body_html,
+                    'business_card_id': business_card_id,
+                }
+            }
+
+        if scheduled_at:
+            with transaction.atomic():
+                scheduled_email = ScheduledEmail.objects.create(
+                    user=request.user,
+                    provider=profile.email_provider or ('gmail' if profile.gmail_token else 'smtp'),
+                    sender_email=profile.gmail_email or profile.imap_email,
+                    to_email=to_email,
+                    cc_emails=cc_emails,
+                    bcc_emails=bcc_emails,
+                    subject=subject,
+                    body=body_text,
+                    body_html=full_body_html,
+                    followup=followup,
+                    schedule=schedule,
+                    reply_to=reply_to,
+                    business_card=business_card,
+                    scheduled_at=scheduled_at,
+                    metadata={
+                        'autoAttachmentCount': len(attachments_info),
+                    },
+                )
+                _save_scheduled_email_attachments(scheduled_email, attachment_entries)
+
+            from django.utils import timezone
+            scheduled_label = timezone.localtime(scheduled_at).strftime('%Y-%m-%d %H:%M')
+            messages.success(request, f'이메일이 {scheduled_label} 발송으로 예약되었습니다.')
+            return redirect('/mailbox/?box=scheduled')
+
+        # Gmail 또는 IMAP/SMTP로 이메일 발송
         
         if profile.gmail_token:
             # Gmail OAuth 사용
@@ -1443,6 +1576,154 @@ def _handle_email_send(
         }
 
 
+def send_scheduled_email(scheduled_email):
+    """예약 메일 1건을 실제 발송하고 EmailLog로 전환한다."""
+    import logging
+    import uuid
+    from django.utils import timezone
+
+    logger = logging.getLogger(__name__)
+    if scheduled_email.status not in {'pending', 'sending'}:
+        return False
+
+    profile = scheduled_email.user.userprofile
+    attachment_entries = _scheduled_attachment_entries(scheduled_email)
+    cc_list = _email_address_list(scheduled_email.cc_emails)
+    bcc_list = _email_address_list(scheduled_email.bcc_emails)
+    now = timezone.now()
+
+    try:
+        if profile.gmail_token:
+            gmail_service = GmailService(profile)
+            message_info = gmail_service.send_email(
+                to_email=scheduled_email.to_email,
+                subject=scheduled_email.subject,
+                body_text=scheduled_email.body,
+                body_html=scheduled_email.body_html,
+                cc=cc_list,
+                bcc=bcc_list,
+                attachments=[
+                    {
+                        'filename': attachment['filename'],
+                        'content': attachment['content'],
+                        'mimetype': attachment['mimetype'],
+                    }
+                    for attachment in attachment_entries
+                ],
+                in_reply_to=scheduled_email.reply_to.gmail_message_id if scheduled_email.reply_to else None,
+                thread_id=scheduled_email.reply_to.gmail_thread_id if scheduled_email.reply_to else None,
+            )
+            if not message_info:
+                raise Exception("이메일 발송에 실패했습니다.")
+            message_id = message_info['message_id']
+            thread_id_result = message_info['thread_id']
+            provider = 'gmail'
+            sender_email = profile.gmail_email
+        elif profile.imap_connected_at:
+            from .imap_utils import SMTPEmailService
+
+            smtp_service = SMTPEmailService(profile)
+            success = smtp_service.send_email(
+                to_email=scheduled_email.to_email,
+                subject=scheduled_email.subject,
+                body=scheduled_email.body,
+                html_body=scheduled_email.body_html,
+                cc_emails=cc_list,
+                bcc_emails=bcc_list,
+                attachments=[
+                    {
+                        'filename': attachment['filename'],
+                        'content': attachment['content'],
+                        'content_type': attachment['mimetype'],
+                    }
+                    for attachment in attachment_entries
+                ],
+            )
+            if not success:
+                raise Exception("이메일 발송에 실패했습니다.")
+            domain = (profile.imap_email or 'scheduled.local').split('@')[-1]
+            message_id = f"<{uuid.uuid4()}@{domain}>"
+            thread_id_result = message_id
+            provider = 'smtp'
+            sender_email = profile.imap_email
+        else:
+            raise Exception("이메일 계정이 연결되지 않았습니다.")
+
+        with transaction.atomic():
+            email_log = EmailLog.objects.create(
+                email_type='sent',
+                sender=scheduled_email.user,
+                sender_email=sender_email or scheduled_email.sender_email,
+                recipient_email=scheduled_email.to_email,
+                cc_emails=scheduled_email.cc_emails,
+                bcc_emails=scheduled_email.bcc_emails,
+                subject=scheduled_email.subject,
+                body=scheduled_email.body,
+                body_html=scheduled_email.body_html,
+                gmail_message_id=message_id,
+                gmail_thread_id=thread_id_result,
+                followup=scheduled_email.followup,
+                schedule=scheduled_email.schedule,
+                business_card=scheduled_email.business_card,
+                in_reply_to=scheduled_email.reply_to,
+                status='sent',
+                sent_at=now,
+                attachments_info=_email_log_attachment_info_from_scheduled(attachment_entries),
+                user=scheduled_email.user,
+                provider=profile.email_provider or provider,
+            )
+            scheduled_email.status = 'sent'
+            scheduled_email.sent_at = now
+            scheduled_email.sent_email = email_log
+            scheduled_email.error_message = ''
+            scheduled_email.save(update_fields=['status', 'sent_at', 'sent_email', 'error_message', 'updated_at'])
+        return True
+    except Exception as exc:
+        logger.error('예약 메일 발송 실패: scheduled_email=%s error=%s', scheduled_email.id, exc)
+        scheduled_email.status = 'failed'
+        scheduled_email.error_message = str(exc)
+        scheduled_email.save(update_fields=['status', 'error_message', 'updated_at'])
+        return False
+
+
+def process_due_scheduled_emails(limit=50):
+    """발송 시각이 지난 예약 메일을 처리한다."""
+    from django.utils import timezone
+
+    processed = 0
+    sent = 0
+    failed = 0
+    due_ids = list(
+        ScheduledEmail.objects.filter(
+            status='pending',
+            scheduled_at__lte=timezone.now(),
+        ).order_by('scheduled_at', 'id').values_list('id', flat=True)[:limit]
+    )
+    for scheduled_email_id in due_ids:
+        with transaction.atomic():
+            scheduled_email = (
+                ScheduledEmail.objects
+                .select_for_update()
+                .select_related('user', 'followup', 'schedule', 'reply_to', 'business_card')
+                .filter(id=scheduled_email_id, status='pending')
+                .first()
+            )
+            if not scheduled_email:
+                continue
+            scheduled_email.status = 'sending'
+            scheduled_email.attempt_count += 1
+            scheduled_email.last_attempt_at = timezone.now()
+            scheduled_email.save(update_fields=['status', 'attempt_count', 'last_attempt_at', 'updated_at'])
+
+        processed += 1
+        if send_scheduled_email(scheduled_email):
+            sent += 1
+        else:
+            failed += 1
+
+    return {'processed': processed, 'sent': sent, 'failed': failed}
+
+
 # ============================================
 # 메일함 조회
 # ============================================
@@ -1451,6 +1732,12 @@ def _mailbox_email_q(user):
     from django.db.models import Q
 
     return Q(sender=user) | Q(user=user) | Q(followup__user=user) | Q(schedule__user=user)
+
+
+def _scheduled_email_q(user):
+    from django.db.models import Q
+
+    return Q(user=user) | Q(followup__user=user) | Q(schedule__user=user)
 
 
 def _email_thread_identifier(email):
@@ -1598,6 +1885,7 @@ def _email_attachment_payloads(email):
             attachment.get('gmailAttachmentId'),
             attachment.get('contentBase64'),
             attachment.get('documentLogId'),
+            attachment.get('scheduledAttachmentId'),
         ])
         rows.append({
             'filename': filename,
@@ -1632,6 +1920,10 @@ def _serialize_email_item(email, mailbox_type='inbox'):
         'isStarred': email.is_starred,
         'isArchived': email.is_archived,
         'isTrashed': email.is_trashed,
+        'status': email.status,
+        'statusLabel': email.get_status_display(),
+        'scheduledAt': None,
+        'isScheduled': False,
         'threadId': thread_id,
         'threadHref': f'/mailbox/thread/{thread_id}/',
         'djangoThreadHref': reverse('reporting:mailbox_thread', args=[thread_id]),
@@ -1641,6 +1933,7 @@ def _serialize_email_item(email, mailbox_type='inbox'):
         'trashHref': reverse('reporting:mailbox_api_move_to_trash', args=[email.id]),
         'restoreHref': reverse('reporting:mailbox_api_restore', args=[email.id]),
         'deleteHref': reverse('reporting:mailbox_api_delete', args=[email.id]),
+        'cancelHref': '',
         'followup': {
             'id': followup.id if followup else None,
             'customer': followup.customer_name if followup else '',
@@ -1655,6 +1948,60 @@ def _serialize_email_item(email, mailbox_type='inbox'):
             'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
         },
         'attachments': _email_attachment_payloads(email),
+    }
+
+
+def _serialize_scheduled_email_item(scheduled_email):
+    followup = scheduled_email.followup
+    schedule = scheduled_email.schedule
+    scheduled_at = scheduled_email.scheduled_at
+    preview = _email_html_to_display_text(scheduled_email.body_html, limit=160) if scheduled_email.body_html else ' '.join((scheduled_email.body or '').split())[:160]
+    return {
+        'id': scheduled_email.id,
+        'type': 'sent',
+        'typeLabel': '예약 메일',
+        'subject': scheduled_email.subject,
+        'contact': scheduled_email.to_email,
+        'senderEmail': scheduled_email.sender_email,
+        'recipientEmail': scheduled_email.to_email,
+        'ccEmails': scheduled_email.cc_emails,
+        'preview': preview,
+        'bodyText': scheduled_email.body,
+        'sentAt': None,
+        'receivedAt': None,
+        'happenedAt': scheduled_at.isoformat() if scheduled_at else None,
+        'isRead': True,
+        'isStarred': False,
+        'isArchived': False,
+        'isTrashed': False,
+        'status': scheduled_email.status,
+        'statusLabel': scheduled_email.get_status_display(),
+        'scheduledAt': scheduled_at.isoformat() if scheduled_at else None,
+        'isScheduled': scheduled_email.status == 'pending',
+        'threadId': f'scheduled-{scheduled_email.id}',
+        'threadHref': '/mailbox/?box=scheduled',
+        'djangoThreadHref': '',
+        'replyHref': '',
+        'toggleStarHref': '',
+        'archiveHref': '',
+        'trashHref': '',
+        'restoreHref': '',
+        'deleteHref': '',
+        'cancelHref': reverse('reporting:mailbox_api_cancel_scheduled', args=[scheduled_email.id]),
+        'followup': {
+            'id': followup.id if followup else None,
+            'customer': followup.customer_name if followup else '',
+            'company': followup.company.name if followup and followup.company else '',
+            'department': followup.department.name if followup and followup.department else '',
+            'href': f'/customers/{followup.id}/' if followup else '',
+            'djangoHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+        },
+        'schedule': {
+            'id': schedule.id if schedule else None,
+            'href': f'/schedules/{schedule.id}/' if schedule else '',
+            'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+        },
+        'attachments': _scheduled_email_attachment_payloads(scheduled_email),
     }
 
 
@@ -1681,9 +2028,11 @@ def _mailbox_connection_payload(profile):
 
 def _mailbox_counts(user):
     base = EmailLog.objects.filter(_mailbox_email_q(user))
+    scheduled = ScheduledEmail.objects.filter(_scheduled_email_q(user), status='pending')
     return {
         'inbox': base.filter(email_type='received', is_trashed=False, is_archived=False).count(),
         'sent': base.filter(email_type='sent', is_trashed=False).count(),
+        'scheduled': scheduled.count(),
         'starred': base.filter(is_starred=True, is_trashed=False).count(),
         'archived': base.filter(is_archived=True, is_trashed=False).count(),
         'trash': base.filter(is_trashed=True).count(),
@@ -1788,22 +2137,41 @@ def mailbox_api_list(request):
     from django.db.models import Q
 
     mailbox_type = request.GET.get('box') or 'inbox'
-    if mailbox_type not in {'inbox', 'sent', 'starred', 'archived', 'trash'}:
+    if mailbox_type not in {'inbox', 'sent', 'scheduled', 'starred', 'archived', 'trash'}:
         mailbox_type = 'inbox'
 
     query = (request.GET.get('q') or '').strip()
-    emails = _mailbox_queryset(request.user, mailbox_type)
-    if query:
-        emails = emails.filter(
-            Q(subject__icontains=query) |
-            Q(body__icontains=query) |
-            Q(body_html__icontains=query) |
-            Q(sender_email__icontains=query) |
-            Q(recipient_email__icontains=query) |
-            Q(followup__customer_name__icontains=query) |
-            Q(followup__company__name__icontains=query) |
-            Q(followup__department__name__icontains=query)
-        )
+    if mailbox_type == 'scheduled':
+        emails = ScheduledEmail.objects.filter(
+            _scheduled_email_q(request.user),
+            status='pending',
+        ).select_related('user', 'followup', 'followup__company', 'followup__department', 'schedule', 'business_card').prefetch_related(
+            'attachments'
+        ).order_by('scheduled_at', 'created_at')
+        if query:
+            emails = emails.filter(
+                Q(subject__icontains=query) |
+                Q(body__icontains=query) |
+                Q(body_html__icontains=query) |
+                Q(to_email__icontains=query) |
+                Q(cc_emails__icontains=query) |
+                Q(followup__customer_name__icontains=query) |
+                Q(followup__company__name__icontains=query) |
+                Q(followup__department__name__icontains=query)
+            )
+    else:
+        emails = _mailbox_queryset(request.user, mailbox_type)
+        if query:
+            emails = emails.filter(
+                Q(subject__icontains=query) |
+                Q(body__icontains=query) |
+                Q(body_html__icontains=query) |
+                Q(sender_email__icontains=query) |
+                Q(recipient_email__icontains=query) |
+                Q(followup__customer_name__icontains=query) |
+                Q(followup__company__name__icontains=query) |
+                Q(followup__department__name__icontains=query)
+            )
 
     paginator = Paginator(emails, 20)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -1837,6 +2205,7 @@ def mailbox_api_list(request):
         'links': {
             'inbox': '/mailbox/?box=inbox',
             'sent': '/mailbox/?box=sent',
+            'scheduled': '/mailbox/?box=scheduled',
             'starred': '/mailbox/?box=starred',
             'archived': '/mailbox/?box=archived',
             'trash': '/mailbox/?box=trash',
@@ -1845,7 +2214,10 @@ def mailbox_api_list(request):
             'djangoSent': reverse('reporting:mailbox_sent'),
         },
         'create': _mailbox_create_payload(request.user, schedule=schedule),
-        'emails': [_serialize_email_item(email, mailbox_type) for email in page_obj],
+        'emails': [
+            _serialize_scheduled_email_item(email) if mailbox_type == 'scheduled' else _serialize_email_item(email, mailbox_type)
+            for email in page_obj
+        ],
     })
 
 
@@ -1940,9 +2312,11 @@ def mailbox_api_send(request):
         }, status=400)
 
     location = result.get('Location', '/mailbox/?box=sent') if hasattr(result, 'get') else '/mailbox/?box=sent'
+    scheduled_requested = bool(_mailbox_scheduled_at_value(request))
     return JsonResponse({
         'success': True,
-        'message': '이메일이 발송되었습니다.',
+        'scheduled': scheduled_requested,
+        'message': '이메일을 예약했습니다.' if scheduled_requested else '이메일이 발송되었습니다.',
         'href': location.replace('/reporting/mailbox/thread/', '/mailbox/thread/') if location else '/mailbox/?box=sent',
         'djangoHref': location,
     })
@@ -1971,11 +2345,37 @@ def mailbox_api_reply(request, email_id):
         }, status=400)
 
     thread_id = _email_thread_identifier(email)
+    scheduled_requested = bool(_mailbox_scheduled_at_value(request))
     return JsonResponse({
         'success': True,
-        'message': '답장을 발송했습니다.',
-        'href': f'/mailbox/thread/{thread_id}/',
-        'djangoHref': reverse('reporting:mailbox_thread', args=[thread_id]),
+        'scheduled': scheduled_requested,
+        'message': '답장을 예약했습니다.' if scheduled_requested else '답장을 발송했습니다.',
+        'href': '/mailbox/?box=scheduled' if scheduled_requested else f'/mailbox/thread/{thread_id}/',
+        'djangoHref': '/mailbox/?box=scheduled' if scheduled_requested else reverse('reporting:mailbox_thread', args=[thread_id]),
+    })
+
+
+@login_required
+def mailbox_api_cancel_scheduled(request, scheduled_email_id):
+    """예약 메일 취소 API"""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    scheduled_email = ScheduledEmail.objects.filter(
+        _scheduled_email_q(request.user),
+        id=scheduled_email_id,
+        status='pending',
+    ).first()
+    if not scheduled_email:
+        return JsonResponse({'success': False, 'error': '취소할 예약 메일을 찾을 수 없습니다.'}, status=404)
+
+    scheduled_email.status = 'cancelled'
+    scheduled_email.error_message = ''
+    scheduled_email.save(update_fields=['status', 'error_message', 'updated_at'])
+    return JsonResponse({
+        'success': True,
+        'message': '예약 메일을 취소했습니다.',
+        'href': '/mailbox/?box=scheduled',
     })
 
 
@@ -2048,6 +2448,19 @@ def mailbox_api_attachment_download(request, email_id, attachment_index):
             with log.file.open('rb') as file_handle:
                 content = file_handle.read()
             filename = log.filename or filename
+
+    if content is None and attachment.get('scheduledAttachmentId'):
+        scheduled_attachment = ScheduledEmailAttachment.objects.filter(id=attachment.get('scheduledAttachmentId')).first()
+        scheduled_email = getattr(email, 'scheduled_source', None)
+        if (
+            scheduled_attachment
+            and scheduled_email
+            and scheduled_attachment.scheduled_email_id == scheduled_email.id
+            and scheduled_attachment.file
+        ):
+            with scheduled_attachment.file.open('rb') as file_handle:
+                content = file_handle.read()
+            filename = scheduled_attachment.filename or filename
 
     if content is None and attachment.get('gmailAttachmentId'):
         profile = request.user.userprofile

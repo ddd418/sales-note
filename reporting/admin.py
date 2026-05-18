@@ -6,7 +6,8 @@ from .models import (
     CalibrationRecord, CustomerAsset,
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage, ServiceCase,
-    Company, Department, DocumentTemplate, EmailLog, BusinessCard, CustomerCategory
+    Company, Department, DocumentTemplate, EmailLog, ScheduledEmail, ScheduledEmailAttachment,
+    BusinessCard, CustomerCategory
 )
 
 # UserProfile 인라인 관리자
@@ -501,7 +502,7 @@ class DocumentTemplateAdmin(admin.ModelAdmin):
 class EmailLogAdmin(admin.ModelAdmin):
     list_display = ('subject', 'email_type', 'sender_email', 'recipient_email', 'status', 'is_read', 'sent_at', 'created_at')
     list_filter = ('email_type', 'status', 'is_read', 'sent_at', 'created_at')
-    search_fields = ('subject', 'sender_email', 'recipient_email', 'body_text', 'gmail_message_id')
+    search_fields = ('subject', 'sender_email', 'recipient_email', 'body', 'gmail_message_id')
     date_hierarchy = 'sent_at'
     autocomplete_fields = ['followup', 'schedule', 'business_card', 'in_reply_to']
     list_per_page = 20
@@ -516,7 +517,7 @@ class EmailLogAdmin(admin.ModelAdmin):
             'fields': ('sender', 'sender_email', 'recipient_email', 'recipient_name', 'cc_emails', 'bcc_emails')
         }),
         ('메일 내용', {
-            'fields': ('subject', 'body_text', 'body_html')
+            'fields': ('subject', 'body', 'body_html')
         }),
         ('첨부 파일', {
             'fields': ('document_template', 'attachment')
@@ -544,6 +545,26 @@ class EmailLogAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # Admin에서 직접 추가 불가 (뷰에서만 생성)
         return False
+
+
+class ScheduledEmailAttachmentInline(admin.TabularInline):
+    model = ScheduledEmailAttachment
+    extra = 0
+    readonly_fields = ('filename', 'mimetype', 'size', 'created_at')
+    fields = ('filename', 'mimetype', 'size', 'created_at')
+    can_delete = False
+
+
+@admin.register(ScheduledEmail)
+class ScheduledEmailAdmin(admin.ModelAdmin):
+    list_display = ('subject', 'user', 'to_email', 'status', 'scheduled_at', 'attempt_count', 'sent_at', 'created_at')
+    list_filter = ('status', 'provider', 'scheduled_at', 'sent_at', 'created_at')
+    search_fields = ('subject', 'to_email', 'cc_emails', 'bcc_emails', 'body', 'user__username')
+    date_hierarchy = 'scheduled_at'
+    autocomplete_fields = ['user', 'followup', 'schedule', 'reply_to', 'business_card', 'sent_email']
+    readonly_fields = ('attempt_count', 'last_attempt_at', 'sent_at', 'error_message', 'created_at', 'updated_at')
+    inlines = [ScheduledEmailAttachmentInline]
+    list_per_page = 20
 
 
 # BusinessCard 모델 관리자 설정

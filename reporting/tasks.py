@@ -162,6 +162,22 @@ def auto_sync_gmail(self):
 
 
 @shared_task(bind=True, ignore_result=True)
+def send_due_scheduled_emails(self, limit=50):
+    """예약 시간이 지난 메일을 발송한다."""
+    from .gmail_views import process_due_scheduled_emails
+
+    result = process_due_scheduled_emails(limit=limit)
+    if result.get('processed'):
+        logger.info(
+            '예약 메일 처리 완료: processed=%s sent=%s failed=%s',
+            result.get('processed'),
+            result.get('sent'),
+            result.get('failed'),
+        )
+    return result
+
+
+@shared_task(bind=True, ignore_result=True)
 def cleanup_old_files_task(self):
     """
     오래된 파일 자동 정리 (매일 새벽 3시)
