@@ -200,7 +200,7 @@ def is_html_content(text: str) -> bool:
     if not text:
         return False
     stripped = normalize_report_html_input(text)
-    return bool(re.match(r'^\s*<[a-zA-Z]', stripped))
+    return bool(_RICH_TEXT_TAG_RE.search(stripped))
 
 
 def render_report_field(text: str) -> str:

@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 Weekly report line break rendering fix plan
+
+**Background**:
+
+- User reported that line breaks are not applied on React weekly report detail: `/weekly-reports/3/`.
+- The React page renders sanitized report HTML from Django API.
+- Existing renderer treated rich-text HTML as HTML only when the content started with an HTML tag, so mixed text like `첫 줄<br>둘째 줄` could be escaped and displayed without actual line breaks.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Update weekly report HTML detection to recognize allowed rich-text tags anywhere in the field, not only at the start.
+  - Preserve sanitization before rendering.
+- Tests:
+  - Add regression coverage for inline `<br>` and escaped `&lt;br&gt;` content in weekly report detail API.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\utils_html.py reporting\tests.py`
+- Focused weekly report line-break tests.
+- `python manage.py test reporting.tests.WeeklyReportReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+**Current status**:
+
+- Implementation and local validation complete.
+- Commit, push, Railway backend deployment, and production smoke are next.
+
 ## 2026-05-18 Customer asset directory / search v1 plan
 
 **Background**:

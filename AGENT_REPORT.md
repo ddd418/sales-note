@@ -1,5 +1,64 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — Weekly Report Line Break Rendering Fix
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+React 주간보고 상세(`/weekly-reports/<id>/`)에서 일부 보고서 줄바꿈이 실제 줄바꿈으로 표시되지 않을 수 있는 렌더링 경로를 수정했습니다. 저장 내용이 `<p>...</p>`로 시작하지 않고 문장 중간에 `<br>` 또는 escaped `&lt;br&gt;`를 포함하는 경우에도 안전한 HTML로 인식해 정화 후 렌더링합니다.
+
+### 변경된 파일
+
+- `reporting/utils_html.py`: weekly report HTML 감지 로직을 허용 rich-text 태그 위치 전체로 확장.
+- `reporting/tests.py`: inline `<br>` 및 escaped `&lt;br&gt;` 줄바꿈 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 주간보고 상세에서 문장 중간 `<br>` 줄바꿈과 escaped `<br>`가 줄바꿈으로 복원됩니다.
+- 기존 plain text 보고서와 rich text 보고서 모두 기존 정화 흐름을 유지합니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` legacy route와 React `/weekly-reports/*` route를 유지했습니다.
+- DB 모델과 migration은 변경하지 않았습니다.
+- HTML은 계속 `sanitize_html`을 통과하므로 임의 script/event handler 허용은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\utils_html.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.WeeklyReportReactApiTests.test_detail_api_preserves_inline_br_html_for_display reporting.tests.WeeklyReportReactApiTests.test_detail_api_returns_html_and_editor_text reporting.tests.WeeklyReportReactApiTests.test_detail_api_preserves_paragraph_breaks_for_edit_text --verbosity=2
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.WeeklyReportReactApiTests --verbosity=1
+→ Ran 8 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- 이 수정은 backend HTML 렌더링 보정입니다. 실제 운영 보고서 `#3`의 원문 데이터 형태는 로그인된 운영 세션에서 최종 육안 확인이 필요합니다.
+
+### 운영 배포 상태
+
+- 커밋/푸시/배포 진행 예정.
+
+### 권장 다음 작업
+
+운영 배포 후 `https://sales-note-frontend-production.up.railway.app/weekly-reports/3/`에서 영업 활동, 견적/납품, 기타 섹션의 줄바꿈이 보존되는지 수동 검수합니다.
+
 ## 2026-05-18 — Customer Asset Directory / Search V1
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기

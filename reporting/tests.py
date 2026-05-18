@@ -11178,6 +11178,30 @@ class WeeklyReportReactApiTests(TestCase):
         self.assertTrue(data['canComment'])
         self.assertFalse(data['canEdit'])
 
+    def test_detail_api_preserves_inline_br_html_for_display(self):
+        import datetime
+        from reporting.models import WeeklyReport
+
+        report = WeeklyReport.objects.create(
+            user=self.salesman,
+            week_start=datetime.date(2026, 5, 4),
+            week_end=datetime.date(2026, 5, 8),
+            title='중간 br 줄바꿈 테스트',
+            activity_notes='첫 줄<br>둘째 줄<br />셋째 줄',
+            quote_delivery_notes='견적 A&lt;br&gt;납품 B',
+        )
+
+        self.client.force_login(self.salesman)
+        response = self.client.get(reverse('reporting:weekly_report_detail_api', args=[report.id]))
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['report']
+        self.assertIn('첫 줄<br>둘째 줄<br>셋째 줄', data['activityNotesHtml'])
+        self.assertNotIn('&lt;br', data['activityNotesHtml'])
+        self.assertIn('견적 A<br>납품 B', data['quoteDeliveryNotesHtml'])
+        self.assertEqual(data['activityNotes'], '첫 줄\n둘째 줄\n셋째 줄')
+        self.assertEqual(data['quoteDeliveryNotes'], '견적 A\n납품 B')
+
     def test_detail_api_preserves_paragraph_breaks_for_edit_text(self):
         import datetime
         from reporting.models import WeeklyReport
