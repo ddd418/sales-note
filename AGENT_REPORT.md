@@ -1,5 +1,114 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Frontend Legacy Django Route Canonicalization
+
+**상태**: 구현/로컬 검증/커밋/푸시/Railway frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
+
+### 요약
+
+지적하신 `/reporting/analytics/`, `/reporting/business-cards/`, `/reporting/profile/`는 React 화면이 아니라 Django fallback 화면입니다. 프론트 도메인에서 이 legacy 화면들이 React처럼 렌더링되지 않도록 `frontend/server.mjs` 라우팅을 정리했습니다.
+
+### 변경된 파일
+
+- `frontend/server.mjs`: legacy Django page `GET/HEAD` 요청은 backend Django canonical URL로 302 이동, `/reporting/api/*`, 로그인/로그아웃/Gmail/IMAP 세션 경로, static/media, non-GET legacy action은 계속 Django로 프록시.
+- `AGENT_PLAN.md`: legacy route canonicalization 계획과 완료 상태 기록.
+- `AGENT_REPORT.md`: 결과와 운영 검수 절차 기록.
+
+### CRM 개선
+
+- React에 아직 없는 legacy 화면이 프론트 도메인에서 React 화면처럼 보이는 혼선을 제거했습니다.
+- React 앱의 API/login 세션 흐름은 유지했습니다.
+- analytics, 명함 관리, 프로필은 현재 “React 미이관 Django fallback”으로 명확히 분류했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/api/*`는 프론트 도메인에서 계속 프록시되며 익명 접근 시 `login_required`를 반환합니다.
+- `/reporting/login/`은 프론트 도메인에서 200으로 유지되어 React same-origin 세션 로그인이 깨지지 않습니다.
+- Django backend의 analytics/business-cards/profile legacy 화면은 삭제하지 않았고, 익명 접근 시 로그인으로 보호됩니다.
+- DB 모델 변경과 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-D-Wk0lB9.js and /assets/index-X4HQPTB9.css. Existing large chunk warning remains.
+
+local production server smoke on http://127.0.0.1:4183
+→ /reporting/analytics/ returned 302 to https://web-production-2cc17.up.railway.app/reporting/analytics/
+→ /reporting/business-cards/ returned 302 to https://web-production-2cc17.up.railway.app/reporting/business-cards/
+→ /reporting/profile/ returned 302 to https://web-production-2cc17.up.railway.app/reporting/profile/
+→ /reporting/login/ returned 200 through the frontend proxy.
+→ /reporting/api/navigation/ returned 401 login_required JSON through the frontend proxy.
+→ /ai-workspace/ returned 200 as a React route.
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "fix: canonicalize legacy Django routes"
+→ 8f598fb fix: canonicalize legacy Django routes
+
+git commit -m "fix: keep frontend session routes proxied"
+→ e082beb fix: keep frontend session routes proxied
+
+git push
+→ origin/main updated to e082beb
+
+railway deployment up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy session-safe legacy route canonicalization e082beb"
+→ sales-note-frontend deployment d128864b-65e3-49df-8184-daf3962b85be reached SUCCESS.
+
+railway variable set DJANGO_BASE_URL=https://web-production-2cc17.up.railway.app --service sales-note-frontend
+→ Triggered sales-note-frontend deployment 3ed44643-1f65-45ef-9786-666c2a522c09.
+→ Deployment reached SUCCESS.
+
+production frontend smoke
+→ https://sales-note-frontend-production.up.railway.app/reporting/analytics/ returned 302 to https://web-production-2cc17.up.railway.app/reporting/analytics/
+→ https://sales-note-frontend-production.up.railway.app/reporting/business-cards/ returned 302 to https://web-production-2cc17.up.railway.app/reporting/business-cards/
+→ https://sales-note-frontend-production.up.railway.app/reporting/profile/ returned 302 to https://web-production-2cc17.up.railway.app/reporting/profile/
+→ https://sales-note-frontend-production.up.railway.app/reporting/login/ returned 200.
+→ https://sales-note-frontend-production.up.railway.app/reporting/api/navigation/ returned 401 login_required JSON.
+→ https://sales-note-frontend-production.up.railway.app/ai-workspace/ returned 200.
+
+production backend smoke
+→ https://web-production-2cc17.up.railway.app/reporting/analytics/ returned 302 to /reporting/login/?next=/reporting/analytics/
+→ https://web-production-2cc17.up.railway.app/reporting/business-cards/ returned 302 to /reporting/login/?next=/reporting/business-cards/
+→ https://web-production-2cc17.up.railway.app/reporting/profile/ returned 302 to /reporting/login/?next=/reporting/profile/
+```
+
+### 알려진 제한
+
+- analytics, 명함 관리, 프로필은 아직 React 화면이 아닙니다. 이번 작업은 migration 구현이 아니라 legacy 화면의 도메인/상태를 명확히 하는 라우팅 정리입니다.
+- 해당 세 화면을 실제 React CRM 화면으로 만들지 여부는 다음 메뉴 이관 판단에서 별도 결정이 필요합니다.
+
+### 권장 다음 단계
+
+운영 검수 후, 세 화면을 다음처럼 분류하는 것이 좋습니다: analytics는 React 보고서/대시보드로 이관 후보, 명함 관리는 메일 설정 안의 React 서명 관리로 이관 후보, 프로필은 React 계정 설정으로 이관 후보입니다.
+
+### 운영 수동 검수 절차
+
+1. 프론트 도메인에서 `/reporting/analytics/`, `/reporting/business-cards/`, `/reporting/profile/`를 각각 열면 `web-production-2cc17` backend 도메인으로 이동하는지 확인합니다.
+2. 프론트 도메인 `/reporting/login/`은 이동하지 않고 로그인 화면이 그대로 뜨는지 확인합니다.
+3. 로그인 후 `/dashboard/`, `/customers/`, `/notes/`, `/ai-workspace/` 같은 React 화면이 정상 로드되는지 확인합니다.
+4. 필요 시 backend 도메인에서 legacy analytics/business-cards/profile 화면이 로그인 보호 뒤에 접근 가능한지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commits: `8f598fb`, `e082beb`
+- GitHub: `main` pushed.
+- Railway `sales-note-frontend`: `3ed44643-1f65-45ef-9786-666c2a522c09` SUCCESS.
+- Railway variable updated: `DJANGO_BASE_URL=https://web-production-2cc17.up.railway.app`
+- DB migration: none.
+- Production backend URL: `https://web-production-2cc17.up.railway.app`
+- Production frontend URL: `https://sales-note-frontend-production.up.railway.app`
+
 ## 2026-05-19 — Django Menu Triage and React Navigation Cleanup
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

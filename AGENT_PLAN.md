@@ -34,7 +34,7 @@
 
 **Current status**:
 
-- Frontend server implementation and local validation are complete. Commit, push, Railway frontend deploy, production smoke, and final report are next.
+- Implementation, local validation, commit/push, Railway frontend deployment, `DJANGO_BASE_URL` environment update, and production smoke are complete. User production manual verification is next.
 
 ## 2026-05-19 Django menu triage and React navigation cleanup plan
 
