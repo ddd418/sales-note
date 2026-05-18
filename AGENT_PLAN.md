@@ -37,7 +37,7 @@
 
 **Current status**:
 
-- Implementation and local validation complete. Commit/push/Railway deployment is next.
+- Implementation, local validation, commit, and push complete. Railway platform outage caused failed deployments and temporary edge fallback 404. Production availability was restored after `sales-note-frontend` existing-image redeploy and user-triggered `web` deploy. `web` is running commit `1469a9e`; frontend is serving the previous stable image, so deploy the latest frontend bundle only after the user confirms production is stable.
 
 ## 2026-05-18 Scheduled email automatic dispatch plan
 

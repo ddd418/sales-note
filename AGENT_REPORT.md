@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — React Tasks/TODO Detail Workflow
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시 완료, Railway 404 운영 장애 복구 완료, 최신 프론트 번들 배포는 안정화 후 진행
 
 ### 요약
 
@@ -61,12 +61,41 @@ Local frontend server smoke:
 
 ### 운영 배포 상태
 
-- Pending: commit, push, Railway backend/frontend deploy, production smoke.
+- Git commit: `1469a9e` (`feat: add react task detail workflow`)
+- Git push: `main` pushed to origin.
+- Railway 배포 시도:
+  - `web` auto deploy `6da79a04-4e84-45d6-b945-358e4f072559` → FAILED.
+  - `sales-note-frontend` CLI deploy `d78131ec-5ad1-46ed-b3b5-6a8f7f28429f` → FAILED.
+  - Retry deploy `web` `08746e15-b76d-43cd-9955-4133f44067e6` → FAILED.
+  - Retry deploy `sales-note-frontend` `695f5ad6-5416-45a2-8abd-b708e6496a44` → FAILED.
+- 실패 원인: Railway platform incident. Status page: “Builds failing to go out”, “temporarily disabled all new deployments on the platform” at `2026-05-18 06:37 UTC`.
+- 복구 조치:
+  - 실패 배포 기록 4건을 GraphQL `deploymentRemove`로 제거.
+  - 이전 성공 배포로 서비스 상태 복구:
+    - `web`: `ae7f4bda-bb36-4c6a-952f-7de5dd8f3515` SUCCESS.
+    - `sales-note-frontend`: `ba7fbf52-8083-4218-ae90-075f0536fb44` SUCCESS.
+  - 기존 service domain 라우팅 메타데이터 재저장 및 성공 배포 restart 수행.
+- 추가 안전 복구 확인:
+  - Railway CLI 인증 복구 후 `web`, `sales-note-frontend` status 재확인: 둘 다 SUCCESS/stopped false.
+  - `web`과 `sales-note-frontend`를 다시 restart했지만 public domain은 계속 Railway edge fallback 404.
+  - Railway Agent가 service domains 제거/재등록 방식으로 edge routing refresh를 수행했지만, 60초 후 재검사에서도 `web-production-5096.up.railway.app`과 `sales-note-frontend-production.up.railway.app`은 fallback 404 유지.
+  - Railway status page는 여전히 `Builds failing to go out` partial outage 및 신규 deployment disabled 상태.
+- 현재 제한:
+  - `2026-05-18 07:24 UTC` 기준 production public domains는 404에서 복구됨.
+  - `web`: user-triggered deploy `d9759202-716d-41d2-9fe9-186c141f3aa6` SUCCESS, commit `1469a9e`.
+  - `sales-note-frontend`: existing-image redeploy `82401402-7379-496e-b894-f060097d1283` SUCCESS.
+  - Production smoke:
+    - `GET https://sales-note-frontend-production.up.railway.app/` → 200.
+    - `GET https://sales-note-frontend-production.up.railway.app/tasks/` → 200.
+    - `GET https://web-production-5096.up.railway.app/reporting/login/` → 200.
+    - `GET https://web-production-5096.up.railway.app/reporting/api/tasks/1/` → 401 `login_required`.
+  - Frontend is currently serving the previous stable bundle `index-C6PfCqJZ.js`; the latest React task detail bundle should be deployed after the user confirms production stability because Railway status still reports a major build/deploy incident.
 
 ### 알려진 제한
 
 - React 상세 화면은 현재 업무 필드의 핵심 편집만 제공합니다. 담당자 재배정, 카테고리 변경 같은 고급 관리는 기존 Django 화면을 fallback으로 유지합니다.
 - 로컬 브라우저 플러그인은 이번 세션에서 제어 도구가 노출되지 않아 HTTP smoke로 대체했습니다.
+- 운영 배포는 Railway 플랫폼 장애로 완료하지 못했습니다. 배포 pause가 해제되면 `railway up --service web` 및 `railway up frontend --path-as-root --service sales-note-frontend`를 재실행해야 합니다.
 
 ### 운영 수동 검수 절차
 
