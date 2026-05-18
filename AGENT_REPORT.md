@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — React Tasks/TODO V1 + Navigation API
 
-**상태**: 구현/로컬 검증/커밋/푸시 완료, 운영 배포는 Railway CLI 인증 만료로 대기
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -71,12 +71,16 @@ git diff --check
 ### 운영 배포 상태
 
 - Git commit: `937a50e` (`feat: add react task workspace`)
+- Git deployment/status commit: `0035134` (`docs: record task workspace deploy blocker [skip ci]`)
 - Git push: `main` pushed to origin.
-- Railway deploy: blocked.
-- Blocker:
-  - `railway status` → `Unauthorized. Please run railway login again.`
-  - `railway service` → token refresh failed / unauthorized.
-  - `railway login --browserless` → interactive terminal required; non-interactive environments need `RAILWAY_API_TOKEN` or `RAILWAY_TOKEN`.
+- Railway `web`: `f4f1095f-da88-4b7c-b500-1d2161d5147e` SUCCESS, latest commit `0035134`.
+- Railway `sales-note-frontend`: `87aea376-60c8-4e57-b86d-4bf3dc294f8d` SUCCESS via CLI upload.
+- Frontend production bundle:
+  - Production now serves `/assets/index-xjKIOmil.js`, matching the local React task workspace build.
+- Backend production smoke:
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
+  - `https://sales-note-frontend-production.up.railway.app/reporting/api/tasks/` anonymous request → expected `401 login_required`.
+  - `https://sales-note-frontend-production.up.railway.app/tasks/` → 200.
 
 ### 권장 다음 작업
 
