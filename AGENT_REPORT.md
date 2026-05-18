@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Scheduled Email Automatic Dispatch
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 예정
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -54,7 +54,15 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending: 커밋/푸시 후 Railway `web` 배포 및 `SCHEDULED_EMAIL_INLINE_WORKER=1` 설정 필요.
+- Git commit: `a27eae8` (`feat: run scheduled email dispatcher`)
+- Git push: `main` pushed to origin.
+- Railway `web` env:
+  - `SCHEDULED_EMAIL_INLINE_WORKER=1` set with `--skip-deploys` before push, so the feature deployment starts with the dispatcher enabled.
+- Railway `web`: `dfc4134d-ec8e-4bf1-9771-f1f7acd034e1` SUCCESS, latest feature commit `a27eae8`.
+- Production smoke:
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/mailbox/scheduled/1/` → expected `302` to login.
+  - Railway deploy logs show `예약 메일 자동 처리 루프 시작: interval=60s limit=50 initial_delay=10s`.
 
 ### 알려진 제한
 

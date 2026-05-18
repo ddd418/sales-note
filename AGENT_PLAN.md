@@ -30,7 +30,7 @@
 
 **Current status**:
 
-- Implementation and local validation complete. Commit, push, Railway deployment, and production environment enablement are next.
+- Implementation, local validation, commit, push, Railway deployment, production environment enablement, and production smoke complete. User production manual verification is next.
 
 ## 2026-05-18 Scheduled mailbox detail route fix plan
 
