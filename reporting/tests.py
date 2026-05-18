@@ -9188,6 +9188,201 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.json()['error'], 'question_log_not_found')
         self.assertEqual(AIWorkspaceMemory.objects.count(), 0)
 
+    def test_ai_workspace_memories_api_lists_only_current_user_with_filters(self):
+        from reporting.models import AIWorkspaceMemory
+
+        _followup, department = self._create_customer(self.user, '기억목록')
+        AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            memory_type='correction',
+            title='P4345N00 정정',
+            content='P4345N00은 튜브가 아니라 팁입니다.',
+        )
+        AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=None,
+            scope_type='all',
+            memory_type='preference',
+            title='답변 방식',
+            content='제품 마스터 근거를 먼저 보여줍니다.',
+            is_active=False,
+        )
+        AIWorkspaceMemory.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            memory_type='correction',
+            title='동료 기억',
+            content='동료 기억은 보이면 안 됩니다.',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:ai_workspace_memories_api'), {
+            'status': 'active',
+            'scope': 'department',
+            'memory_type': 'correction',
+            'q': 'P4345',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['counts']['total'], 2)
+        self.assertEqual(payload['counts']['active'], 1)
+        self.assertEqual(payload['counts']['inactive'], 1)
+        self.assertEqual(payload['counts']['filtered'], 1)
+        self.assertEqual(payload['pagination']['totalPages'], 1)
+        self.assertEqual(len(payload['memories']), 1)
+        self.assertEqual(payload['memories'][0]['title'], 'P4345N00 정정')
+        payload_text = json.dumps(payload, ensure_ascii=False)
+        self.assertIn('튜브가 아니라 팁', payload_text)
+        self.assertNotIn('동료 기억', payload_text)
+        self.assertNotIn('제품 마스터 근거', payload_text)
+
+    def test_ai_workspace_memories_api_requires_ai_permission(self):
+        self.client.force_login(self.no_ai_user)
+
+        response = self.client.get(reverse('reporting:ai_workspace_memories_api'))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'permission_denied')
+
+    def test_ai_workspace_memory_update_api_updates_current_user_memory(self):
+        from reporting.models import AIWorkspaceMemory
+
+        _followup, department = self._create_customer(self.user, '기억수정')
+        memory = AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            memory_type='fact',
+            title='기존 제목',
+            content='기존 내용',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_memory_update_api', args=[memory.id]),
+            data=json.dumps({
+                'scopeType': 'all',
+                'memoryType': 'preference',
+                'title': '수정된 기억',
+                'content': '답변은 결론부터 말하고 근거를 나중에 정리합니다.',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['memory']['scopeType'], 'all')
+        self.assertEqual(payload['memory']['department'], None)
+        self.assertEqual(payload['memory']['memoryType'], 'preference')
+        self.assertEqual(payload['memory']['title'], '수정된 기억')
+
+        memory.refresh_from_db()
+        self.assertEqual(memory.scope_type, 'all')
+        self.assertIsNone(memory.department)
+        self.assertEqual(memory.memory_type, 'preference')
+        self.assertIn('결론부터', memory.content)
+
+    def test_ai_workspace_memory_update_api_blocks_other_users_memory(self):
+        from reporting.models import AIWorkspaceMemory
+
+        _followup, department = self._create_customer(self.coworker, '타인기억수정')
+        memory = AIWorkspaceMemory.objects.create(
+            user=self.coworker,
+            department=department,
+            scope_type='department',
+            memory_type='fact',
+            title='타인 기억',
+            content='수정되면 안 됩니다.',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_memory_update_api', args=[memory.id]),
+            data=json.dumps({'title': '침범'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['error'], 'memory_not_found')
+        memory.refresh_from_db()
+        self.assertEqual(memory.title, '타인 기억')
+
+    def test_ai_workspace_memory_update_api_blocks_inaccessible_department(self):
+        from reporting.models import AIWorkspaceMemory
+
+        _followup, department = self._create_customer(self.user, '기억부서수정')
+        _coworker_followup, coworker_department = self._create_customer(self.coworker, '기억동료부서')
+        memory = AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            memory_type='fact',
+            title='내 기억',
+            content='내 부서 기억입니다.',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_memory_update_api', args=[memory.id]),
+            data=json.dumps({
+                'scopeType': 'department',
+                'departmentId': coworker_department.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['error'], 'department_not_found')
+        memory.refresh_from_db()
+        self.assertEqual(memory.department, department)
+
+    def test_ai_workspace_memory_toggle_active_controls_question_context(self):
+        from reporting.models import AIWorkspaceMemory
+        from reporting.views import _ai_workspace_department_question_context
+
+        _followup, department = self._create_customer(self.user, '기억활성토글')
+        memory = AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=department,
+            scope_type='department',
+            memory_type='correction',
+            title='토글 기억',
+            content='토글된 기억은 활성일 때만 문맥에 들어갑니다.',
+        )
+        self.client.force_login(self.user)
+
+        inactive_response = self.client.post(
+            reverse('reporting:ai_workspace_memory_toggle_active_api', args=[memory.id]),
+            data=json.dumps({'isActive': False}),
+            content_type='application/json',
+        )
+        self.assertEqual(inactive_response.status_code, 200)
+        self.assertFalse(inactive_response.json()['memory']['isActive'])
+        inactive_context = _ai_workspace_department_question_context(department, self.user)
+        self.assertNotIn(
+            '토글된 기억',
+            json.dumps(inactive_context['verifiedMemories'], ensure_ascii=False),
+        )
+
+        active_response = self.client.post(
+            reverse('reporting:ai_workspace_memory_toggle_active_api', args=[memory.id]),
+            data=json.dumps({'isActive': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(active_response.status_code, 200)
+        self.assertTrue(active_response.json()['memory']['isActive'])
+        active_context = _ai_workspace_department_question_context(department, self.user)
+        self.assertIn(
+            '토글된 기억',
+            json.dumps(active_context['verifiedMemories'], ensure_ascii=False),
+        )
+
     def test_ai_workspace_question_context_includes_verified_memories_and_recent_question_logs(self):
         from reporting.models import AIWorkspaceMemory, AIWorkspaceQuestionLog
         from reporting.views import _ai_workspace_department_question_context

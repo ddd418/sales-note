@@ -1,5 +1,49 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 AI Workspace memory management v1 plan
+
+**Background**:
+
+- User completed production manual verification for the AI Workspace verified memory foundation.
+- Next task is to let users manage their own approved AI memories from React before moving to non-AI work.
+- Current `AIWorkspaceMemory` already stores user-approved memory/corrections and injects only active memories into future AI question context.
+
+**DB change required**: No.
+
+- Reuse existing `AIWorkspaceMemory`.
+- Do not create shared/company-wide memory in v1.
+- Do not hard-delete memories; use `is_active` so audit/context history remains recoverable.
+
+**Implementation scope**:
+
+- Backend:
+  - Add authenticated, `can_use_ai`-guarded memory list API for the current user's memories only.
+  - Add current-user-only memory update API for title, content, type, scope, and department.
+  - Add current-user-only active/inactive toggle API.
+  - Keep inactive memories out of AI question `verifiedMemories`.
+- Frontend:
+  - Add an AI Workspace `검수 기억 관리` panel.
+  - Support status/type/scope/keyword filters, inline edit, and active/inactive toggle.
+  - Refresh AI Workspace data after create/update/toggle so context counts stay current.
+- Tests:
+  - Cover list permissions, current-user scoping, filters, update/toggle ownership, inaccessible department blocking, and active-memory context injection.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused `reporting.tests.AIWorkspaceSummaryApiTests` memory API tests.
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+**Current status**:
+
+- Backend APIs, React panel, tests, Django checks, frontend build, and local route smoke are complete. Commit, push, Railway deployment, and production smoke are next.
+
 ## 2026-05-18 AI Workspace quality and verified memory plan
 
 **Background**:

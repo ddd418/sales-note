@@ -2964,27 +2964,72 @@ export type AIWorkspaceMemoryPayload = {
   content: string;
 };
 
+export type AIWorkspaceMemoryItem = {
+  id: number;
+  scopeType: 'all' | 'department' | string;
+  memoryType: AIWorkspaceMemoryType | string;
+  memoryTypeLabel: string;
+  title: string;
+  content: string;
+  isActive: boolean;
+  department: {
+    id: number;
+    name: string;
+    company: string;
+  } | null;
+  sourceQuestionLogId: number | null;
+  sourceQuestion: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
 export type AIWorkspaceMemoryResponse = {
   success?: boolean;
   generatedAt: string;
-  memory: {
-    id: number;
-    scopeType: 'all' | 'department' | string;
-    memoryType: AIWorkspaceMemoryType | string;
-    memoryTypeLabel: string;
-    title: string;
-    content: string;
-    isActive: boolean;
-    department: {
-      id: number;
-      name: string;
-      company: string;
-    } | null;
-    sourceQuestionLogId: number | null;
-    sourceQuestion: string;
-    createdAt: string | null;
-    updatedAt: string | null;
+  source?: 'django';
+  memory: AIWorkspaceMemoryItem;
+  error?: string;
+  message?: string;
+};
+
+export type AIWorkspaceMemoryFilters = {
+  status?: 'active' | 'inactive' | 'all';
+  scope?: 'any' | 'department' | 'all';
+  memoryType?: '' | AIWorkspaceMemoryType;
+  departmentId?: number | null;
+  q?: string;
+  page?: number;
+};
+
+export type AIWorkspaceMemoriesData = {
+  success?: boolean;
+  source: 'django';
+  generatedAt: string;
+  filters: {
+    status: 'active' | 'inactive' | 'all';
+    scope: 'any' | 'department' | 'all';
+    memoryType: '' | AIWorkspaceMemoryType | string;
+    departmentId: number | null;
+    q: string;
+    page: number;
   };
+  counts: {
+    total: number;
+    active: number;
+    inactive: number;
+    department: number;
+    all: number;
+    filtered: number;
+  };
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+  };
+  memories: AIWorkspaceMemoryItem[];
   error?: string;
   message?: string;
 };
@@ -7888,6 +7933,96 @@ export async function saveAIWorkspaceMemory(payload: AIWorkspaceMemoryPayload): 
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `AI memory save failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function loadAIWorkspaceMemories(params: AIWorkspaceMemoryFilters = {}): Promise<AIWorkspaceMemoriesData> {
+  const query = new URLSearchParams();
+  if (params.status && params.status !== 'active') {
+    query.set('status', params.status);
+  }
+  if (params.scope && params.scope !== 'any') {
+    query.set('scope', params.scope);
+  }
+  if (params.memoryType) {
+    query.set('memory_type', params.memoryType);
+  }
+  if (params.departmentId) {
+    query.set('department_id', String(params.departmentId));
+  }
+  if (params.q?.trim()) {
+    query.set('q', params.q.trim());
+  }
+  if (params.page && params.page > 1) {
+    query.set('page', String(params.page));
+  }
+  const queryString = query.toString();
+  const response = await fetch(`/reporting/api/ai-workspace/memories/${queryString ? `?${queryString}` : ''}`, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI memories API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceMemoriesData;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI memories load failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updateAIWorkspaceMemory(memoryId: number, payload: Partial<AIWorkspaceMemoryPayload>): Promise<AIWorkspaceMemoryResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(`/reporting/api/ai-workspace/memories/${memoryId}/update/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI memory update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceMemoryResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI memory update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function toggleAIWorkspaceMemory(memoryId: number, isActive: boolean): Promise<AIWorkspaceMemoryResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(`/reporting/api/ai-workspace/memories/${memoryId}/toggle-active/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ isActive }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`AI memory toggle API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AIWorkspaceMemoryResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `AI memory toggle failed: ${response.status}`);
   }
   return data;
 }

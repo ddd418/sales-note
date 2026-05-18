@@ -11193,6 +11193,7 @@ AI_WORKSPACE_QUESTION_HISTORY_PAGE_SIZE = 5
 AI_WORKSPACE_MEMORY_TITLE_MAX_LENGTH = 180
 AI_WORKSPACE_MEMORY_CONTENT_MAX_LENGTH = 1600
 AI_WORKSPACE_MEMORY_LIMIT = 12
+AI_WORKSPACE_MEMORY_PAGE_SIZE = 8
 AI_WORKSPACE_RECENT_CONVERSATION_LIMIT = 5
 AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT = """
 Act like a CRM strategy architect, senior growth consultant, and “Zhuge Liang”-level tactician who analyzes CRM programs, customer data, operational constraints, and business goals to recommend the most effective CRM strategy.
@@ -11459,6 +11460,195 @@ def _ai_workspace_memory_payload(memory):
         'createdAt': _datetime_or_none(memory.created_at),
         'updatedAt': _datetime_or_none(memory.updated_at),
     }
+
+
+def _ai_workspace_memory_request_payload(request):
+    try:
+        return json.loads(request.body.decode('utf-8') or '{}'), None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}, {
+            'success': False,
+            'error': 'invalid_json',
+            'message': '요청 JSON 형식이 올바르지 않습니다.',
+        }
+
+
+def _ai_workspace_memory_permission_response(request):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile and user_profile.can_use_ai):
+        return JsonResponse({
+            'success': False,
+            'error': 'permission_denied',
+            'message': 'AI 기능 사용 권한이 없습니다.',
+        }, status=403)
+    return None
+
+
+def _ai_workspace_memory_queryset_for_user(user):
+    return AIWorkspaceMemory.objects.filter(
+        user=user,
+    ).select_related(
+        'department',
+        'department__company',
+        'source_question_log',
+        'source_feedback',
+    )
+
+
+def _ai_workspace_memory_normalized_filters(request):
+    status_filter = str(request.GET.get('status') or 'active').strip().lower()
+    if status_filter not in {'active', 'inactive', 'all'}:
+        status_filter = 'active'
+
+    scope_filter = str(request.GET.get('scope') or 'any').strip().lower()
+    if scope_filter not in {'any', 'department', 'all'}:
+        scope_filter = 'any'
+
+    memory_type = str(request.GET.get('memory_type') or request.GET.get('memoryType') or '').strip()
+    if memory_type not in {'fact', 'correction', 'preference'}:
+        memory_type = ''
+
+    department_id = None
+    raw_department_id = request.GET.get('department_id') or request.GET.get('departmentId')
+    if raw_department_id:
+        try:
+            department_id = int(raw_department_id)
+        except (TypeError, ValueError):
+            department_id = None
+        if department_id is not None and department_id <= 0:
+            department_id = None
+
+    query = _ai_workspace_question_text(request.GET.get('q'), 120)
+    try:
+        page = int(request.GET.get('page') or 1)
+    except (TypeError, ValueError):
+        page = 1
+
+    return {
+        'status': status_filter,
+        'scope': scope_filter,
+        'memoryType': memory_type,
+        'departmentId': department_id,
+        'q': query,
+        'page': max(1, page),
+    }
+
+
+def _ai_workspace_memory_apply_filters(queryset, filters):
+    status_filter = filters.get('status')
+    if status_filter == 'active':
+        queryset = queryset.filter(is_active=True)
+    elif status_filter == 'inactive':
+        queryset = queryset.filter(is_active=False)
+
+    scope_filter = filters.get('scope')
+    if scope_filter == 'department':
+        queryset = queryset.filter(scope_type='department')
+    elif scope_filter == 'all':
+        queryset = queryset.filter(scope_type='all')
+
+    memory_type = filters.get('memoryType')
+    if memory_type:
+        queryset = queryset.filter(memory_type=memory_type)
+
+    department_id = filters.get('departmentId')
+    if department_id:
+        queryset = queryset.filter(department_id=department_id)
+
+    query = filters.get('q')
+    if query:
+        queryset = queryset.filter(
+            Q(title__icontains=query) |
+            Q(content__icontains=query) |
+            Q(department__name__icontains=query) |
+            Q(department__company__name__icontains=query) |
+            Q(source_question_log__question__icontains=query)
+        )
+    return queryset
+
+
+def _ai_workspace_memory_counts(queryset):
+    return {
+        'total': queryset.count(),
+        'active': queryset.filter(is_active=True).count(),
+        'inactive': queryset.filter(is_active=False).count(),
+        'department': queryset.filter(scope_type='department').count(),
+        'all': queryset.filter(scope_type='all').count(),
+    }
+
+
+def _ai_workspace_update_memory_from_payload(memory, payload, user):
+    update_fields = []
+
+    if 'memoryType' in payload or 'memory_type' in payload:
+        memory_type = str(payload.get('memoryType') or payload.get('memory_type') or '').strip()
+        if memory_type not in {'fact', 'correction', 'preference'}:
+            return None, JsonResponse({
+                'success': False,
+                'error': 'invalid_memory_type',
+                'message': '기억 유형이 올바르지 않습니다.',
+            }, status=400)
+        if memory.memory_type != memory_type:
+            memory.memory_type = memory_type
+            update_fields.append('memory_type')
+
+    if 'title' in payload:
+        title = _ai_workspace_question_text(payload.get('title'), AI_WORKSPACE_MEMORY_TITLE_MAX_LENGTH)
+        if memory.title != title:
+            memory.title = title
+            update_fields.append('title')
+
+    if any(key in payload for key in ['content', 'memory', 'comment']):
+        content = _ai_workspace_question_text(
+            payload.get('content') or payload.get('memory') or payload.get('comment'),
+            AI_WORKSPACE_MEMORY_CONTENT_MAX_LENGTH,
+        )
+        if len(content) < 2:
+            return None, JsonResponse({
+                'success': False,
+                'error': 'missing_content',
+                'message': '기억할 내용을 입력하세요.',
+            }, status=400)
+        if memory.content != content:
+            memory.content = content
+            update_fields.append('content')
+
+    if 'scopeType' in payload or 'scope_type' in payload or 'departmentId' in payload or 'department_id' in payload:
+        scope_type = str(payload.get('scopeType') or payload.get('scope_type') or memory.scope_type).strip().lower()
+        if scope_type not in {'all', 'department'}:
+            return None, JsonResponse({
+                'success': False,
+                'error': 'invalid_scope',
+                'message': '기억 범위가 올바르지 않습니다.',
+            }, status=400)
+
+        department = None
+        if scope_type == 'department':
+            department_id = payload.get('departmentId') or payload.get('department_id') or memory.department_id
+            department = _ai_workspace_question_department_for_user(user, department_id)
+            if not department:
+                return None, JsonResponse({
+                    'success': False,
+                    'error': 'department_not_found',
+                    'message': '부서를 찾을 수 없거나 접근 권한이 없습니다.',
+                }, status=404)
+
+        if memory.scope_type != scope_type:
+            memory.scope_type = scope_type
+            update_fields.append('scope_type')
+        if memory.department_id != (department.id if department else None):
+            memory.department = department
+            update_fields.append('department')
+
+    if update_fields:
+        update_fields.append('updated_at')
+        memory.save(update_fields=update_fields)
+
+    return memory, None
 
 
 def _ai_workspace_verified_memories(user, department_id=None, scope_type='department', limit=AI_WORKSPACE_MEMORY_LIMIT):
@@ -13995,29 +14185,65 @@ def ai_workspace_question_feedback_api(request):
 
 
 @never_cache
+@require_http_methods(["GET"])
+def ai_workspace_memories_api(request):
+    """Return current user's approved AI Workspace memories for React management."""
+    permission_response = _ai_workspace_memory_permission_response(request)
+    if permission_response:
+        return permission_response
+
+    base_qs = _ai_workspace_memory_queryset_for_user(request.user)
+    filters = _ai_workspace_memory_normalized_filters(request)
+    filtered_qs = _ai_workspace_memory_apply_filters(base_qs, filters).order_by('-updated_at')
+
+    paginator = Paginator(filtered_qs, AI_WORKSPACE_MEMORY_PAGE_SIZE)
+    if paginator.count == 0:
+        page_obj = None
+        page_number = 1
+        total_pages = 0
+    else:
+        page_number = min(filters['page'], paginator.num_pages)
+        page_obj = paginator.page(page_number)
+        total_pages = paginator.num_pages
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'filters': {
+            **filters,
+            'page': page_number,
+        },
+        'counts': {
+            **_ai_workspace_memory_counts(base_qs),
+            'filtered': paginator.count,
+        },
+        'pagination': {
+            'page': page_number,
+            'pageSize': AI_WORKSPACE_MEMORY_PAGE_SIZE,
+            'total': paginator.count,
+            'totalPages': total_pages,
+            'hasNext': bool(page_obj and page_obj.has_next()),
+            'hasPrevious': bool(page_obj and page_obj.has_previous()),
+        },
+        'memories': [
+            _ai_workspace_memory_payload(memory)
+            for memory in (page_obj.object_list if page_obj else [])
+        ],
+    })
+
+
+@never_cache
 @require_POST
 def ai_workspace_memory_create_api(request):
     """Persist user-approved AI Workspace memory/correction for future answers."""
-    auth_response = _api_login_required_response(request)
-    if auth_response:
-        return auth_response
+    permission_response = _ai_workspace_memory_permission_response(request)
+    if permission_response:
+        return permission_response
 
-    user_profile = get_user_profile(request.user)
-    if not (user_profile and user_profile.can_use_ai):
-        return JsonResponse({
-            'success': False,
-            'error': 'permission_denied',
-            'message': 'AI 기능 사용 권한이 없습니다.',
-        }, status=403)
-
-    try:
-        payload = json.loads(request.body.decode('utf-8') or '{}')
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return JsonResponse({
-            'success': False,
-            'error': 'invalid_json',
-            'message': '요청 JSON 형식이 올바르지 않습니다.',
-        }, status=400)
+    payload, payload_error = _ai_workspace_memory_request_payload(request)
+    if payload_error:
+        return JsonResponse(payload_error, status=400)
 
     source_question_log = None
     raw_question_log_id = payload.get('questionLogId') or payload.get('question_log_id')
@@ -14132,6 +14358,96 @@ def ai_workspace_memory_create_api(request):
         'generatedAt': timezone.now().isoformat(),
         'memory': _ai_workspace_memory_payload(memory),
         'message': '검수한 내용을 AI 기억에 저장했습니다. 다음 질문부터 우선 반영됩니다.',
+    })
+
+
+@never_cache
+@require_POST
+def ai_workspace_memory_update_api(request, memory_id):
+    """Update one current-user AI Workspace memory."""
+    permission_response = _ai_workspace_memory_permission_response(request)
+    if permission_response:
+        return permission_response
+
+    payload, payload_error = _ai_workspace_memory_request_payload(request)
+    if payload_error:
+        return JsonResponse(payload_error, status=400)
+
+    memory = _ai_workspace_memory_queryset_for_user(request.user).filter(id=memory_id).first()
+    if not memory:
+        return JsonResponse({
+            'success': False,
+            'error': 'memory_not_found',
+            'message': 'AI 기억을 찾을 수 없습니다.',
+        }, status=404)
+
+    memory, error_response = _ai_workspace_update_memory_from_payload(memory, payload, request.user)
+    if error_response:
+        return error_response
+
+    refreshed = _ai_workspace_memory_queryset_for_user(request.user).get(id=memory.id)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'memory': _ai_workspace_memory_payload(refreshed),
+        'message': 'AI 기억을 수정했습니다.',
+    })
+
+
+@never_cache
+@require_POST
+def ai_workspace_memory_toggle_active_api(request, memory_id):
+    """Activate or deactivate one current-user AI Workspace memory."""
+    permission_response = _ai_workspace_memory_permission_response(request)
+    if permission_response:
+        return permission_response
+
+    payload, payload_error = _ai_workspace_memory_request_payload(request)
+    if payload_error:
+        return JsonResponse(payload_error, status=400)
+
+    memory = _ai_workspace_memory_queryset_for_user(request.user).filter(id=memory_id).first()
+    if not memory:
+        return JsonResponse({
+            'success': False,
+            'error': 'memory_not_found',
+            'message': 'AI 기억을 찾을 수 없습니다.',
+        }, status=404)
+
+    if 'isActive' in payload:
+        is_active_value = payload.get('isActive')
+    elif 'is_active' in payload:
+        is_active_value = payload.get('is_active')
+    else:
+        return JsonResponse({
+            'success': False,
+            'error': 'missing_active_state',
+            'message': '활성 상태를 입력하세요.',
+        }, status=400)
+
+    if isinstance(is_active_value, bool):
+        is_active = is_active_value
+    elif isinstance(is_active_value, str) and is_active_value.lower() in {'true', 'false'}:
+        is_active = is_active_value.lower() == 'true'
+    else:
+        return JsonResponse({
+            'success': False,
+            'error': 'invalid_active_state',
+            'message': '활성 상태가 올바르지 않습니다.',
+        }, status=400)
+
+    if memory.is_active != is_active:
+        memory.is_active = is_active
+        memory.save(update_fields=['is_active', 'updated_at'])
+
+    refreshed = _ai_workspace_memory_queryset_for_user(request.user).get(id=memory.id)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'memory': _ai_workspace_memory_payload(refreshed),
+        'message': 'AI 기억을 활성화했습니다.' if is_active else 'AI 기억을 비활성화했습니다.',
     })
 
 

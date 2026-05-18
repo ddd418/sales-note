@@ -1,5 +1,96 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — AI Workspace Memory Management v1
+
+**상태**: 구현/로컬 검증/로컬 라우트 smoke 완료, 배포 준비 중
+
+### 요약
+
+AI 검수 완료 후 다음 단계로, 사용자가 본인이 저장한 AI 검수 기억을 React AI Workspace에서 직접 관리할 수 있게 했습니다. 기존 `AIWorkspaceMemory`를 재사용해 새 DB 변경 없이 목록 조회, 필터, 수정, 비활성화, 재활성화를 추가했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: 본인 기억 목록/수정/활성 토글 API와 필터/권한 helper 추가.
+- `reporting/urls.py`: 기억 관리 API route 추가.
+- `reporting/tests.py`: 기억 목록, 필터, 권한, 수정, 토글, 컨텍스트 제외/포함 회귀 테스트 추가.
+- `frontend/src/api.ts`: 기억 목록/수정/토글 API client와 타입 추가.
+- `frontend/src/App.tsx`: AI Workspace `검수 기억 관리` 패널 추가.
+- `frontend/src/styles.css`: 기억 관리 패널, 카드, 편집 폼, 모바일 스타일 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- `정정 저장`, `앞으로 기억`으로 쌓인 검수 기억을 사용자가 직접 확인할 수 있습니다.
+- 틀린 기억은 삭제하지 않고 비활성화해 다음 AI 답변 문맥에서 제외할 수 있습니다.
+- 비활성 기억은 재활성화할 수 있어 정정 이력과 감사 가능성을 보존합니다.
+- 본인 기억만 관리하도록 제한해 팀/회사 범위 권한 충돌을 피했습니다.
+
+### 기존 기능 보존
+
+- 기존 AI 질문, 답변 기록, 질문 삭제, 피드백 저장, 기억 저장 API를 유지했습니다.
+- `/reporting/*` 인증/CSRF/AI 권한 흐름을 유지했습니다.
+- 새 migration은 없습니다.
+- 회사 공용 기억이나 타 사용자 기억 관리는 추가하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_memories_api_lists_only_current_user_with_filters reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_memories_api_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_memory_update_api_updates_current_user_memory reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_memory_update_api_blocks_other_users_memory reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_memory_update_api_blocks_inaccessible_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_memory_toggle_active_controls_question_context --verbosity=1
+→ Ran 6 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 79 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-CPJTnbBi.js and /assets/index-C5O662FQ.css. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+local frontend route smoke
+→ Built frontend served at http://127.0.0.1:4173/ai-workspace/ and redirected anonymous user to /reporting/login/?next=/ai-workspace/. Playwright console check reported 0 errors/warnings.
+```
+
+### 알려진 제한
+
+- v1은 본인 기억만 관리합니다. 회사 공용 기억은 별도 권한/충돌 정책이 필요합니다.
+- 기억 hard delete는 제공하지 않습니다.
+- 실제 로그인 세션에서 기억 수정/비활성화 버튼을 누르는 운영 수동 검수는 배포 후 사용자 확인이 필요합니다.
+
+### 권장 다음 단계
+
+운영에서 검수 기억 목록, 수정, 비활성화/재활성화가 정상 동작하는지 확인한 뒤, 필요하면 회사 공용 기억 정책 또는 기억 출처 상세 화면을 별도 단계로 설계하는 것이 좋습니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. AI Workspace 하단의 `검수 기억 관리` 패널이 보이는지 확인합니다.
+3. `정정 저장` 또는 `앞으로 기억`으로 새 기억을 하나 저장합니다.
+4. 목록에서 저장한 기억이 보이는지 확인합니다.
+5. `수정`으로 제목/본문을 바꾸고 저장합니다.
+6. `비활성화` 후 같은 주제 질문에서 해당 기억이 더 이상 반영되지 않는지 확인합니다.
+7. `재활성화` 후 다시 관련 질문에서 반영되는지 확인합니다.
+8. 상태/유형/범위/검색 필터가 동작하는지 확인합니다.
+
+### 운영 배포 상태
+
+- 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 배포와 production smoke를 진행할 예정입니다.
+
 ## 2026-05-18 — AI Workspace Verified Memory Foundation
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료

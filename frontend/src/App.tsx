@@ -128,6 +128,9 @@ import {
   AIWorkspaceQuestionScope,
   AIWorkspaceQuestionLog,
   AIWorkspaceQuestionLogDetailData,
+  AIWorkspaceMemoriesData,
+  AIWorkspaceMemoryFilters,
+  AIWorkspaceMemoryItem,
   AIWorkspaceMemoryType,
   AIWorkspaceQuestionFeedbackRating,
   AIWorkspaceFollowupTarget,
@@ -209,6 +212,7 @@ import {
   loadTaskManagerData,
   loadTasksData,
   loadAIWorkspaceData,
+  loadAIWorkspaceMemories,
   loadAIWorkspaceQuestionLogDetailData,
   loadWeeklyReportCreateData,
   loadWeeklyReportDetailData,
@@ -227,6 +231,7 @@ import {
   sendMailboxEmail,
   submitAIWorkspaceActionFeedback,
   submitAIWorkspaceQuestionFeedback,
+  toggleAIWorkspaceMemory,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateCustomer as updateCustomerRecord,
@@ -248,6 +253,7 @@ import {
   saveWeeklyReportManagerComment,
   toggleDocumentTemplateDefault,
   updateDocumentTemplate,
+  updateAIWorkspaceMemory,
   updateTask,
   uploadTaskAttachments,
 } from './api';
@@ -15817,6 +15823,268 @@ function AIWorkspaceFeedbackPerformance({ data }: { data: AIWorkspaceData }) {
   );
 }
 
+type AIWorkspaceMemoryEditDraft = {
+  title: string;
+  content: string;
+  memoryType: AIWorkspaceMemoryType;
+  scopeType: AIWorkspaceQuestionScope;
+  departmentId: number | null;
+};
+
+const aiMemoryTypeLabels: Record<AIWorkspaceMemoryType, string> = {
+  fact: '검수 사실',
+  correction: '정정',
+  preference: '답변 선호',
+};
+
+function normalizeAIWorkspaceMemoryType(value: string | undefined): AIWorkspaceMemoryType {
+  if (value === 'correction' || value === 'preference') {
+    return value;
+  }
+  return 'fact';
+}
+
+function normalizeAIWorkspaceMemoryScope(value: string | undefined): AIWorkspaceQuestionScope {
+  return value === 'all' ? 'all' : 'department';
+}
+
+function AIWorkspaceMemoryPanel({
+  data,
+  editDraft,
+  editingMemoryId,
+  error,
+  filters,
+  loading,
+  memories,
+  message,
+  onCancelEdit,
+  onEditDraftChange,
+  onEditStart,
+  onFilterChange,
+  onPageChange,
+  onSaveEdit,
+  onToggleActive,
+  savingMemoryId,
+}: {
+  data: AIWorkspaceData;
+  editDraft: AIWorkspaceMemoryEditDraft;
+  editingMemoryId: number | null;
+  error: string;
+  filters: AIWorkspaceMemoryFilters;
+  loading: boolean;
+  memories: AIWorkspaceMemoriesData | null;
+  message: string;
+  onCancelEdit: () => void;
+  onEditDraftChange: (draft: Partial<AIWorkspaceMemoryEditDraft>) => void;
+  onEditStart: (memory: AIWorkspaceMemoryItem) => void;
+  onFilterChange: (filters: Partial<AIWorkspaceMemoryFilters>) => void;
+  onPageChange: (page: number) => void;
+  onSaveEdit: (memory: AIWorkspaceMemoryItem) => void;
+  onToggleActive: (memory: AIWorkspaceMemoryItem) => void;
+  savingMemoryId: number | null;
+}) {
+  const departmentOptions = data.departments;
+  const items = memories?.memories ?? [];
+  const counts = memories?.counts;
+  const pagination = memories?.pagination;
+  const canSaveEdit = editDraft.content.trim().length >= 2 && (
+    editDraft.scopeType === 'all' || Boolean(editDraft.departmentId)
+  );
+
+  return (
+    <section className="dashboard-panel ai-memory-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Verified memory</span>
+          <h2>검수 기억 관리</h2>
+        </div>
+        <Sparkles size={18} />
+      </div>
+      <div className="ai-memory-toolbar">
+        <label>
+          <span>상태</span>
+          <select
+            onChange={(event) => onFilterChange({ status: event.target.value as AIWorkspaceMemoryFilters['status'] })}
+            value={filters.status || 'active'}
+          >
+            <option value="active">활성</option>
+            <option value="inactive">비활성</option>
+            <option value="all">전체</option>
+          </select>
+        </label>
+        <label>
+          <span>유형</span>
+          <select
+            onChange={(event) => onFilterChange({ memoryType: event.target.value as AIWorkspaceMemoryFilters['memoryType'] })}
+            value={filters.memoryType || ''}
+          >
+            <option value="">전체</option>
+            <option value="fact">검수 사실</option>
+            <option value="correction">정정</option>
+            <option value="preference">답변 선호</option>
+          </select>
+        </label>
+        <label>
+          <span>범위</span>
+          <select
+            onChange={(event) => onFilterChange({ scope: event.target.value as AIWorkspaceMemoryFilters['scope'] })}
+            value={filters.scope || 'any'}
+          >
+            <option value="any">전체</option>
+            <option value="department">부서</option>
+            <option value="all">전체 부서</option>
+          </select>
+        </label>
+        <label className="ai-memory-search">
+          <Search size={14} />
+          <input
+            maxLength={120}
+            onChange={(event) => onFilterChange({ q: event.target.value })}
+            placeholder="검색"
+            type="search"
+            value={filters.q || ''}
+          />
+        </label>
+      </div>
+      {counts ? (
+        <div className="ai-memory-counts">
+          <span>활성 {formatNumber(counts.active)}</span>
+          <span>비활성 {formatNumber(counts.inactive)}</span>
+          <span>표시 {formatNumber(counts.filtered)}</span>
+        </div>
+      ) : null}
+      {message ? <div className="ai-question-feedback-message success">{message}</div> : null}
+      {error ? <div className="ai-question-feedback-message error">{error}</div> : null}
+      {loading && !memories ? (
+        <section className="dashboard-loading compact">
+          <Loader2 className="spin-icon" size={18} />
+          <span>검수 기억을 불러오는 중입니다</span>
+        </section>
+      ) : null}
+      {items.length > 0 ? (
+        <div className="ai-memory-list">
+          {items.map((memory) => {
+            const editing = editingMemoryId === memory.id;
+            const memoryType = normalizeAIWorkspaceMemoryType(memory.memoryType);
+            const scopeType = normalizeAIWorkspaceMemoryScope(memory.scopeType);
+            const departmentLabel = memory.department
+              ? [memory.department.company, memory.department.name].filter(Boolean).join(' · ')
+              : '전체 부서';
+            return (
+              <article className={`ai-memory-card ${memory.isActive ? 'active' : 'inactive'}`} key={memory.id}>
+                {editing ? (
+                  <div className="ai-memory-edit-form">
+                    <input
+                      maxLength={180}
+                      onChange={(event) => onEditDraftChange({ title: event.target.value })}
+                      placeholder="제목"
+                      value={editDraft.title}
+                    />
+                    <div className="ai-memory-edit-grid">
+                      <select
+                        onChange={(event) => onEditDraftChange({ memoryType: event.target.value as AIWorkspaceMemoryType })}
+                        value={editDraft.memoryType}
+                      >
+                        <option value="fact">검수 사실</option>
+                        <option value="correction">정정</option>
+                        <option value="preference">답변 선호</option>
+                      </select>
+                      <select
+                        onChange={(event) => {
+                          const nextScope = event.target.value as AIWorkspaceQuestionScope;
+                          onEditDraftChange({
+                            scopeType: nextScope,
+                            departmentId: nextScope === 'all'
+                              ? null
+                              : editDraft.departmentId || data.featuredDepartment?.departmentId || data.selectedDepartmentId || departmentOptions[0]?.id || null,
+                          });
+                        }}
+                        value={editDraft.scopeType}
+                      >
+                        <option value="department">부서</option>
+                        <option value="all">전체 부서</option>
+                      </select>
+                      {editDraft.scopeType === 'department' ? (
+                        <select
+                          onChange={(event) => onEditDraftChange({ departmentId: Number(event.target.value) || null })}
+                          value={editDraft.departmentId || ''}
+                        >
+                          <option value="">부서 선택</option>
+                          {departmentOptions.map((department) => (
+                            <option key={department.id} value={department.id}>
+                              {[department.company, department.name].filter(Boolean).join(' · ')}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                    </div>
+                    <textarea
+                      maxLength={1600}
+                      onChange={(event) => onEditDraftChange({ content: event.target.value })}
+                      rows={4}
+                      value={editDraft.content}
+                    />
+                    <div className="ai-memory-edit-actions">
+                      <span>{formatNumber(editDraft.content.trim().length)} / 1600</span>
+                      <button onClick={onCancelEdit} type="button">
+                        <X size={14} />
+                        취소
+                      </button>
+                      <button disabled={!canSaveEdit || savingMemoryId === memory.id} onClick={() => onSaveEdit(memory)} type="button">
+                        {savingMemoryId === memory.id ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
+                        저장
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="ai-memory-card-head">
+                      <div>
+                        <span>{aiMemoryTypeLabels[memoryType]}</span>
+                        <strong>{memory.title || aiMemoryTypeLabels[memoryType]}</strong>
+                        <small>{departmentLabel}</small>
+                      </div>
+                      <em>{memory.isActive ? '활성' : '비활성'}</em>
+                    </div>
+                    <p>{memory.content}</p>
+                    {memory.sourceQuestion ? (
+                      <small className="ai-memory-source">출처 질문 · {memory.sourceQuestion}</small>
+                    ) : null}
+                    <div className="ai-memory-card-actions">
+                      <span>{formatDateTimeLabel(memory.updatedAt)}</span>
+                      <button disabled={savingMemoryId === memory.id} onClick={() => onEditStart(memory)} type="button">
+                        <Pencil size={14} />
+                        수정
+                      </button>
+                      <button disabled={savingMemoryId === memory.id} onClick={() => onToggleActive(memory)} type="button">
+                        {savingMemoryId === memory.id ? <Loader2 className="spin-icon" size={14} /> : memory.isActive ? <Archive size={14} /> : <RefreshCw size={14} />}
+                        {memory.isActive ? '비활성화' : '재활성화'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      ) : (!loading ? <DashboardEmpty label="검수 기억이 없습니다" /> : null)}
+      {pagination && pagination.totalPages > 1 ? (
+        <div className="ai-question-history-pagination">
+          <button disabled={!pagination.hasPrevious || loading} onClick={() => onPageChange(pagination.page - 1)} type="button">
+            <ChevronLeft size={14} />
+            이전
+          </button>
+          <span>{formatNumber(pagination.page)} / {formatNumber(pagination.totalPages)}</span>
+          <button disabled={!pagination.hasNext || loading} onClick={() => onPageChange(pagination.page + 1)} type="button">
+            다음
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function AIWorkspacePage({
   data,
   loading,
@@ -15855,6 +16123,20 @@ function AIWorkspacePage({
   const [questionReviewSaving, setQuestionReviewSaving] = useState('');
   const [questionReviewMessage, setQuestionReviewMessage] = useState('');
   const [questionReviewError, setQuestionReviewError] = useState('');
+  const [memoryData, setMemoryData] = useState<AIWorkspaceMemoriesData | null>(null);
+  const [memoryFilters, setMemoryFilters] = useState<AIWorkspaceMemoryFilters>({ status: 'active', scope: 'any', memoryType: '', q: '', page: 1 });
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [memoryError, setMemoryError] = useState('');
+  const [memoryMessage, setMemoryMessage] = useState('');
+  const [memorySavingId, setMemorySavingId] = useState<number | null>(null);
+  const [editingMemoryId, setEditingMemoryId] = useState<number | null>(null);
+  const [memoryEditDraft, setMemoryEditDraft] = useState<AIWorkspaceMemoryEditDraft>({
+    title: '',
+    content: '',
+    memoryType: 'fact',
+    scopeType: 'department',
+    departmentId: null,
+  });
   const activeDepartmentId = data?.featuredDepartment?.departmentId ?? selectedDepartmentId ?? data?.selectedDepartmentId ?? null;
 
   useEffect(() => {
@@ -15877,6 +16159,134 @@ function AIWorkspacePage({
       setDepartmentQuestionModel(data?.defaultQuestionModel || choices[0].id);
     }
   }, [data?.defaultQuestionModel, data?.questionModelChoices, departmentQuestionModel]);
+
+  useEffect(() => {
+    if (!data?.permission.canUseAi) {
+      setMemoryData(null);
+      return;
+    }
+    void loadMemoryPanelData(memoryFilters);
+  }, [
+    data?.permission.canUseAi,
+    memoryFilters.status,
+    memoryFilters.scope,
+    memoryFilters.memoryType,
+    memoryFilters.departmentId,
+    memoryFilters.q,
+    memoryFilters.page,
+  ]);
+
+  async function loadMemoryPanelData(nextFilters: AIWorkspaceMemoryFilters = memoryFilters) {
+    setMemoryLoading(true);
+    setMemoryError('');
+    try {
+      const result = await loadAIWorkspaceMemories(nextFilters);
+      setMemoryData(result);
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : '검수 기억을 불러오지 못했습니다.');
+    } finally {
+      setMemoryLoading(false);
+    }
+  }
+
+  const handleMemoryFilterChange = (nextFilters: Partial<AIWorkspaceMemoryFilters>) => {
+    setMemoryMessage('');
+    setMemoryError('');
+    setMemoryFilters((previous) => ({
+      ...previous,
+      ...nextFilters,
+      page: 1,
+    }));
+  };
+
+  const handleMemoryPageChange = (page: number) => {
+    if (page < 1) {
+      return;
+    }
+    setMemoryFilters((previous) => ({
+      ...previous,
+      page,
+    }));
+  };
+
+  const handleMemoryEditStart = (memory: AIWorkspaceMemoryItem) => {
+    const scopeType = normalizeAIWorkspaceMemoryScope(memory.scopeType);
+    setEditingMemoryId(memory.id);
+    setMemoryMessage('');
+    setMemoryError('');
+    setMemoryEditDraft({
+      title: memory.title || '',
+      content: memory.content || '',
+      memoryType: normalizeAIWorkspaceMemoryType(memory.memoryType),
+      scopeType,
+      departmentId: scopeType === 'department'
+        ? memory.department?.id || activeDepartmentId || data?.selectedDepartmentId || null
+        : null,
+    });
+  };
+
+  const handleMemoryEditDraftChange = (draft: Partial<AIWorkspaceMemoryEditDraft>) => {
+    setMemoryEditDraft((previous) => ({
+      ...previous,
+      ...draft,
+    }));
+  };
+
+  const handleMemoryEditCancel = () => {
+    setEditingMemoryId(null);
+    setMemoryEditDraft({
+      title: '',
+      content: '',
+      memoryType: 'fact',
+      scopeType: 'department',
+      departmentId: null,
+    });
+  };
+
+  const handleMemoryEditSave = async (memory: AIWorkspaceMemoryItem) => {
+    if (memorySavingId || memoryEditDraft.content.trim().length < 2) {
+      return;
+    }
+    setMemorySavingId(memory.id);
+    setMemoryMessage('');
+    setMemoryError('');
+    try {
+      const result = await updateAIWorkspaceMemory(memory.id, {
+        title: memoryEditDraft.title.trim(),
+        content: memoryEditDraft.content.trim(),
+        memoryType: memoryEditDraft.memoryType,
+        scopeType: memoryEditDraft.scopeType,
+        departmentId: memoryEditDraft.scopeType === 'department' ? memoryEditDraft.departmentId : null,
+      });
+      setMemoryMessage(result.message || 'AI 기억을 수정했습니다.');
+      handleMemoryEditCancel();
+      await loadMemoryPanelData(memoryFilters);
+      await onRefresh({ departmentId: activeDepartmentId, questionPage: questionHistoryPage, questionScope });
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : 'AI 기억 수정에 실패했습니다.');
+    } finally {
+      setMemorySavingId(null);
+    }
+  };
+
+  const handleMemoryToggleActive = async (memory: AIWorkspaceMemoryItem) => {
+    if (memorySavingId) {
+      return;
+    }
+    setMemorySavingId(memory.id);
+    setMemoryMessage('');
+    setMemoryError('');
+    try {
+      const result = await toggleAIWorkspaceMemory(memory.id, !memory.isActive);
+      setMemoryMessage(result.message || 'AI 기억 상태를 변경했습니다.');
+      await loadMemoryPanelData(memoryFilters);
+      await onRefresh({ departmentId: activeDepartmentId, questionPage: questionHistoryPage, questionScope });
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : 'AI 기억 상태 변경에 실패했습니다.');
+    } finally {
+      setMemorySavingId(null);
+    }
+  };
 
   const handleCopyPrompt = async (target: AIWorkspacePromptTarget) => {
     try {
@@ -16039,6 +16449,7 @@ function AIWorkspacePage({
         content,
       });
       setQuestionReviewMessage(result.message || '검수 기억을 저장했습니다.');
+      await loadMemoryPanelData(memoryFilters);
       await onRefresh({ departmentId: activeDepartmentId, questionPage: questionHistoryPage, questionScope });
     } catch (error) {
       setQuestionReviewError(error instanceof Error ? error.message : '검수 기억 저장에 실패했습니다.');
@@ -16179,6 +16590,24 @@ function AIWorkspacePage({
               reviewMessage={questionReviewMessage}
               reviewSaving={questionReviewSaving}
               result={departmentQuestionResult}
+            />
+            <AIWorkspaceMemoryPanel
+              data={data}
+              editDraft={memoryEditDraft}
+              editingMemoryId={editingMemoryId}
+              error={memoryError}
+              filters={memoryFilters}
+              loading={memoryLoading}
+              memories={memoryData}
+              message={memoryMessage}
+              onCancelEdit={handleMemoryEditCancel}
+              onEditDraftChange={handleMemoryEditDraftChange}
+              onEditStart={handleMemoryEditStart}
+              onFilterChange={handleMemoryFilterChange}
+              onPageChange={handleMemoryPageChange}
+              onSaveEdit={handleMemoryEditSave}
+              onToggleActive={handleMemoryToggleActive}
+              savingMemoryId={memorySavingId}
             />
           </div>
 
