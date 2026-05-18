@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Weekly Report Paragraph Spacing Fix
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시 완료, Railway CLI 인증 문제로 운영 배포 확인 대기
 
 ### 요약
 
@@ -60,7 +60,16 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending.
+- Git commit: `df0a6e6` (`fix: preserve weekly report paragraph breaks`)
+- Git push: `main` pushed to origin.
+- Railway CLI status: `Unauthorized. Please run railway login again.`
+- Frontend production bundle poll:
+  - Local build CSS: `index-CDmVRHme.css`
+  - Production still serving: `index-CyM18rmt.css`
+  - 8-minute poll did not observe the new frontend bundle.
+- Backend production smoke:
+  - `https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/3/` anonymous request still returns expected `401 login_required`.
+- Required next action: restore Railway CLI authentication, then deploy/verify `web` and `sales-note-frontend`.
 
 ### 권장 다음 작업
 

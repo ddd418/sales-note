@@ -32,8 +32,8 @@
 
 **Current status**:
 
-- Implementation and local validation complete.
-- Commit, push, Railway deployment, and production smoke pending.
+- Implementation, local validation, commit, and push complete.
+- Railway CLI currently returns `Unauthorized`; production deployment verification and manual deploy are blocked until Railway CLI authentication is restored.
 
 ## 2026-05-18 Weekly report line break rendering fix plan
 
