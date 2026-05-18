@@ -1,5 +1,69 @@
 # AGENT_PLAN.md
 
+## 2026-05-18 React tasks/TODO v1 + navigation API plan
+
+**Background**:
+
+- User completed manual verification for the weekly report line-break fixes and asked to continue.
+- The agreed next React migration task is `업무/TODO React v1 + 권한 기반 메뉴 기반 정리`.
+- Existing legacy TODO workflow lives in the `todos` app under `/todos/*` and already has models for `Todo`, `TodoCategory`, `TodoAttachment`, and `TodoLog`.
+
+**DB change required**: No.
+
+- Reuse existing `todos` models.
+- Do not add migrations.
+
+**Locked v1 scope**:
+
+- Include:
+  - Personal tasks list: my tasks, received tasks, requested tasks.
+  - Task creation.
+  - Peer task request.
+  - Status actions: approve, reject, ongoing, on hold, done.
+  - Manager-only task assignment and manager task status updates.
+  - Backend navigation API and React dynamic navigation fallback.
+- Exclude for v1:
+  - Attachments.
+  - Edit/delete.
+  - Category CRUD.
+  - Full task detail migration.
+  - Legacy template deletion.
+
+**Permission defaults**:
+
+- Personal `/tasks/` is available to authenticated users.
+- Manager assignment `/tasks/manager/` is available only to role `manager`, matching legacy TODO behavior.
+- Same-company scoping must be preserved for peer assignees, manager assignees, and customer search.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `/reporting/api/navigation/`.
+  - Add React-facing task APIs under `/reporting/api/tasks/*`.
+  - Keep `/todos/*` legacy screens as fallback.
+  - Add focused API tests in `todos/tests.py`.
+- Frontend:
+  - Add `/tasks/` and `/tasks/manager/` route handling.
+  - Add navigation loader with existing static nav fallback.
+  - Add task list/create/status UI and manager assignment UI.
+- Documentation:
+  - Update `AGENT_REPORT.md` after validation/deployment.
+
+**Validation plan**:
+
+- `python -m py_compile todos\views.py todos\tests.py reporting\views.py reporting\urls.py`
+- Focused `todos.tests` API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
+**Current status**:
+
+- Implemented and locally validated. Commit, push, and Railway deployment pending.
+
 ## 2026-05-18 Weekly report paragraph spacing fix plan
 
 **Background**:

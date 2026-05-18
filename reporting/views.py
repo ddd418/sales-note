@@ -2204,6 +2204,62 @@ def _api_login_required_response(request):
     }, status=401)
 
 
+@never_cache
+@require_http_methods(["GET"])
+def navigation_api(request):
+    """React CRM navigation configuration for authenticated users."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    profile = get_user_profile(request.user)
+    company = profile.company if profile else None
+
+    items = [
+        {'id': 'dashboard', 'label': '대시보드', 'href': '/dashboard/'},
+        {'id': 'customers', 'label': '고객', 'href': '/customers/'},
+        {'id': 'assets', 'label': '장비', 'href': '/assets/'},
+        {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
+        {'id': 'notes', 'label': '영업노트', 'href': '/notes/'},
+        {'id': 'schedules', 'label': '일정', 'href': '/schedules/calendar/'},
+        {'id': 'tasks', 'label': '업무', 'href': '/tasks/'},
+    ]
+    if profile.role == 'manager':
+        items.append({'id': 'tasksManager', 'label': '업무하달', 'href': '/tasks/manager/'})
+    if profile.role != 'manager':
+        items.append({'id': 'mail', 'label': '메일', 'href': '/mailbox/'})
+    items.extend([
+        {'id': 'weeklyReports', 'label': '주간보고', 'href': '/weekly-reports/'},
+        {'id': 'documents', 'label': '서류', 'href': '/documents/'},
+        {'id': 'products', 'label': '제품', 'href': '/products/'},
+        {'id': 'prepayments', 'label': '선결제', 'href': '/prepayments/'},
+    ])
+    if profile.can_use_ai:
+        items.append({'id': 'ai', 'label': 'AI', 'href': '/ai-workspace/'})
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'currentUser': {
+            'id': request.user.id,
+            'name': _user_display_name(request.user),
+            'username': request.user.username,
+            'role': profile.role,
+            'roleLabel': profile.get_role_display(),
+            'company': company.name if company else '',
+            'canUseAi': bool(profile.can_use_ai),
+        },
+        'capabilities': {
+            'canManageTasks': profile.role == 'manager',
+            'canUseAi': bool(profile.can_use_ai),
+            'canUseMailbox': profile.role != 'manager',
+            'canViewAllUsers': bool(profile.can_view_all_users()),
+        },
+        'items': items,
+    })
+
+
 def _dashboard_scope_users(request, user_profile):
     """React dashboard API에서 사용할 사용자 범위를 기존 대시보드 규칙으로 계산."""
     user_filter = request.GET.get('user') or request.session.get('selected_user_id')

@@ -9018,6 +9018,242 @@ tbody tr:hover {
   min-width: 0;
 }
 
+.tasks-page {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.task-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tasks-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 14px;
+  align-items: start;
+}
+
+.task-list-panel,
+.task-side-panel .side-card {
+  min-width: 0;
+}
+
+.task-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.task-toolbar select,
+.task-composer input,
+.task-composer select,
+.task-composer textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+}
+
+.task-toolbar select,
+.task-composer input,
+.task-composer select {
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.task-composer {
+  display: grid;
+  gap: 10px;
+}
+
+.task-composer label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.task-composer textarea {
+  resize: vertical;
+  padding: 10px;
+  line-height: 1.55;
+}
+
+.task-composer-mode,
+.task-actions,
+.task-card-heading,
+.task-meta-row,
+.task-people-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.task-composer-mode button,
+.task-actions button,
+.task-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.task-composer-mode button.active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.task-card-list {
+  display: grid;
+  gap: 10px;
+}
+
+.task-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.task-card.overdue {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.task-card-main {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.task-card h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.task-card p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-status,
+.task-source,
+.task-overdue,
+.task-meta-row span,
+.task-meta-row a,
+.task-people-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.task-status.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.task-status.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.task-status.hold {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.task-status.done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.task-status.danger,
+.task-overdue {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.task-source,
+.task-meta-row span,
+.task-meta-row a,
+.task-people-row span {
+  background: var(--panel-soft);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.task-actions {
+  align-content: start;
+  justify-content: flex-end;
+  max-width: 180px;
+}
+
+.task-team-summary,
+.task-assignee-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.task-team-summary div,
+.task-assignee-list label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+}
+
+.task-team-summary strong,
+.task-team-summary span,
+.task-assignee-list span {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.task-team-summary span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .weekly-metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

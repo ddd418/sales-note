@@ -3276,6 +3276,194 @@ export type WeeklyReportManagerCommentResponse = {
   comment?: string;
 };
 
+export type NavigationItem = {
+  id: string;
+  label: string;
+  href: string;
+};
+
+export type NavigationData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  currentUser: {
+    id: number | null;
+    name: string;
+    username: string;
+    role: string;
+    roleLabel: string;
+    company: string;
+    canUseAi: boolean;
+  };
+  capabilities: {
+    canManageTasks: boolean;
+    canUseAi: boolean;
+    canUseMailbox: boolean;
+    canViewAllUsers: boolean;
+  };
+  items: NavigationItem[];
+};
+
+export type TaskUser = {
+  id: number;
+  name: string;
+  username: string;
+  role: string;
+  roleLabel: string;
+  company: string;
+};
+
+export type TaskCustomer = {
+  id: number;
+  customer: string;
+  company: string;
+  department: string;
+  owner: string;
+  href: string;
+  djangoHref: string;
+};
+
+export type TaskItem = {
+  id: number;
+  title: string;
+  description: string;
+  status: string;
+  statusLabel: string;
+  sourceType: string;
+  sourceLabel: string;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  isOverdue: boolean;
+  expectedDuration: number | null;
+  expectedDurationLabel: string;
+  category: {
+    id: number | null;
+    name: string;
+    color: string;
+  } | null;
+  createdBy: TaskUser | null;
+  assignedTo: TaskUser | null;
+  requestedBy: TaskUser | null;
+  relatedClient: TaskCustomer | null;
+  canApprove: boolean;
+  canReject: boolean;
+  canChangeStatus: boolean;
+  canComplete: boolean;
+  canSetOngoing: boolean;
+  canSetOnHold: boolean;
+  statusHref: string;
+  djangoHref: string;
+};
+
+export type TaskFormPayload = {
+  title: string;
+  description?: string;
+  dueDate?: string;
+  expectedDuration?: string;
+  relatedClientId?: string;
+};
+
+export type TaskRequestPayload = TaskFormPayload & {
+  assignedToId: string;
+};
+
+export type TaskManagerAssignPayload = TaskFormPayload & {
+  assignedToIds: string[];
+};
+
+export type TasksData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  currentUser: TaskUser | null;
+  scope: {
+    label: string;
+    canManage: boolean;
+  };
+  filters: {
+    status: string;
+  };
+  metrics: {
+    myActive: number;
+    receivedActive: number;
+    requestedActive: number;
+    overdue: number;
+    done: number;
+  };
+  options: {
+    statuses: Array<{ value: string; label: string }>;
+    statusFilters: Array<{ value: string; label: string }>;
+    durations: Array<{ value: number; label: string }>;
+    assignees: TaskUser[];
+  };
+  links: {
+    createApi: string;
+    requestApi: string;
+    assigneesApi: string;
+    customersApi: string;
+    managerApi: string;
+    djangoList: string;
+    djangoCreate: string;
+  };
+  tasks: {
+    my: TaskItem[];
+    received: TaskItem[];
+    requested: TaskItem[];
+  };
+};
+
+export type TaskManagerData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    canManage: boolean;
+  };
+  filters: {
+    status: string;
+    assignee: string;
+  };
+  metrics: {
+    total: number;
+    active: number;
+    done: number;
+    overdue: number;
+  };
+  options: TasksData['options'] & {
+    teamMembers: TaskUser[];
+  };
+  links: {
+    assignApi: string;
+    customersApi: string;
+    djangoManager: string;
+  };
+  teamSummary: Array<{
+    user: TaskUser;
+    total: number;
+    active: number;
+    done: number;
+    overdue: number;
+  }>;
+  tasks: TaskItem[];
+};
+
+export type TaskMutationResponse = {
+  success?: boolean;
+  source?: 'django';
+  message?: string;
+  error?: string;
+  task?: TaskItem;
+  tasks?: TaskItem[];
+};
+
 const emptyDashboardData: DashboardData = {
   success: false,
   source: 'unavailable',
@@ -4434,6 +4622,122 @@ const emptyWeeklyReportDetailData: WeeklyReportDetailData = {
   report: emptyWeeklyReportItem,
   form: null,
   links: emptyWeeklyReportLinks,
+};
+
+const emptyTaskUser: TaskUser = {
+  id: 0,
+  name: '',
+  username: '',
+  role: '',
+  roleLabel: '',
+  company: '',
+};
+
+const emptyNavigationData: NavigationData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  currentUser: {
+    id: null,
+    name: '',
+    username: '',
+    role: '',
+    roleLabel: '',
+    company: '',
+    canUseAi: false,
+  },
+  capabilities: {
+    canManageTasks: false,
+    canUseAi: false,
+    canUseMailbox: true,
+    canViewAllUsers: false,
+  },
+  items: [],
+};
+
+const emptyTasksLinks: TasksData['links'] = {
+  createApi: '/reporting/api/tasks/create/',
+  requestApi: '/reporting/api/tasks/request/',
+  assigneesApi: '/reporting/api/tasks/assignees/',
+  customersApi: '/reporting/api/tasks/customers/',
+  managerApi: '/reporting/api/tasks/manager/',
+  djangoList: '/todos/',
+  djangoCreate: '/todos/create/',
+};
+
+const emptyTaskOptions: TasksData['options'] = {
+  statuses: [],
+  statusFilters: [
+    { value: 'active', label: '진행/대기' },
+    { value: 'overdue', label: '지연' },
+    { value: 'pending', label: '승인 대기' },
+    { value: 'ongoing', label: '진행중' },
+    { value: 'on_hold', label: '보류' },
+    { value: 'done', label: '완료' },
+    { value: 'rejected', label: '반려' },
+    { value: 'all', label: '전체' },
+  ],
+  durations: [],
+  assignees: [],
+};
+
+const emptyTasksData: TasksData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  currentUser: null,
+  scope: {
+    label: '',
+    canManage: false,
+  },
+  filters: {
+    status: 'active',
+  },
+  metrics: {
+    myActive: 0,
+    receivedActive: 0,
+    requestedActive: 0,
+    overdue: 0,
+    done: 0,
+  },
+  options: emptyTaskOptions,
+  links: emptyTasksLinks,
+  tasks: {
+    my: [],
+    received: [],
+    requested: [],
+  },
+};
+
+const emptyTaskManagerData: TaskManagerData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    canManage: false,
+  },
+  filters: {
+    status: 'active',
+    assignee: '',
+  },
+  metrics: {
+    total: 0,
+    active: 0,
+    done: 0,
+    overdue: 0,
+  },
+  options: {
+    ...emptyTaskOptions,
+    teamMembers: [],
+  },
+  links: {
+    assignApi: '/reporting/api/tasks/manager/assign/',
+    customersApi: '/reporting/api/tasks/customers/',
+    djangoManager: '/todos/manager/',
+  },
+  teamSummary: [],
+  tasks: [],
 };
 
 function getCookie(name: string): string {
@@ -7391,6 +7695,207 @@ export async function submitAIWorkspaceQuestionFeedback(
   }
   return data;
 }
+
+export async function loadNavigationData(): Promise<NavigationData> {
+  try {
+    const response = await fetch('/reporting/api/navigation/', {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Navigation API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<NavigationData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || `Navigation API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyNavigationData,
+      ...payload,
+      currentUser: {
+        ...emptyNavigationData.currentUser,
+        ...(payload.currentUser ?? {}),
+      },
+      capabilities: {
+        ...emptyNavigationData.capabilities,
+        ...(payload.capabilities ?? {}),
+      },
+      items: payload.items ?? [],
+    };
+  } catch (error) {
+    return {
+      ...emptyNavigationData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Navigation API unavailable',
+    };
+  }
+}
+
+export async function loadTasksData(params: { status?: string } = {}): Promise<TasksData> {
+  const query = new URLSearchParams();
+  if (params.status) query.set('status', params.status);
+  try {
+    const response = await fetch(`/reporting/api/tasks/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Tasks API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<TasksData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Tasks API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyTasksData,
+      ...payload,
+      currentUser: payload.currentUser ?? null,
+      scope: {
+        ...emptyTasksData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyTasksData.filters,
+        ...(payload.filters ?? {}),
+      },
+      metrics: {
+        ...emptyTasksData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      options: {
+        ...emptyTaskOptions,
+        ...(payload.options ?? {}),
+        statuses: payload.options?.statuses ?? [],
+        statusFilters: payload.options?.statusFilters ?? emptyTaskOptions.statusFilters,
+        durations: payload.options?.durations ?? [],
+        assignees: payload.options?.assignees ?? [],
+      },
+      links: {
+        ...emptyTasksLinks,
+        ...(payload.links ?? {}),
+      },
+      tasks: {
+        my: payload.tasks?.my ?? [],
+        received: payload.tasks?.received ?? [],
+        requested: payload.tasks?.requested ?? [],
+      },
+    };
+  } catch (error) {
+    return {
+      ...emptyTasksData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Tasks API unavailable',
+    };
+  }
+}
+
+export async function loadTaskManagerData(params: { status?: string; assignee?: string } = {}): Promise<TaskManagerData> {
+  const query = new URLSearchParams();
+  if (params.status) query.set('status', params.status);
+  if (params.assignee) query.set('assignee', params.assignee);
+  try {
+    const response = await fetch(`/reporting/api/tasks/manager/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Task manager API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<TaskManagerData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Task manager API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyTaskManagerData,
+      ...payload,
+      scope: {
+        ...emptyTaskManagerData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyTaskManagerData.filters,
+        ...(payload.filters ?? {}),
+      },
+      metrics: {
+        ...emptyTaskManagerData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      options: {
+        ...emptyTaskManagerData.options,
+        ...(payload.options ?? {}),
+        statusFilters: payload.options?.statusFilters ?? emptyTaskOptions.statusFilters,
+        teamMembers: payload.options?.teamMembers ?? [],
+      },
+      links: {
+        ...emptyTaskManagerData.links,
+        ...(payload.links ?? {}),
+      },
+      teamSummary: payload.teamSummary ?? [],
+      tasks: payload.tasks ?? [],
+    };
+  } catch (error) {
+    return {
+      ...emptyTaskManagerData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Task manager API unavailable',
+    };
+  }
+}
+
+async function postTaskJson<TPayload, TResponse = TaskMutationResponse>(submitUrl: string, payload: TPayload): Promise<TResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Task mutation API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as TResponse & { success?: boolean; error?: string; message?: string };
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Task mutation failed: ${response.status}`);
+  }
+  return data;
+}
+
+export const createTask = (submitUrl: string, payload: TaskFormPayload) =>
+  postTaskJson<TaskFormPayload>(submitUrl, payload);
+
+export const requestTask = (submitUrl: string, payload: TaskRequestPayload) =>
+  postTaskJson<TaskRequestPayload>(submitUrl, payload);
+
+export const changeTaskStatus = (submitUrl: string, payload: { action?: string; status?: string; reason?: string }) =>
+  postTaskJson<{ action?: string; status?: string; reason?: string }>(submitUrl, payload);
+
+export const assignManagerTask = (submitUrl: string, payload: TaskManagerAssignPayload) =>
+  postTaskJson<TaskManagerAssignPayload>(submitUrl, payload);
+
+export const changeManagerTaskStatus = (submitUrl: string, payload: { status: string }) =>
+  postTaskJson<{ status: string }>(submitUrl, payload);
 
 export async function loadWeeklyReportsData(params: {
   year?: string;

@@ -131,6 +131,14 @@ import {
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
+  NavigationData,
+  NavigationItem,
+  TaskFormPayload,
+  TaskItem,
+  TaskManagerAssignPayload,
+  TaskManagerData,
+  TaskRequestPayload,
+  TasksData,
   WeeklyReportCreateData,
   WeeklyReportDetailData,
   WeeklyReportFormPayload,
@@ -140,6 +148,7 @@ import {
   PersonalScheduleDetailData,
   PersonalSchedulePayload,
   addNoteReply,
+  assignManagerTask,
   askAIWorkspaceDepartmentQuestion,
   bulkDeleteProducts,
   bulkUpsertProducts,
@@ -148,11 +157,14 @@ import {
   createDepartment as createDepartmentRecord,
   createNote as createSalesNote,
   createPrepayment as createCustomerPrepayment,
+  createTask,
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
   createDocumentTemplate,
   generateAIWorkspaceActionDraft,
   createPersonalSchedule,
+  changeManagerTaskStatus,
+  changeTaskStatus,
   deletePrepayment as deleteCustomerPrepayment,
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
@@ -173,6 +185,7 @@ import {
   loadMailboxData,
   loadMailboxThreadData,
   loadNoteDetailData,
+  loadNavigationData,
   loadNotesData,
   loadPrepaymentCreateData,
   loadPrepaymentCustomerData,
@@ -187,6 +200,8 @@ import {
   loadScheduleDetailData,
   loadFollowupQuoteItems,
   loadSchedulesData,
+  loadTaskManagerData,
+  loadTasksData,
   loadAIWorkspaceData,
   loadAIWorkspaceQuestionLogDetailData,
   loadWeeklyReportCreateData,
@@ -219,6 +234,7 @@ import {
   verifyAiPainpoint,
   replyMailboxEmail,
   replaceProductReference,
+  requestTask,
   saveProduct,
   saveWeeklyReport,
   saveWeeklyReportManagerComment,
@@ -231,9 +247,10 @@ const navItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
-  { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/' },
+  { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
+  { id: 'tasks', label: '업무', icon: CheckCircle2, href: '/tasks/' },
   { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
   { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
@@ -242,10 +259,27 @@ const navItems = [
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
 
+const navIconMap: Record<string, typeof LayoutDashboard> = {
+  dashboard: LayoutDashboard,
+  customers: Users,
+  assets: Wrench,
+  pipeline: Columns3,
+  notes: FileText,
+  schedules: CalendarDays,
+  tasks: CheckCircle2,
+  tasksManager: Users,
+  mail: Mail,
+  weeklyReports: ListChecks,
+  documents: FileSpreadsheet,
+  products: Archive,
+  prepayments: CircleDollarSign,
+  ai: Sparkles,
+};
+
 const scheduleCalendarUrl = '/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'customers' | 'assets' | 'pipeline' | 'notes' | 'schedules' | 'mail' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'ai';
+type MainView = 'dashboard' | 'customers' | 'assets' | 'pipeline' | 'notes' | 'schedules' | 'tasks' | 'mail' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -293,6 +327,16 @@ type PersonalScheduleFormState = {
   scheduleDate: string;
   scheduleTime: string;
 };
+
+type TaskFormState = {
+  title: string;
+  description: string;
+  dueDate: string;
+  expectedDuration: string;
+  assignedToId: string;
+};
+
+type TaskTab = 'my' | 'received' | 'requested';
 
 type SchedulePrepaymentEditRow = PrepaymentOption & {
   selected: boolean;
@@ -502,6 +546,14 @@ const makeEmptyWeeklyReportForm = (): WeeklyReportFormPayload => ({
   activityNotes: '',
   quoteDeliveryNotes: '',
   otherNotes: '',
+});
+
+const makeEmptyTaskForm = (): TaskFormState => ({
+  title: '',
+  description: '',
+  dueDate: '',
+  expectedDuration: '',
+  assignedToId: '',
 });
 
 const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
@@ -1301,6 +1353,18 @@ const routeMeta: Record<
       { label: '이번 주 보고', href: '/weekly-reports/' },
     ],
   },
+  tasks: {
+    eyebrow: 'Sales CRM / Tasks',
+    title: '업무',
+    summary: '내 할 일, 받은 업무, 맡긴 업무와 매니저 하달 업무를 React CRM에서 처리합니다.',
+    primaryHref: '/tasks/',
+    primaryLabel: '업무 보기',
+    actions: [
+      { label: '업무 보기', href: '/tasks/', primary: true },
+      { label: '업무하달', href: '/tasks/manager/' },
+      { label: 'Django TODOLIST', href: '/todos/' },
+    ],
+  },
   mail: {
     eyebrow: 'Sales CRM / Mailbox',
     title: '메일',
@@ -1382,13 +1446,19 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/assets/')) return 'assets';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
+  if (pathname.startsWith('/tasks/')) return 'tasks';
   if (pathname.startsWith('/mailbox/')) return 'mail';
   if (pathname.startsWith('/weekly-reports/')) return 'weeklyReports';
   if (pathname.startsWith('/documents/')) return 'documents';
   if (pathname.startsWith('/products/')) return 'products';
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
+  if (pathname.startsWith('/pipeline/')) return 'pipeline';
   return 'pipeline';
+}
+
+function isTaskManagerRoute(): boolean {
+  return /^\/tasks\/manager\/?$/.test(window.location.pathname);
 }
 
 function getCustomerDetailId(): number | null {
@@ -1851,6 +1921,29 @@ function SearchableSelect({
 }
 
 function AppShell({ activeView, children }: { activeView: MainView; children: React.ReactNode }) {
+  const [navigation, setNavigation] = useState<NavigationData | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    loadNavigationData().then((data) => {
+      if (mounted) setNavigation(data);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const dynamicItems = navigation?.items?.length ? navigation.items : null;
+  const items: Array<NavigationItem & { icon?: typeof LayoutDashboard }> = dynamicItems
+    ? dynamicItems.map((item) => ({ ...item, icon: navIconMap[item.id] || LayoutDashboard }))
+    : navItems;
+  const pathname = window.location.pathname;
+  const isActiveNavItem = (item: NavigationItem) => {
+    if (activeView !== 'tasks') return item.id === activeView;
+    if (pathname.startsWith('/tasks/manager/')) return item.id === 'tasksManager';
+    return item.id === 'tasks';
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -1862,10 +1955,10 @@ function AppShell({ activeView, children }: { activeView: MainView; children: Re
           </div>
         </div>
         <nav className="nav-list" aria-label="CRM navigation">
-          {navItems.map((item) => {
-            const Icon = item.icon;
+          {items.map((item) => {
+            const Icon = item.icon || navIconMap[item.id] || LayoutDashboard;
             return (
-              <a className={`nav-item ${item.id === activeView ? 'active' : ''}`} href={item.href} key={item.label}>
+              <a className={`nav-item ${isActiveNavItem(item) ? 'active' : ''}`} href={item.href} key={`${item.id}-${item.href}`}>
                 <Icon size={18} />
                 <span>{item.label}</span>
               </a>
@@ -1927,8 +2020,17 @@ function TopBar({
   );
 }
 
-function WorkspaceRoutePage({ data, view }: { data: PipelineData; view: MainView }) {
+function WorkspaceRoutePage({
+  actions,
+  data,
+  view,
+}: {
+  actions?: typeof routeMeta[MainView]['actions'];
+  data: PipelineData;
+  view: MainView;
+}) {
   const meta = routeMeta[view];
+  const routeActions = actions ?? meta.actions;
   const urgentDeals = data.deals
     .filter((deal) => deal.risk === 'high' || deal.stage === 'quote' || deal.stage === 'negotiation')
     .slice(0, 5);
@@ -1981,7 +2083,7 @@ function WorkspaceRoutePage({ data, view }: { data: PipelineData; view: MainView
             <ArrowRightLeft size={15} />
           </div>
           <div className="route-action-list">
-            {meta.actions.map((action) => (
+            {routeActions.map((action) => (
               <a className={action.primary ? 'primary' : ''} href={action.href} key={action.label}>
                 {action.label}
                 <ChevronRight size={15} />
@@ -11995,6 +12097,465 @@ function MailboxThreadPage({
   );
 }
 
+function taskFormPayload(form: TaskFormState): TaskFormPayload {
+  return {
+    title: form.title.trim(),
+    description: form.description.trim() || undefined,
+    dueDate: form.dueDate || undefined,
+    expectedDuration: form.expectedDuration || undefined,
+  };
+}
+
+function taskStatusClass(status: string) {
+  if (status === 'done') return 'done';
+  if (status === 'pending') return 'pending';
+  if (status === 'rejected') return 'danger';
+  if (status === 'on_hold') return 'hold';
+  return 'active';
+}
+
+function tasksUserLabel(user: TaskItem['createdBy']) {
+  return user?.name || user?.username || '';
+}
+
+function TaskCard({
+  actioningId,
+  onStatus,
+  task,
+}: {
+  actioningId: number | null;
+  onStatus: (task: TaskItem, payload: { action?: string; status?: string; reason?: string }) => void;
+  task: TaskItem;
+}) {
+  const busy = actioningId === task.id;
+  return (
+    <article className={`task-card ${task.isOverdue ? 'overdue' : ''}`}>
+      <div className="task-card-main">
+        <div className="task-card-heading">
+          <span className={`task-status ${taskStatusClass(task.status)}`}>{task.statusLabel}</span>
+          <span className="task-source">{task.sourceLabel}</span>
+          {task.isOverdue ? <span className="task-overdue">지연</span> : null}
+        </div>
+        <h3>{task.title}</h3>
+        {task.description ? <p>{task.description}</p> : null}
+        <div className="task-meta-row">
+          {task.dueDate ? <span>마감 {formatDateLabel(task.dueDate)}</span> : <span>마감 없음</span>}
+          {task.expectedDurationLabel ? <span>{task.expectedDurationLabel}</span> : null}
+          {task.relatedClient ? <a href={task.relatedClient.href}>{[task.relatedClient.company, task.relatedClient.department, task.relatedClient.customer].filter(Boolean).join(' · ')}</a> : null}
+        </div>
+        <div className="task-people-row">
+          {task.createdBy ? <span>생성 {tasksUserLabel(task.createdBy)}</span> : null}
+          {task.assignedTo ? <span>담당 {tasksUserLabel(task.assignedTo)}</span> : null}
+          {task.requestedBy ? <span>요청 {tasksUserLabel(task.requestedBy)}</span> : null}
+        </div>
+      </div>
+      <div className="task-actions">
+        {task.canApprove ? <button type="button" disabled={busy} onClick={() => onStatus(task, { action: 'approve' })}>승인</button> : null}
+        {task.canReject ? <button type="button" disabled={busy} onClick={() => {
+          const reason = window.prompt('반려 사유를 입력하세요.', '');
+          if (reason !== null) onStatus(task, { action: 'reject', reason });
+        }}>반려</button> : null}
+        {task.canSetOngoing ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'ongoing' })}>진행</button> : null}
+        {task.canSetOnHold ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'on_hold' })}>보류</button> : null}
+        {task.canComplete ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'done' })}>완료</button> : null}
+        <a href={task.djangoHref}>Django</a>
+      </div>
+    </article>
+  );
+}
+
+function TaskComposer({
+  assignees,
+  durations,
+  form,
+  mode,
+  saving,
+  onFormChange,
+  onModeChange,
+  onSubmit,
+}: {
+  assignees: TasksData['options']['assignees'];
+  durations: TasksData['options']['durations'];
+  form: TaskFormState;
+  mode: 'self' | 'request';
+  saving: boolean;
+  onFormChange: (field: keyof TaskFormState, value: string) => void;
+  onModeChange: (mode: 'self' | 'request') => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="task-composer" onSubmit={onSubmit}>
+      <div className="task-composer-mode">
+        <button className={mode === 'self' ? 'active' : ''} type="button" onClick={() => onModeChange('self')}>내 업무</button>
+        <button className={mode === 'request' ? 'active' : ''} type="button" onClick={() => onModeChange('request')}>동료 요청</button>
+      </div>
+      <label>
+        <span>제목</span>
+        <input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} placeholder="처리할 업무" />
+      </label>
+      <label>
+        <span>상세</span>
+        <textarea value={form.description} onChange={(event) => onFormChange('description', event.target.value)} rows={4} />
+      </label>
+      <div className="form-grid two-columns">
+        <label>
+          <span>마감일</span>
+          <input type="date" value={form.dueDate} onChange={(event) => onFormChange('dueDate', event.target.value)} />
+        </label>
+        <label>
+          <span>예상 소요</span>
+          <select value={form.expectedDuration} onChange={(event) => onFormChange('expectedDuration', event.target.value)}>
+            <option value="">선택 안 함</option>
+            {durations.map((duration) => (
+              <option key={duration.value} value={duration.value}>{duration.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {mode === 'request' ? (
+        <label>
+          <span>담당자</span>
+          <select value={form.assignedToId} onChange={(event) => onFormChange('assignedToId', event.target.value)}>
+            <option value="">선택</option>
+            {assignees.map((assignee) => (
+              <option key={assignee.id} value={assignee.id}>{assignee.name}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <button className="primary-button" type="submit" disabled={saving}>
+        {saving ? '저장 중' : mode === 'self' ? '업무 생성' : '업무 요청'}
+      </button>
+    </form>
+  );
+}
+
+function TasksPage({ managerRoute, routeData }: { managerRoute: boolean; routeData: PipelineData }) {
+  return managerRoute ? <TaskManagerPage routeData={routeData} /> : <PersonalTasksPage routeData={routeData} />;
+}
+
+function PersonalTasksPage({ routeData }: { routeData: PipelineData }) {
+  const [data, setData] = useState<TasksData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState('active');
+  const [tab, setTab] = useState<TaskTab>('my');
+  const [mode, setMode] = useState<'self' | 'request'>('self');
+  const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
+  const [saving, setSaving] = useState(false);
+  const [actioningId, setActioningId] = useState<number | null>(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const refresh = async () => {
+    setLoading(true);
+    const result = await loadTasksData({ status });
+    setData(result);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    refresh();
+  }, [status]);
+
+  const handleFormChange = (field: keyof TaskFormState, value: string) => {
+    setForm((previous) => ({ ...previous, [field]: value }));
+    setError('');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || saving) return;
+    if (!form.title.trim()) {
+      setError('제목을 입력하세요.');
+      return;
+    }
+    if (mode === 'request' && !form.assignedToId) {
+      setError('담당자를 선택하세요.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      if (mode === 'request') {
+        await requestTask(data.links.requestApi, { ...taskFormPayload(form), assignedToId: form.assignedToId });
+      } else {
+        await createTask(data.links.createApi, taskFormPayload(form));
+      }
+      setForm(makeEmptyTaskForm());
+      setMessage(mode === 'request' ? '업무를 요청했습니다.' : '업무를 생성했습니다.');
+      await refresh();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : '업무 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStatus = async (task: TaskItem, payload: { action?: string; status?: string; reason?: string }) => {
+    setActioningId(task.id);
+    setError('');
+    setMessage('');
+    try {
+      await changeTaskStatus(task.statusHref, payload);
+      setMessage('업무 상태를 변경했습니다.');
+      await refresh();
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : '상태 변경에 실패했습니다.');
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const source = data ?? undefined;
+  const tasks = source?.tasks[tab] ?? [];
+  const routeActions = source?.scope.canManage
+    ? routeMeta.tasks.actions
+    : routeMeta.tasks.actions.filter((action) => action.href !== '/tasks/manager/');
+  return (
+    <div className="tasks-page">
+      <WorkspaceRoutePage actions={routeActions} data={routeData} view="tasks" />
+      <section className="dashboard-metric-grid task-metrics">
+        <DashboardMetricCard label="내 업무" value={`${formatNumber(source?.metrics.myActive ?? 0)}건`} detail="진행/대기" icon={CheckCircle2} tone="blue" />
+        <DashboardMetricCard label="받은 업무" value={`${formatNumber(source?.metrics.receivedActive ?? 0)}건`} detail="승인/처리 필요" icon={Inbox} tone="amber" />
+        <DashboardMetricCard label="맡긴 업무" value={`${formatNumber(source?.metrics.requestedActive ?? 0)}건`} detail="동료 요청" icon={Send} tone="teal" />
+        <DashboardMetricCard label="지연" value={`${formatNumber(source?.metrics.overdue ?? 0)}건`} detail="마감일 초과" icon={AlertTriangle} tone="red" />
+      </section>
+      <section className="tasks-layout">
+        <div className="table-card task-list-panel">
+          <div className="section-heading-row">
+            <div>
+              <p className="eyebrow">Tasks</p>
+              <h2>업무 목록</h2>
+            </div>
+            <div className="route-actions">
+              {source?.scope.canManage ? <a className="route-secondary-action" href="/tasks/manager/">업무하달</a> : null}
+              <a className="route-secondary-action" href={source?.links.djangoList || '/todos/'}>Django</a>
+            </div>
+          </div>
+          <div className="task-toolbar">
+            <div className="segmented-control" role="tablist">
+              <button className={tab === 'my' ? 'active' : ''} type="button" onClick={() => setTab('my')}>내 할 일</button>
+              <button className={tab === 'received' ? 'active' : ''} type="button" onClick={() => setTab('received')}>받은 일</button>
+              <button className={tab === 'requested' ? 'active' : ''} type="button" onClick={() => setTab('requested')}>맡긴 일</button>
+            </div>
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              {(source?.options.statusFilters ?? []).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          {loading ? (
+            <div className="empty-state">업무를 불러오는 중입니다.</div>
+          ) : source?.error ? (
+            <div className="empty-state error">{source.error}</div>
+          ) : tasks.length ? (
+            <div className="task-card-list">
+              {tasks.map((task) => (
+                <TaskCard actioningId={actioningId} key={task.id} task={task} onStatus={handleStatus} />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">조건에 맞는 업무가 없습니다.</div>
+          )}
+        </div>
+        <aside className="task-side-panel">
+          <div className="side-card">
+            <h3>업무 등록</h3>
+            <TaskComposer
+              assignees={source?.options.assignees ?? []}
+              durations={source?.options.durations ?? []}
+              form={form}
+              mode={mode}
+              saving={saving}
+              onFormChange={handleFormChange}
+              onModeChange={setMode}
+              onSubmit={handleSubmit}
+            />
+            {error ? <p className="form-error">{error}</p> : null}
+            {message ? <p className="form-success">{message}</p> : null}
+          </div>
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function TaskManagerPage({ routeData }: { routeData: PipelineData }) {
+  const [data, setData] = useState<TaskManagerData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState('active');
+  const [assignee, setAssignee] = useState('');
+  const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [actioningId, setActioningId] = useState<number | null>(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const refresh = async () => {
+    setLoading(true);
+    const result = await loadTaskManagerData({ status, assignee });
+    setData(result);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    refresh();
+  }, [status, assignee]);
+
+  const handleAssign = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!data || saving) return;
+    if (!form.title.trim()) {
+      setError('업무 제목을 입력하세요.');
+      return;
+    }
+    if (!selectedIds.length) {
+      setError('담당자를 선택하세요.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await assignManagerTask(data.links.assignApi, { ...taskFormPayload(form), assignedToIds: selectedIds });
+      setForm(makeEmptyTaskForm());
+      setSelectedIds([]);
+      setMessage('업무를 하달했습니다.');
+      await refresh();
+    } catch (assignError) {
+      setError(assignError instanceof Error ? assignError.message : '업무 하달에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleManagerStatus = async (task: TaskItem, payload: { action?: string; status?: string }) => {
+    if (!payload.status) return;
+    setActioningId(task.id);
+    setError('');
+    setMessage('');
+    try {
+      await changeManagerTaskStatus(`/reporting/api/tasks/manager/${task.id}/status/`, { status: payload.status });
+      setMessage('업무 상태를 변경했습니다.');
+      await refresh();
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : '상태 변경에 실패했습니다.');
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const source = data ?? undefined;
+  return (
+    <div className="tasks-page">
+      <WorkspaceRoutePage actions={routeMeta.tasks.actions} data={routeData} view="tasks" />
+      <section className="dashboard-metric-grid task-metrics">
+        <DashboardMetricCard label="하달 업무" value={`${formatNumber(source?.metrics.total ?? 0)}건`} detail={source?.scope.label || '팀'} icon={Users} tone="blue" />
+        <DashboardMetricCard label="진행/대기" value={`${formatNumber(source?.metrics.active ?? 0)}건`} detail="처리 중" icon={Clock} tone="amber" />
+        <DashboardMetricCard label="완료" value={`${formatNumber(source?.metrics.done ?? 0)}건`} detail="완료 처리" icon={CheckCircle2} tone="green" />
+        <DashboardMetricCard label="지연" value={`${formatNumber(source?.metrics.overdue ?? 0)}건`} detail="마감일 초과" icon={AlertTriangle} tone="red" />
+      </section>
+      <section className="tasks-layout">
+        <div className="table-card task-list-panel">
+          <div className="section-heading-row">
+            <div>
+              <p className="eyebrow">Manager Tasks</p>
+              <h2>업무 하달 현황</h2>
+            </div>
+            <div className="route-actions">
+              <a className="route-secondary-action" href="/tasks/">개인 업무</a>
+              <a className="route-secondary-action" href={source?.links.djangoManager || '/todos/manager/'}>Django</a>
+            </div>
+          </div>
+          <div className="task-toolbar">
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              {(source?.options.statusFilters ?? []).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
+              <option value="">담당자 전체</option>
+              {(source?.options.teamMembers ?? []).map((member) => (
+                <option key={member.id} value={member.id}>{member.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="task-team-summary">
+            {(source?.teamSummary ?? []).map((summary) => (
+              <div key={summary.user.id}>
+                <strong>{summary.user.name}</strong>
+                <span>진행 {summary.active} · 완료 {summary.done} · 지연 {summary.overdue}</span>
+              </div>
+            ))}
+          </div>
+          {loading ? (
+            <div className="empty-state">업무 하달 현황을 불러오는 중입니다.</div>
+          ) : source?.error ? (
+            <div className="empty-state error">{source.error}</div>
+          ) : source?.tasks.length ? (
+            <div className="task-card-list">
+              {source.tasks.map((task) => (
+                <TaskCard actioningId={actioningId} key={task.id} task={task} onStatus={handleManagerStatus} />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">조건에 맞는 하달 업무가 없습니다.</div>
+          )}
+        </div>
+        <aside className="task-side-panel">
+          <form className="side-card task-composer" onSubmit={handleAssign}>
+            <h3>업무 하달</h3>
+            <label>
+              <span>제목</span>
+              <input value={form.title} onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))} />
+            </label>
+            <label>
+              <span>상세</span>
+              <textarea rows={4} value={form.description} onChange={(event) => setForm((previous) => ({ ...previous, description: event.target.value }))} />
+            </label>
+            <div className="form-grid two-columns">
+              <label>
+                <span>마감일</span>
+                <input type="date" value={form.dueDate} onChange={(event) => setForm((previous) => ({ ...previous, dueDate: event.target.value }))} />
+              </label>
+              <label>
+                <span>예상 소요</span>
+                <select value={form.expectedDuration} onChange={(event) => setForm((previous) => ({ ...previous, expectedDuration: event.target.value }))}>
+                  <option value="">선택 안 함</option>
+                  {(source?.options.durations ?? []).map((duration) => (
+                    <option key={duration.value} value={duration.value}>{duration.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="task-assignee-list">
+              {(source?.options.teamMembers ?? []).map((member) => (
+                <label key={member.id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(String(member.id))}
+                    onChange={(event) => setSelectedIds((previous) => (
+                      event.target.checked
+                        ? [...previous, String(member.id)]
+                        : previous.filter((id) => id !== String(member.id))
+                    ))}
+                  />
+                  <span>{member.name}</span>
+                </label>
+              ))}
+            </div>
+            {error ? <p className="form-error">{error}</p> : null}
+            {message ? <p className="form-success">{message}</p> : null}
+            <button className="primary-button" type="submit" disabled={saving}>{saving ? '하달 중' : '업무 하달'}</button>
+          </form>
+        </aside>
+      </section>
+    </div>
+  );
+}
+
 function weeklyDraftValue(draft: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
     const value = draft[key];
@@ -17671,6 +18232,15 @@ export function App() {
           onRangeChange={setScheduleRange}
           onStatusChange={setScheduleStatus}
         />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'tasks') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <TasksPage managerRoute={isTaskManagerRoute()} routeData={pipelineData} />
       </AppShell>
     );
   }

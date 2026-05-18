@@ -1,5 +1,89 @@
 # AGENT_REPORT.md
 
+## 2026-05-18 — React Tasks/TODO V1 + Navigation API
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/운영 배포 진행 예정
+
+### 요약
+
+기존 `/todos/*` Django TODOLIST를 보존하면서 React CRM에 `/tasks/` 개인 업무 화면과 `/tasks/manager/` 매니저 업무하달 화면을 추가했습니다. 권한 기반 네비게이션 API를 추가해 일반 사용자는 업무 메뉴만, 매니저는 업무하달 메뉴까지 볼 수 있게 했습니다.
+
+### 변경된 파일
+
+- `todos/views.py`: React 업무 API 추가.
+- `reporting/views.py`, `reporting/urls.py`: 네비게이션 API와 업무 API route 연결.
+- `frontend/src/api.ts`: 업무/네비게이션 타입과 API client 추가.
+- `frontend/src/App.tsx`, `frontend/src/styles.css`: `/tasks/`, `/tasks/manager/` 화면과 스타일 추가.
+- `todos/tests.py`: 업무 API 권한/상태/하달 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- React에서 내 할 일, 받은 일, 맡긴 일을 조회하고 업무를 생성할 수 있습니다.
+- 동료에게 업무 요청 후 승인/반려/진행/보류/완료 상태 처리가 가능합니다.
+- 매니저는 같은 회사 실무자에게 업무를 하달하고 담당자별 진행 현황을 볼 수 있습니다.
+- 일반 사용자 화면에서는 업무하달 메뉴와 링크가 숨겨집니다.
+
+### 기존 기능 보존
+
+- `/todos/*` legacy 화면과 상세 링크를 유지했습니다.
+- DB 모델과 migration은 변경하지 않았습니다.
+- 같은 회사 사용자 범위를 기준으로 동료 요청/매니저 하달 권한을 제한했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile todos\views.py todos\tests.py reporting\views.py reporting\urls.py
+→ OK
+
+python manage.py test todos.tests.ReactTasksApiTests --verbosity=1
+→ Ran 6 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built. Existing large chunk warning remains.
+
+node --check frontend\server.mjs
+→ OK
+
+Local browser smoke:
+→ `http://127.0.0.1:5173/tasks/` rendered with authenticated local smoke user.
+→ 업무 KPI, list card, status buttons, create form, dynamic navigation displayed.
+→ General user did not see the manager task link.
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- v1 범위에서는 첨부파일, edit/delete, category CRUD, full detail migration은 제외했습니다.
+- 운영에서는 실제 사용자 권한별 수동 검수가 필요합니다.
+
+### 운영 배포 상태
+
+- Pending.
+
+### 권장 다음 작업
+
+사용자가 요청한 대로 AI 모델 선택에서 5.5를 제거하고 5.4 mini 중심으로 정리합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/tasks/`에 접속합니다.
+2. 내 할 일/받은 일/맡긴 일 탭과 상태 필터가 정상 동작하는지 확인합니다.
+3. 일반 사용자로 업무 생성, 동료 요청, 승인/반려/완료 상태 변경을 확인합니다.
+4. 매니저 계정으로 `https://sales-note-frontend-production.up.railway.app/tasks/manager/`에 접속해 같은 회사 실무자에게 업무하달이 되는지 확인합니다.
+5. 기존 `/todos/`와 `/todos/<id>/` 링크가 계속 열리는지 확인합니다.
+
 ## 2026-05-18 — Weekly Report Paragraph Spacing Fix
 
 **상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기

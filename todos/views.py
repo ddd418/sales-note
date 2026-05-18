@@ -3,6 +3,8 @@ TODOLIST 뷰
 - 실무자: 내 할 일, 받은 일, 맡긴 일
 - 매니저: 업무 하달, 진행 현황, 워크로드
 """
+import json
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponse
@@ -10,6 +12,7 @@ from django.contrib import messages
 from django.db.models import Q, Count
 from django.utils import timezone
 from django.core.paginator import Paginator
+from django.urls import reverse
 from django.views.decorators.http import require_POST, require_http_methods
 
 from .models import Todo, TodoAttachment, TodoLog, TodoCategory
@@ -1309,3 +1312,672 @@ def category_delete(request, pk):
     category.todos.update(category=None)
     category.delete()
     return JsonResponse({'success': True, 'message': f'"{name}" 카테고리가 삭제되었습니다.'})
+
+
+# ============================================
+# React CRM API
+# ============================================
+
+TASK_ACTIVE_STATUSES = [Todo.Status.PENDING, Todo.Status.ONGOING, Todo.Status.ON_HOLD]
+
+
+def _tasks_api_login_required_response(request):
+    if request.user.is_authenticated:
+        return None
+    return JsonResponse({
+        'success': False,
+        'error': 'login_required',
+        'message': '로그인이 필요합니다.',
+        'loginUrl': reverse('reporting:login'),
+    }, status=401)
+
+
+def _tasks_user_profile(user):
+    from reporting.models import UserProfile
+
+    try:
+        return user.userprofile
+    except UserProfile.DoesNotExist:
+        return UserProfile.objects.create(user=user, role='salesman')
+
+
+def _tasks_user_name(user):
+    if not user:
+        return ''
+    return user.get_full_name() or user.username
+
+
+def _tasks_user_payload(user):
+    if not user:
+        return None
+    profile = getattr(user, 'userprofile', None)
+    company = profile.company if profile else None
+    return {
+        'id': user.id,
+        'name': _tasks_user_name(user),
+        'username': user.username,
+        'role': profile.role if profile else '',
+        'roleLabel': profile.get_role_display() if profile else '',
+        'company': company.name if company else '',
+    }
+
+
+def _tasks_is_manager(user):
+    profile = _tasks_user_profile(user)
+    return profile.role == 'manager'
+
+
+def _tasks_team_members(user):
+    from django.contrib.auth.models import User
+
+    profile = _tasks_user_profile(user)
+    if profile.company:
+        return User.objects.filter(
+            is_active=True,
+            userprofile__company=profile.company,
+            userprofile__role='salesman',
+        ).select_related('userprofile', 'userprofile__company').order_by('first_name', 'username')
+    return User.objects.filter(
+        is_active=True,
+        userprofile__role='salesman',
+    ).select_related('userprofile', 'userprofile__company').order_by('first_name', 'username')
+
+
+def _tasks_assignee_options(user):
+    return [
+        _tasks_user_payload(member)
+        for member in _tasks_team_members(user).exclude(pk=user.pk)
+    ]
+
+
+def _tasks_parse_payload(request):
+    if request.content_type and 'application/json' in request.content_type:
+        try:
+            return json.loads(request.body.decode('utf-8') or '{}'), None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}, '잘못된 요청 형식입니다.'
+    return request.POST, None
+
+
+def _tasks_payload_list(payload, key):
+    if hasattr(payload, 'getlist'):
+        return payload.getlist(key)
+    value = payload.get(key)
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _tasks_parse_date(value):
+    import datetime
+
+    value = str(value or '').strip()
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _tasks_parse_duration(value):
+    value = str(value or '').strip()
+    if not value:
+        return None
+    try:
+        duration = int(value)
+    except (TypeError, ValueError):
+        return None
+    valid = {choice[0] for choice in Todo.Duration.choices}
+    return duration if duration in valid else None
+
+
+def _tasks_customer_queryset(user):
+    from reporting.models import FollowUp
+
+    profile = _tasks_user_profile(user)
+    queryset = FollowUp.objects.select_related('company', 'department', 'user', 'user__userprofile')
+    if profile.role == 'manager' and profile.company:
+        return queryset.filter(user__userprofile__company=profile.company)
+    return queryset.filter(user=user)
+
+
+def _tasks_customer_payload(customer):
+    if not customer:
+        return None
+    return {
+        'id': customer.id,
+        'customer': customer.customer_name or '',
+        'company': customer.company.name if customer.company else '',
+        'department': customer.department.name if customer.department else '',
+        'owner': _tasks_user_name(customer.user),
+        'href': f'/customers/{customer.id}/',
+        'djangoHref': reverse('reporting:followup_detail', args=[customer.id]),
+    }
+
+
+def _tasks_customer_for_user(user, customer_id):
+    if not customer_id:
+        return None
+    try:
+        customer_id = int(customer_id)
+    except (TypeError, ValueError):
+        return None
+    return _tasks_customer_queryset(user).filter(id=customer_id).first()
+
+
+def _tasks_apply_status_filter(queryset, status_filter):
+    status_filter = str(status_filter or 'active').strip()
+    today = timezone.localdate()
+    if status_filter == 'active':
+        return queryset.filter(status__in=TASK_ACTIVE_STATUSES)
+    if status_filter == 'overdue':
+        return queryset.filter(due_date__lt=today).exclude(status__in=[Todo.Status.DONE, Todo.Status.REJECTED])
+    if status_filter == 'all':
+        return queryset
+    if status_filter in dict(Todo.Status.choices):
+        return queryset.filter(status=status_filter)
+    return queryset.filter(status__in=TASK_ACTIVE_STATUSES)
+
+
+def _tasks_relation_querysets(user):
+    base = Todo.objects.select_related(
+        'created_by', 'created_by__userprofile', 'assigned_to', 'assigned_to__userprofile',
+        'requested_by', 'requested_by__userprofile', 'related_client', 'related_client__company',
+        'related_client__department', 'category',
+    )
+    my_tasks = base.filter(created_by=user, assigned_to__isnull=True)
+    received_tasks = base.filter(assigned_to=user).exclude(created_by=user, requested_by__isnull=True)
+    requested_tasks = base.filter(requested_by=user).exclude(assigned_to=user)
+    return my_tasks, received_tasks, requested_tasks
+
+
+def _tasks_metric_count(queryset, status_filter='active'):
+    return _tasks_apply_status_filter(queryset, status_filter).count()
+
+
+def _tasks_can_set_status(todo, user):
+    if todo.status in [Todo.Status.PENDING, Todo.Status.REJECTED]:
+        return False
+    if todo.assigned_to_id:
+        return todo.assigned_to_id == user.id
+    return todo.created_by_id == user.id
+
+
+def _tasks_can_manager_set_status(todo, user):
+    return bool(
+        _tasks_is_manager(user)
+        and todo.requested_by_id == user.id
+        and todo.source_type == Todo.SourceType.MANAGER_ASSIGN
+    )
+
+
+def _tasks_payload(todo, user):
+    status_labels = dict(Todo.Status.choices)
+    source_labels = dict(Todo.SourceType.choices)
+    duration_labels = dict(Todo.Duration.choices)
+    can_status = _tasks_can_set_status(todo, user) or _tasks_can_manager_set_status(todo, user)
+    can_complete = can_status and todo.status not in [Todo.Status.DONE, Todo.Status.PENDING, Todo.Status.REJECTED]
+    return {
+        'id': todo.id,
+        'title': todo.title,
+        'description': todo.description or '',
+        'status': todo.status,
+        'statusLabel': status_labels.get(todo.status, todo.status),
+        'sourceType': todo.source_type,
+        'sourceLabel': source_labels.get(todo.source_type, todo.source_type),
+        'dueDate': todo.due_date.isoformat() if todo.due_date else None,
+        'completedAt': todo.completed_at.isoformat() if todo.completed_at else None,
+        'createdAt': todo.created_at.isoformat() if todo.created_at else None,
+        'updatedAt': todo.updated_at.isoformat() if todo.updated_at else None,
+        'isOverdue': todo.is_overdue,
+        'expectedDuration': todo.expected_duration,
+        'expectedDurationLabel': duration_labels.get(todo.expected_duration, '') if todo.expected_duration else '',
+        'category': {
+            'id': todo.category_id,
+            'name': todo.category.name if todo.category else '',
+            'color': todo.category.color if todo.category else '',
+        } if todo.category_id else None,
+        'createdBy': _tasks_user_payload(todo.created_by),
+        'assignedTo': _tasks_user_payload(todo.assigned_to),
+        'requestedBy': _tasks_user_payload(todo.requested_by),
+        'relatedClient': _tasks_customer_payload(todo.related_client),
+        'canApprove': todo.status == Todo.Status.PENDING and todo.assigned_to_id == user.id,
+        'canReject': todo.status == Todo.Status.PENDING and todo.assigned_to_id == user.id,
+        'canChangeStatus': can_status,
+        'canComplete': can_complete,
+        'canSetOngoing': can_status and todo.status != Todo.Status.ONGOING,
+        'canSetOnHold': can_status and todo.status != Todo.Status.ON_HOLD,
+        'statusHref': reverse('reporting:tasks_status_api', args=[todo.id]),
+        'djangoHref': reverse('todos:detail', args=[todo.id]),
+    }
+
+
+def _tasks_options_payload(user):
+    return {
+        'statuses': [{'value': value, 'label': label} for value, label in Todo.Status.choices],
+        'statusFilters': [
+            {'value': 'active', 'label': '진행/대기'},
+            {'value': 'overdue', 'label': '지연'},
+            {'value': 'pending', 'label': '승인 대기'},
+            {'value': 'ongoing', 'label': '진행중'},
+            {'value': 'on_hold', 'label': '보류'},
+            {'value': 'done', 'label': '완료'},
+            {'value': 'rejected', 'label': '반려'},
+            {'value': 'all', 'label': '전체'},
+        ],
+        'durations': [{'value': value, 'label': label} for value, label in Todo.Duration.choices],
+        'assignees': _tasks_assignee_options(user),
+    }
+
+
+@require_http_methods(["GET"])
+def tasks_api(request):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    status_filter = request.GET.get('status', 'active')
+    my_tasks, received_tasks, requested_tasks = _tasks_relation_querysets(request.user)
+    my_filtered = _tasks_apply_status_filter(my_tasks, status_filter).order_by('due_date', '-created_at')
+    received_filtered = _tasks_apply_status_filter(received_tasks, status_filter).order_by('due_date', '-created_at')
+    requested_filtered = _tasks_apply_status_filter(requested_tasks, status_filter).order_by('due_date', '-created_at')
+    visible_ids = list(my_tasks.values_list('id', flat=True)) + list(received_tasks.values_list('id', flat=True)) + list(requested_tasks.values_list('id', flat=True))
+    visible = Todo.objects.filter(id__in=set(visible_ids))
+    overdue_count = visible.filter(due_date__lt=timezone.localdate()).exclude(status__in=[Todo.Status.DONE, Todo.Status.REJECTED]).count()
+    profile = _tasks_user_profile(request.user)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'currentUser': _tasks_user_payload(request.user),
+        'scope': {
+            'label': _tasks_user_name(request.user),
+            'canManage': profile.role == 'manager',
+        },
+        'filters': {
+            'status': status_filter,
+        },
+        'metrics': {
+            'myActive': _tasks_metric_count(my_tasks),
+            'receivedActive': _tasks_metric_count(received_tasks),
+            'requestedActive': _tasks_metric_count(requested_tasks),
+            'overdue': overdue_count,
+            'done': visible.filter(status=Todo.Status.DONE).count(),
+        },
+        'options': _tasks_options_payload(request.user),
+        'links': {
+            'createApi': reverse('reporting:tasks_create_api'),
+            'requestApi': reverse('reporting:tasks_request_api'),
+            'assigneesApi': reverse('reporting:tasks_assignees_api'),
+            'customersApi': reverse('reporting:tasks_customers_api'),
+            'managerApi': reverse('reporting:tasks_manager_api'),
+            'djangoList': reverse('todos:list'),
+            'djangoCreate': reverse('todos:create'),
+        },
+        'tasks': {
+            'my': [_tasks_payload(todo, request.user) for todo in list(my_filtered[:80])],
+            'received': [_tasks_payload(todo, request.user) for todo in list(received_filtered[:80])],
+            'requested': [_tasks_payload(todo, request.user) for todo in list(requested_filtered[:80])],
+        },
+    })
+
+
+@require_http_methods(["POST"])
+def tasks_create_api(request):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error = _tasks_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+    title = str(payload.get('title') or '').strip()
+    if not title:
+        return JsonResponse({'success': False, 'error': '제목을 입력하세요.'}, status=400)
+
+    todo = Todo.objects.create(
+        title=title[:200],
+        description=str(payload.get('description') or '').strip(),
+        due_date=_tasks_parse_date(payload.get('dueDate') or payload.get('due_date')),
+        expected_duration=_tasks_parse_duration(payload.get('expectedDuration') or payload.get('expected_duration')),
+        related_client=_tasks_customer_for_user(request.user, payload.get('relatedClientId') or payload.get('related_client')),
+        created_by=request.user,
+        source_type=Todo.SourceType.SELF,
+        status=Todo.Status.ONGOING,
+    )
+    TodoLog.objects.create(
+        todo=todo,
+        actor=request.user,
+        action_type=TodoLog.ActionType.CREATED,
+        message='React CRM에서 TODO 생성',
+        new_status=Todo.Status.ONGOING,
+    )
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': '업무를 생성했습니다.',
+        'task': _tasks_payload(todo, request.user),
+    }, status=201)
+
+
+@require_http_methods(["POST"])
+def tasks_request_api(request):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error = _tasks_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+    title = str(payload.get('title') or '').strip()
+    try:
+        assigned_to_id = int(payload.get('assignedToId') or payload.get('assigned_to') or 0)
+    except (TypeError, ValueError):
+        assigned_to_id = 0
+    if not title or not assigned_to_id:
+        return JsonResponse({'success': False, 'error': '제목과 담당자를 입력하세요.'}, status=400)
+    assigned_to = _tasks_team_members(request.user).exclude(pk=request.user.pk).filter(pk=assigned_to_id).first()
+    if not assigned_to:
+        return JsonResponse({'success': False, 'error': '같은 회사 실무자만 담당자로 선택할 수 있습니다.'}, status=403)
+
+    todo = Todo.objects.create(
+        title=title[:200],
+        description=str(payload.get('description') or '').strip(),
+        due_date=_tasks_parse_date(payload.get('dueDate') or payload.get('due_date')),
+        expected_duration=_tasks_parse_duration(payload.get('expectedDuration') or payload.get('expected_duration')),
+        related_client=_tasks_customer_for_user(request.user, payload.get('relatedClientId') or payload.get('related_client')),
+        created_by=request.user,
+        assigned_to=assigned_to,
+        requested_by=request.user,
+        source_type=Todo.SourceType.PEER_REQUEST,
+        status=Todo.Status.PENDING,
+    )
+    TodoLog.objects.create(
+        todo=todo,
+        actor=request.user,
+        action_type=TodoLog.ActionType.DELEGATED,
+        message=f'{_tasks_user_name(assigned_to)}에게 업무 요청',
+        new_status=Todo.Status.PENDING,
+    )
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': '업무를 요청했습니다.',
+        'task': _tasks_payload(todo, request.user),
+    }, status=201)
+
+
+def _tasks_reject(todo, user, reason=''):
+    requester = todo.requested_by
+    rejector_name = _tasks_user_name(user)
+    if requester:
+        new_todo = Todo.objects.create(
+            title=todo.title,
+            description=todo.description,
+            created_by=requester,
+            assigned_to=None,
+            requested_by=None,
+            status=Todo.Status.ONGOING,
+            due_date=todo.due_date,
+            expected_duration=todo.expected_duration,
+            related_client=todo.related_client,
+            source_type=todo.source_type,
+        )
+        TodoLog.objects.create(
+            todo=new_todo,
+            actor=user,
+            action_type=TodoLog.ActionType.REJECTED,
+            message=f'[반려로 인해 생성됨] {rejector_name}님이 반려' + (f'\n사유: {reason}' if reason else ''),
+        )
+    todo.status = Todo.Status.REJECTED
+    todo.description = f"[반려됨] {rejector_name}님이 반려" + (f"\n사유: {reason}" if reason else "") + "\n\n" + (todo.description or '')
+    todo.save()
+    TodoLog.objects.create(
+        todo=todo,
+        actor=user,
+        action_type=TodoLog.ActionType.REJECTED,
+        message='React CRM에서 업무 요청 반려' + (f'\n반려 사유: {reason}' if reason else ''),
+        prev_status=Todo.Status.PENDING,
+        new_status=Todo.Status.REJECTED,
+    )
+
+
+@require_http_methods(["POST"])
+def tasks_status_api(request, pk):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error = _tasks_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+    todo = get_object_or_404(Todo.objects.select_related('created_by', 'assigned_to', 'requested_by'), pk=pk)
+    action = str(payload.get('action') or '').strip()
+    new_status = str(payload.get('status') or '').strip()
+
+    if action == 'approve':
+        if todo.assigned_to_id != request.user.id or todo.status != Todo.Status.PENDING:
+            return JsonResponse({'success': False, 'error': '승인 권한이 없습니다.'}, status=403)
+        prev_status = todo.status
+        todo.status = Todo.Status.ONGOING
+        todo.save()
+        TodoLog.objects.create(todo=todo, actor=request.user, action_type=TodoLog.ActionType.APPROVED, message='React CRM에서 승인', prev_status=prev_status, new_status=todo.status)
+    elif action == 'reject':
+        if todo.assigned_to_id != request.user.id or todo.status != Todo.Status.PENDING:
+            return JsonResponse({'success': False, 'error': '반려 권한이 없습니다.'}, status=403)
+        _tasks_reject(todo, request.user, str(payload.get('reason') or '').strip())
+    else:
+        if new_status not in [Todo.Status.ONGOING, Todo.Status.ON_HOLD, Todo.Status.DONE]:
+            return JsonResponse({'success': False, 'error': '잘못된 상태입니다.'}, status=400)
+        if not (_tasks_can_set_status(todo, request.user) or _tasks_can_manager_set_status(todo, request.user)):
+            return JsonResponse({'success': False, 'error': '상태 변경 권한이 없습니다.'}, status=403)
+        prev_status = todo.status
+        todo.status = new_status
+        todo.completed_at = timezone.now() if new_status == Todo.Status.DONE else None
+        todo.save()
+        TodoLog.objects.create(
+            todo=todo,
+            actor=request.user,
+            action_type=TodoLog.ActionType.STATUS_CHANGED,
+            message='React CRM에서 상태 변경',
+            prev_status=prev_status,
+            new_status=new_status,
+        )
+
+    todo.refresh_from_db()
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': '업무 상태를 변경했습니다.',
+        'task': _tasks_payload(todo, request.user),
+    })
+
+
+@require_http_methods(["GET"])
+def tasks_assignees_api(request):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'assignees': _tasks_assignee_options(request.user),
+    })
+
+
+@require_http_methods(["GET"])
+def tasks_customers_api(request):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    query = str(request.GET.get('q') or '').strip()
+    if not query:
+        return JsonResponse({'success': True, 'source': 'django', 'customers': []})
+    search_filter = Q(customer_name__icontains=query) | Q(company__name__icontains=query) | Q(department__name__icontains=query)
+    customers = _tasks_customer_queryset(request.user).filter(search_filter).order_by('customer_name')[:20]
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'customers': [_tasks_customer_payload(customer) for customer in customers],
+    })
+
+
+@require_http_methods(["GET"])
+def tasks_manager_api(request):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    profile = _tasks_user_profile(request.user)
+    if profile.role != 'manager':
+        return JsonResponse({'success': False, 'error': '매니저 권한이 필요합니다.'}, status=403)
+
+    status_filter = request.GET.get('status', 'active')
+    assignee = str(request.GET.get('assignee') or '').strip()
+    base = Todo.objects.filter(
+        requested_by=request.user,
+        source_type=Todo.SourceType.MANAGER_ASSIGN,
+    ).select_related(
+        'created_by', 'assigned_to', 'assigned_to__userprofile', 'requested_by', 'related_client',
+        'related_client__company', 'related_client__department',
+    )
+    filtered = _tasks_apply_status_filter(base, status_filter)
+    if assignee.isdigit():
+        filtered = filtered.filter(assigned_to_id=int(assignee))
+
+    team_members = list(_tasks_team_members(request.user))
+    summaries = []
+    for member in team_members:
+        member_tasks = base.filter(assigned_to=member)
+        total = member_tasks.count()
+        summaries.append({
+            'user': _tasks_user_payload(member),
+            'total': total,
+            'active': member_tasks.filter(status__in=TASK_ACTIVE_STATUSES).count(),
+            'done': member_tasks.filter(status=Todo.Status.DONE).count(),
+            'overdue': member_tasks.filter(due_date__lt=timezone.localdate()).exclude(status__in=[Todo.Status.DONE, Todo.Status.REJECTED]).count(),
+        })
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': f'{profile.company.name} 팀' if profile.company else _tasks_user_name(request.user),
+            'canManage': True,
+        },
+        'filters': {
+            'status': status_filter,
+            'assignee': assignee if assignee.isdigit() else '',
+        },
+        'metrics': {
+            'total': base.count(),
+            'active': base.filter(status__in=TASK_ACTIVE_STATUSES).count(),
+            'done': base.filter(status=Todo.Status.DONE).count(),
+            'overdue': base.filter(due_date__lt=timezone.localdate()).exclude(status__in=[Todo.Status.DONE, Todo.Status.REJECTED]).count(),
+        },
+        'options': {
+            **_tasks_options_payload(request.user),
+            'teamMembers': [_tasks_user_payload(member) for member in team_members],
+        },
+        'links': {
+            'assignApi': reverse('reporting:tasks_manager_assign_api'),
+            'customersApi': reverse('reporting:tasks_customers_api'),
+            'djangoManager': reverse('todos:manager_dashboard'),
+        },
+        'teamSummary': summaries,
+        'tasks': [_tasks_payload(todo, request.user) for todo in list(filtered.order_by('due_date', '-created_at')[:120])],
+    })
+
+
+@require_http_methods(["POST"])
+def tasks_manager_assign_api(request):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    profile = _tasks_user_profile(request.user)
+    if profile.role != 'manager':
+        return JsonResponse({'success': False, 'error': '매니저 권한이 필요합니다.'}, status=403)
+    payload, error = _tasks_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+    title = str(payload.get('title') or '').strip()
+    assignee_ids = []
+    for value in _tasks_payload_list(payload, 'assignedToIds') or _tasks_payload_list(payload, 'assigned_to'):
+        try:
+            assignee_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not title or not assignee_ids:
+        return JsonResponse({'success': False, 'error': '업무 내용과 담당자를 선택하세요.'}, status=400)
+    assignees = list(_tasks_team_members(request.user).filter(id__in=set(assignee_ids)))
+    if not assignees:
+        return JsonResponse({'success': False, 'error': '같은 회사 실무자를 담당자로 선택하세요.'}, status=403)
+
+    related_client = _tasks_customer_for_user(request.user, payload.get('relatedClientId') or payload.get('related_client'))
+    created = []
+    for assignee in assignees:
+        todo = Todo.objects.create(
+            title=title[:200],
+            description=str(payload.get('description') or '').strip(),
+            due_date=_tasks_parse_date(payload.get('dueDate') or payload.get('due_date')),
+            expected_duration=_tasks_parse_duration(payload.get('expectedDuration') or payload.get('expected_duration')),
+            related_client=related_client,
+            created_by=request.user,
+            assigned_to=assignee,
+            requested_by=request.user,
+            source_type=Todo.SourceType.MANAGER_ASSIGN,
+            status=Todo.Status.ONGOING,
+        )
+        TodoLog.objects.create(
+            todo=todo,
+            actor=request.user,
+            action_type=TodoLog.ActionType.ASSIGNED,
+            message=f'React CRM에서 매니저 업무 하달: {_tasks_user_name(assignee)}',
+            new_status=Todo.Status.ONGOING,
+        )
+        created.append(todo)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': f'{len(created)}명에게 업무를 하달했습니다.',
+        'tasks': [_tasks_payload(todo, request.user) for todo in created],
+    }, status=201)
+
+
+@require_http_methods(["POST"])
+def tasks_manager_status_api(request, pk):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    if not _tasks_is_manager(request.user):
+        return JsonResponse({'success': False, 'error': '매니저 권한이 필요합니다.'}, status=403)
+    payload, error = _tasks_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+    todo = get_object_or_404(Todo, pk=pk, requested_by=request.user, source_type=Todo.SourceType.MANAGER_ASSIGN)
+    new_status = str(payload.get('status') or '').strip()
+    if new_status not in [Todo.Status.ONGOING, Todo.Status.ON_HOLD, Todo.Status.DONE]:
+        return JsonResponse({'success': False, 'error': '잘못된 상태입니다.'}, status=400)
+    prev_status = todo.status
+    todo.status = new_status
+    todo.completed_at = timezone.now() if new_status == Todo.Status.DONE else None
+    todo.save()
+    TodoLog.objects.create(
+        todo=todo,
+        actor=request.user,
+        action_type=TodoLog.ActionType.STATUS_CHANGED,
+        message='React CRM 매니저 화면에서 상태 변경',
+        prev_status=prev_status,
+        new_status=new_status,
+    )
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': '업무 상태를 변경했습니다.',
+        'task': _tasks_payload(todo, request.user),
+    })

@@ -1,3 +1,211 @@
-from django.test import TestCase
+import json
 
-# Create your tests here.
+from django.contrib.auth.models import User
+from django.test import Client, TestCase
+from django.urls import reverse
+from django.utils import timezone
+
+from reporting.models import Company, Department, FollowUp, UserCompany, UserProfile
+from .models import Todo, TodoLog
+
+
+def make_user(username, role='salesman', company=None, can_use_ai=False):
+    user = User.objects.create_user(username=username, password='TestPass123!')
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.role = role
+    profile.company = company
+    profile.can_use_ai = can_use_ai
+    profile.save()
+    return user
+
+
+class ReactTasksApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='Tasks Company')
+        self.other_company = UserCompany.objects.create(name='Other Company')
+        self.user = make_user('tasks_user', company=self.company, can_use_ai=True)
+        self.colleague = make_user('tasks_colleague', company=self.company)
+        self.manager = make_user('tasks_manager', role='manager', company=self.company)
+        self.other_user = make_user('tasks_other', company=self.other_company)
+
+        customer_company = Company.objects.create(name='업무 고객사', created_by=self.user)
+        department = Department.objects.create(name='업무 연구실', company=customer_company, created_by=self.user)
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=customer_company,
+            department=department,
+            customer_name='업무 고객',
+        )
+
+    def test_tasks_api_requires_login_json(self):
+        response = self.client.get(reverse('reporting:tasks_api'))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_navigation_api_returns_role_based_task_items(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporting:navigation_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        item_ids = [item['id'] for item in payload['items']]
+        self.assertIn('tasks', item_ids)
+        self.assertNotIn('tasksManager', item_ids)
+        self.assertIn('mail', item_ids)
+        self.assertIn('ai', item_ids)
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.get(reverse('reporting:navigation_api'))
+        manager_ids = [item['id'] for item in manager_response.json()['items']]
+        self.assertIn('tasks', manager_ids)
+        self.assertIn('tasksManager', manager_ids)
+        self.assertNotIn('mail', manager_ids)
+
+    def test_create_self_task_and_list_my_tasks(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse('reporting:tasks_create_api'),
+            data=json.dumps({
+                'title': '견적 후속 확인',
+                'description': '다음 주 납기 확인',
+                'dueDate': timezone.localdate().isoformat(),
+                'expectedDuration': 30,
+                'relatedClientId': self.followup.id,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        task = Todo.objects.get(title='견적 후속 확인')
+        self.assertEqual(task.created_by, self.user)
+        self.assertIsNone(task.assigned_to)
+        self.assertEqual(task.status, Todo.Status.ONGOING)
+        self.assertEqual(task.related_client, self.followup)
+        self.assertTrue(TodoLog.objects.filter(todo=task, action_type=TodoLog.ActionType.CREATED).exists())
+
+        list_response = self.client.get(reverse('reporting:tasks_api'))
+        my_tasks = list_response.json()['tasks']['my']
+        self.assertEqual([item['id'] for item in my_tasks], [task.id])
+        self.assertEqual(my_tasks[0]['relatedClient']['customer'], '업무 고객')
+
+    def test_peer_request_same_company_and_status_flow(self):
+        self.client.force_login(self.user)
+        blocked = self.client.post(
+            reverse('reporting:tasks_request_api'),
+            data=json.dumps({
+                'title': '타사 요청 차단',
+                'assignedToId': self.other_user.id,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(blocked.status_code, 403)
+
+        response = self.client.post(
+            reverse('reporting:tasks_request_api'),
+            data=json.dumps({
+                'title': '동료 확인 요청',
+                'description': '메일 회신 부탁',
+                'assignedToId': self.colleague.id,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 201)
+        task = Todo.objects.get(title='동료 확인 요청')
+        self.assertEqual(task.status, Todo.Status.PENDING)
+        self.assertEqual(task.requested_by, self.user)
+        self.assertEqual(task.assigned_to, self.colleague)
+
+        requester_done = self.client.post(
+            reverse('reporting:tasks_status_api', args=[task.id]),
+            data=json.dumps({'status': 'done'}),
+            content_type='application/json',
+        )
+        self.assertEqual(requester_done.status_code, 403)
+
+        self.client.force_login(self.colleague)
+        received = self.client.get(reverse('reporting:tasks_api'))
+        self.assertEqual([item['id'] for item in received.json()['tasks']['received']], [task.id])
+
+        approve = self.client.post(
+            reverse('reporting:tasks_status_api', args=[task.id]),
+            data=json.dumps({'action': 'approve'}),
+            content_type='application/json',
+        )
+        self.assertEqual(approve.status_code, 200)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Todo.Status.ONGOING)
+
+        done = self.client.post(
+            reverse('reporting:tasks_status_api', args=[task.id]),
+            data=json.dumps({'status': 'done'}),
+            content_type='application/json',
+        )
+        self.assertEqual(done.status_code, 200)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Todo.Status.DONE)
+        self.assertIsNotNone(task.completed_at)
+
+    def test_reject_peer_request_creates_requester_copy(self):
+        task = Todo.objects.create(
+            title='반려 테스트',
+            created_by=self.user,
+            assigned_to=self.colleague,
+            requested_by=self.user,
+            source_type=Todo.SourceType.PEER_REQUEST,
+            status=Todo.Status.PENDING,
+        )
+        self.client.force_login(self.colleague)
+
+        response = self.client.post(
+            reverse('reporting:tasks_status_api', args=[task.id]),
+            data=json.dumps({'action': 'reject', 'reason': '이번 주 불가'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Todo.Status.REJECTED)
+        self.assertEqual(
+            Todo.objects.filter(title='반려 테스트', created_by=self.user, assigned_to__isnull=True).count(),
+            1,
+        )
+
+    def test_manager_assign_scope_and_manager_status(self):
+        self.client.force_login(self.user)
+        forbidden = self.client.get(reverse('reporting:tasks_manager_api'))
+        self.assertEqual(forbidden.status_code, 403)
+
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('reporting:tasks_manager_assign_api'),
+            data=json.dumps({
+                'title': '주간 핵심 고객 확인',
+                'description': '핵심 고객 진행상황 점검',
+                'assignedToIds': [self.colleague.id, self.other_user.id],
+                'dueDate': timezone.localdate().isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(len(response.json()['tasks']), 1)
+        task = Todo.objects.get(title='주간 핵심 고객 확인')
+        self.assertEqual(task.requested_by, self.manager)
+        self.assertEqual(task.assigned_to, self.colleague)
+        self.assertEqual(task.source_type, Todo.SourceType.MANAGER_ASSIGN)
+
+        manager_payload = self.client.get(reverse('reporting:tasks_manager_api')).json()
+        self.assertEqual(manager_payload['metrics']['total'], 1)
+        self.assertEqual(manager_payload['teamSummary'][0]['active'], 1)
+
+        hold = self.client.post(
+            reverse('reporting:tasks_manager_status_api', args=[task.id]),
+            data=json.dumps({'status': 'on_hold'}),
+            content_type='application/json',
+        )
+        self.assertEqual(hold.status_code, 200)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Todo.Status.ON_HOLD)
