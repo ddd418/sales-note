@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Weekly Report Paragraph Spacing Fix
 
-**상태**: 구현/로컬 검증/커밋/푸시 완료, Railway CLI 인증 문제로 운영 배포 확인 대기
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -61,15 +61,15 @@ git diff --check
 ### 운영 배포 상태
 
 - Git commit: `df0a6e6` (`fix: preserve weekly report paragraph breaks`)
+- Git docs/status commit: `13963a9` (`docs: record weekly report deployment blocker [skip ci]`)
 - Git push: `main` pushed to origin.
-- Railway CLI status: `Unauthorized. Please run railway login again.`
-- Frontend production bundle poll:
-  - Local build CSS: `index-CDmVRHme.css`
-  - Production still serving: `index-CyM18rmt.css`
-  - 8-minute poll did not observe the new frontend bundle.
+- Railway `web`: `432a51c3-87f1-49f0-81dd-51a853cfae30` SUCCESS, latest commit `13963a9`.
+- Railway `sales-note-frontend`: `922d9341-229e-4960-aad9-a4679a351ca8` SUCCESS via CLI upload.
+- Frontend production bundle:
+  - Production now serves `index-CDmVRHme.css`, matching the local weekly paragraph-spacing build.
 - Backend production smoke:
+  - `https://web-production-5096.up.railway.app/reporting/login/` → 200.
   - `https://sales-note-frontend-production.up.railway.app/reporting/api/weekly-reports/3/` anonymous request still returns expected `401 login_required`.
-- Required next action: restore Railway CLI authentication, then deploy/verify `web` and `sales-note-frontend`.
 
 ### 권장 다음 작업
 
