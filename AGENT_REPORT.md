@@ -2,7 +2,7 @@
 
 ## 2026-05-18 — Customer Asset Directory / Search V1
 
-**상태**: 구현/로컬 검증/커밋/푸시 완료, backend 운영 반영 확인, frontend 운영 배포는 Railway CLI 재로그인 필요
+**상태**: 구현/로컬 검증/커밋/푸시/운영 배포/smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -75,12 +75,18 @@ git diff --check
 ### 운영 배포 상태
 
 - Git commit: `cf8f62e` (`feat: add customer asset directory`)
+- Docs/status commit: `a403256` (`docs: record asset directory deployment status`)
 - Git push: `main` pushed to origin.
-- Backend: GitHub push 기반 자동 배포로 신규 API 반영 확인.
+- Railway `web`: `03ee15e4-2ce1-4e1b-a426-243e141595f9` SUCCESS.
+- Railway `sales-note-frontend`: `902d7b16-9194-413e-a4cf-ac2e15d1120a` SUCCESS.
+- Backend API smoke:
   - `https://sales-note-frontend-production.up.railway.app/reporting/api/customer-assets/`
   - anonymous 요청 기준 expected `401 login_required`
-- Frontend: 아직 이전 bundle `assets/index-DW6PG7yO.js` 제공 중이라 `/assets/` React UI는 운영에 미반영.
-- 직접 Railway 배포 시도:
+- Frontend smoke:
+  - `https://sales-note-frontend-production.up.railway.app/assets/` 200.
+  - active bundle `assets/index-DYVWwl0N.js`.
+  - bundle contains `/reporting/api/customer-assets/` and `Customer assets`.
+- 최초 직접 Railway 배포 시도는 CLI 인증 만료로 실패했으나, 사용자가 `railway login` 재인증 후 frontend 배포 완료:
 
 ```text
 railway deployment up --service web --detach --message "Deploy asset directory cf8f62e"
@@ -88,9 +94,13 @@ railway deployment up --service web --detach --message "Deploy asset directory c
 
 railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy asset directory cf8f62e"
 → Unauthorized. Please run `railway login` again.
-```
 
-- Railway CLI 상태: OAuth refresh token expired / invalid_grant. `railway login` 재인증 후 frontend 배포 필요.
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy asset directory cf8f62e"
+→ deployment 902d7b16-9194-413e-a4cf-ac2e15d1120a created
+
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 902d7b16-9194-413e-a4cf-ac2e15d1120a SUCCESS
+```
 
 ### 권장 다음 작업
 

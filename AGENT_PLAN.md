@@ -42,8 +42,8 @@
 
 **Current status**:
 
-- Implementation, local validation, commit, and push complete.
-- Backend auto-deploy is live; frontend Railway manual deploy is blocked by expired CLI auth.
+- Implementation, local validation, commit, push, Railway deployment, and production smoke complete.
+- Waiting for user production manual verification.
 
 ## 2026-05-18 Customer asset / service / calibration v1 plan
 
