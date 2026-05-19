@@ -115,6 +115,37 @@ class AuthenticationSmoke(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class ReactNavigationApiTests(TestCase):
+    """React navigation API regression tests."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user('nav-user')
+
+    def test_navigation_api_requires_login_json(self):
+        response = self.client.get(reverse('reporting:navigation_api'))
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['error'], 'login_required')
+
+    def test_navigation_api_includes_legacy_fallback_react_menu_entries(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:navigation_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        items_by_id = {item['id']: item for item in payload['items']}
+        self.assertEqual(items_by_id['analytics']['href'], '/analytics/')
+        self.assertEqual(items_by_id['analytics']['label'], '분석')
+        self.assertEqual(items_by_id['businessCards']['href'], '/business-cards/')
+        self.assertEqual(items_by_id['businessCards']['label'], '명함')
+        self.assertEqual(items_by_id['profile']['href'], '/profile/')
+        self.assertEqual(items_by_id['profile']['label'], '프로필')
+
+
 class GmailMailboxThreadRegressionTests(TestCase):
     """Gmail 스레드 상세 Railway 500 회귀 테스트"""
 

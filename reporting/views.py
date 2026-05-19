@@ -2217,6 +2217,7 @@ def navigation_api(request):
 
     items = [
         {'id': 'dashboard', 'label': '대시보드', 'href': '/dashboard/'},
+        {'id': 'analytics', 'label': '분석', 'href': '/analytics/'},
         {'id': 'customers', 'label': '고객', 'href': '/customers/'},
         {'id': 'assets', 'label': '장비', 'href': '/assets/'},
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
@@ -2228,11 +2229,13 @@ def navigation_api(request):
         items.append({'id': 'tasksManager', 'label': '업무하달', 'href': '/tasks/manager/'})
     if profile.role != 'manager':
         items.append({'id': 'mail', 'label': '메일', 'href': '/mailbox/'})
+    items.append({'id': 'businessCards', 'label': '명함', 'href': '/business-cards/'})
     items.extend([
         {'id': 'weeklyReports', 'label': '주간보고', 'href': '/weekly-reports/'},
         {'id': 'documents', 'label': '서류', 'href': '/documents/'},
         {'id': 'products', 'label': '제품', 'href': '/products/'},
         {'id': 'prepayments', 'label': '선결제', 'href': '/prepayments/'},
+        {'id': 'profile', 'label': '프로필', 'href': '/profile/'},
     ])
     if profile.can_use_ai:
         items.append({'id': 'ai', 'label': 'AI', 'href': '/ai-workspace/'})

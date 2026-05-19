@@ -1,5 +1,49 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 React legacy fallback menu visibility plan
+
+**Background**:
+
+- User clarified that the legacy analytics, business cards, and profile entries are still not visible from the React side.
+- The previous route canonicalization clarified that `/reporting/analytics/`, `/reporting/business-cards/`, and `/reporting/profile/` are Django fallback pages, but it did not expose React-side menu entries.
+- The immediate need is menu visibility and a React entry point, not full React feature parity for these three workflows in this batch.
+
+**DB change required**: No.
+
+- No model, migration, permission, or data-shape changes are required.
+- Preserve the Django fallback pages and authenticated behavior.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `analytics`, `businessCards`, and `profile` items to `GET /reporting/api/navigation/` so logged-in React users see them in the sidebar.
+  - Keep menu hrefs on React-owned shell routes: `/analytics/`, `/business-cards/`, `/profile/`.
+- Frontend:
+  - Add the same fallback entries to static React navigation for API-unavailable states.
+  - Add icons, route metadata, and current-view detection for `/analytics/`, `/business-cards/`, and `/profile/`.
+  - Render lightweight React shell pages that link to the existing Django fallback pages for the actual legacy workflow.
+- Tests:
+  - Add focused navigation API coverage for anonymous protection and authenticated menu item visibility.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused Django navigation API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- Production smoke after deploy:
+  - `/reporting/api/navigation/` includes `analytics`, `businessCards`, and `profile` for authenticated users.
+  - Frontend `/analytics/`, `/business-cards/`, `/profile/` return 200.
+  - Legacy fallback URLs still redirect/canonicalize as previously verified.
+
+**Current status**:
+
+- Backend/frontend implementation and local validation are complete. Commit, push, Railway deployment, production smoke, and final report are next.
+
 ## 2026-05-19 Frontend legacy Django route canonicalization plan
 
 **Background**:

@@ -65,9 +65,13 @@ button {
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  max-height: 100vh;
+  overflow-y: auto;
   padding: 22px 18px;
   border-right: 1px solid var(--line);
   background: var(--sidebar-bg);
@@ -8239,6 +8243,8 @@ tbody tr:hover {
     flex-direction: row;
     align-items: center;
     overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
     padding: 12px;
   }
 

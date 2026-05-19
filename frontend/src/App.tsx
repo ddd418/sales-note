@@ -263,6 +263,7 @@ import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, Sta
 
 const navItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
+  { id: 'analytics', label: '분석', icon: Activity, href: '/analytics/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
@@ -270,15 +271,18 @@ const navItems = [
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
   { id: 'tasks', label: '업무', icon: CheckCircle2, href: '/tasks/' },
   { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
+  { id: 'businessCards', label: '명함', icon: ImagePlus, href: '/business-cards/' },
   { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
   { id: 'products', label: '제품', icon: Archive, href: '/products/' },
   { id: 'prepayments', label: '선결제', icon: CircleDollarSign, href: '/prepayments/' },
+  { id: 'profile', label: '프로필', icon: Users, href: '/profile/' },
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
 
 const navIconMap: Record<string, typeof LayoutDashboard> = {
   dashboard: LayoutDashboard,
+  analytics: Activity,
   customers: Users,
   assets: Wrench,
   pipeline: Columns3,
@@ -287,17 +291,19 @@ const navIconMap: Record<string, typeof LayoutDashboard> = {
   tasks: CheckCircle2,
   tasksManager: Users,
   mail: Mail,
+  businessCards: ImagePlus,
   weeklyReports: ListChecks,
   documents: FileSpreadsheet,
   products: Archive,
   prepayments: CircleDollarSign,
+  profile: Users,
   ai: Sparkles,
 };
 
 const scheduleCalendarUrl = '/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'customers' | 'assets' | 'pipeline' | 'notes' | 'schedules' | 'tasks' | 'mail' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'ai';
+type MainView = 'dashboard' | 'analytics' | 'customers' | 'assets' | 'pipeline' | 'notes' | 'schedules' | 'tasks' | 'mail' | 'businessCards' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'profile' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -1323,6 +1329,18 @@ const routeMeta: Record<
       { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
+  analytics: {
+    eyebrow: 'Sales CRM / Analytics',
+    title: '분석',
+    summary: '영업 활동, 후속조치, 파이프라인 보고서를 확인합니다.',
+    primaryHref: '/reporting/analytics/',
+    primaryLabel: '분석 보고서 열기',
+    actions: [
+      { label: '분석 보고서', href: '/reporting/analytics/', primary: true },
+      { label: '활동 XLSX', href: '/reporting/analytics/export/activity.xlsx' },
+      { label: '파이프라인 XLSX', href: '/reporting/analytics/export/pipeline.xlsx' },
+    ],
+  },
   customers: {
     eyebrow: 'Sales CRM / Customers',
     title: '고객',
@@ -1407,6 +1425,18 @@ const routeMeta: Record<
       { label: '보낸편지함', href: '/mailbox/?box=sent' },
     ],
   },
+  businessCards: {
+    eyebrow: 'Sales CRM / Signature',
+    title: '명함',
+    summary: '메일 발송에 사용할 개인 명함과 서명 정보를 관리합니다.',
+    primaryHref: '/reporting/business-cards/',
+    primaryLabel: '명함 관리 열기',
+    actions: [
+      { label: '명함 목록', href: '/reporting/business-cards/', primary: true },
+      { label: '새 명함 등록', href: '/reporting/business-cards/create/' },
+      { label: '메일함', href: '/mailbox/' },
+    ],
+  },
   weeklyReports: {
     eyebrow: 'Sales CRM / Weekly Reports',
     title: '주간보고',
@@ -1455,6 +1485,18 @@ const routeMeta: Record<
       { label: '일정', href: '/schedules/' },
     ],
   },
+  profile: {
+    eyebrow: 'Sales CRM / Profile',
+    title: '프로필',
+    summary: '내 계정, 권한, 메일 연동 상태를 확인합니다.',
+    primaryHref: '/reporting/profile/',
+    primaryLabel: '프로필 열기',
+    actions: [
+      { label: '프로필 보기', href: '/reporting/profile/', primary: true },
+      { label: '프로필 수정', href: '/reporting/profile/edit/' },
+      { label: '메일함', href: '/mailbox/' },
+    ],
+  },
   ai: {
     eyebrow: 'Sales CRM / AI',
     title: 'AI 업무도구',
@@ -1472,16 +1514,19 @@ const routeMeta: Record<
 function getCurrentView(): MainView {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
+  if (pathname.startsWith('/analytics/')) return 'analytics';
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/assets/')) return 'assets';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/tasks/')) return 'tasks';
   if (pathname.startsWith('/mailbox/')) return 'mail';
+  if (pathname.startsWith('/business-cards/')) return 'businessCards';
   if (pathname.startsWith('/weekly-reports/')) return 'weeklyReports';
   if (pathname.startsWith('/documents/')) return 'documents';
   if (pathname.startsWith('/products/')) return 'products';
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
+  if (pathname.startsWith('/profile/')) return 'profile';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
   if (pathname.startsWith('/pipeline/')) return 'pipeline';
   return 'pipeline';
@@ -2160,6 +2205,74 @@ function WorkspaceRoutePage({
                 <small className={`risk-badge ${deal.risk}`}>{riskLabel[deal.risk]}</small>
               </a>
             ))}
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+const legacyFallbackViews: MainView[] = ['analytics', 'businessCards', 'profile'];
+
+function LegacyFallbackRoutePage({ view }: { view: MainView }) {
+  const meta = routeMeta[view];
+  return (
+    <section className="workspace-route-page">
+      <div className="route-hero">
+        <div>
+          <span className="eyebrow">{meta.eyebrow}</span>
+          <h2>{meta.title}</h2>
+          <p>{meta.summary}</p>
+        </div>
+        <a className="route-primary-action" href={meta.primaryHref}>
+          {meta.primaryLabel}
+          <MoveUpRight size={16} />
+        </a>
+      </div>
+
+      <div className="route-stat-grid">
+        <article className="route-stat-card">
+          <span>화면 상태</span>
+          <strong>운영 연결</strong>
+          <small>기존 업무 화면 유지</small>
+        </article>
+        <article className="route-stat-card">
+          <span>접근 기준</span>
+          <strong>로그인</strong>
+          <small>기존 권한 흐름 유지</small>
+        </article>
+        <article className="route-stat-card">
+          <span>이관 단계</span>
+          <strong>대기</strong>
+          <small>React 기능화 후보</small>
+        </article>
+      </div>
+
+      <div className="route-content-grid">
+        <article className="route-card">
+          <div className="panel-heading">
+            <span>주요 작업</span>
+            <ArrowRightLeft size={15} />
+          </div>
+          <div className="route-action-list">
+            {meta.actions.map((action) => (
+              <a className={action.primary ? 'primary' : ''} href={action.href} key={action.label}>
+                {action.label}
+                <ChevronRight size={15} />
+              </a>
+            ))}
+          </div>
+        </article>
+
+        <article className="route-card">
+          <div className="panel-heading">
+            <span>관련 React 화면</span>
+            <LayoutDashboard size={15} />
+          </div>
+          <div className="route-action-list">
+            <a href="/dashboard/">대시보드<ChevronRight size={15} /></a>
+            <a href="/mailbox/">메일함<ChevronRight size={15} /></a>
+            <a href="/weekly-reports/">주간보고<ChevronRight size={15} /></a>
           </div>
         </article>
       </div>
@@ -19710,6 +19823,15 @@ export function App() {
           onQuestionScopeChange={handleAIWorkspaceQuestionScopeChange}
           onRefresh={refreshAIWorkspaceData}
         />
+      </AppShell>
+    );
+  }
+
+  if (legacyFallbackViews.includes(currentView)) {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <LegacyFallbackRoutePage view={currentView} />
       </AppShell>
     );
   }
