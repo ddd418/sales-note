@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — Reports/Profile/Business Cards React Migration and Mailbox Fixes
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/Railway backend/frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -48,6 +48,9 @@ python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_thread_a
 python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests reporting.tests.ReactNavigationApiTests reporting.tests.ReactMailboxApiTests reporting.tests.NotesSummaryApiTests --verbosity=1
 → Ran 59 tests, OK
 
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_business_card_api_requires_login_json reporting.tests.ReactReportsProfileBusinessCardApiTests.test_business_card_api_owner_scope_default_and_soft_delete --verbosity=1
+→ Ran 2 tests, OK
+
 python manage.py check
 → System check identified no issues
 
@@ -65,6 +68,30 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: migrate reporting utilities to React"
+→ c0dd859
+
+git commit -m "fix: return JSON auth errors for business card API"
+→ 19a32e1
+
+git push
+→ origin/main updated to 19a32e1
+
+railway deployment up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy React reports profile mailbox fixes c0dd859"
+→ sales-note-frontend deployment 9738481b-4c58-4975-b7c3-9b03f4bcc61c reached SUCCESS
+
+Railway GitHub auto-deploy for web
+→ web deployment fad2c930-c529-48d5-ab87-d956e968c177 reached SUCCESS for c0dd859
+→ web deployment 2f5195e2-b667-439d-8058-1cea8ec3c0d7 reached SUCCESS for 19a32e1
+
+production frontend smoke
+→ /reports/, /analytics/, /mailbox/business-cards/, /business-cards/, /profile/ returned 200
+→ /reporting/api/reports/, /reporting/api/profile/, /reporting/api/business-cards/ returned 401 login_required JSON for anonymous users
+
+production backend smoke
+→ /reporting/login/ returned 200
+→ /reporting/api/reports/ and /reporting/api/business-cards/ returned 401 login_required JSON for anonymous users
 ```
 
 ### 알려진 제한
@@ -89,8 +116,13 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Runtime commit/deployment: 커밋/푸시 후 Railway 배포와 smoke를 진행합니다.
+- Runtime commits: `c0dd859 feat: migrate reporting utilities to React`, `19a32e1 fix: return JSON auth errors for business card API`
+- GitHub: `main` pushed.
+- Railway `web`: `2f5195e2-b667-439d-8058-1cea8ec3c0d7` SUCCESS.
+- Railway `sales-note-frontend`: `9738481b-4c58-4975-b7c3-9b03f4bcc61c` SUCCESS.
 - DB migration: `reporting.0106_alter_history_action_type` choices label migration required.
+- Production backend URL: `https://web-production-2cc17.up.railway.app`
+- Production frontend URL: `https://sales-note-frontend-production.up.railway.app`
 
 ## 2026-05-19 — React Legacy Fallback Menu Visibility
 

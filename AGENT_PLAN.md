@@ -36,7 +36,7 @@
 
 **Current status**:
 
-- Implementation in progress.
+- Implementation, local validation, commit/push, Railway backend/frontend deployment, and production smoke are complete. User production manual verification is next.
 
 ## 2026-05-19 Reports/Profile/Business Cards React migration plan
 
@@ -84,7 +84,7 @@
 
 **Current status**:
 
-- Implementation in progress.
+- Implementation, local validation, commit/push, Railway backend/frontend deployment, and production smoke are complete. User production manual verification is next.
 
 ## 2026-05-19 React legacy fallback menu visibility plan
 
