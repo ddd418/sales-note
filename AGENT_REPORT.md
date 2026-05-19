@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — Core CRM React Redirect Cutover Phase 1
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 준비
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -73,6 +73,27 @@ Local frontend server smoke
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: redirect core CRM legacy pages to React"
+→ 8b05d9f
+
+git push
+→ main updated
+
+railway deployment list --service web --limit 3 --json
+→ web deployment a9486708-6d99-4752-9096-cdfe857070c2 SUCCESS
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy core CRM React redirects 8b05d9f"
+→ sales-note-frontend deployment 95930719-45a3-49ca-afdc-04dca79518ba SUCCESS
+
+Production smoke
+→ /reporting/followups/?pipeline_stage=quote&q=Kim returned 302 to /customers/?stage=quote&q=Kim
+→ /reporting/schedules/create/?followup=7&date=2026-05-20 returned 302 to /schedules/?customer=7&date=2026-05-20&create=1
+→ /reporting/histories/create-from-schedule/9/ returned 302 to /notes/?create=1&schedule=9
+→ /reporting/dashboard/ returned 302 to /dashboard/
+→ /dashboard/ returned 200
+→ /reporting/api/dashboard/ returned 401 JSON login_required, confirming API was not redirected to React
+→ /reporting/login/ returned 200
 ```
 
 ### 알려진 제한
@@ -87,7 +108,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 운영 smoke를 진행합니다.
+- Runtime commit: `8b05d9f feat: redirect core CRM legacy pages to React`
+- Railway `web`: `a9486708-6d99-4752-9096-cdfe857070c2`, SUCCESS
+- Railway `sales-note-frontend`: `95930719-45a3-49ca-afdc-04dca79518ba`, SUCCESS
+- 운영 smoke 완료. 사용자 계정으로 실제 업무 데이터 기준 수동검수가 필요합니다.
 
 ### 운영 수동 검수 절차
 

@@ -4,7 +4,7 @@
 
 **작업명**: React CRM 전환 2차 배치 준비
 
-**상태**: 1차 핵심 CRM redirect cutover 구현/로컬 검증 완료. 커밋/푸시/Railway 배포와 운영 수동검수 후 다음 작업으로 넘어갑니다.
+**상태**: 1차 핵심 CRM redirect cutover 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료. 사용자 운영 수동검수 확인 후 다음 작업으로 넘어갑니다.
 
 ## 왜 이 작업인가
 
