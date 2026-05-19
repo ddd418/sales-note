@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — Backend Public URL Exposure Reduction
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 프론트 배포 준비
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료
 
 ### 요약
 
@@ -45,6 +45,27 @@ Local frontend server smoke with DJANGO_BASE_URL set
 → /reporting/analytics/ returned 302 to /reporting/login/?next=/reporting/analytics/
 → /reporting/api/dashboard/ returned 401 JSON login_required
 → /reporting/login/ returned 200
+
+git commit -m "fix: keep legacy fallback behind frontend proxy"
+→ 4d73333
+
+git push
+→ main updated
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy frontend proxy legacy fallback 4d73333"
+→ sales-note-frontend deployment ebe5e934-dbf0-47ab-b2c2-ebd74d521261 SUCCESS
+
+railway deployment list --service web --limit 2 --json
+→ web deployment fa1de3cd-0d96-408b-9229-90c1afe37273 SUCCESS
+
+Production smoke
+→ /reporting/analytics/ returned 302 to /reporting/login/?next=/reporting/analytics/
+→ /reporting/business-cards/ returned 302 to /reporting/login/?next=/reporting/business-cards/
+→ /reporting/profile/ returned 302 to /reporting/login/?next=/reporting/profile/
+→ /reporting/dashboard/ returned 302 to /dashboard/
+→ /dashboard/ returned 200
+→ /reporting/api/dashboard/ returned 401 JSON login_required
+→ /reporting/login/ returned 200
 ```
 
 ### 알려진 제한
@@ -60,7 +81,10 @@ Local frontend server smoke with DJANGO_BASE_URL set
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 smoke가 필요합니다.
+- Runtime commit: `4d73333 fix: keep legacy fallback behind frontend proxy`
+- Railway `sales-note-frontend`: `ebe5e934-dbf0-47ab-b2c2-ebd74d521261`, SUCCESS
+- Railway `web`: `fa1de3cd-0d96-408b-9229-90c1afe37273`, SUCCESS
+- 운영 smoke 완료. 사용자 계정으로 실제 로그인 상태 fallback 화면과 React 화면을 확인해야 합니다.
 
 ### 운영 수동 검수 절차
 
