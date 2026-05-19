@@ -79,6 +79,7 @@ export type DashboardData = {
   success?: boolean;
   source: 'django' | 'unavailable';
   generatedAt?: string;
+  canManage: boolean;
   error?: string;
   message?: string;
   scope: {
@@ -752,6 +753,7 @@ export type CustomerServiceCase = {
   resolution: string;
   assignedTo: string;
   hasReport: boolean;
+  reportUrl: string;
   updateUrl: string;
   updatedAt: string | null;
 };
@@ -767,6 +769,7 @@ export type CustomerCalibrationRecord = {
   notes: string;
   performedBy: string;
   hasCertificate: boolean;
+  certificateUrl: string;
   updateUrl: string;
   updatedAt: string | null;
 };
@@ -791,6 +794,8 @@ export type CustomerAssetItem = {
   createdBy: string;
   updatedAt: string | null;
   updateUrl: string;
+  serviceCaseCreateUrl: string;
+  calibrationCreateUrl: string;
   latestServiceCase: CustomerServiceCase | null;
   latestCalibration: CustomerCalibrationRecord | null;
   serviceCases: CustomerServiceCase[];
@@ -831,10 +836,28 @@ export type CustomerAssetDirectoryItem = CustomerAssetItem & {
   assetDirectoryHref: string;
 };
 
+export type CustomerAssetWorkQueueItem = {
+  id: string;
+  kind: string;
+  kindLabel: string;
+  assetId: number;
+  assetName: string;
+  customerName: string;
+  companyName: string;
+  departmentName: string;
+  ownerName: string;
+  dueDate: string | null;
+  statusLabel: string;
+  priorityLabel: string;
+  href: string;
+  customerHref: string;
+};
+
 export type CustomerAssetDirectoryData = {
   success?: boolean;
   source: 'django' | 'unavailable';
   generatedAt?: string;
+  canManage: boolean;
   error?: string;
   message?: string;
   scope: {
@@ -853,6 +876,10 @@ export type CustomerAssetDirectoryData = {
   options: {
     owners: Array<{ id: number; name: string }>;
     assetStatuses: Array<{ value: string; label: string }>;
+    serviceCaseTypes: Array<{ value: string; label: string }>;
+    serviceStatuses: Array<{ value: string; label: string }>;
+    servicePriorities: Array<{ value: string; label: string }>;
+    calibrationResults: Array<{ value: string; label: string }>;
     serviceFilters: Array<{ value: string; label: string }>;
     calibrationFilters: Array<{ value: string; label: string }>;
   };
@@ -871,6 +898,7 @@ export type CustomerAssetDirectoryData = {
     assets: string;
     customers: string;
   };
+  workQueue: CustomerAssetWorkQueueItem[];
   assets: CustomerAssetDirectoryItem[];
 };
 
@@ -3856,6 +3884,7 @@ const emptyDashboardData: DashboardData = {
   success: false,
   source: 'unavailable',
   generatedAt: new Date().toISOString(),
+  canManage: false,
   scope: {
     label: '',
     userCount: 0,
@@ -4296,6 +4325,7 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
   success: false,
   source: 'unavailable',
   generatedAt: new Date().toISOString(),
+  canManage: false,
   scope: {
     label: '',
     userCount: 0,
@@ -4312,6 +4342,10 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
   options: {
     owners: [],
     assetStatuses: [],
+    serviceCaseTypes: [],
+    serviceStatuses: [],
+    servicePriorities: [],
+    calibrationResults: [],
     serviceFilters: [
       { value: 'open', label: '진행 서비스' },
       { value: 'overdue', label: '처리 지연' },
@@ -4338,6 +4372,7 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
     assets: '/assets/',
     customers: '/customers/',
   },
+  workQueue: [],
   assets: [],
 };
 
@@ -6377,6 +6412,10 @@ export async function loadCustomerAssetDirectoryData(params: {
         ...(payload.options ?? {}),
         owners: payload.options?.owners ?? emptyCustomerAssetDirectoryData.options.owners,
         assetStatuses: payload.options?.assetStatuses ?? emptyCustomerAssetDirectoryData.options.assetStatuses,
+        serviceCaseTypes: payload.options?.serviceCaseTypes ?? emptyCustomerAssetDirectoryData.options.serviceCaseTypes,
+        serviceStatuses: payload.options?.serviceStatuses ?? emptyCustomerAssetDirectoryData.options.serviceStatuses,
+        servicePriorities: payload.options?.servicePriorities ?? emptyCustomerAssetDirectoryData.options.servicePriorities,
+        calibrationResults: payload.options?.calibrationResults ?? emptyCustomerAssetDirectoryData.options.calibrationResults,
         serviceFilters: payload.options?.serviceFilters ?? emptyCustomerAssetDirectoryData.options.serviceFilters,
         calibrationFilters: payload.options?.calibrationFilters ?? emptyCustomerAssetDirectoryData.options.calibrationFilters,
       },
@@ -6388,6 +6427,9 @@ export async function loadCustomerAssetDirectoryData(params: {
         ...emptyCustomerAssetDirectoryData.links,
         ...(payload.links ?? {}),
       },
+      workQueue: (payload.workQueue ?? emptyCustomerAssetDirectoryData.workQueue).map((item) => (
+        normalizeHrefFields(item, ['href', 'customerHref'])
+      )),
       assets: (payload.assets ?? emptyCustomerAssetDirectoryData.assets).map((asset) => (
         normalizeHrefFields(asset, ['customerHref', 'djangoCustomerHref', 'assetDirectoryHref'])
       )),

@@ -1,5 +1,97 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Customer Asset Directory Operational V2
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행 예정
+
+### 요약
+
+- React `/assets/`를 단순 검색 디렉터리에서 장비 운영 콘솔로 확장했습니다.
+- 장비별 상세 드로어에서 장비 수정, A/S 케이스 등록/수정, 교정 기록 등록/수정, 리포트/성적서 다운로드 링크를 처리할 수 있게 했습니다.
+- 장비 작업 큐를 추가해 처리 지연 A/S와 30일 내/지연 교정 항목을 우선 확인할 수 있게 했습니다.
+- 새 DB 모델이나 migration 없이 기존 `CustomerAsset`, `ServiceCase`, `CalibrationRecord`를 재사용했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+- `AGENT_PLAN.md`
+
+### CRM 개선
+
+- `/assets/`에서 고객 상세로 들어가지 않아도 장비/A/S/교정 운영 기록을 바로 갱신할 수 있습니다.
+- 서비스 리포트와 교정 성적서 파일은 기존 인증/스코프 안에서 다운로드됩니다.
+- 매니저는 같은 회사 장비를 계속 조회할 수 있지만 수정은 차단됩니다.
+- 선택 장비는 `asset=<id>` URL 파라미터로 복원되어 공유/재방문이 쉬워졌습니다.
+
+### 기존 기능 보존
+
+- 기존 고객 상세의 장비/서비스/교정 API와 React UI는 유지했습니다.
+- `/reporting/*` API/session/auth 흐름을 유지했습니다.
+- DB schema 변경은 없습니다.
+- Django template 삭제는 하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_returns_work_queue_and_directory_links reporting.tests.CustomersSummaryApiTests.test_customer_asset_directory_mutation_updates_asset_service_and_calibration reporting.tests.CustomersSummaryApiTests.test_customer_asset_directory_mutation_blocks_manager_and_other_scope reporting.tests.CustomersSummaryApiTests.test_customer_asset_directory_file_downloads_are_scoped --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 31 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, line-ending warnings only
+```
+
+### 알려진 제한
+
+- `/assets/` 신규 장비 생성은 이번 범위에 넣지 않았습니다. 기존 고객 상세에서 생성한 장비를 디렉터리에서 운영/수정하는 흐름입니다.
+- 작업 큐 항목이 현재 필터 결과 밖이면 드로어에서 필터 결과에 없다는 안내가 표시됩니다.
+- 실제 로그인 세션에서 파일 업로드/다운로드 수동 검수가 필요합니다.
+
+### 권장 다음 작업
+
+1. 운영 서버에서 `/assets/` 작업 큐와 상세 드로어를 수동 검수합니다.
+2. 이상 없으면 React 안정화 다음 배치로 products/prepayments/weekly reports/documents 중 legacy Django 의존도가 높은 화면부터 닫습니다.
+3. Django template 삭제는 React parity와 운영 검수 완료 후 별도 cleanup으로 진행합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: 배포 전
+- Railway `web`: 배포 전
+- Railway `sales-note-frontend`: 배포 전
+
+### 운영 수동 검수 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/assets/`에 로그인 상태로 접속합니다.
+2. 장비 목록에서 `상세/수정`을 눌러 드로어가 열리는지 확인합니다.
+3. 장비 수정, 서비스 접수/수정, 교정 기록/수정이 저장되는지 확인합니다.
+4. 서비스 리포트/교정 성적서가 있는 항목에서 다운로드 링크가 인증 상태로 열리는지 확인합니다.
+5. 매니저 계정에서는 조회만 가능하고 수정 버튼이 보이지 않는지 확인합니다.
+
 ## 2026-05-19 — Private Backend Proxy Recovery
 
 **상태**: 긴급 복구/커밋/푸시/Railway 배포/운영 smoke 완료

@@ -58,6 +58,7 @@ import {
   DashboardScheduleItem,
   CustomerAssetDirectoryData,
   CustomerAssetDirectoryItem,
+  CustomerAssetWorkQueueItem,
   CustomerAssetSummary,
   CustomerAssetItem,
   CustomerAssetPayload,
@@ -1306,6 +1307,35 @@ const getOptionValue = (options: Array<{ value: string }>, fallback: string) => 
 const getDefaultCustomerAssetId = (summary?: CustomerAssetSummary | null) => (
   summary?.assets[0]?.id ? String(summary.assets[0].id) : ''
 );
+
+const makeCustomerAssetSummaryFromDirectory = (data: CustomerAssetDirectoryData | null): CustomerAssetSummary | null => {
+  if (!data) {
+    return null;
+  }
+  return {
+    canManage: data.canManage,
+    message: data.message || '',
+    metrics: {
+      assetCount: data.metrics.totalAssets,
+      activeAssetCount: data.metrics.activeAssets,
+      openServiceCaseCount: data.metrics.openServiceAssets,
+      dueCalibrationCount: data.metrics.dueCalibrationAssets + data.metrics.overdueCalibrationAssets,
+    },
+    links: {
+      createAsset: '',
+      createServiceCase: '',
+      createCalibration: '',
+    },
+    options: {
+      assetStatuses: data.options.assetStatuses,
+      serviceCaseTypes: data.options.serviceCaseTypes,
+      serviceStatuses: data.options.serviceStatuses,
+      servicePriorities: data.options.servicePriorities,
+      calibrationResults: data.options.calibrationResults,
+    },
+    assets: data.assets,
+  };
+};
 
 const makeCustomerAssetForm = (
   asset?: CustomerAssetItem | null,
@@ -4539,7 +4569,57 @@ function CustomersPage({
   );
 }
 
-function CustomerAssetDirectoryTable({ assets }: { assets: CustomerAssetDirectoryItem[] }) {
+function CustomerAssetWorkQueue({
+  items,
+  onSelectAsset,
+}: {
+  items: CustomerAssetWorkQueueItem[];
+  onSelectAsset: (assetId: number) => void;
+}) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="dashboard-panel assets-work-queue" aria-label="장비 작업 큐">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Work queue</span>
+          <h2>우선 처리 장비</h2>
+        </div>
+        <ListChecks size={18} />
+      </div>
+      <div className="assets-work-queue-list">
+        {items.map((item) => (
+          <button
+            className={`assets-work-queue-item ${item.kind}`}
+            key={item.id}
+            onClick={() => onSelectAsset(item.assetId)}
+            type="button"
+          >
+            <span>{item.kindLabel}</span>
+            <strong>{item.assetName}</strong>
+            <small>{[item.companyName, item.departmentName, item.customerName].filter(Boolean).join(' · ') || '고객 정보 없음'}</small>
+            <em>
+              {item.dueDate ? formatDateLabel(item.dueDate) : '기한 없음'}
+              {item.priorityLabel ? ` · ${item.priorityLabel}` : ''}
+            </em>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CustomerAssetDirectoryTable({
+  assets,
+  selectedAssetId,
+  onSelectAsset,
+}: {
+  assets: CustomerAssetDirectoryItem[];
+  selectedAssetId: number | null;
+  onSelectAsset: (assetId: number) => void;
+}) {
   if (assets.length === 0) {
     return <DashboardEmpty label="조건에 맞는 장비가 없습니다" />;
   }
@@ -4558,7 +4638,7 @@ function CustomerAssetDirectoryTable({ assets }: { assets: CustomerAssetDirector
         </thead>
         <tbody>
           {assets.map((asset) => (
-            <tr key={asset.id}>
+            <tr className={selectedAssetId === asset.id ? 'selected' : ''} key={asset.id}>
               <td>
                 <div className="asset-directory-info">
                   <strong>{asset.assetName}</strong>
@@ -4601,6 +4681,9 @@ function CustomerAssetDirectoryTable({ assets }: { assets: CustomerAssetDirector
               </td>
               <td>
                 <div className="customer-row-actions">
+                  <button className="customer-row-action" onClick={() => onSelectAsset(asset.id)} type="button">
+                    상세/수정
+                  </button>
                   {asset.customerHref ? <a className="customer-row-action" href={asset.customerHref}>고객 상세</a> : null}
                 </div>
                 <small className="asset-directory-updated">{asset.updatedAt ? formatDateTimeLabel(asset.updatedAt) : '-'}</small>
@@ -4613,17 +4696,523 @@ function CustomerAssetDirectoryTable({ assets }: { assets: CustomerAssetDirector
   );
 }
 
+function CustomerAssetDirectoryDrawer({
+  data,
+  selectedAssetId,
+  loading,
+  onClose,
+  onRefresh,
+}: {
+  data: CustomerAssetDirectoryData;
+  selectedAssetId: number | null;
+  loading: boolean;
+  onClose: () => void;
+  onRefresh: () => Promise<CustomerAssetDirectoryData>;
+}) {
+  const summary = useMemo(() => makeCustomerAssetSummaryFromDirectory(data), [data]);
+  const asset = data.assets.find((item) => item.id === selectedAssetId) ?? null;
+  const [assetEditor, setAssetEditor] = useState<CustomerAssetEditorMode>('');
+  const [assetForm, setAssetForm] = useState<CustomerAssetFormState>(() => makeCustomerAssetForm(asset));
+  const [serviceCaseForm, setServiceCaseForm] = useState<CustomerServiceCaseFormState>(() => makeCustomerServiceCaseForm(summary, asset ? String(asset.id) : ''));
+  const [calibrationForm, setCalibrationForm] = useState<CustomerCalibrationFormState>(() => makeCustomerCalibrationForm(summary, asset ? String(asset.id) : ''));
+  const [editingServiceCaseId, setEditingServiceCaseId] = useState<number | null>(null);
+  const [editingCalibrationId, setEditingCalibrationId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setAssetEditor('');
+    setAssetForm(makeCustomerAssetForm(asset, getOptionValue(summary?.options.assetStatuses ?? [], 'active')));
+    setServiceCaseForm(makeCustomerServiceCaseForm(summary, asset ? String(asset.id) : ''));
+    setCalibrationForm(makeCustomerCalibrationForm(summary, asset ? String(asset.id) : ''));
+    setEditingServiceCaseId(null);
+    setEditingCalibrationId(null);
+    setSaving(false);
+    setError('');
+    setMessage('');
+  }, [asset?.id]);
+
+  const resetFeedback = () => {
+    setError('');
+    setMessage('');
+  };
+
+  const requireManage = () => {
+    if (summary?.canManage) {
+      return true;
+    }
+    setError(summary?.message || '장비 정보를 저장할 권한이 없습니다.');
+    setMessage('');
+    return false;
+  };
+
+  const handleAssetFieldChange = (field: keyof CustomerAssetFormState, value: string) => {
+    setAssetForm((previous) => ({ ...previous, [field]: value }));
+    resetFeedback();
+  };
+
+  const handleServiceCaseFieldChange = (
+    field: Exclude<keyof CustomerServiceCaseFormState, 'serviceReport'>,
+    value: string,
+  ) => {
+    setServiceCaseForm((previous) => ({ ...previous, [field]: value }));
+    resetFeedback();
+  };
+
+  const handleCalibrationFieldChange = (
+    field: Exclude<keyof CustomerCalibrationFormState, 'certificateFile'>,
+    value: string,
+  ) => {
+    setCalibrationForm((previous) => ({ ...previous, [field]: value }));
+    resetFeedback();
+  };
+
+  const handleAssetSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!asset || saving || !requireManage()) {
+      return;
+    }
+    const { payload, error: formError } = customerAssetFormToPayload(assetForm);
+    if (!payload || formError) {
+      setError(formError || '장비 정보를 확인하세요.');
+      setMessage('');
+      return;
+    }
+    if (!asset.updateUrl) {
+      setError('장비 저장 API가 준비되지 않았습니다.');
+      setMessage('');
+      return;
+    }
+
+    setSaving(true);
+    resetFeedback();
+    try {
+      const result = await saveCustomerAsset(payload, asset.updateUrl);
+      await onRefresh();
+      setMessage(result.message || '장비 정보를 저장했습니다.');
+      setAssetEditor('');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '장비 정보 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openServiceCreate = () => {
+    if (!asset) return;
+    setEditingServiceCaseId(null);
+    setServiceCaseForm(makeCustomerServiceCaseForm(summary, String(asset.id)));
+    setAssetEditor('service');
+    resetFeedback();
+  };
+
+  const openServiceEdit = (serviceCase: CustomerServiceCase) => {
+    setEditingServiceCaseId(serviceCase.id);
+    setServiceCaseForm(makeCustomerServiceCaseForm(summary, String(serviceCase.assetId), serviceCase));
+    setAssetEditor('service');
+    resetFeedback();
+  };
+
+  const handleServiceCaseSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!asset || saving || !requireManage()) {
+      return;
+    }
+    const { payload, error: formError } = customerServiceCaseFormToPayload(serviceCaseForm);
+    if (!payload || formError) {
+      setError(formError || '서비스 케이스 정보를 확인하세요.');
+      setMessage('');
+      return;
+    }
+    const submitUrl = editingServiceCaseId
+      ? asset.serviceCases.find((serviceCase) => serviceCase.id === editingServiceCaseId)?.updateUrl
+      : asset.serviceCaseCreateUrl;
+    if (!submitUrl) {
+      setError('서비스 저장 API가 준비되지 않았습니다.');
+      setMessage('');
+      return;
+    }
+
+    setSaving(true);
+    resetFeedback();
+    try {
+      const result = await saveCustomerServiceCase(payload, submitUrl);
+      await onRefresh();
+      setMessage(result.message || '서비스 케이스를 저장했습니다.');
+      setAssetEditor('');
+      setEditingServiceCaseId(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '서비스 케이스 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openCalibrationCreate = () => {
+    if (!asset) return;
+    setEditingCalibrationId(null);
+    setCalibrationForm(makeCustomerCalibrationForm(summary, String(asset.id)));
+    setAssetEditor('calibration');
+    resetFeedback();
+  };
+
+  const openCalibrationEdit = (calibration: CustomerCalibrationRecord) => {
+    setEditingCalibrationId(calibration.id);
+    setCalibrationForm(makeCustomerCalibrationForm(summary, String(calibration.assetId), calibration));
+    setAssetEditor('calibration');
+    resetFeedback();
+  };
+
+  const handleCalibrationSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!asset || saving || !requireManage()) {
+      return;
+    }
+    const { payload, error: formError } = customerCalibrationFormToPayload(calibrationForm);
+    if (!payload || formError) {
+      setError(formError || '교정 기록 정보를 확인하세요.');
+      setMessage('');
+      return;
+    }
+    const submitUrl = editingCalibrationId
+      ? asset.calibrations.find((calibration) => calibration.id === editingCalibrationId)?.updateUrl
+      : asset.calibrationCreateUrl;
+    if (!submitUrl) {
+      setError('교정 저장 API가 준비되지 않았습니다.');
+      setMessage('');
+      return;
+    }
+
+    setSaving(true);
+    resetFeedback();
+    try {
+      const result = await saveCustomerCalibration(payload, submitUrl);
+      await onRefresh();
+      setMessage(result.message || '교정 기록을 저장했습니다.');
+      setAssetEditor('');
+      setEditingCalibrationId(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '교정 기록 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!selectedAssetId) {
+    return null;
+  }
+
+  if (!asset) {
+    return (
+      <aside className="dashboard-panel asset-directory-drawer">
+        <div className="asset-directory-drawer-heading">
+          <div>
+            <span className="eyebrow">Asset detail</span>
+            <h2>장비를 찾을 수 없습니다</h2>
+          </div>
+          <button aria-label="닫기" className="icon-button" onClick={onClose} type="button">
+            <X size={17} />
+          </button>
+        </div>
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>선택한 장비가 현재 필터 결과에 없습니다.</span>
+        </div>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="dashboard-panel asset-directory-drawer">
+      <div className="asset-directory-drawer-heading">
+        <div>
+          <span className="eyebrow">Asset detail</span>
+          <h2>{asset.assetName}</h2>
+          <p>{[asset.companyName, asset.departmentName, asset.customerName || asset.primaryFollowupName].filter(Boolean).join(' · ') || '고객 정보 없음'}</p>
+        </div>
+        <button aria-label="닫기" className="icon-button" onClick={onClose} type="button">
+          <X size={17} />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="asset-directory-inline-loading">
+          <Loader2 className="spin-icon" size={16} />
+          <span>갱신 중</span>
+        </div>
+      ) : null}
+
+      {!summary?.canManage && summary?.message ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>{summary.message}</span>
+        </div>
+      ) : null}
+      {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
+      {message ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{message}</span></div> : null}
+
+      <div className="asset-directory-drawer-meta">
+        <span>상태 <strong>{asset.statusLabel}</strong></span>
+        <span>모델 <strong>{asset.modelName || '-'}</strong></span>
+        <span>시리얼 <strong>{asset.serialNumber || '-'}</strong></span>
+        <span>위치 <strong>{asset.installLocation || '-'}</strong></span>
+        <span>보증 <strong>{formatDateLabel(asset.warrantyUntil) || '-'}</strong></span>
+        <span>수정 <strong>{formatDateTimeLabel(asset.updatedAt) || '-'}</strong></span>
+      </div>
+
+      <div className="customer-assets-actions asset-directory-drawer-actions">
+        {summary?.canManage ? (
+          <>
+            <button className="route-secondary-action" onClick={() => { setAssetForm(makeCustomerAssetForm(asset, getOptionValue(summary.options.assetStatuses, 'active'))); setAssetEditor('asset'); resetFeedback(); }} type="button">
+              <Pencil size={15} />
+              장비 수정
+            </button>
+            <button className="route-secondary-action" onClick={openServiceCreate} type="button">
+              <ListChecks size={15} />
+              서비스 접수
+            </button>
+            <button className="route-secondary-action" onClick={openCalibrationCreate} type="button">
+              <CheckCircle2 size={15} />
+              교정 기록
+            </button>
+          </>
+        ) : null}
+        {asset.customerHref ? (
+          <a className="route-secondary-action" href={asset.customerHref}>
+            고객 상세
+            <MoveUpRight size={15} />
+          </a>
+        ) : null}
+      </div>
+
+      {asset.notes ? <p className="asset-directory-drawer-note">{asset.notes}</p> : null}
+
+      {assetEditor === 'asset' ? (
+        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleAssetSubmit}>
+          <div className="notes-create-grid">
+            <label>
+              <span>장비/자산명</span>
+              <input onChange={(event) => handleAssetFieldChange('assetName', event.target.value)} required value={assetForm.assetName} />
+            </label>
+            <label>
+              <span>상태</span>
+              <select onChange={(event) => handleAssetFieldChange('status', event.target.value)} required value={assetForm.status}>
+                {(summary?.options.assetStatuses ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>모델명</span>
+              <input onChange={(event) => handleAssetFieldChange('modelName', event.target.value)} value={assetForm.modelName} />
+            </label>
+            <label>
+              <span>시리얼번호</span>
+              <input onChange={(event) => handleAssetFieldChange('serialNumber', event.target.value)} value={assetForm.serialNumber} />
+            </label>
+            <label>
+              <span>구매일</span>
+              <input onChange={(event) => handleAssetFieldChange('purchaseDate', event.target.value)} type="date" value={assetForm.purchaseDate} />
+            </label>
+            <label>
+              <span>보증 만료일</span>
+              <input onChange={(event) => handleAssetFieldChange('warrantyUntil', event.target.value)} type="date" value={assetForm.warrantyUntil} />
+            </label>
+            <label>
+              <span>설치 위치</span>
+              <input onChange={(event) => handleAssetFieldChange('installLocation', event.target.value)} value={assetForm.installLocation} />
+            </label>
+          </div>
+          <label>
+            <span>메모</span>
+            <textarea onChange={(event) => handleAssetFieldChange('notes', event.target.value)} rows={3} value={assetForm.notes} />
+          </label>
+          <div className="notes-create-actions">
+            <button className="route-secondary-action" onClick={() => setAssetEditor('')} type="button">취소</button>
+            <button className="route-primary-action" disabled={saving} type="submit">
+              {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+              저장
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {assetEditor === 'service' ? (
+        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleServiceCaseSubmit}>
+          <div className="notes-create-grid">
+            <label>
+              <span>유형</span>
+              <select onChange={(event) => handleServiceCaseFieldChange('caseType', event.target.value)} required value={serviceCaseForm.caseType}>
+                {(summary?.options.serviceCaseTypes ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>상태</span>
+              <select onChange={(event) => handleServiceCaseFieldChange('status', event.target.value)} required value={serviceCaseForm.status}>
+                {(summary?.options.serviceStatuses ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>우선순위</span>
+              <select onChange={(event) => handleServiceCaseFieldChange('priority', event.target.value)} required value={serviceCaseForm.priority}>
+                {(summary?.options.servicePriorities ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>접수일</span>
+              <input onChange={(event) => handleServiceCaseFieldChange('receivedDate', event.target.value)} required type="date" value={serviceCaseForm.receivedDate} />
+            </label>
+            <label>
+              <span>처리 기한</span>
+              <input onChange={(event) => handleServiceCaseFieldChange('dueDate', event.target.value)} type="date" value={serviceCaseForm.dueDate} />
+            </label>
+            <label>
+              <span>완료일</span>
+              <input onChange={(event) => handleServiceCaseFieldChange('completedDate', event.target.value)} type="date" value={serviceCaseForm.completedDate} />
+            </label>
+            <label>
+              <span>서비스 리포트</span>
+              <input
+                onChange={(event) => {
+                  setServiceCaseForm((previous) => ({ ...previous, serviceReport: event.target.files?.[0] ?? null }));
+                  resetFeedback();
+                }}
+                type="file"
+              />
+            </label>
+          </div>
+          <label>
+            <span>증상/요청</span>
+            <textarea onChange={(event) => handleServiceCaseFieldChange('symptom', event.target.value)} rows={3} value={serviceCaseForm.symptom} />
+          </label>
+          <label>
+            <span>처리 내용</span>
+            <textarea onChange={(event) => handleServiceCaseFieldChange('resolution', event.target.value)} rows={3} value={serviceCaseForm.resolution} />
+          </label>
+          <div className="notes-create-actions">
+            <button className="route-secondary-action" onClick={() => setAssetEditor('')} type="button">취소</button>
+            <button className="route-primary-action" disabled={saving} type="submit">
+              {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+              저장
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {assetEditor === 'calibration' ? (
+        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleCalibrationSubmit}>
+          <div className="notes-create-grid">
+            <label>
+              <span>교정일</span>
+              <input onChange={(event) => handleCalibrationFieldChange('calibrationDate', event.target.value)} required type="date" value={calibrationForm.calibrationDate} />
+            </label>
+            <label>
+              <span>다음 교정일</span>
+              <input onChange={(event) => handleCalibrationFieldChange('nextDueDate', event.target.value)} type="date" value={calibrationForm.nextDueDate} />
+            </label>
+            <label>
+              <span>결과</span>
+              <select onChange={(event) => handleCalibrationFieldChange('result', event.target.value)} required value={calibrationForm.result}>
+                {(summary?.options.calibrationResults ?? []).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>성적서</span>
+              <input
+                onChange={(event) => {
+                  setCalibrationForm((previous) => ({ ...previous, certificateFile: event.target.files?.[0] ?? null }));
+                  resetFeedback();
+                }}
+                type="file"
+              />
+            </label>
+          </div>
+          <label>
+            <span>메모</span>
+            <textarea onChange={(event) => handleCalibrationFieldChange('notes', event.target.value)} rows={3} value={calibrationForm.notes} />
+          </label>
+          <div className="notes-create-actions">
+            <button className="route-secondary-action" onClick={() => setAssetEditor('')} type="button">취소</button>
+            <button className="route-primary-action" disabled={saving} type="submit">
+              {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+              저장
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      <div className="asset-directory-history">
+        <section>
+          <div className="asset-directory-history-heading">
+            <h3>서비스 이력</h3>
+            {summary?.canManage ? <button className="customer-row-action" onClick={openServiceCreate} type="button">추가</button> : null}
+          </div>
+          {asset.serviceCases.length > 0 ? asset.serviceCases.map((serviceCase) => (
+            <article className="asset-directory-history-item" key={serviceCase.id}>
+              <div>
+                <strong>{serviceCase.caseTypeLabel} · {serviceCase.statusLabel}</strong>
+                <span>
+                  {[serviceCase.priorityLabel, serviceCase.receivedDate ? formatDateLabel(serviceCase.receivedDate) : '', serviceCase.dueDate ? `기한 ${formatDateLabel(serviceCase.dueDate)}` : ''].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+              <div className="asset-directory-history-actions">
+                {serviceCase.reportUrl ? <a className="customer-row-action" href={serviceCase.reportUrl}>리포트</a> : null}
+                {summary?.canManage ? <button className="customer-row-action" onClick={() => openServiceEdit(serviceCase)} type="button">수정</button> : null}
+              </div>
+              {serviceCase.symptom || serviceCase.resolution ? <p>{serviceCase.resolution || serviceCase.symptom}</p> : null}
+            </article>
+          )) : <DashboardEmpty label="서비스 이력이 없습니다" />}
+        </section>
+
+        <section>
+          <div className="asset-directory-history-heading">
+            <h3>교정 이력</h3>
+            {summary?.canManage ? <button className="customer-row-action" onClick={openCalibrationCreate} type="button">추가</button> : null}
+          </div>
+          {asset.calibrations.length > 0 ? asset.calibrations.map((calibration) => (
+            <article className="asset-directory-history-item" key={calibration.id}>
+              <div>
+                <strong>{calibration.resultLabel}</strong>
+                <span>
+                  {[calibration.calibrationDate ? formatDateLabel(calibration.calibrationDate) : '', calibration.nextDueDate ? `다음 ${formatDateLabel(calibration.nextDueDate)}` : ''].filter(Boolean).join(' · ') || '일자 없음'}
+                </span>
+              </div>
+              <div className="asset-directory-history-actions">
+                {calibration.certificateUrl ? <a className="customer-row-action" href={calibration.certificateUrl}>성적서</a> : null}
+                {summary?.canManage ? <button className="customer-row-action" onClick={() => openCalibrationEdit(calibration)} type="button">수정</button> : null}
+              </div>
+              {calibration.notes ? <p>{calibration.notes}</p> : null}
+            </article>
+          )) : <DashboardEmpty label="교정 이력이 없습니다" />}
+        </section>
+      </div>
+    </aside>
+  );
+}
+
 function CustomerAssetsPage({
   calibration,
   data,
   loading,
   owner,
   query,
+  selectedAssetId,
   service,
   status,
   onCalibrationChange,
+  onRefresh,
   onOwnerChange,
   onQueryChange,
+  onSelectedAssetChange,
   onServiceChange,
   onStatusChange,
 }: {
@@ -4632,11 +5221,14 @@ function CustomerAssetsPage({
   loading: boolean;
   owner: string;
   query: string;
+  selectedAssetId: number | null;
   service: string;
   status: string;
   onCalibrationChange: (value: string) => void;
+  onRefresh: () => Promise<CustomerAssetDirectoryData>;
   onOwnerChange: (value: string) => void;
   onQueryChange: (value: string) => void;
+  onSelectedAssetChange: (assetId: number | null) => void;
   onServiceChange: (value: string) => void;
   onStatusChange: (value: string) => void;
 }) {
@@ -4703,6 +5295,8 @@ function CustomerAssetsPage({
         ))}
       </section>
 
+      <CustomerAssetWorkQueue items={data.workQueue} onSelectAsset={onSelectedAssetChange} />
+
       <div className="customers-filter-bar assets-filter-bar">
         <label className="customers-search">
           <Search size={17} />
@@ -4745,16 +5339,29 @@ function CustomerAssetsPage({
         </div>
       ) : null}
 
-      <section className="dashboard-panel assets-main-panel">
-        <div className="dashboard-panel-heading">
-          <div>
-            <span className="eyebrow">Asset list</span>
-            <h2>장비 목록</h2>
+      <div className={selectedAssetId ? 'assets-directory-layout has-drawer' : 'assets-directory-layout'}>
+        <section className="dashboard-panel assets-main-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Asset list</span>
+              <h2>장비 목록</h2>
+            </div>
+            {loading ? <Loader2 className="spin-icon" size={18} /> : <Wrench size={18} />}
           </div>
-          {loading ? <Loader2 className="spin-icon" size={18} /> : <Wrench size={18} />}
-        </div>
-        <CustomerAssetDirectoryTable assets={data.assets} />
-      </section>
+          <CustomerAssetDirectoryTable
+            assets={data.assets}
+            selectedAssetId={selectedAssetId}
+            onSelectAsset={onSelectedAssetChange}
+          />
+        </section>
+        <CustomerAssetDirectoryDrawer
+          data={data}
+          loading={loading}
+          selectedAssetId={selectedAssetId}
+          onClose={() => onSelectedAssetChange(null)}
+          onRefresh={onRefresh}
+        />
+      </div>
     </section>
   );
 }
@@ -18472,6 +19079,10 @@ export function App() {
   const [assetDirectoryOwner, setAssetDirectoryOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
   const [assetDirectoryService, setAssetDirectoryService] = useState(() => new URLSearchParams(window.location.search).get('service') || '');
   const [assetDirectoryCalibration, setAssetDirectoryCalibration] = useState(() => new URLSearchParams(window.location.search).get('calibration') || '');
+  const [assetDirectorySelectedId, setAssetDirectorySelectedId] = useState<number | null>(() => {
+    const value = Number(new URLSearchParams(window.location.search).get('asset') || '0');
+    return Number.isFinite(value) && value > 0 ? value : null;
+  });
   const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && shouldOpenCreatePanel());
   const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
   const [customerCreating, setCustomerCreating] = useState(false);
@@ -18724,6 +19335,29 @@ export function App() {
       alive = false;
     };
   }, [assetDirectoryCalibration, assetDirectoryOwner, assetDirectoryQuery, assetDirectoryService, assetDirectoryStatus, currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'assets') {
+      return;
+    }
+    const params = new URLSearchParams();
+    if (assetDirectoryQuery.trim()) params.set('q', assetDirectoryQuery.trim());
+    if (assetDirectoryStatus) params.set('status', assetDirectoryStatus);
+    if (assetDirectoryOwner) params.set('owner', assetDirectoryOwner);
+    if (assetDirectoryService) params.set('service', assetDirectoryService);
+    if (assetDirectoryCalibration) params.set('calibration', assetDirectoryCalibration);
+    if (assetDirectorySelectedId) params.set('asset', String(assetDirectorySelectedId));
+    const queryString = params.toString();
+    window.history.replaceState(null, '', `/assets/${queryString ? `?${queryString}` : ''}`);
+  }, [
+    assetDirectoryCalibration,
+    assetDirectoryOwner,
+    assetDirectoryQuery,
+    assetDirectorySelectedId,
+    assetDirectoryService,
+    assetDirectoryStatus,
+    currentView,
+  ]);
 
   useEffect(() => {
     if (currentView !== 'customers' || !customerDetailId) {
@@ -19334,6 +19968,17 @@ export function App() {
       stage: customerStage,
     });
     setCustomersData(data);
+    return data;
+  };
+  const refreshAssetsData = async () => {
+    const data = await loadCustomerAssetDirectoryData({
+      q: assetDirectoryQuery,
+      status: assetDirectoryStatus,
+      owner: assetDirectoryOwner,
+      service: assetDirectoryService,
+      calibration: assetDirectoryCalibration,
+    });
+    setAssetsData(data);
     return data;
   };
   const refreshCustomerDetailData = async () => {
@@ -20506,11 +21151,14 @@ export function App() {
           loading={assetsLoading}
           owner={assetDirectoryOwner}
           query={assetDirectoryQuery}
+          selectedAssetId={assetDirectorySelectedId}
           service={assetDirectoryService}
           status={assetDirectoryStatus}
           onCalibrationChange={setAssetDirectoryCalibration}
+          onRefresh={refreshAssetsData}
           onOwnerChange={setAssetDirectoryOwner}
           onQueryChange={setAssetDirectoryQuery}
+          onSelectedAssetChange={setAssetDirectorySelectedId}
           onServiceChange={setAssetDirectoryService}
           onStatusChange={setAssetDirectoryStatus}
         />

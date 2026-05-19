@@ -1,5 +1,44 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 Customer asset directory operational V2 plan
+
+**Background**:
+
+- Global CRM benchmark review identified equipment/assets, A/S cases, and calibration history as a priority gap.
+- React `/assets/` already exists as a searchable directory, but it is mostly read-only and still pushes operational edits back to customer detail.
+- User wants React stabilized quickly so legacy Django frontend pages can later be closed safely.
+
+**DB change required**: No.
+
+- Reuse `CustomerAsset`, `ServiceCase`, `CalibrationRecord`, and existing upload fields.
+- No migrations or new models are planned for this batch.
+
+**Implementation scope**:
+
+- Backend:
+  - Extend the customer asset directory API with work queue items and asset-scoped mutation/download links.
+  - Add asset-scoped POST APIs for asset updates, service case create/update, and calibration create/update.
+  - Add scoped GET APIs for service report and calibration certificate downloads.
+  - Preserve existing customer-detail asset APIs and existing permission behavior.
+- Frontend:
+  - Add an operational work queue to `/assets/`.
+  - Add row selection and a detail drawer for asset editing, service case create/update, calibration create/update, and file download links.
+  - Preserve existing filters and support restoring a selected asset from `asset=<id>`.
+- Tests/docs:
+  - Add focused API tests for scoped mutations, manager/other-scope denial, downloads, and work queue payload.
+  - Update `AGENT_REPORT.md` after validation.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused customer asset API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+
 ## 2026-05-19 Backend public URL exposure reduction plan
 
 **Background**:

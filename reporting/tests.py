@@ -2959,6 +2959,243 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(payload['assets'][0]['latestServiceCase']['caseType'], 'inspection')
         self.assertEqual(payload['assets'][0]['latestCalibration']['result'], 'pending')
 
+    def test_customer_assets_summary_api_returns_work_queue_and_directory_links(self):
+        target = self._create_customer(self.user, '장비큐고객')
+        asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='Queue Pipette',
+            model_name='QP-10',
+            status='active',
+            created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            asset=asset,
+            followup=target,
+            case_type='repair',
+            status='waiting',
+            priority='urgent',
+            received_date=timezone.localdate() - timedelta(days=3),
+            due_date=timezone.localdate() - timedelta(days=1),
+            symptom='작동 불량',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        CalibrationRecord.objects.create(
+            asset=asset,
+            followup=target,
+            calibration_date=timezone.localdate(),
+            next_due_date=timezone.localdate() + timedelta(days=5),
+            result='pass',
+            created_by=self.user,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:customer_assets_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        asset_payload = next(item for item in payload['assets'] if item['id'] == asset.id)
+        self.assertEqual(asset_payload['updateUrl'], reverse('reporting:customer_asset_directory_update_api', args=[asset.id]))
+        self.assertEqual(
+            asset_payload['serviceCaseCreateUrl'],
+            reverse('reporting:customer_asset_directory_service_case_create_api', args=[asset.id]),
+        )
+        self.assertEqual(
+            asset_payload['calibrationCreateUrl'],
+            reverse('reporting:customer_asset_directory_calibration_create_api', args=[asset.id]),
+        )
+        self.assertTrue(asset_payload['latestServiceCase']['updateUrl'].endswith('/update/'))
+        self.assertTrue(asset_payload['latestCalibration']['updateUrl'].endswith('/update/'))
+        queue_kinds = {item['kind'] for item in payload['workQueue']}
+        self.assertIn('service_overdue', queue_kinds)
+        self.assertIn('calibration_due', queue_kinds)
+        queue_item = next(item for item in payload['workQueue'] if item['kind'] == 'service_overdue')
+        self.assertEqual(queue_item['assetId'], asset.id)
+        self.assertEqual(queue_item['href'], f'/assets/?asset={asset.id}')
+
+    def test_customer_asset_directory_mutation_updates_asset_service_and_calibration(self):
+        target = self._create_customer(self.user, '장비운영고객')
+        asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='Old Asset',
+            status='active',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        asset_response = self.client.post(reverse('reporting:customer_asset_directory_update_api', args=[asset.id]), {
+            'asset_name': 'Updated Asset',
+            'model_name': 'UA-200',
+            'serial_number': 'UA-SN-1',
+            'install_location': 'B동 4층',
+            'status': 'inactive',
+            'notes': '디렉터리에서 수정',
+        })
+        self.assertEqual(asset_response.status_code, 200)
+        asset.refresh_from_db()
+        self.assertEqual(asset.asset_name, 'Updated Asset')
+        self.assertEqual(asset.status, 'inactive')
+        self.assertEqual(asset_response.json()['asset']['updateUrl'], reverse('reporting:customer_asset_directory_update_api', args=[asset.id]))
+
+        report_file = SimpleUploadedFile('service-report.pdf', b'%PDF-1.4 service report', content_type='application/pdf')
+        service_response = self.client.post(reverse('reporting:customer_asset_directory_service_case_create_api', args=[asset.id]), {
+            'case_type': 'inspection',
+            'status': 'received',
+            'priority': 'high',
+            'received_date': timezone.localdate().isoformat(),
+            'due_date': (timezone.localdate() + timedelta(days=2)).isoformat(),
+            'symptom': '정기 점검 요청',
+            'service_report': report_file,
+        })
+        self.assertEqual(service_response.status_code, 200)
+        service_case = ServiceCase.objects.get(id=service_response.json()['serviceCase']['id'])
+        self.assertEqual(service_case.asset, asset)
+        self.assertEqual(service_case.followup, target)
+        self.assertTrue(service_response.json()['serviceCase']['reportUrl'])
+
+        service_update_response = self.client.post(
+            reverse('reporting:customer_asset_directory_service_case_update_api', args=[asset.id, service_case.id]),
+            {
+                'case_type': 'inspection',
+                'status': 'completed',
+                'priority': 'normal',
+                'received_date': timezone.localdate().isoformat(),
+                'completed_date': timezone.localdate().isoformat(),
+                'resolution': '점검 완료',
+            },
+        )
+        self.assertEqual(service_update_response.status_code, 200)
+        service_case.refresh_from_db()
+        self.assertEqual(service_case.status, 'completed')
+        self.assertEqual(service_case.priority, 'normal')
+
+        certificate_file = SimpleUploadedFile('calibration-certificate.pdf', b'%PDF-1.4 certificate', content_type='application/pdf')
+        calibration_response = self.client.post(reverse('reporting:customer_asset_directory_calibration_create_api', args=[asset.id]), {
+            'calibration_date': timezone.localdate().isoformat(),
+            'next_due_date': (timezone.localdate() + timedelta(days=365)).isoformat(),
+            'result': 'adjusted',
+            'notes': '현장 교정',
+            'certificate_file': certificate_file,
+        })
+        self.assertEqual(calibration_response.status_code, 200)
+        calibration = CalibrationRecord.objects.get(id=calibration_response.json()['calibration']['id'])
+        self.assertEqual(calibration.asset, asset)
+        self.assertEqual(calibration.followup, target)
+        self.assertTrue(calibration_response.json()['calibration']['certificateUrl'])
+
+        calibration_update_response = self.client.post(
+            reverse('reporting:customer_asset_directory_calibration_update_api', args=[asset.id, calibration.id]),
+            {
+                'calibration_date': timezone.localdate().isoformat(),
+                'next_due_date': (timezone.localdate() + timedelta(days=180)).isoformat(),
+                'result': 'pass',
+                'notes': '재확인 완료',
+            },
+        )
+        self.assertEqual(calibration_update_response.status_code, 200)
+        calibration.refresh_from_db()
+        self.assertEqual(calibration.result, 'pass')
+        self.assertEqual(calibration.notes, '재확인 완료')
+
+        service_case.service_report.delete(save=False)
+        calibration.certificate_file.delete(save=False)
+
+    def test_customer_asset_directory_mutation_blocks_manager_and_other_scope(self):
+        target = self._create_customer(self.user, '장비디렉터리권한')
+        other_target = self._create_customer(self.other_user, '장비디렉터리타사')
+        asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='권한 장비',
+            created_by=self.user,
+        )
+        other_asset = CustomerAsset.objects.create(
+            company=other_target.company,
+            department=other_target.department,
+            primary_followup=other_target,
+            asset_name='타사 권한 장비',
+            created_by=self.other_user,
+        )
+        payload = {
+            'asset_name': '수정 시도',
+            'status': 'active',
+        }
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(reverse('reporting:customer_asset_directory_update_api', args=[asset.id]), payload)
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertFalse(manager_response.json()['success'])
+        manager_service_response = self.client.post(reverse('reporting:customer_asset_directory_service_case_create_api', args=[asset.id]), {
+            'case_type': 'service',
+            'status': 'received',
+            'priority': 'normal',
+            'received_date': timezone.localdate().isoformat(),
+        })
+        self.assertEqual(manager_service_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        other_response = self.client.post(reverse('reporting:customer_asset_directory_update_api', args=[other_asset.id]), payload)
+        self.assertEqual(other_response.status_code, 404)
+
+    def test_customer_asset_directory_file_downloads_are_scoped(self):
+        target = self._create_customer(self.user, '장비파일고객')
+        asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='File Asset',
+            created_by=self.user,
+        )
+        service_case = ServiceCase.objects.create(
+            asset=asset,
+            followup=target,
+            case_type='service',
+            status='completed',
+            priority='normal',
+            received_date=timezone.localdate(),
+            created_by=self.user,
+            service_report=SimpleUploadedFile('scoped-report.txt', b'service report', content_type='text/plain'),
+        )
+        calibration = CalibrationRecord.objects.create(
+            asset=asset,
+            followup=target,
+            calibration_date=timezone.localdate(),
+            next_due_date=timezone.localdate() + timedelta(days=30),
+            result='pass',
+            created_by=self.user,
+            certificate_file=SimpleUploadedFile('scoped-certificate.txt', b'certificate', content_type='text/plain'),
+        )
+
+        self.client.force_login(self.user)
+        report_response = self.client.get(reverse('reporting:customer_asset_service_report_download_api', args=[service_case.id]))
+        certificate_response = self.client.get(reverse('reporting:customer_asset_calibration_certificate_download_api', args=[calibration.id]))
+        self.assertEqual(report_response.status_code, 200)
+        self.assertIn('attachment', report_response.get('Content-Disposition', ''))
+        self.assertEqual(certificate_response.status_code, 200)
+        self.assertIn('attachment', certificate_response.get('Content-Disposition', ''))
+
+        self.client.force_login(self.manager)
+        manager_report_response = self.client.get(reverse('reporting:customer_asset_service_report_download_api', args=[service_case.id]))
+        self.assertEqual(manager_report_response.status_code, 200)
+
+        self.client.force_login(self.other_user)
+        other_report_response = self.client.get(reverse('reporting:customer_asset_service_report_download_api', args=[service_case.id]))
+        other_certificate_response = self.client.get(reverse('reporting:customer_asset_calibration_certificate_download_api', args=[calibration.id]))
+        self.assertEqual(other_report_response.status_code, 404)
+        self.assertEqual(other_certificate_response.status_code, 404)
+
+        report_response.close()
+        certificate_response.close()
+        manager_report_response.close()
+        service_case.service_report.delete(save=False)
+        calibration.certificate_file.delete(save=False)
+
     def test_customer_detail_summary_api_excludes_customer_ai_payload(self):
         target = self._create_customer(self.user, 'AI제거고객', priority='urgent')
         profile = self.user.userprofile
