@@ -42,7 +42,7 @@
 
 **Current status**:
 
-- Backend/frontend implementation and local validation are complete. Commit, push, Railway deployment, production smoke, and final report are next.
+- Implementation, local validation, commit/push, Railway backend/frontend deployment, and production smoke are complete. User production manual verification is next.
 
 ## 2026-05-19 Frontend legacy Django route canonicalization plan
 

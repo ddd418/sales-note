@@ -1,5 +1,118 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — React Legacy Fallback Menu Visibility
+
+**상태**: 구현/로컬 검증/커밋/푸시/Railway backend/frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
+
+### 요약
+
+React 좌측 메뉴에 `분석`, `명함`, `프로필` 항목을 추가했습니다. 세 항목은 React route(`/analytics/`, `/business-cards/`, `/profile/`)로 먼저 열리고, 내부 주요 작업 버튼은 기존 Django fallback 화면(`/reporting/analytics/`, `/reporting/business-cards/`, `/reporting/profile/`)으로 연결됩니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: `GET /reporting/api/navigation/`에 `analytics`, `businessCards`, `profile` 메뉴 추가.
+- `reporting/tests.py`: navigation API 로그인 보호와 세 메뉴 노출 회귀 테스트 추가.
+- `frontend/src/App.tsx`: React fallback navigation, icon mapping, route metadata, current-view mapping, shell page 렌더링 추가.
+- `frontend/src/styles.css`: 메뉴가 늘어난 sidebar가 데스크톱에서 세로 스크롤 가능하도록 조정.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- React CRM 메뉴에서 분석/명함/프로필 진입점이 보입니다.
+- 아직 React feature parity가 없는 업무는 기존 검증된 화면으로 연결해 기능을 보존했습니다.
+- 메뉴 수 증가로 sidebar 하단 항목이 잘리지 않도록 스크롤 처리를 추가했습니다.
+
+### 기존 기능 보존
+
+- 기존 Django analytics, business card, profile 화면과 권한 흐름은 삭제하지 않았습니다.
+- `/reporting/api/*` 로그인 보호와 API 프록시는 유지했습니다.
+- `/reporting/analytics/` 등 legacy canonical redirect 동작은 유지했습니다.
+- DB 모델 변경과 migration은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactNavigationApiTests --verbosity=1
+→ Ran 2 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-C-XEZfVN.js and /assets/index-BIgKM35p.css. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+local production server smoke on http://127.0.0.1:4185
+→ /analytics/ returned 200
+→ /business-cards/ returned 200
+→ /profile/ returned 200
+→ /reporting/analytics/ still returned 302 to https://web-production-2cc17.up.railway.app/reporting/analytics/
+
+git commit -m "feat: show legacy fallback entries in React nav"
+→ 810ce6a feat: show legacy fallback entries in React nav
+
+git push
+→ origin/main updated to 810ce6a
+
+railway deployment up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy React legacy fallback nav 810ce6a"
+→ sales-note-frontend deployment 31c11f54-8fd5-41d4-90c1-48282009dac0 reached SUCCESS
+
+Railway GitHub auto-deploy for web
+→ web deployment c29929a9-6116-4454-98c8-fde2e6e4a33d reached SUCCESS for commit 810ce6a
+
+production frontend smoke
+→ https://sales-note-frontend-production.up.railway.app/analytics/ returned 200
+→ https://sales-note-frontend-production.up.railway.app/business-cards/ returned 200
+→ https://sales-note-frontend-production.up.railway.app/profile/ returned 200
+→ https://sales-note-frontend-production.up.railway.app/reporting/analytics/ returned 302 to https://web-production-2cc17.up.railway.app/reporting/analytics/
+→ https://sales-note-frontend-production.up.railway.app/reporting/api/navigation/ returned 401 login_required JSON for anonymous users
+→ production JS asset contains /analytics/, /business-cards/, /profile/, businessCards, 분석, 명함, 프로필
+
+production backend smoke
+→ https://web-production-2cc17.up.railway.app/reporting/login/ returned 200
+```
+
+### 알려진 제한
+
+- `분석`, `명함`, `프로필`은 이번 작업에서 완전한 React 기능 화면으로 재구현하지 않았습니다. React shell 메뉴로 노출하고, 실제 업무 처리는 기존 Django fallback으로 연결합니다.
+- 인증된 production navigation API payload의 실제 메뉴 배열은 로그인 세션이 필요해 curl로 직접 확인하지 못했습니다. 동일 코드는 로컬 Django test로 검증했습니다.
+- Browser 플러그인 도구는 이번 세션에서 호출 가능한 브라우저 자동화 tool로 노출되지 않아 로컬/운영 HTTP smoke와 production asset 검사로 대체했습니다.
+
+### 권장 다음 단계
+
+운영 검수 후 세 화면 중 실제 React 이관 우선순위를 정해야 합니다. 실사용 빈도를 기준으로 보면 `프로필`은 계정 설정으로 작게 이관 가능하고, `명함`은 메일 설정 안의 서명 관리로 이관 후보이며, `분석`은 보고서/대시보드와 합치는 별도 설계가 필요합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에 로그인 후 좌측 메뉴에서 `분석`, `명함`, `프로필`이 보이는지 확인합니다.
+2. 각 메뉴를 눌러 `/analytics/`, `/business-cards/`, `/profile/` React shell 화면이 열리는지 확인합니다.
+3. 각 화면의 주요 버튼을 눌렀을 때 기존 운영 화면으로 이동하는지 확인합니다.
+4. `/dashboard/`, `/customers/`, `/notes/`, `/mailbox/`, `/ai-workspace/`의 기존 메뉴도 계속 보이고 동작하는지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: `810ce6a feat: show legacy fallback entries in React nav`
+- GitHub: `main` pushed.
+- Railway `web`: `c29929a9-6116-4454-98c8-fde2e6e4a33d` SUCCESS.
+- Railway `sales-note-frontend`: `31c11f54-8fd5-41d4-90c1-48282009dac0` SUCCESS.
+- DB migration: none.
+- Production backend URL: `https://web-production-2cc17.up.railway.app`
+- Production frontend URL: `https://sales-note-frontend-production.up.railway.app`
+
 ## 2026-05-19 — Frontend Legacy Django Route Canonicalization
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
