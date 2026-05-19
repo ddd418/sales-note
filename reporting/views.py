@@ -11207,11 +11207,50 @@ def _ai_workspace_question_text(value, limit=600):
 
 
 def _ai_workspace_question_answer_text(value, limit=4200):
-    text = _ai_workspace_feedback_display_text(value)
+    text = _ai_workspace_answer_display_text(value)
     text = re.sub(r'\n{3,}', '\n\n', text).strip()
+    text = _ai_workspace_question_readable_line_breaks(text)
     if len(text) <= limit:
         return text
     return text[:limit - 1].rstrip() + '...'
+
+
+def _ai_workspace_answer_display_text(value):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+', '[이메일 제거]', text)
+    text = re.sub(r'\b01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}\b', '[연락처 제거]', text)
+    text = re.sub(r'\b0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}\b', '[연락처 제거]', text)
+    text = re.sub(r'[ \t\f\v]+', ' ', text)
+    text = re.sub(r' *\r\n *', '\n', text)
+    text = re.sub(r' *[\r\n] *', '\n', text)
+    return text.strip()
+
+
+def _ai_workspace_question_readable_line_breaks(text):
+    text = str(text or '').strip()
+    if not text:
+        return ''
+
+    formatted = re.sub(r'[ \t\f\v]+', ' ', text)
+    formatted = re.sub(r' *\n *', '\n', formatted)
+
+    # The model sometimes returns useful numbered sections as one long paragraph.
+    formatted = re.sub(r'(?<!^)(?<!\n)\s+([1-9][0-9]?\)\s+)', r'\n\n\1', formatted)
+    formatted = re.sub(
+        r'(?<!^)(?<!\n)\s+-\s+(?=(?:\*\*)?[^:\n]{1,100}(?:\*\*)?:)',
+        '\n- ',
+        formatted,
+    )
+    formatted = re.sub(
+        r'(?<=[.!?])\s+(다만|따라서|앞으로|핵심은|정리하면,)',
+        r'\n\n\1',
+        formatted,
+    )
+    formatted = re.sub(r'\n{3,}', '\n\n', formatted)
+    return formatted.strip()
 
 
 def _ai_workspace_question_feedback_rating_label(rating):
@@ -13366,6 +13405,7 @@ def _ai_workspace_generate_department_question_answer(
                 '질문이 프롬프트/메일/문안/정리본 생성을 요구하면 answer에 그 산출물 자체를 완성형으로 쓴다.',
                 '프롬프트 생성 요청에서는 추천 판단, 버릴 선택, 예외 조건, 고객별 actionItems를 만들지 않는다.',
                 '답변 형식은 질문 의도에 맞게 자유롭게 선택한다. 모든 답변에 같은 제목이나 카드 구조를 반복하지 않는다.',
+                'answer가 4문장 이상이거나 번호/비교/품목 목록을 포함하면 문단 사이에 줄바꿈을 넣는다. 1), 2), 3) 같은 번호 항목과 - 항목은 각각 새 줄에서 시작한다.',
                 '질문이 "할까/말까", "A가 좋을까 B가 좋을까", "아니면", "굳이"처럼 선택지형이면 answer 첫 문장에 추천 선택을 먼저 말한다.',
                 'decision은 선택지가 분명하고 별도 판단 카드가 유용할 때만 넣는다. 단순 산출물 작성 요청에는 decision을 비운다.',
                 'perspective는 고객 심리 추정이나 영업 관점 분리가 실제로 도움이 될 때만 넣는다. 단순 산출물 작성 요청에는 perspective를 비운다.',

@@ -8819,6 +8819,36 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn('decision', result)
         self.assertNotIn('perspective', result)
 
+    def test_ai_workspace_department_question_answer_adds_readable_line_breaks(self):
+        from reporting.views import _ai_workspace_question_answer_text
+
+        raw_answer = (
+            '서울대학교 미생물공생및면역연구실 기준으로 보면, 납품 주기는 최근 실적상 평균 약 116일에 1회 수준입니다. '
+            '다만 최근에는 2026-02-25 → 2026-04-08로 약 43일 간격입니다. '
+            '1) **재구매 가능성이 높은 품목** - **SO3090.0010Tx10**: 최근 3회 납품 모두 연결된 핵심 품목입니다. '
+            '2) **추가로 팔 수 있는 가능성이 있는 품목** - **PCR 관련 소모품 샘플 제안품**: 샘플 제안 여지가 있습니다. '
+            '3) **거래 가능성 판단** - **높음**: SO3090.0010Tx10 재주문입니다. 정리하면, 재구매 기반이 있는 부서입니다.'
+        )
+
+        formatted = _ai_workspace_question_answer_text(raw_answer)
+
+        self.assertIn('\n\n다만 최근에는', formatted)
+        self.assertIn('\n\n1) **재구매 가능성이 높은 품목**', formatted)
+        self.assertIn('\n- **SO3090.0010Tx10**:', formatted)
+        self.assertIn('\n\n2) **추가로 팔 수 있는 가능성이 있는 품목**', formatted)
+        self.assertIn('\n- **PCR 관련 소모품 샘플 제안품**:', formatted)
+        self.assertIn('\n\n정리하면,', formatted)
+
+    def test_ai_workspace_department_question_answer_preserves_existing_line_breaks(self):
+        from reporting.views import _ai_workspace_question_answer_text
+
+        raw_answer = '완성형 프롬프트:\n\n상황: 고객은 내부 비교 검토 중입니다.\n요청: 다음 메일 전략을 제안해 주세요.'
+
+        formatted = _ai_workspace_question_answer_text(raw_answer)
+
+        self.assertIn('완성형 프롬프트:\n\n상황:', formatted)
+        self.assertIn('\n요청:', formatted)
+
     def test_ai_workspace_department_question_product_guard_replaces_unsupported_label(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 
