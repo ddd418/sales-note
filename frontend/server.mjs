@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
 const port = Number(process.env.PORT || 4173);
-const djangoBaseUrl = new URL(process.env.DJANGO_BASE_URL || 'https://web-production-2cc17.up.railway.app');
+const djangoBaseUrl = new URL(process.env.DJANGO_BASE_URL || 'http://127.0.0.1:8000');
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -226,18 +226,6 @@ function isDjangoLegacyNamespace(pathname) {
   );
 }
 
-function shouldRedirectToDjangoPage(clientRequest) {
-  const method = (clientRequest.method || 'GET').toUpperCase();
-  const pathname = getPathname(clientRequest.url || '/');
-  return (
-    (method === 'GET' || method === 'HEAD') &&
-    isDjangoLegacyNamespace(pathname) &&
-    !isDjangoApiRequest(pathname) &&
-    !isDjangoAssetRequest(pathname) &&
-    !isFrontendSessionRequest(pathname)
-  );
-}
-
 function shouldRedirectToReactPage(clientRequest) {
   const method = (clientRequest.method || 'GET').toUpperCase();
   return (method === 'GET' || method === 'HEAD') && Boolean(getCoreCrmReactLocation(clientRequest.url || '/'));
@@ -247,15 +235,6 @@ function redirectToReact(clientRequest, clientResponse) {
   clientResponse.writeHead(302, {
     'Cache-Control': 'no-cache',
     Location: getCoreCrmReactLocation(clientRequest.url || '/') || '/',
-  });
-  clientResponse.end();
-}
-
-function redirectToDjango(clientRequest, clientResponse) {
-  const target = new URL(clientRequest.url || '/', djangoBaseUrl);
-  clientResponse.writeHead(302, {
-    'Cache-Control': 'no-cache',
-    Location: target.toString(),
   });
   clientResponse.end();
 }
@@ -275,10 +254,6 @@ createServer((request, response) => {
     redirectToReact(request, response);
     return;
   }
-  if (shouldRedirectToDjangoPage(request)) {
-    redirectToDjango(request, response);
-    return;
-  }
   if (shouldProxy(requestUrl)) {
     proxyToDjango(request, response);
     return;
@@ -287,8 +262,5 @@ createServer((request, response) => {
 }).listen(port, '0.0.0.0', () => {
   console.log(`Frontend server listening on ${port}`);
   console.log('Redirecting migrated core CRM legacy pages to React routes');
-  console.log(`Redirecting non-migrated legacy Django pages to ${djangoBaseUrl.origin}`);
-  console.log(
-    `Proxying /reporting/api/*, session routes, /static/*, /media/* and non-GET legacy actions to ${djangoBaseUrl.origin}`,
-  );
+  console.log(`Proxying remaining legacy Django pages and API requests to ${djangoBaseUrl.origin}`);
 });

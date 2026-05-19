@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Backend Public URL Exposure Reduction
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 프론트 배포 준비
+
+### 요약
+
+- 프론트 서버가 이관되지 않은 legacy Django 페이지를 `web-production-2cc17.up.railway.app`으로 302 redirect하던 동작을 제거했습니다.
+- 이미 이관된 core CRM legacy URL은 계속 React route로 redirect합니다.
+- 아직 남은 legacy fallback 페이지/API/session/static/media 요청은 프론트 도메인 안에서 Django로 proxy합니다.
+- 코드의 production backend URL 하드코딩 fallback을 제거하고 로컬 기본값을 `http://127.0.0.1:8000`으로 바꿨습니다.
+
+### 변경된 파일
+
+- `frontend/server.mjs`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `NEXT_TASK.md`
+
+### CRM 개선
+
+- 사용자가 프론트 도메인에서 남은 legacy URL을 열어도 backend public URL로 주소창이 넘어가지 않습니다.
+- React 이관 완료 전까지 fallback 화면은 유지하면서 backend URL 노출을 줄였습니다.
+- backend public domain 완전 제거를 위한 다음 단계가 더 명확해졌습니다.
+
+### 기존 기능 보존
+
+- DB schema 변경은 없습니다.
+- `/reporting/api/*`, 로그인/로그아웃, static/media, Gmail/IMAP/OAuth, 파일/다운로드 흐름은 proxy로 유지됩니다.
+- Django template 파일은 아직 삭제하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DqN4a6dY.js / dist/assets/index-CDXhcZa4.css generated
+→ Vite chunk-size warning only
+
+Local frontend server smoke with DJANGO_BASE_URL set
+→ /reporting/dashboard/ returned 302 to /dashboard/
+→ /reporting/analytics/ returned 302 to /reporting/login/?next=/reporting/analytics/
+→ /reporting/api/dashboard/ returned 401 JSON login_required
+→ /reporting/login/ returned 200
+```
+
+### 알려진 제한
+
+- Railway `sales-note-frontend`의 `DJANGO_BASE_URL`은 아직 Django upstream을 가리켜야 합니다. 완전히 닫으려면 Railway private networking으로 service-to-service 연결을 먼저 전환해야 합니다.
+- Django legacy template 파일 삭제는 React feature parity와 운영 수동검수 후 별도 cleanup 단계에서만 진행해야 합니다.
+
+### 권장 다음 단계
+
+1. 이 변경을 Railway `sales-note-frontend`에 배포하고 운영 smoke를 확인합니다.
+2. 이후 `DJANGO_BASE_URL`을 Railway private domain 기반 내부 주소로 전환합니다.
+3. React parity가 완료된 화면부터 Django template URL과 template 파일 삭제 후보를 확정합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시 후 Railway `sales-note-frontend` 배포 및 운영 smoke가 필요합니다.
+
+### 운영 수동 검수 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/reporting/dashboard/`가 `/dashboard/`로 이동하는지 확인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/reporting/analytics/`가 `web-production-2cc17.up.railway.app`로 이동하지 않는지 확인합니다.
+3. `/reporting/login/` 로그인 화면과 `/reporting/api/dashboard/` 인증 보호가 유지되는지 확인합니다.
+
 ## 2026-05-19 — Core CRM React Redirect Cutover Phase 1
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

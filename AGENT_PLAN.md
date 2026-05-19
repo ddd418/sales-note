@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 Backend public URL exposure reduction plan
+
+**Background**:
+
+- User wants to eventually close `web-production-2cc17.up.railway.app`, remove remaining Django frontend paths, and delete legacy template files.
+- Immediate deletion is not safe until React parity and production manual verification are complete.
+- The current frontend server still redirects non-migrated legacy full-page requests to the backend public URL, which keeps that URL visible to users.
+
+**DB change required**: No.
+
+- Frontend server routing only.
+- Preserve Django backend, APIs, auth/session, static/media, files, exports, OAuth, and remaining fallback pages.
+
+**Implementation scope**:
+
+- Remove the hardcoded production backend URL fallback from `frontend/server.mjs`.
+- Keep migrated core CRM legacy routes redirecting to React routes.
+- Stop redirecting non-migrated legacy pages to the backend public URL.
+- Proxy remaining legacy `/reporting/*`, `/todos/*`, and `/ai/*` pages through the frontend domain during the transition.
+- Document the shutdown path: React parity, backend private networking, public backend domain removal, then template cleanup.
+
+**Validation plan**:
+
+- `cd frontend; node --check server.mjs`
+- `cd frontend; npm run build`
+- Local frontend smoke with `DJANGO_BASE_URL` set:
+  - Core legacy URL still redirects to React.
+  - Non-migrated legacy URL no longer returns a `Location` header pointing to backend public URL.
+  - `/reporting/api/*` remains proxied/protected.
+- Commit, push, deploy `sales-note-frontend`, then production smoke the same behavior.
+
 ## 2026-05-19 Core CRM Django frontend shutdown phase 1 plan
 
 **Background**:

@@ -2,21 +2,22 @@
 
 ## 다음 시작 작업
 
-**작업명**: React CRM 전환 2차 배치 준비
+**작업명**: Backend public URL shutdown 준비
 
-**상태**: 1차 핵심 CRM redirect cutover 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료. 사용자 운영 수동검수 확인 후 다음 작업으로 넘어갑니다.
+**상태**: 1차 핵심 CRM redirect cutover 배포 완료. backend public URL 노출 축소 변경은 구현/로컬 검증 완료, 배포와 운영 smoke 대기.
 
 ## 왜 이 작업인가
 
 - 사용자는 Django 템플릿 프론트를 빠르게 닫고 React CRM을 안정화하길 원합니다.
 - 1차 범위는 dashboard, customers/followups, notes/histories, schedules, pipeline입니다.
-- 다음 단계는 남은 React 이관 화면의 legacy GET 진입을 닫는 것입니다.
+- 다음 단계는 backend public URL을 사용자 경로에서 없애고, 남은 React 이관 화면의 legacy GET 진입을 닫는 것입니다.
 
 ## 다음 세션 시작 순서
 
-1. 먼저 1차 배포 운영 수동검수 결과를 확인합니다.
-2. 문제가 있으면 1차 redirect mapping 또는 React 링크 정규화를 먼저 수정합니다.
-3. 검수 완료 후 2차 배치 범위를 확정합니다.
+1. 먼저 backend public URL 노출 축소 변경을 배포하고 운영 smoke를 확인합니다.
+2. `sales-note-frontend`에서 `/reporting/analytics/` 같은 fallback URL이 backend public URL로 302되지 않는지 확인합니다.
+3. 그 다음 Railway private networking으로 `DJANGO_BASE_URL`을 내부 service URL로 바꿀 준비를 합니다.
+4. 1차 React 수동검수까지 확인되면 2차 React 이관 범위를 확정합니다.
 
 ## 2차 후보 범위
 
@@ -49,4 +50,5 @@
 
 - 사용자의 운영 수동검수 확인 전에는 다음 구현 배치를 시작하지 않습니다.
 - Django template 파일 삭제는 별도 cleanup 단계에서만 진행합니다.
+- `web-production-2cc17.up.railway.app` public domain 제거는 프론트 proxy가 private backend URL로 안정화된 뒤 진행합니다.
 - `public_site`는 이번 React CRM 전환 범위가 아닙니다.
