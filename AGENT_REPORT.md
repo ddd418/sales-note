@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — AI Today Task Filtering with Verified Memory and Recent Sent Mail
+
+**상태**: 구현/로컬 검증 완료, 런타임 커밋/푸시/Railway backend 배포 예정
+
+### 요약
+
+전체 부서 AI 질문에서 이미 검수 완료된 기억과 최근 보낸 메일을 무시하고 오늘 할 일로 다시 추천하는 문제를 수정했습니다. 이제 AI 답변을 만들기 전에 서버가 `recommendedActions`와 `openFollowups`를 먼저 필터링해 질문에서 제외한 고객, 검수 기억상 해결된 고객, 최근 2일 안에 이미 보낸 메일이 있는 고객을 실행 후보에서 제거합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI 질문 후보 필터, 검수 기억/최근 발신 메일/질문 제외어 매칭, fallback 답변과 OpenAI 프롬프트 지침 강화, 응답 context 진단값 추가.
+- `reporting/tests.py`: 문새롬 검수 기억, 이준서 최근 발신 메일, 이다민/김기윤/한은영 명시 제외 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- `오늘 내가 해야할 일이 있을까?` 같은 전체 부서 질문에서 이미 처리한 고객을 다시 오늘 할 일로 올리지 않습니다.
+- 사용자가 질문에 `이다민, 김기윤, 한은영 제외`처럼 적은 고객은 actionItems에서 빠집니다.
+- 최근 보낸 메일이 있으면 같은 고객을 “오늘 새로 연락할 고객”으로 다시 추천하지 않습니다.
+- 응답 context에 `actionFilter.skippedActions`를 내려 운영에서 어떤 이유로 빠졌는지 확인할 수 있습니다.
+
+### 기존 기능 보존
+
+- AI permission, question logging, 검수 기억 저장/목록/토글, 기존 전체 부서 추천 액션, fallback 답변 구조는 유지했습니다.
+- DB schema 변경은 없습니다.
+- 최근 메일 필터는 고객명/수신자명 중심으로 매칭해 제목의 일반 단어 때문에 다른 고객이 과하게 제외되지 않도록 했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_answers_global_action_search_without_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_filters_resolved_verified_memory_from_today_actions reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_filters_recent_sent_email_from_today_actions reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_applies_explicit_exclusion_names --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 89 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 자연어 이름 매칭은 CRM 후보 텍스트와 고객/수신자명 기반입니다. 고객명이 이메일 또는 노트에 전혀 연결되지 않은 경우에는 필터가 적용되지 않을 수 있습니다.
+- 최근 발신 메일 기준은 현재 2일입니다. 더 길게 잡을지 여부는 운영 사용감에 따라 조정할 수 있습니다.
+
+### 권장 다음 단계
+
+운영 AI 메뉴에서 동일 질문을 다시 실행해 문새롬, 이준서, 명시 제외 고객이 오늘 할 일 actionItems에 올라오지 않는지 확인합니다. 검수 완료 후 중단했던 장비/글로벌 기능 작업 stash를 복구해 이어갑니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에 로그인합니다.
+2. AI 메뉴에서 전체 부서 범위로 `오늘 내가 해야할 일이 있을까?? 이다민 연구원이랑 김기윤연구원 한은영교수 제외하고`를 다시 질문합니다.
+3. 답변 actionItems에 이다민, 김기윤, 한은영이 없는지 확인합니다.
+4. 문새롬 연구원 피펫 라벨/모델명 건이 “오늘 해야 할 일”로 다시 올라오지 않는지 확인합니다.
+5. 이준서 연구원이 최근 보낸 메일 이후 새 연락 대상으로 다시 추천되지 않는지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: pending
+- Backend Railway deployment: pending
+- GitHub: pending
+
 ## 2026-05-19 — AI Workspace Answer Readability Line Breaks
 
 **상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

@@ -12220,6 +12220,214 @@ def _ai_workspace_question_context_text(*collections, limit=6):
     return ' '.join(parts)
 
 
+def _ai_workspace_compact_match_text(value):
+    return re.sub(r'[^0-9a-zA-Z가-힣]+', '', str(value or '').lower())
+
+
+def _ai_workspace_person_terms(value):
+    terms = []
+    stopwords = {
+        '오늘', '내가', '해야할', '해야', '할', '일', '일이', '있을까', '있는지',
+        '찾아', '찾아줘', '챙길', '연락', '제외', '하고', '그리고', '연구원',
+        '교수', '교수님', '담당자', '고객', '님', '이미', '통해', '또는',
+        '정확한', '물어봤으며', '해결되었다는', '답변을', '받았다', '받았',
+        '메일', '이메일', '회신', '답장', '발송', '보낸', '받은', '견적',
+        '견적서', '재발송', '확인', '확인했습니다', '부탁드립니다', '드립니다',
+        '피펫', '본체', '라벨', '사진', '모델명', '모델명을', '카톡',
+        '나는', '회사', '연구실', '대학교', '대학', '연구소', '센터',
+        '병원', '랩', '팀', '예산', '편성', '관련', '검토', '가능', '시점',
+    }
+    for match in re.findall(
+        r'([0-9A-Za-z가-힣]{2,30})\s*(?:연구원|교수님|교수|담당자|선생님|님)(?:에게|께|한테|와|과|랑|이랑|하고|도|은|는|이|가|을|를)?',
+        str(value or ''),
+    ):
+        cleaned = match.strip()
+        if len(cleaned) >= 2 and cleaned not in stopwords and cleaned not in terms:
+            terms.append(cleaned)
+    for token in re.findall(r'[0-9A-Za-z가-힣]+', str(value or '')):
+        cleaned = re.sub(
+            r'(연구원|교수님|교수|담당자|선생님|님)(에게|께|한테|와|과|랑|이랑|하고|도|은|는|이|가|을|를)?$',
+            '',
+            token,
+        ).strip()
+        cleaned = re.sub(r'(에게|께|한테|와|과|랑|이랑|하고)$', '', cleaned).strip()
+        if len(cleaned) < 2 or cleaned in stopwords:
+            continue
+        is_likely_entity = (
+            bool(re.fullmatch(r'[가-힣]{2,4}', cleaned))
+            or bool(re.search(r'(연구실|대학교|대학|회사|연구소|센터|병원|랩|팀)$', cleaned))
+            or bool(re.search(r'[A-Za-z]', cleaned))
+        )
+        if not is_likely_entity:
+            continue
+        if cleaned not in terms:
+            terms.append(cleaned)
+    return terms
+
+
+def _ai_workspace_question_exclusion_terms(question):
+    text = str(question or '')
+    if '제외' not in text:
+        return []
+    before_exclude = text.rsplit('제외', 1)[0]
+    return _ai_workspace_person_terms(before_exclude)[-10:]
+
+
+def _ai_workspace_candidate_match_text(item):
+    if not isinstance(item, dict):
+        return ''
+    values = [
+        item.get('title'),
+        item.get('customer'),
+        item.get('company'),
+        item.get('department'),
+        item.get('recommendedAction'),
+        item.get('nextAction'),
+        item.get('note'),
+        item.get('summary'),
+    ]
+    for evidence in _ai_json_list(item.get('evidence')):
+        if isinstance(evidence, dict):
+            values.append(evidence.get('label'))
+            values.append(evidence.get('value'))
+    return _ai_workspace_compact_match_text(' '.join(str(value or '') for value in values))
+
+
+def _ai_workspace_candidate_matches_terms(item, terms):
+    haystack = _ai_workspace_candidate_match_text(item)
+    return any(_ai_workspace_compact_match_text(term) in haystack for term in terms if term)
+
+
+def _ai_workspace_completion_memory_terms(memories):
+    completion_keywords = [
+        '해결되', '해결됐', '완료', '처리했', '처리됨', '물어봤', '확인했',
+        '답변을받', '답변받', '받았다', '받았', '카톡', '보냈', '전달했',
+    ]
+    terms = []
+    memory_payloads = []
+    for memory in _ai_json_list(memories):
+        if not isinstance(memory, dict):
+            continue
+        content = memory.get('content') or ''
+        compact = _ai_workspace_compact_match_text(content)
+        if not any(_ai_workspace_compact_match_text(keyword) in compact for keyword in completion_keywords):
+            continue
+        memory_terms = _ai_workspace_person_terms(content)
+        if not memory_terms:
+            continue
+        for term in memory_terms:
+            if term not in terms:
+                terms.append(term)
+        memory_payloads.append({
+            'title': _ai_workspace_question_text(memory.get('title') or memory.get('memoryTypeLabel') or '검수 기억', 120),
+            'content': _ai_workspace_question_text(content, 360),
+            'terms': memory_terms[:6],
+        })
+    return terms, memory_payloads
+
+
+def _ai_workspace_question_is_today_task(question):
+    compact = _ai_workspace_compact_match_text(question)
+    return (
+        '오늘' in compact
+        and any(keyword in compact for keyword in ['해야할일', '할일', '챙길', '연락', '다음액션', '우선'])
+    )
+
+
+def _ai_workspace_email_date(email_item):
+    raw_date = str((email_item or {}).get('date') or '')
+    if not raw_date:
+        return None
+    return _parse_iso_date_or_none(raw_date[:10])
+
+
+def _ai_workspace_recent_outbound_contacts(recent_emails, today=None, days=2):
+    today = today or timezone.localdate()
+    contacts = []
+    for email_item in _ai_json_list(recent_emails):
+        if not isinstance(email_item, dict) or email_item.get('type') != 'sent':
+            continue
+        email_date = _ai_workspace_email_date(email_item)
+        if not email_date or (today - email_date).days < 0 or (today - email_date).days > days:
+            continue
+        terms = []
+        for key in ('customer', 'contact', 'recipient', 'to', 'recipientEmail'):
+            terms.extend(_ai_workspace_person_terms(email_item.get(key) or ''))
+        deduped_terms = []
+        for term in terms:
+            if term not in deduped_terms:
+                deduped_terms.append(term)
+        contacts.append({
+            'date': email_date.isoformat(),
+            'directionLabel': email_item.get('directionLabel') or '보낸 메일',
+            'subject': _ai_workspace_question_text(email_item.get('subject') or '제목 없음', 180),
+            'customer': _ai_workspace_question_text(email_item.get('customer'), 120),
+            'company': _ai_workspace_question_text(email_item.get('company'), 120),
+            'department': _ai_workspace_question_text(email_item.get('department'), 120),
+            'terms': deduped_terms[:10],
+        })
+    return contacts
+
+
+def _ai_workspace_filter_question_candidates(question, context):
+    context = dict(context or {})
+    excluded_terms = _ai_workspace_question_exclusion_terms(question)
+    memory_terms, resolved_memories = _ai_workspace_completion_memory_terms(context.get('verifiedMemories') or [])
+    recent_outbound_contacts = _ai_workspace_recent_outbound_contacts(context.get('recentEmails') or []) if _ai_workspace_question_is_today_task(question) else []
+    skipped = []
+
+    def skip_reason(item):
+        if excluded_terms and _ai_workspace_candidate_matches_terms(item, excluded_terms):
+            return 'question_exclusion'
+        if memory_terms and _ai_workspace_candidate_matches_terms(item, memory_terms):
+            return 'verified_memory_resolved'
+        for contact in recent_outbound_contacts:
+            if contact.get('terms') and _ai_workspace_candidate_matches_terms(item, contact['terms']):
+                return 'recent_outbound_email'
+        return ''
+
+    def filter_items(items):
+        kept = []
+        for item in _ai_json_list(items):
+            if not isinstance(item, dict):
+                continue
+            reason = skip_reason(item)
+            if reason:
+                skipped.append({
+                    'title': _ai_workspace_question_text(item.get('title') or item.get('nextAction') or item.get('recommendedAction') or '', 180),
+                    'customer': _ai_workspace_question_text(item.get('customer'), 120),
+                    'company': _ai_workspace_question_text(item.get('company'), 120),
+                    'department': _ai_workspace_question_text(item.get('department'), 120),
+                    'reason': reason,
+                })
+                continue
+            kept.append(item)
+        return kept
+
+    original_recommended = context.get('recommendedActions') or []
+    original_open = context.get('openFollowups') or []
+    context['recommendedActions'] = filter_items(original_recommended)
+    context['openFollowups'] = filter_items(original_open)
+    context['actionFilter'] = {
+        'questionExclusions': excluded_terms,
+        'resolvedMemoryTerms': memory_terms[:12],
+        'resolvedMemories': resolved_memories[:6],
+        'recentOutboundContacts': recent_outbound_contacts[:8],
+        'skippedActions': skipped[:12],
+        'originalRecommendedActionCount': len(original_recommended),
+        'recommendedActionCount': len(context['recommendedActions']),
+        'originalOpenFollowupCount': len(original_open),
+        'openFollowupCount': len(context['openFollowups']),
+    }
+    summary = dict(context.get('summary') or {})
+    summary['recommended_actions'] = len(context['recommendedActions'])
+    summary['open_followups'] = len(context['openFollowups'])
+    if skipped:
+        summary['skipped_actions'] = len(skipped)
+    context['summary'] = summary
+    return context
+
+
 def _ai_workspace_question_latest_delivery(deliveries):
     today_label = timezone.localdate().isoformat()
     payloads = [
@@ -12713,6 +12921,7 @@ def _ai_workspace_question_fallback(question, context):
     recent_schedules = context.get('recentSchedules') or []
     recommended_actions = context.get('recommendedActions') or []
     open_followups = context.get('openFollowups') or []
+    action_filter = context.get('actionFilter') or {}
     context_text = _ai_workspace_question_context_text(
         recent_feedbacks,
         recent_notes,
@@ -12740,8 +12949,11 @@ def _ai_workspace_question_fallback(question, context):
         keyword in normalized
         for keyword in ['주문', '물품', '품목', '제품', '구매', '매출', '스케일']
     )
-    asks_global_actions = scope_type == 'all' and any(
-        keyword in normalized for keyword in ['찾아', '어디', '우선', '다음액션', '다음할일', '할만한', '챙길', '연락']
+    asks_global_actions = scope_type == 'all' and (
+        _ai_workspace_question_is_today_task(question) or any(
+            keyword in normalized
+            for keyword in ['찾아', '어디', '우선', '다음액션', '다음할일', '해야할', '할일', '일이있', '할만한', '챙길', '연락']
+        )
     )
     asks_email_context = any(
         keyword in normalized
@@ -13053,6 +13265,9 @@ def _ai_workspace_question_fallback(question, context):
                 due = item.get('dueDate') or item.get('date') or ''
                 bullets.append(f"{index}. {label}: {action_text}{f' (기한 {due})' if due else ''}")
                 evidence.append({'label': f'후보 {index}', 'value': f"{label} / {action_text}"})
+            skipped_actions = action_filter.get('skippedActions') or []
+            if skipped_actions:
+                bullets.append(f"제외/처리/최근 연락으로 뺀 후보: {len(skipped_actions)}건")
             return {
                 'summary': (
                     f"{scope_label} 기준으로는 추천 액션과 미완료 후속조치가 있는 곳부터 보는 것이 좋습니다. "
@@ -13061,6 +13276,39 @@ def _ai_workspace_question_fallback(question, context):
                 'bullets': bullets,
                 'evidence': evidence,
                 'actionItems': action_items,
+                'confidence': 'medium',
+            }
+        skipped_actions = action_filter.get('skippedActions') or []
+        if skipped_actions:
+            reason_labels = {
+                'question_exclusion': '질문에서 제외 요청',
+                'verified_memory_resolved': '검수 기억상 해결/처리 완료',
+                'recent_outbound_email': '최근 보낸 메일로 이미 접촉',
+            }
+            evidence = [
+                {
+                    'label': reason_labels.get(item.get('reason'), item.get('reason') or '필터링'),
+                    'value': ' · '.join(_ai_prompt_context(
+                        item.get('company'),
+                        item.get('department'),
+                        item.get('customer'),
+                        item.get('title'),
+                    )),
+                }
+                for item in skipped_actions[:5]
+            ]
+            return {
+                'summary': (
+                    f"{scope_label} 기준으로 오늘 새로 실행할 만한 추천 액션은 없습니다. "
+                    '후보가 있더라도 질문에서 제외했거나, 검수 기억상 이미 해결됐거나, 최근 보낸 메일로 이미 접촉한 건은 오늘 할 일에서 뺐습니다.'
+                ),
+                'bullets': [
+                    f"필터링한 후보: {len(skipped_actions)}건",
+                    '이미 처리한 고객을 다시 추천하지 않도록 검수 기억과 최근 보낸 메일을 우선 반영했습니다.',
+                    '새로 급한 신호가 들어오면 받은 메일/새 노트 기준으로 다시 후보에 올라옵니다.',
+                ],
+                'evidence': _ai_workspace_question_evidence_payload(evidence, limit=5, value_limit=520),
+                'actionItems': [],
                 'confidence': 'medium',
             }
         return {
@@ -13387,6 +13635,9 @@ def _ai_workspace_generate_department_question_answer(
                 '메일은 보낸 메일과 받은 메일을 구분하고, 본문에 없는 구매 의도/확정 일정/회신 여부를 추측하지 않는다.',
                 'crmContext.verifiedMemories는 사용자가 검수해서 저장한 장기 기억이다. 같은 주제에서는 원본 AI 답변 기록보다 verifiedMemories를 우선 적용한다.',
                 'verifiedMemories가 CRM 원자료나 제품 마스터와 충돌하면 충돌을 숨기지 말고 어느 근거가 최신/검수 근거인지 분리해서 설명한다.',
+                'crmContext.actionFilter는 질문의 제외 조건, 검수 기억상 해결된 고객, 최근 보낸 메일로 이미 접촉한 고객을 반영해 실행 후보를 걸러낸 결과다.',
+                'crmContext.actionFilter.skippedActions에 있는 고객은 오늘 할 일 또는 actionItems로 추천하지 않는다. 필요하면 "이미 처리/제외/최근 메일 발송으로 뺐다" 정도로만 언급한다.',
+                'crmContext.actionFilter.recentOutboundContacts는 최근 2일 안에 사용자가 이미 보낸 메일이다. 오늘 할 일 질문에서는 이 고객을 새 연락 후보로 다시 올리지 않는다.',
                 'crmContext.recentQuestionLogs는 현재 대화 흐름을 이어가기 위한 약한 문맥이다. recentQuestionLogs의 과거 AI 답변은 사실 근거가 아니며 CRM 원자료, 메일, 제품 마스터, verifiedMemories보다 우선하지 않는다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
@@ -14540,6 +14791,7 @@ def ai_workspace_department_question_api(request):
     else:
         context = _ai_workspace_global_question_context(request.user)
 
+    context = _ai_workspace_filter_question_candidates(question, context)
     answer, source, web_search_used = _ai_workspace_generate_department_question_answer(question, context, model=selected_model)
     scope = context.get('scope') or {}
     question_log = AIWorkspaceQuestionLog.objects.create(
@@ -14570,6 +14822,8 @@ def ai_workspace_department_question_api(request):
             'summary': context.get('summary') or {},
             'lastDelivery': context.get('lastDelivery'),
             'recommendedActionCount': len(context.get('recommendedActions') or []),
+            'filteredActionCount': len((context.get('actionFilter') or {}).get('skippedActions') or []),
+            'actionFilter': context.get('actionFilter') or {},
             'recentEmailCount': len(context.get('recentEmails') or []),
             'recentFeedbackCount': len(context.get('recentFeedbacks') or []),
             'questionFeedbackCount': len(context.get('questionFeedbacks') or []),

@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 AI verified memory and recent outbound mail task filtering plan
+
+**Background**:
+
+- User reported that an all-department AI question (`오늘 내가 해야할 일이 있을까?? 이다민 연구원이랑 김기윤연구원 한은영교수 제외하고`) ignored active verified memory.
+- The specific active memory says Moon Saerom's pipette label/model follow-up was already handled via KakaoTalk and resolved.
+- User also noted that Lee Junseo had already been emailed yesterday, but the AI still treated that customer as a generic June follow-up.
+
+**DB change required**: No.
+
+- Reuse `AIWorkspaceMemory`, `EmailLog`, and existing AI Workspace context payloads.
+- No migration or data model change.
+
+**Implementation scope**:
+
+- Backend:
+  - Before generating AI answers, filter `recommendedActions` and `openFollowups` according to the actual question.
+  - Remove candidates that match explicit exclusion names in the question.
+  - Remove candidates that match active verified memories containing completion/resolution signals.
+  - For "today / 해야 할 일" task questions, remove candidates that already have a recent outbound email/contact in `recentEmails`.
+  - Return filtered/skipped action diagnostics in the question response context so production behavior can be checked without exposing unrelated data.
+  - Strengthen prompt rules so OpenAI must treat the filtered action list as the executable list and mention skipped/resolved candidates only if useful.
+- Tests:
+  - Add regression coverage for verified memory suppressing a resolved customer action.
+  - Add regression coverage for recent sent email suppressing a "today task" candidate.
+  - Add regression coverage for explicit exclusion names.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused AI Workspace filtering tests.
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## 2026-05-19 AI workspace readable line-break plan
 
 **Background**:

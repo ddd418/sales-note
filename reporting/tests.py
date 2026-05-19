@@ -8305,6 +8305,143 @@ class AIWorkspaceSummaryApiTests(TestCase):
             self.assertTrue(item['timing'])
             self.assertIsInstance(item['crmEvidence'], list)
 
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_question_filters_resolved_verified_memory_from_today_actions(self, _mock_client):
+        from reporting.models import AIWorkspaceMemory, History
+
+        resolved_followup, _resolved_department = self._create_customer(self.user, '문새롬')
+        active_followup, active_department = self._create_customer(self.user, '박준현')
+        today = timezone.localdate()
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=resolved_followup,
+            action_type='customer_meeting',
+            content='피펫 본체 라벨 사진 필요',
+            next_action='문새롬 연구원에게 피펫 본체 라벨 사진 또는 정확한 모델명 확인',
+            next_action_date=today,
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=active_followup,
+            action_type='customer_meeting',
+            content='담당 변경 확인 필요',
+            next_action='박준현 담당자 접점 확인',
+            next_action_date=today,
+        )
+        AIWorkspaceMemory.objects.create(
+            user=self.user,
+            department=None,
+            scope_type='all',
+            memory_type='correction',
+            title='정정 기억',
+            content='나는 이미 문새롬 연구원에게 카톡을 통해 피펫 본체 라벨 사진 또는 정확한 모델명을 물어봤으며 해결되었다는 답변을 받았다',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_api'),
+            data=json.dumps({'question': '오늘 내가 해야할 일이 있을까?'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        skipped = payload['context']['actionFilter']['skippedActions']
+        self.assertTrue(any(item['reason'] == 'verified_memory_resolved' and item['customer'] == '문새롬 담당자' for item in skipped))
+        action_text = json.dumps(payload['answer']['actionItems'], ensure_ascii=False)
+        self.assertNotIn('문새롬', action_text)
+        self.assertIn(active_department.name, action_text)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_question_filters_recent_sent_email_from_today_actions(self, _mock_client):
+        from reporting.models import EmailLog, History
+
+        followup, _department = self._create_customer(self.user, '이준서')
+        today = timezone.localdate()
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='email',
+            content='6월 예산 편성 후 결정 예정',
+            next_action='이준서 연구원에게 6월 초 예산 편성 확인',
+            next_action_date=today,
+        )
+        EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            followup=followup,
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            provider='gmail',
+            subject='6월 예산 편성 관련 확인 메일',
+            body='이준서 연구원님께 예산 편성 후 검토 가능 시점을 확인드렸습니다.',
+            to_email='junseo@example.com',
+            to_name='이준서 연구원',
+            recipient_email='junseo@example.com',
+            recipient_name='이준서 연구원',
+            sent_at=timezone.now() - timedelta(days=1),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_api'),
+            data=json.dumps({'question': '오늘 내가 해야할 일이 있을까?'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        skipped = payload['context']['actionFilter']['skippedActions']
+        self.assertTrue(any(item['reason'] == 'recent_outbound_email' and item['customer'] == '이준서 담당자' for item in skipped))
+        self.assertNotIn('이준서', json.dumps(payload['answer']['actionItems'], ensure_ascii=False))
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_question_applies_explicit_exclusion_names(self, _mock_client):
+        from reporting.models import History
+
+        today = timezone.localdate()
+        followups = {}
+        for name in ['이다민', '김기윤', '한은영', '박준현']:
+            followup, department = self._create_customer(self.user, name)
+            followups[name] = (followup, department)
+            History.objects.create(
+                user=self.user,
+                company=self.company,
+                followup=followup,
+                action_type='customer_meeting',
+                content=f'{name} 고객 후속',
+                next_action=f'{name} 담당자 후속 확인',
+                next_action_date=today,
+            )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_api'),
+            data=json.dumps({
+                'question': '오늘 내가 해야할 일이 있을까?? 이다민 연구원이랑 김기윤연구원 한은영교수 제외하고',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        skipped = payload['context']['actionFilter']['skippedActions']
+        skipped_text = json.dumps(skipped, ensure_ascii=False)
+        self.assertIn('이다민', skipped_text)
+        self.assertIn('김기윤', skipped_text)
+        self.assertIn('한은영', skipped_text)
+        self.assertTrue(all(item['reason'] == 'question_exclusion' for item in skipped if item['customer'] in {'이다민 담당자', '김기윤 담당자', '한은영 담당자'}))
+        action_text = json.dumps(payload['answer']['actionItems'], ensure_ascii=False)
+        self.assertNotIn('이다민', action_text)
+        self.assertNotIn('김기윤', action_text)
+        self.assertNotIn('한은영', action_text)
+        self.assertIn(followups['박준현'][1].name, action_text)
+
     def test_ai_workspace_department_question_normalizes_action_items(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 
