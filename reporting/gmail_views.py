@@ -3029,6 +3029,17 @@ def _business_card_bool(value):
     return str(value or '').lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _gmail_api_login_required_response(request):
+    if request.user.is_authenticated:
+        return None
+    return JsonResponse({
+        'success': False,
+        'error': 'login_required',
+        'message': '로그인이 필요합니다.',
+        'loginUrl': '/reporting/login/',
+    }, status=401)
+
+
 def _business_card_payload(card, request=None, include_signature=True):
     logo_url = ''
     if card.logo:
@@ -3126,17 +3137,21 @@ def _validate_business_card(card):
     return errors
 
 
-@login_required
 def business_card_api_list(request):
     """React 명함 관리 목록 API."""
+    auth_response = _gmail_api_login_required_response(request)
+    if auth_response:
+        return auth_response
     if request.method != 'GET':
         return JsonResponse({'success': False, 'error': 'GET 요청만 허용됩니다.'}, status=405)
     return JsonResponse(_business_cards_api_payload(request))
 
 
-@login_required
 def business_card_api_create(request):
     """React 명함 생성 API."""
+    auth_response = _gmail_api_login_required_response(request)
+    if auth_response:
+        return auth_response
     if request.method != 'POST':
         return _json_method_error()
 
@@ -3149,9 +3164,11 @@ def business_card_api_create(request):
     return JsonResponse(_business_cards_api_payload(request, '명함을 생성했습니다.'))
 
 
-@login_required
 def business_card_api_update(request, card_id):
     """React 명함 수정 API."""
+    auth_response = _gmail_api_login_required_response(request)
+    if auth_response:
+        return auth_response
     if request.method != 'POST':
         return _json_method_error()
 
@@ -3164,9 +3181,11 @@ def business_card_api_update(request, card_id):
     return JsonResponse(_business_cards_api_payload(request, '명함을 저장했습니다.'))
 
 
-@login_required
 def business_card_api_delete(request, card_id):
     """React 명함 soft delete API."""
+    auth_response = _gmail_api_login_required_response(request)
+    if auth_response:
+        return auth_response
     if request.method != 'POST':
         return _json_method_error()
 
@@ -3176,9 +3195,11 @@ def business_card_api_delete(request, card_id):
     return JsonResponse(_business_cards_api_payload(request, '명함을 삭제했습니다.'))
 
 
-@login_required
 def business_card_api_set_default(request, card_id):
     """React 기본 명함 설정 API."""
+    auth_response = _gmail_api_login_required_response(request)
+    if auth_response:
+        return auth_response
     if request.method != 'POST':
         return _json_method_error()
 

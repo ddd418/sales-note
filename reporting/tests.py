@@ -188,6 +188,12 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()['error'], 'login_required')
 
+    def test_business_card_api_requires_login_json(self):
+        response = self.client.get(reverse('reporting:business_card_api_list'))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
     def test_reports_api_returns_sales_and_global_reference_metrics(self):
         today = timezone.localdate()
         History.objects.create(
