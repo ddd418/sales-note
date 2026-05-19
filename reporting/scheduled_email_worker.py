@@ -61,7 +61,10 @@ def start_scheduled_email_inline_worker():
     """Start a small dispatcher loop inside a server process when explicitly enabled."""
     global _worker_started
 
-    if not _truthy(os.environ.get('SCHEDULED_EMAIL_INLINE_WORKER')):
+    enabled_value = os.environ.get('SCHEDULED_EMAIL_INLINE_WORKER')
+    if enabled_value is None and (os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('DATABASE_URL')):
+        enabled_value = '1'
+    if not _truthy(enabled_value):
         return
     if not _is_server_process():
         return

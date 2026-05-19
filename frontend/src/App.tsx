@@ -137,7 +137,14 @@ import {
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
+  BusinessCardItem,
+  BusinessCardPayload,
+  BusinessCardsData,
   NavigationData,
+  ProfileData,
+  ProfilePasswordPayload,
+  ProfileUpdatePayload,
+  ReportsData,
   NavigationItem,
   TaskDetailData,
   TaskFormPayload,
@@ -160,6 +167,7 @@ import {
   bulkDeleteProducts,
   bulkUpsertProducts,
   cancelPrepayment as cancelCustomerPrepayment,
+  changeProfilePassword,
   createCompany as createCompanyRecord,
   createDepartment as createDepartmentRecord,
   createNote as createSalesNote,
@@ -182,11 +190,14 @@ import {
   deleteScheduleFile,
   deleteGeneratedDocument,
   deleteDocumentTemplate,
+  deleteBusinessCard,
+  disconnectProfileEmail,
   deleteTask,
   deleteWeeklyReport,
   downloadScheduleDocument,
   generateWeeklyReportAiDraft,
   loadDashboardData,
+  loadBusinessCardsData,
   loadDocumentTemplatesData,
   loadCustomerAssetDirectoryData,
   loadCustomerDetailData,
@@ -205,6 +216,8 @@ import {
   loadProductManagementData,
   loadProducts,
   loadPersonalScheduleDetailData,
+  loadProfileData,
+  loadReportsData,
   loadScheduleCalendarData,
   loadScheduleDocumentPreview,
   loadScheduleDetailData,
@@ -251,10 +264,13 @@ import {
   replaceProductReference,
   requestTask,
   saveProduct,
+  saveBusinessCard,
   saveWeeklyReport,
   saveWeeklyReportManagerComment,
   toggleDocumentTemplateDefault,
+  setDefaultBusinessCard,
   updateDocumentTemplate,
+  updateProfile,
   updateAIWorkspaceMemory,
   updateTask,
   uploadTaskAttachments,
@@ -263,7 +279,7 @@ import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, Sta
 
 const navItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
-  { id: 'analytics', label: '분석', icon: Activity, href: '/analytics/' },
+  { id: 'analytics', label: '분석', icon: Activity, href: '/reports/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
@@ -271,7 +287,7 @@ const navItems = [
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
   { id: 'tasks', label: '업무', icon: CheckCircle2, href: '/tasks/' },
   { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
-  { id: 'businessCards', label: '명함', icon: ImagePlus, href: '/business-cards/' },
+  { id: 'businessCards', label: '명함', icon: ImagePlus, href: '/mailbox/business-cards/' },
   { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
   { id: 'products', label: '제품', icon: Archive, href: '/products/' },
@@ -421,6 +437,38 @@ type MailComposeFormState = {
 };
 
 type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoAttachments' | 'autoAttachmentSeed' | 'excludedAutoAttachmentKeys' | 'includeInternalCc' | 'internalCcEmails'>;
+
+type ProfileFormState = {
+  username: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
+type ProfilePasswordFormState = {
+  oldPassword: string;
+  newPassword1: string;
+  newPassword2: string;
+};
+
+type BusinessCardFormState = {
+  name: string;
+  fullName: string;
+  title: string;
+  companyName: string;
+  department: string;
+  phone: string;
+  mobile: string;
+  email: string;
+  address: string;
+  website: string;
+  fax: string;
+  logoUrl: string;
+  logoLinkUrl: string;
+  signatureHtml: string;
+  isDefault: boolean;
+  logo: File | null;
+};
 
 type DocumentTemplateFormState = {
   companyId: string;
@@ -629,7 +677,7 @@ const scheduleNoteActionTypeOptions = [
   { value: 'customer_meeting', label: '고객 미팅' },
   { value: 'quote', label: '견적' },
   { value: 'delivery_schedule', label: '납품 일정' },
-  { value: 'service', label: '서비스' },
+  { value: 'service', label: '메모' },
 ];
 
 const makeScheduleNoteCreateForm = (schedule: ScheduleDetailItem | null): NoteCreateFormState => ({
@@ -1009,6 +1057,93 @@ const makeInitialMailComposeForm = (): MailComposeFormState => {
   return form;
 };
 
+const getReplyTargetEmail = (email?: MailboxEmailItem | null) => {
+  if (!email) return '';
+  return email.type === 'sent' ? email.recipientEmail : email.senderEmail;
+};
+
+const makeProfileForm = (data?: ProfileData | null): ProfileFormState => ({
+  username: data?.user.username || '',
+  firstName: data?.user.firstName || '',
+  lastName: data?.user.lastName || '',
+  email: data?.user.email || '',
+});
+
+const makeEmptyProfilePasswordForm = (): ProfilePasswordFormState => ({
+  oldPassword: '',
+  newPassword1: '',
+  newPassword2: '',
+});
+
+const makeEmptyBusinessCardForm = (): BusinessCardFormState => ({
+  name: '',
+  fullName: '',
+  title: '',
+  companyName: '',
+  department: '',
+  phone: '',
+  mobile: '',
+  email: '',
+  address: '',
+  website: '',
+  fax: '',
+  logoUrl: '',
+  logoLinkUrl: '',
+  signatureHtml: '',
+  isDefault: false,
+  logo: null,
+});
+
+const makeBusinessCardForm = (card?: BusinessCardItem | null): BusinessCardFormState => ({
+  name: card?.name || '',
+  fullName: card?.fullName || '',
+  title: card?.title || '',
+  companyName: card?.companyName || '',
+  department: card?.department || '',
+  phone: card?.phone || '',
+  mobile: card?.mobile || '',
+  email: card?.email || '',
+  address: card?.address || '',
+  website: card?.website || '',
+  fax: card?.fax || '',
+  logoUrl: card?.logoUrl || '',
+  logoLinkUrl: card?.logoLinkUrl || '',
+  signatureHtml: card?.signatureHtml || '',
+  isDefault: Boolean(card?.isDefault),
+  logo: null,
+});
+
+const businessCardFormToPayload = (form: BusinessCardFormState): { payload?: BusinessCardPayload; error?: string } => {
+  if (!form.name.trim()) {
+    return { error: '명함 이름을 입력하세요.' };
+  }
+  if (!form.fullName.trim()) {
+    return { error: '이름을 입력하세요.' };
+  }
+  if (!form.email.trim()) {
+    return { error: '이메일을 입력하세요.' };
+  }
+  return {
+    payload: {
+      ...form,
+      name: form.name.trim(),
+      fullName: form.fullName.trim(),
+      title: form.title.trim(),
+      companyName: form.companyName.trim(),
+      department: form.department.trim(),
+      phone: form.phone.trim(),
+      mobile: form.mobile.trim(),
+      email: form.email.trim(),
+      address: form.address.trim(),
+      website: form.website.trim(),
+      fax: form.fax.trim(),
+      logoUrl: form.logoUrl.trim(),
+      logoLinkUrl: form.logoLinkUrl.trim(),
+      signatureHtml: form.signatureHtml,
+    },
+  };
+};
+
 const makeEmptyDocumentTemplateForm = (): DocumentTemplateFormState => ({
   companyId: '',
   description: '',
@@ -1333,10 +1468,10 @@ const routeMeta: Record<
     eyebrow: 'Sales CRM / Analytics',
     title: '분석',
     summary: '영업 활동, 후속조치, 파이프라인 보고서를 확인합니다.',
-    primaryHref: '/reporting/analytics/',
+    primaryHref: '/reports/',
     primaryLabel: '분석 보고서 열기',
     actions: [
-      { label: '분석 보고서', href: '/reporting/analytics/', primary: true },
+      { label: '분석 보고서', href: '/reports/', primary: true },
       { label: '활동 XLSX', href: '/reporting/analytics/export/activity.xlsx' },
       { label: '파이프라인 XLSX', href: '/reporting/analytics/export/pipeline.xlsx' },
     ],
@@ -1429,12 +1564,12 @@ const routeMeta: Record<
     eyebrow: 'Sales CRM / Signature',
     title: '명함',
     summary: '메일 발송에 사용할 개인 명함과 서명 정보를 관리합니다.',
-    primaryHref: '/reporting/business-cards/',
+    primaryHref: '/mailbox/business-cards/',
     primaryLabel: '명함 관리 열기',
     actions: [
-      { label: '명함 목록', href: '/reporting/business-cards/', primary: true },
-      { label: '새 명함 등록', href: '/reporting/business-cards/create/' },
+      { label: '명함 목록', href: '/mailbox/business-cards/', primary: true },
       { label: '메일함', href: '/mailbox/' },
+      { label: '프로필', href: '/profile/' },
     ],
   },
   weeklyReports: {
@@ -1489,12 +1624,12 @@ const routeMeta: Record<
     eyebrow: 'Sales CRM / Profile',
     title: '프로필',
     summary: '내 계정, 권한, 메일 연동 상태를 확인합니다.',
-    primaryHref: '/reporting/profile/',
+    primaryHref: '/profile/',
     primaryLabel: '프로필 열기',
     actions: [
-      { label: '프로필 보기', href: '/reporting/profile/', primary: true },
-      { label: '프로필 수정', href: '/reporting/profile/edit/' },
+      { label: '프로필 보기', href: '/profile/', primary: true },
       { label: '메일함', href: '/mailbox/' },
+      { label: '명함 관리', href: '/mailbox/business-cards/' },
     ],
   },
   ai: {
@@ -1514,12 +1649,14 @@ const routeMeta: Record<
 function getCurrentView(): MainView {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
+  if (pathname.startsWith('/reports/')) return 'analytics';
   if (pathname.startsWith('/analytics/')) return 'analytics';
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/assets/')) return 'assets';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/tasks/')) return 'tasks';
+  if (pathname.startsWith('/mailbox/business-cards/')) return 'businessCards';
   if (pathname.startsWith('/mailbox/')) return 'mail';
   if (pathname.startsWith('/business-cards/')) return 'businessCards';
   if (pathname.startsWith('/weekly-reports/')) return 'weeklyReports';
@@ -4627,6 +4764,547 @@ function CustomerAssetsPage({
   );
 }
 
+function ReportsPage({
+  data,
+  dateFrom,
+  dateTo,
+  loading,
+  userId,
+  onDateFromChange,
+  onDateToChange,
+  onRefresh,
+  onUserChange,
+}: {
+  data: ReportsData | null;
+  dateFrom: string;
+  dateTo: string;
+  loading: boolean;
+  userId: string;
+  onDateFromChange: (value: string) => void;
+  onDateToChange: (value: string) => void;
+  onRefresh: () => void;
+  onUserChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>분석 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '영업 활동', value: `${formatNumber(data.metrics.totalHistories)}건`, detail: data.scope.label, icon: Activity, tone: 'blue' as const },
+    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueFollowups)}건`, detail: `예정 ${formatNumber(data.metrics.upcomingFollowups)}건`, icon: AlertTriangle, tone: data.metrics.overdueFollowups > 0 ? 'red' as const : 'green' as const },
+    { label: '활성 파이프라인', value: `${formatNumber(data.metrics.activePipeline)}건`, detail: '잠재/접촉/견적/협상', icon: Columns3, tone: 'teal' as const },
+    { label: '진행 서비스', value: `${formatNumber(data.metrics.openServiceAssets)}건`, detail: `지연 ${formatNumber(data.metrics.overdueServiceAssets)}건`, icon: Wrench, tone: data.metrics.overdueServiceAssets > 0 ? 'red' as const : 'amber' as const },
+    { label: '교정 예정', value: `${formatNumber(data.metrics.dueCalibrationAssets)}건`, detail: `지연 ${formatNumber(data.metrics.overdueCalibrationAssets)}건`, icon: CalendarDays, tone: data.metrics.overdueCalibrationAssets > 0 ? 'red' as const : 'green' as const },
+  ];
+  const maxPipeline = Math.max(...data.pipelineSummary.map((item) => item.count), 1);
+
+  return (
+    <section className="reports-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>분석 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Reports</span>
+          <h2>{data.scope.label || '영업 분석'}</h2>
+          <p>영업 활동, 후속조치, 파이프라인, 장비/A/S/교정 상태를 함께 봅니다.</p>
+        </div>
+        <div className="reports-actions">
+          {data.scope.canExport ? (
+            <>
+              <a className="route-secondary-action" href={data.links.activityXlsx}><Download size={15} />활동 XLSX</a>
+              <a className="route-secondary-action" href={data.links.pipelineXlsx}><Download size={15} />파이프라인 XLSX</a>
+            </>
+          ) : null}
+          <button className="icon-button" onClick={onRefresh} type="button" aria-label="분석 새로고침">
+            <RefreshCw size={17} />
+          </button>
+        </div>
+      </div>
+
+      <div className="customers-filter-bar reports-filter-bar">
+        <label>
+          <span>시작일</span>
+          <input type="date" value={dateFrom || data.filters.dateFrom} onChange={(event) => onDateFromChange(event.target.value)} />
+        </label>
+        <label>
+          <span>종료일</span>
+          <input type="date" value={dateTo || data.filters.dateTo} onChange={(event) => onDateToChange(event.target.value)} />
+        </label>
+        {data.scope.canFilterUsers ? (
+          <select value={userId} onChange={(event) => onUserChange(event.target.value)}>
+            <option value="">담당자 전체</option>
+            {data.scope.salespeople.map((user) => (
+              <option key={user.id} value={user.id}>{user.name}</option>
+            ))}
+          </select>
+        ) : null}
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid reports-metric-grid" aria-label="분석 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="reports-layout">
+        <section className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Pipeline</span>
+              <h2>파이프라인 단계</h2>
+            </div>
+            <Columns3 size={18} />
+          </div>
+          <div className="reports-pipeline-list">
+            {data.pipelineSummary.map((stage) => (
+              <div className="reports-bar-row" key={stage.stage}>
+                <div>
+                  <span>{stage.label}</span>
+                  <strong>{formatNumber(stage.count)}건</strong>
+                </div>
+                <div className="notes-count-bar">
+                  <div style={{ width: `${(stage.count / maxPipeline) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="dashboard-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Activity</span>
+              <h2>담당자별 활동</h2>
+            </div>
+            {loading ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
+          </div>
+          <div className="customers-table-wrap reports-table-wrap">
+            <table className="customers-table">
+              <thead>
+                <tr>
+                  <th>담당자</th>
+                  <th>활동</th>
+                  <th>고객</th>
+                  <th>지연</th>
+                  <th>최근 활동</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.activityReport.length > 0 ? data.activityReport.map((row) => (
+                  <tr key={row.user.id}>
+                    <td><strong>{row.user.name}</strong></td>
+                    <td>{formatNumber(row.historyCount)}</td>
+                    <td>{formatNumber(row.followupCount)}</td>
+                    <td>{formatNumber(row.overdueCount)}</td>
+                    <td>{row.lastActivityAt ? formatDateTimeLabel(row.lastActivityAt) : '-'}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={5}>기간 내 활동이 없습니다.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <section className="dashboard-panel reports-customer-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Accounts</span>
+            <h2>기간 내 활동 고객</h2>
+          </div>
+          <a className="route-secondary-action" href="/customers/">고객 목록</a>
+        </div>
+        <div className="customers-table-wrap">
+          <table className="customers-table">
+            <thead>
+              <tr>
+                <th>고객</th>
+                <th>담당자</th>
+                <th>단계</th>
+                <th>최근 활동</th>
+                <th>다음 연락</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.customerReport.length > 0 ? data.customerReport.map((customer) => (
+                <tr key={customer.id}>
+                  <td>
+                    <a href={customer.href}>
+                      <strong>{customer.customer || customer.company}</strong>
+                      <span>{[customer.company, customer.department].filter(Boolean).join(' · ')}</span>
+                    </a>
+                  </td>
+                  <td>{customer.owner}</td>
+                  <td>{customer.pipelineStageLabel}</td>
+                  <td>{customer.lastActivityAt ? formatDateTimeLabel(customer.lastActivityAt) : '-'}</td>
+                  <td>{customer.nextActionDate ? formatDateLabel(customer.nextActionDate) : '-'}</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={5}>기간 내 고객 활동이 없습니다.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function BusinessCardSignaturePreview({ html }: { html: string }) {
+  if (!html.trim()) {
+    return <div className="business-card-preview-empty">서명 미리보기가 없습니다</div>;
+  }
+  return (
+    <iframe
+      className="business-card-signature-frame"
+      sandbox=""
+      srcDoc={`<!doctype html><html><body>${html}</body></html>`}
+      title="명함 서명 미리보기"
+    />
+  );
+}
+
+function BusinessCardsPage({
+  actioningId,
+  data,
+  error,
+  form,
+  formOpen,
+  loading,
+  message,
+  saving,
+  editingId,
+  onCreateOpen,
+  onDelete,
+  onEditOpen,
+  onFormChange,
+  onFormOpenChange,
+  onRefresh,
+  onSetDefault,
+  onSubmit,
+}: {
+  actioningId: number | null;
+  data: BusinessCardsData | null;
+  editingId: number | null;
+  error: string;
+  form: BusinessCardFormState;
+  formOpen: boolean;
+  loading: boolean;
+  message: string;
+  saving: boolean;
+  onCreateOpen: () => void;
+  onDelete: (card: BusinessCardItem) => void;
+  onEditOpen: (card: BusinessCardItem) => void;
+  onFormChange: (field: keyof BusinessCardFormState, value: string | boolean | File | null) => void;
+  onFormOpenChange: (open: boolean) => void;
+  onRefresh: () => void;
+  onSetDefault: (card: BusinessCardItem) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>명함 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+  if (!data) return null;
+  const editingCard = data.cards.find((card) => card.id === editingId);
+
+  return (
+    <section className="business-cards-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>명함 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+      {message ? <div className="form-success-message">{message}</div> : null}
+      {error ? <div className="form-error-message">{error}</div> : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Signature</span>
+          <h2>명함 관리</h2>
+          <p>메일 발송에 사용할 개인 명함과 서명 미리보기를 관리합니다.</p>
+        </div>
+        <div className="reports-actions">
+          <a className="route-secondary-action" href={data.links.mailbox}>메일함</a>
+          <button className="route-secondary-action" onClick={onRefresh} type="button"><RefreshCw size={15} />새로고침</button>
+          <button className="route-primary-action" onClick={onCreateOpen} type="button"><Plus size={16} />새 명함</button>
+        </div>
+      </div>
+
+      <div className="business-cards-layout">
+        <section className="dashboard-panel business-card-list-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Cards</span>
+              <h2>등록된 명함</h2>
+            </div>
+            {loading ? <Loader2 className="spin-icon" size={18} /> : <ImagePlus size={18} />}
+          </div>
+          {data.cards.length === 0 ? (
+            <DashboardEmpty label="등록된 명함이 없습니다" />
+          ) : (
+            <div className="business-card-list">
+              {data.cards.map((card) => (
+                <article className={`business-card-item ${card.isDefault ? 'default' : ''}`} key={card.id}>
+                  <div className="business-card-item-main">
+                    <div>
+                      <div className="business-card-title-row">
+                        <strong>{card.name}</strong>
+                        {card.isDefault ? <span>기본</span> : null}
+                      </div>
+                      <p>{[card.fullName, card.title, card.companyName].filter(Boolean).join(' · ')}</p>
+                      <small>{[card.email, card.mobile || card.phone].filter(Boolean).join(' · ')}</small>
+                    </div>
+                    <div className="customer-row-actions">
+                      <button className="customer-row-action" onClick={() => onEditOpen(card)} type="button"><Pencil size={14} />수정</button>
+                      {!card.isDefault ? (
+                        <button className="customer-row-action" disabled={actioningId === card.id} onClick={() => onSetDefault(card)} type="button"><Star size={14} />기본</button>
+                      ) : null}
+                      <button className="customer-row-action danger" disabled={actioningId === card.id} onClick={() => onDelete(card)} type="button"><Trash2 size={14} />삭제</button>
+                    </div>
+                  </div>
+                  <BusinessCardSignaturePreview html={card.signaturePreviewHtml} />
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <aside className={`dashboard-panel business-card-editor ${formOpen ? 'open' : ''}`}>
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">{editingCard ? 'Edit card' : 'New card'}</span>
+              <h2>{editingCard ? '명함 수정' : '새 명함'}</h2>
+            </div>
+            {formOpen ? (
+              <button className="icon-button" onClick={() => onFormOpenChange(false)} type="button" aria-label="명함 폼 닫기">
+                <X size={17} />
+              </button>
+            ) : null}
+          </div>
+          {formOpen ? (
+            <form className="business-card-form" onSubmit={onSubmit}>
+              <label>명함 이름<input value={form.name} onChange={(event) => onFormChange('name', event.target.value)} required /></label>
+              <label>이름<input value={form.fullName} onChange={(event) => onFormChange('fullName', event.target.value)} required /></label>
+              <label>직함<input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} /></label>
+              <label>회사명<input value={form.companyName} onChange={(event) => onFormChange('companyName', event.target.value)} /></label>
+              <label>부서<input value={form.department} onChange={(event) => onFormChange('department', event.target.value)} /></label>
+              <label>이메일<input type="email" value={form.email} onChange={(event) => onFormChange('email', event.target.value)} required /></label>
+              <label>휴대폰<input value={form.mobile} onChange={(event) => onFormChange('mobile', event.target.value)} /></label>
+              <label>전화번호<input value={form.phone} onChange={(event) => onFormChange('phone', event.target.value)} /></label>
+              <label>팩스<input value={form.fax} onChange={(event) => onFormChange('fax', event.target.value)} /></label>
+              <label>웹사이트<input type="url" value={form.website} onChange={(event) => onFormChange('website', event.target.value)} placeholder="https://" /></label>
+              <label className="business-card-form-wide">주소<textarea value={form.address} onChange={(event) => onFormChange('address', event.target.value)} /></label>
+              <label>로고 URL<input type="url" value={form.logoUrl} onChange={(event) => onFormChange('logoUrl', event.target.value)} placeholder="https://" /></label>
+              <label>로고 링크<input type="url" value={form.logoLinkUrl} onChange={(event) => onFormChange('logoLinkUrl', event.target.value)} placeholder="https://" /></label>
+              <label className="business-card-form-wide">로고 업로드<input type="file" accept="image/*" onChange={(event) => onFormChange('logo', event.target.files?.[0] ?? null)} /></label>
+              <label className="business-card-form-wide">커스텀 HTML 서명<textarea value={form.signatureHtml} onChange={(event) => onFormChange('signatureHtml', event.target.value)} /></label>
+              <label className="business-card-default-toggle"><input type="checkbox" checked={form.isDefault} onChange={(event) => onFormChange('isDefault', event.target.checked)} />기본 명함으로 사용</label>
+              <div className="form-actions">
+                <button className="primary-button" disabled={saving} type="submit">
+                  {saving ? <Loader2 className="spin-icon" size={16} /> : <Check size={16} />}
+                  저장
+                </button>
+                <button className="secondary-button" onClick={() => onFormOpenChange(false)} type="button">취소</button>
+              </div>
+            </form>
+          ) : (
+            <DashboardEmpty label="명함을 선택하거나 새 명함을 추가하세요" />
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function ProfileSettingsPage({
+  data,
+  error,
+  form,
+  loading,
+  message,
+  passwordForm,
+  passwordSaving,
+  saving,
+  disconnecting,
+  onDisconnectEmail,
+  onFormChange,
+  onPasswordFormChange,
+  onPasswordSubmit,
+  onSubmit,
+}: {
+  data: ProfileData | null;
+  error: string;
+  form: ProfileFormState;
+  loading: boolean;
+  message: string;
+  passwordForm: ProfilePasswordFormState;
+  passwordSaving: boolean;
+  saving: boolean;
+  disconnecting: boolean;
+  onDisconnectEmail: () => void;
+  onFormChange: (field: keyof ProfileFormState, value: string) => void;
+  onPasswordFormChange: (field: keyof ProfilePasswordFormState, value: string) => void;
+  onPasswordSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>프로필 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+  if (!data) return null;
+  const connection = data.emailConnection;
+
+  return (
+    <section className="profile-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>프로필 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+      {message ? <div className="form-success-message">{message}</div> : null}
+      {error ? <div className="form-error-message">{error}</div> : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Profile</span>
+          <h2>{data.user.fullName || data.user.username || '프로필'}</h2>
+          <p>{[data.profile.roleLabel, data.profile.company].filter(Boolean).join(' · ') || '계정 정보'}</p>
+        </div>
+        <a className="route-secondary-action" href={data.links.dashboard}>대시보드</a>
+      </div>
+
+      <div className="profile-layout">
+        <section className="dashboard-panel profile-info-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Account</span>
+              <h2>기본 정보</h2>
+            </div>
+            <Users size={18} />
+          </div>
+          <form className="profile-form" onSubmit={onSubmit}>
+            <label>사용자명<input value={form.username} onChange={(event) => onFormChange('username', event.target.value)} required /></label>
+            <label>성<input value={form.firstName} onChange={(event) => onFormChange('firstName', event.target.value)} /></label>
+            <label>이름<input value={form.lastName} onChange={(event) => onFormChange('lastName', event.target.value)} /></label>
+            <label>이메일<input type="email" value={form.email} onChange={(event) => onFormChange('email', event.target.value)} /></label>
+            <div className="profile-readonly-grid">
+              <div><span>권한</span><strong>{data.profile.roleLabel || '-'}</strong></div>
+              <div><span>소속</span><strong>{data.profile.company || '-'}</strong></div>
+              <div><span>가입일</span><strong>{data.user.dateJoined ? formatDateLabel(data.user.dateJoined) : '-'}</strong></div>
+              <div><span>최종 로그인</span><strong>{data.user.lastLogin ? formatDateTimeLabel(data.user.lastLogin) : '-'}</strong></div>
+            </div>
+            <button className="primary-button" disabled={saving} type="submit">
+              {saving ? <Loader2 className="spin-icon" size={16} /> : <Check size={16} />}
+              기본 정보 저장
+            </button>
+          </form>
+        </section>
+
+        <aside className="dashboard-panel profile-connection-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Email</span>
+              <h2>메일 연동</h2>
+            </div>
+            <Mail size={18} />
+          </div>
+          {!connection.enabled ? (
+            <DashboardEmpty label="관리자 계정은 메일 연동 관리를 사용하지 않습니다" />
+          ) : connection.connected ? (
+            <div className="profile-connection-state connected">
+              <strong>{connection.providerLabel} 연결됨</strong>
+              <span>{connection.address}</span>
+              <small>마지막 동기화 {connection.lastSyncAt ? formatDateTimeLabel(connection.lastSyncAt) : '-'}</small>
+              <div className="profile-connection-actions">
+                <a className="route-secondary-action" href={connection.links.mailbox}>메일함</a>
+                <a className="route-secondary-action" href={connection.links.businessCards}>명함 관리</a>
+                {connection.imapConnected ? <a className="route-secondary-action" href={connection.links.imapSync}>동기화</a> : null}
+                <button className="route-secondary-action danger" disabled={disconnecting} onClick={onDisconnectEmail} type="button">
+                  {disconnecting ? <Loader2 className="spin-icon" size={15} /> : <X size={15} />}
+                  연결 해제
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="profile-connection-state">
+              <strong>연동된 이메일이 없습니다</strong>
+              <span>메일 발송과 수신을 사용하려면 계정을 연결하세요.</span>
+              <div className="profile-connection-actions">
+                <a className="route-secondary-action" href={connection.links.gmailConnect}>Gmail 연결</a>
+                <a className="route-secondary-action" href={connection.links.imapConnect}>회사 이메일 연결</a>
+              </div>
+            </div>
+          )}
+        </aside>
+
+        <section className="dashboard-panel profile-password-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Password</span>
+              <h2>비밀번호 변경</h2>
+            </div>
+            <Target size={18} />
+          </div>
+          <form className="profile-form" onSubmit={onPasswordSubmit}>
+            <label>현재 비밀번호<input type="password" value={passwordForm.oldPassword} onChange={(event) => onPasswordFormChange('oldPassword', event.target.value)} required /></label>
+            <label>새 비밀번호<input type="password" value={passwordForm.newPassword1} onChange={(event) => onPasswordFormChange('newPassword1', event.target.value)} required /></label>
+            <label>새 비밀번호 확인<input type="password" value={passwordForm.newPassword2} onChange={(event) => onPasswordFormChange('newPassword2', event.target.value)} required /></label>
+            <button className="primary-button" disabled={passwordSaving} type="submit">
+              {passwordSaving ? <Loader2 className="spin-icon" size={16} /> : <Check size={16} />}
+              비밀번호 변경
+            </button>
+          </form>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function NoteStatusBadge({ note }: { note: NoteItem }) {
   const reviewLabel = note.reviewed ? '검토 완료' : note.reviewRequired ? '미검토' : '검토 불필요';
   return (
@@ -4826,7 +5504,7 @@ function NoteDetailPage({
       return;
     }
     if (editForm.actionType === 'service' && !editForm.serviceStatus) {
-      setEditError('서비스 상태를 선택하세요.');
+      setEditError('상태를 선택하세요.');
       return;
     }
 
@@ -5141,7 +5819,7 @@ function NoteDetailPage({
                 </label>
                 {editForm.actionType === 'service' ? (
                   <label>
-                    <span>서비스 상태</span>
+                    <span>상태</span>
                     <select
                       onChange={(event) => handleEditFieldChange('serviceStatus', event.target.value)}
                       required
@@ -17682,6 +18360,11 @@ export function App() {
   const [pipelineLoading, setPipelineLoading] = useState(currentView === 'pipeline');
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
+  const [reportsData, setReportsData] = useState<ReportsData | null>(null);
+  const [reportsLoading, setReportsLoading] = useState(currentView === 'analytics');
+  const [reportsDateFrom, setReportsDateFrom] = useState(() => new URLSearchParams(window.location.search).get('date_from') || '');
+  const [reportsDateTo, setReportsDateTo] = useState(() => new URLSearchParams(window.location.search).get('date_to') || '');
+  const [reportsUserId, setReportsUserId] = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
@@ -17808,6 +18491,24 @@ export function App() {
   const [mailReplySaving, setMailReplySaving] = useState(false);
   const [mailReplyError, setMailReplyError] = useState('');
   const [mailReplyMessage, setMailReplyMessage] = useState('');
+  const [businessCardsData, setBusinessCardsData] = useState<BusinessCardsData | null>(null);
+  const [businessCardsLoading, setBusinessCardsLoading] = useState(currentView === 'businessCards');
+  const [businessCardFormOpen, setBusinessCardFormOpen] = useState(false);
+  const [businessCardEditingId, setBusinessCardEditingId] = useState<number | null>(null);
+  const [businessCardForm, setBusinessCardForm] = useState<BusinessCardFormState>(() => makeEmptyBusinessCardForm());
+  const [businessCardSaving, setBusinessCardSaving] = useState(false);
+  const [businessCardActioningId, setBusinessCardActioningId] = useState<number | null>(null);
+  const [businessCardMessage, setBusinessCardMessage] = useState('');
+  const [businessCardError, setBusinessCardError] = useState('');
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [profileLoading, setProfileLoading] = useState(currentView === 'profile');
+  const [profileForm, setProfileForm] = useState<ProfileFormState>(() => makeProfileForm());
+  const [profilePasswordForm, setProfilePasswordForm] = useState<ProfilePasswordFormState>(() => makeEmptyProfilePasswordForm());
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profilePasswordSaving, setProfilePasswordSaving] = useState(false);
+  const [profileEmailDisconnecting, setProfileEmailDisconnecting] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedView, setSelectedView] = useState<SavedView>('priority');
@@ -17852,6 +18553,34 @@ export function App() {
       alive = false;
     };
   }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'analytics') {
+      return;
+    }
+    let alive = true;
+    setReportsLoading(true);
+    loadReportsData({
+      dateFrom: reportsDateFrom,
+      dateTo: reportsDateTo,
+      userId: reportsUserId,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setReportsData(data);
+      if (!reportsDateFrom && data.filters.dateFrom) {
+        setReportsDateFrom(data.filters.dateFrom);
+      }
+      if (!reportsDateTo && data.filters.dateTo) {
+        setReportsDateTo(data.filters.dateTo);
+      }
+      setReportsLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, reportsDateFrom, reportsDateTo, reportsUserId]);
 
   useEffect(() => {
     if (currentView !== 'customers' || customerDetailId) {
@@ -18429,6 +19158,45 @@ export function App() {
       alive = false;
     };
   }, [currentView, mailboxThreadId, mailboxScheduledId]);
+
+  useEffect(() => {
+    if (currentView !== 'businessCards') {
+      setBusinessCardsLoading(false);
+      return;
+    }
+    let alive = true;
+    setBusinessCardsLoading(true);
+    loadBusinessCardsData().then((data) => {
+      if (!alive) {
+        return;
+      }
+      setBusinessCardsData(data);
+      setBusinessCardsLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'profile') {
+      setProfileLoading(false);
+      return;
+    }
+    let alive = true;
+    setProfileLoading(true);
+    loadProfileData().then((data) => {
+      if (!alive) {
+        return;
+      }
+      setProfileData(data);
+      setProfileForm(makeProfileForm(data));
+      setProfileLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView]);
 
   const selectDeal = (deal: Deal) => {
     setSelectedDealId(deal.id);
@@ -19068,6 +19836,200 @@ export function App() {
     setMailboxThreadData(data);
     return data;
   };
+  const refreshReportsData = async () => {
+    const data = await loadReportsData({
+      dateFrom: reportsDateFrom,
+      dateTo: reportsDateTo,
+      userId: reportsUserId,
+    });
+    setReportsData(data);
+    return data;
+  };
+  const refreshBusinessCardsData = async () => {
+    const data = await loadBusinessCardsData();
+    setBusinessCardsData(data);
+    return data;
+  };
+  const handleBusinessCardCreateOpen = () => {
+    setBusinessCardEditingId(null);
+    setBusinessCardForm(makeEmptyBusinessCardForm());
+    setBusinessCardFormOpen(true);
+    setBusinessCardError('');
+    setBusinessCardMessage('');
+  };
+  const handleBusinessCardEditOpen = (card: BusinessCardItem) => {
+    setBusinessCardEditingId(card.id);
+    setBusinessCardForm(makeBusinessCardForm(card));
+    setBusinessCardFormOpen(true);
+    setBusinessCardError('');
+    setBusinessCardMessage('');
+  };
+  const handleBusinessCardFormOpenChange = (open: boolean) => {
+    setBusinessCardFormOpen(open);
+    setBusinessCardError('');
+    if (!open) {
+      setBusinessCardEditingId(null);
+      setBusinessCardForm(makeEmptyBusinessCardForm());
+    }
+  };
+  const handleBusinessCardFormChange = (field: keyof BusinessCardFormState, value: string | boolean | File | null) => {
+    setBusinessCardForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setBusinessCardError('');
+  };
+  const handleBusinessCardSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!businessCardsData || businessCardSaving) {
+      return;
+    }
+    const { payload, error } = businessCardFormToPayload(businessCardForm);
+    if (!payload) {
+      setBusinessCardError(error || '입력값을 확인하세요.');
+      return;
+    }
+    const editingCard = businessCardsData.cards.find((card) => card.id === businessCardEditingId);
+    const submitUrl = editingCard ? editingCard.links.update : businessCardsData.links.create;
+    setBusinessCardSaving(true);
+    setBusinessCardError('');
+    setBusinessCardMessage('');
+    try {
+      const data = await saveBusinessCard(payload, submitUrl);
+      setBusinessCardsData(data);
+      setBusinessCardMessage(data.message || (editingCard ? '명함을 저장했습니다.' : '명함을 생성했습니다.'));
+      handleBusinessCardFormOpenChange(false);
+    } catch (error) {
+      setBusinessCardError(error instanceof Error ? error.message : '명함 저장에 실패했습니다.');
+    } finally {
+      setBusinessCardSaving(false);
+    }
+  };
+  const handleBusinessCardDelete = async (card: BusinessCardItem) => {
+    if (businessCardActioningId !== null || !window.confirm('이 명함을 삭제하시겠습니까?')) {
+      return;
+    }
+    setBusinessCardActioningId(card.id);
+    setBusinessCardError('');
+    setBusinessCardMessage('');
+    try {
+      const data = await deleteBusinessCard(card.links.delete);
+      setBusinessCardsData(data);
+      setBusinessCardMessage(data.message || '명함을 삭제했습니다.');
+    } catch (error) {
+      setBusinessCardError(error instanceof Error ? error.message : '명함 삭제에 실패했습니다.');
+    } finally {
+      setBusinessCardActioningId(null);
+    }
+  };
+  const handleBusinessCardSetDefault = async (card: BusinessCardItem) => {
+    if (businessCardActioningId !== null || card.isDefault) {
+      return;
+    }
+    setBusinessCardActioningId(card.id);
+    setBusinessCardError('');
+    setBusinessCardMessage('');
+    try {
+      const data = await setDefaultBusinessCard(card.links.setDefault);
+      setBusinessCardsData(data);
+      setBusinessCardMessage(data.message || '기본 명함을 변경했습니다.');
+    } catch (error) {
+      setBusinessCardError(error instanceof Error ? error.message : '기본 명함 변경에 실패했습니다.');
+    } finally {
+      setBusinessCardActioningId(null);
+    }
+  };
+  const handleProfileFormChange = (field: keyof ProfileFormState, value: string) => {
+    setProfileForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setProfileError('');
+  };
+  const handleProfilePasswordFormChange = (field: keyof ProfilePasswordFormState, value: string) => {
+    setProfilePasswordForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    setProfileError('');
+  };
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!profileData || profileSaving) {
+      return;
+    }
+    if (!profileForm.username.trim()) {
+      setProfileError('사용자명을 입력하세요.');
+      return;
+    }
+    const payload: ProfileUpdatePayload = {
+      username: profileForm.username.trim(),
+      firstName: profileForm.firstName.trim(),
+      lastName: profileForm.lastName.trim(),
+      email: profileForm.email.trim(),
+    };
+    setProfileSaving(true);
+    setProfileError('');
+    setProfileMessage('');
+    try {
+      const data = await updateProfile(payload, profileData.links.update);
+      setProfileData(data);
+      setProfileForm(makeProfileForm(data));
+      setProfileMessage(data.message || '프로필을 저장했습니다.');
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : '프로필 저장에 실패했습니다.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+  const handleProfilePasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (profilePasswordSaving) {
+      return;
+    }
+    const payload: ProfilePasswordPayload = {
+      oldPassword: profilePasswordForm.oldPassword,
+      newPassword1: profilePasswordForm.newPassword1,
+      newPassword2: profilePasswordForm.newPassword2,
+    };
+    if (!payload.oldPassword || !payload.newPassword1 || !payload.newPassword2) {
+      setProfileError('현재 비밀번호와 새 비밀번호를 입력하세요.');
+      return;
+    }
+    if (payload.newPassword1 !== payload.newPassword2) {
+      setProfileError('새 비밀번호 확인이 일치하지 않습니다.');
+      return;
+    }
+    setProfilePasswordSaving(true);
+    setProfileError('');
+    setProfileMessage('');
+    try {
+      const result = await changeProfilePassword(payload, profileData?.links.password);
+      setProfilePasswordForm(makeEmptyProfilePasswordForm());
+      setProfileMessage(result.message || '비밀번호를 변경했습니다.');
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : '비밀번호 변경에 실패했습니다.');
+    } finally {
+      setProfilePasswordSaving(false);
+    }
+  };
+  const handleProfileEmailDisconnect = async () => {
+    if (!profileData || profileEmailDisconnecting || !window.confirm('이메일 연동을 해제하시겠습니까?')) {
+      return;
+    }
+    setProfileEmailDisconnecting(true);
+    setProfileError('');
+    setProfileMessage('');
+    try {
+      const data = await disconnectProfileEmail(profileData.emailConnection.links.disconnect);
+      setProfileData(data);
+      setProfileMessage(data.message || '이메일 연동을 해제했습니다.');
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : '이메일 연동 해제에 실패했습니다.');
+    } finally {
+      setProfileEmailDisconnecting(false);
+    }
+  };
   const handleMailboxBoxChange = (box: MailboxType) => {
     setMailboxBox(box);
     setMailboxPage(1);
@@ -19276,7 +20238,7 @@ export function App() {
     const target = received ?? mailboxThreadData?.emails[mailboxThreadData.emails.length - 1];
     setMailReplyForm((previous) => ({
       ...previous,
-      toEmail: target?.senderEmail || previous.toEmail,
+      toEmail: getReplyTargetEmail(target) || previous.toEmail,
       subject: mailboxThreadData?.thread.subject
         ? mailboxThreadData.thread.subject.startsWith('Re:')
           ? mailboxThreadData.thread.subject
@@ -19374,6 +20336,25 @@ export function App() {
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <DashboardPage data={dashboardData} loading={dashboardLoading} />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'analytics') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <ReportsPage
+          data={reportsData}
+          dateFrom={reportsDateFrom}
+          dateTo={reportsDateTo}
+          loading={reportsLoading}
+          userId={reportsUserId}
+          onDateFromChange={setReportsDateFrom}
+          onDateToChange={setReportsDateTo}
+          onRefresh={() => { void refreshReportsData(); }}
+          onUserChange={setReportsUserId}
+        />
       </AppShell>
     );
   }
@@ -19635,6 +20616,33 @@ export function App() {
     );
   }
 
+  if (currentView === 'businessCards') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <BusinessCardsPage
+          actioningId={businessCardActioningId}
+          data={businessCardsData}
+          editingId={businessCardEditingId}
+          error={businessCardError}
+          form={businessCardForm}
+          formOpen={businessCardFormOpen}
+          loading={businessCardsLoading}
+          message={businessCardMessage}
+          saving={businessCardSaving}
+          onCreateOpen={handleBusinessCardCreateOpen}
+          onDelete={handleBusinessCardDelete}
+          onEditOpen={handleBusinessCardEditOpen}
+          onFormChange={handleBusinessCardFormChange}
+          onFormOpenChange={handleBusinessCardFormOpenChange}
+          onRefresh={() => { void refreshBusinessCardsData(); }}
+          onSetDefault={handleBusinessCardSetDefault}
+          onSubmit={handleBusinessCardSubmit}
+        />
+      </AppShell>
+    );
+  }
+
   if (currentView === 'weeklyReports') {
     if (weeklyReportCreateRoute) {
       return (
@@ -19793,6 +20801,30 @@ export function App() {
           onFilterUserChange={setPrepaymentFilterUser}
           onQueryChange={setPrepaymentQuery}
           onStatusChange={setPrepaymentStatus}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'profile') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <ProfileSettingsPage
+          data={profileData}
+          disconnecting={profileEmailDisconnecting}
+          error={profileError}
+          form={profileForm}
+          loading={profileLoading}
+          message={profileMessage}
+          passwordForm={profilePasswordForm}
+          passwordSaving={profilePasswordSaving}
+          saving={profileSaving}
+          onDisconnectEmail={handleProfileEmailDisconnect}
+          onFormChange={handleProfileFormChange}
+          onPasswordFormChange={handleProfilePasswordFormChange}
+          onPasswordSubmit={handleProfilePasswordSubmit}
+          onSubmit={handleProfileSubmit}
         />
       </AppShell>
     );

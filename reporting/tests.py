@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -14,6 +15,11 @@ from reporting.models import (
     DocumentTemplate,
     EmailLog,
     FollowUp,
+    History,
+    BusinessCard,
+    CustomerAsset,
+    ServiceCase,
+    CalibrationRecord,
     Schedule,
     ScheduledEmail,
     ScheduledEmailAttachment,
@@ -138,12 +144,192 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         items_by_id = {item['id']: item for item in payload['items']}
-        self.assertEqual(items_by_id['analytics']['href'], '/analytics/')
+        self.assertEqual(items_by_id['analytics']['href'], '/reports/')
         self.assertEqual(items_by_id['analytics']['label'], '분석')
-        self.assertEqual(items_by_id['businessCards']['href'], '/business-cards/')
+        self.assertEqual(items_by_id['businessCards']['href'], '/mailbox/business-cards/')
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
         self.assertEqual(items_by_id['profile']['label'], '프로필')
+
+
+class ReactReportsProfileBusinessCardApiTests(TestCase):
+    """Reports/profile/business card React API regression tests."""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='Hana CRM')
+        self.user = make_user(
+            'react-api-user',
+            password='TestPass123!',
+            company=self.company,
+            can_download_excel=True,
+        )
+        self.manager = make_user('react-api-manager', role='manager', company=self.company)
+        self.other = make_user('react-api-other', company=self.company)
+        self.customer_company = Company.objects.create(name='고객사 A', created_by=self.user)
+        self.department = Department.objects.create(
+            company=self.customer_company,
+            name='연구실 A',
+            created_by=self.user,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='김고객',
+            email='customer@example.com',
+            pipeline_stage='quote',
+        )
+
+    def test_reports_api_requires_login_json(self):
+        response = self.client.get(reverse('reporting:reports_summary_api'))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_reports_api_returns_sales_and_global_reference_metrics(self):
+        today = timezone.localdate()
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            action_type='customer_meeting',
+            content='분석 대상 활동',
+            next_action='후속 전화',
+            next_action_date=today - timedelta(days=1),
+        )
+        asset = CustomerAsset.objects.create(
+            company=self.customer_company,
+            department=self.department,
+            primary_followup=self.followup,
+            asset_name='LC 장비',
+            status='active',
+            created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            asset=asset,
+            followup=self.followup,
+            case_type='service',
+            status='received',
+            priority='urgent',
+            received_date=today,
+            due_date=today - timedelta(days=1),
+            created_by=self.user,
+        )
+        CalibrationRecord.objects.create(
+            asset=asset,
+            followup=self.followup,
+            calibration_date=today,
+            next_due_date=today + timedelta(days=10),
+            result='pass',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['metrics']['totalHistories'], 1)
+        self.assertEqual(payload['metrics']['overdueFollowups'], 1)
+        self.assertEqual(payload['metrics']['activePipeline'], 1)
+        self.assertEqual(payload['metrics']['totalAssets'], 1)
+        self.assertEqual(payload['metrics']['openServiceAssets'], 1)
+        self.assertEqual(payload['metrics']['overdueServiceAssets'], 1)
+        self.assertEqual(payload['metrics']['dueCalibrationAssets'], 1)
+        self.assertFalse(payload['scope']['canExport'])
+
+    def test_reports_api_manager_can_filter_company_salesperson(self):
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            action_type='customer_meeting',
+            content='담당자 활동',
+        )
+        History.objects.create(
+            user=self.other,
+            company=self.company,
+            action_type='phone_call',
+            content='다른 담당자 활동',
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'), {'user_id': self.user.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['metrics']['totalHistories'], 1)
+        self.assertTrue(payload['scope']['canFilterUsers'])
+        self.assertTrue(payload['scope']['canExport'])
+        self.assertEqual(payload['filters']['selectedUserId'], self.user.id)
+
+    def test_profile_api_update_and_password_change(self):
+        self.client.force_login(self.user)
+
+        update_response = self.client.post(
+            reverse('reporting:profile_api_update'),
+            data=json.dumps({
+                'username': 'react-profile-user',
+                'firstName': '길동',
+                'lastName': '홍',
+                'email': 'profile@example.com',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(update_response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, 'react-profile-user')
+        self.assertEqual(self.user.email, 'profile@example.com')
+
+        password_response = self.client.post(
+            reverse('reporting:profile_api_password'),
+            data=json.dumps({
+                'oldPassword': 'TestPass123!',
+                'newPassword1': 'NewPass12345!',
+                'newPassword2': 'NewPass12345!',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(password_response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewPass12345!'))
+
+    def test_business_card_api_owner_scope_default_and_soft_delete(self):
+        other_card = BusinessCard.objects.create(
+            user=self.other,
+            name='동료 명함',
+            full_name='동료',
+            company_name='Hana',
+            email='other@example.com',
+        )
+        self.client.force_login(self.user)
+
+        create_response = self.client.post(reverse('reporting:business_card_api_create'), {
+            'name': '회사 명함',
+            'fullName': '홍길동',
+            'companyName': 'Hana',
+            'email': 'sales@example.com',
+            'mobile': '010-0000-0000',
+            'isDefault': '1',
+        })
+        self.assertEqual(create_response.status_code, 200)
+        card = BusinessCard.objects.get(user=self.user)
+        self.assertTrue(card.is_default)
+        self.assertEqual(create_response.json()['cards'][0]['id'], card.id)
+
+        forbidden_response = self.client.post(
+            reverse('reporting:business_card_api_set_default', args=[other_card.id])
+        )
+        self.assertEqual(forbidden_response.status_code, 404)
+
+        delete_response = self.client.post(reverse('reporting:business_card_api_delete', args=[card.id]))
+        self.assertEqual(delete_response.status_code, 200)
+        card.refresh_from_db()
+        self.assertFalse(card.is_active)
+        self.assertEqual(delete_response.json()['cards'], [])
 
 
 class GmailMailboxThreadRegressionTests(TestCase):
@@ -482,6 +668,33 @@ class ReactMailboxApiTests(TestCase):
         self.assertNotIn('&lt;html', body_text)
         self.assertNotIn('<html', body_text)
 
+    def test_mailbox_thread_api_uses_sent_email_as_reply_target_when_no_customer_reply(self):
+        sent_email = EmailLog.objects.create(
+            email_type='sent',
+            sender=self.user,
+            user=self.user,
+            sender_email='sales@example.com',
+            recipient_email='waiting@example.com',
+            subject='고객 답장 대기',
+            body='고객에게 먼저 보낸 메일입니다.',
+            body_html='<div>고객에게 먼저 보낸 메일입니다.</div>',
+            gmail_message_id='gmail-msg-waiting-1',
+            gmail_thread_id='gmail-thread-waiting-1',
+            followup=self.followup,
+            status='sent',
+            sent_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:mailbox_api_thread', args=['gmail-thread-waiting-1']))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIsNone(payload['thread']['lastReceivedEmailId'])
+        self.assertEqual(payload['links']['reply'], reverse('reporting:mailbox_api_reply', args=[sent_email.id]))
+        self.assertEqual(payload['emails'][0]['senderEmail'], 'sales@example.com')
+        self.assertEqual(payload['emails'][0]['recipientEmail'], 'waiting@example.com')
+
     def test_mailbox_thread_api_returns_received_attachment_download_links(self):
         import base64
 
@@ -732,6 +945,24 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.subject, '만기 예약 메일')
         self.assertEqual(email_log.followup, self.followup)
         self.assertEqual(email_log.attachments_info[0]['scheduledAttachmentId'], attachment.id)
+
+    def test_scheduled_email_inline_worker_defaults_on_in_railway_server_process(self):
+        import os
+        from reporting import scheduled_email_worker
+
+        with patch.object(scheduled_email_worker, '_worker_started', False):
+            with patch.object(scheduled_email_worker.sys, 'argv', ['gunicorn', 'sales_project.wsgi:application']):
+                with patch.object(scheduled_email_worker.threading, 'Thread') as thread_class:
+                    with patch.dict(os.environ, {
+                        'RAILWAY_ENVIRONMENT': 'production',
+                        'SCHEDULED_EMAIL_INLINE_INTERVAL_SECONDS': '15',
+                        'SCHEDULED_EMAIL_INLINE_INITIAL_DELAY_SECONDS': '0',
+                    }, clear=False):
+                        os.environ.pop('SCHEDULED_EMAIL_INLINE_WORKER', None)
+                        scheduled_email_worker.start_scheduled_email_inline_worker()
+
+        thread_class.assert_called_once()
+        thread_class.return_value.start.assert_called_once()
 
     def test_mailbox_send_api_includes_internal_cc_only_when_requested(self):
         self.user.email = 'sales@example.com'
@@ -1333,6 +1564,57 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.in_reply_to, self.email)
         self.assertNotIn('<html', email_log.body_html)
         self.assertNotIn('&lt;html', email_log.body_html)
+
+    def test_mailbox_reply_api_can_reply_to_sent_only_thread_recipient_with_rich_format(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        sent_email = EmailLog.objects.create(
+            email_type='sent',
+            sender=self.user,
+            user=self.user,
+            sender_email='sales@example.com',
+            recipient_email='waiting@example.com',
+            subject='고객 답장 대기',
+            body='고객에게 먼저 보낸 메일입니다.',
+            body_html='<div>고객에게 먼저 보낸 메일입니다.</div>',
+            gmail_message_id='gmail-msg-waiting-2',
+            gmail_thread_id='gmail-thread-waiting-2',
+            followup=self.followup,
+            status='sent',
+            sent_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-msg-waiting-reply',
+                'thread_id': 'gmail-thread-waiting-2',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_reply', args=[sent_email.id]),
+                {
+                    'to_email': 'sales@example.com',
+                    'subject': 'Re: 고객 답장 대기',
+                    'body_text': '답장 본문입니다.',
+                    'body_html': '<p><strong>답장 본문</strong>입니다.</p>',
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sent_kwargs = gmail_service.send_email.call_args.kwargs
+        self.assertEqual(sent_kwargs['to_email'], 'waiting@example.com')
+        self.assertIn('<strong>답장 본문</strong>', sent_kwargs['body_html'])
+        self.assertEqual(sent_kwargs['in_reply_to'], 'gmail-msg-waiting-2')
+        self.assertEqual(sent_kwargs['thread_id'], 'gmail-thread-waiting-2')
+
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-msg-waiting-reply')
+        self.assertEqual(email_log.recipient_email, 'waiting@example.com')
+        self.assertIn('<strong>답장 본문</strong>', email_log.body_html)
+        self.assertEqual(email_log.in_reply_to, sent_email)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3396,6 +3678,21 @@ class NotesSummaryApiTests(TestCase):
         self.assertIn(target.followup_id, customer_ids)
         self.assertTrue(any(item['value'] == 'customer_meeting' for item in payload['create']['actionTypes']))
         self.assertFalse(any(item['value'] == 'memo' for item in payload['create']['actionTypes']))
+
+    def test_notes_summary_api_labels_service_activity_as_memo(self):
+        service_note = self._create_note(self.user, '서비스라벨', action_type='service')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        service_option = next(item for item in payload['options']['actionTypes'] if item['value'] == 'service')
+        service_count = next(item for item in payload['actionCounts'] if item['value'] == 'service')
+        note = next(item for item in payload['notes'] if item['id'] == service_note.id)
+        self.assertEqual(service_option['label'], '메모')
+        self.assertEqual(service_count['label'], '메모')
+        self.assertEqual(note['actionLabel'], '메모')
 
     def test_notes_create_api_requires_login_json(self):
         response = self.client.post(

@@ -1,5 +1,91 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 Mailbox bugfix and sales-note activity label plan
+
+**Background**:
+
+- User reported three mailbox bugs after the React migration work:
+  - Scheduled emails are not dispatched when their scheduled time arrives.
+  - Replying from a sent-only thread sends the reply to the current user instead of the original recipient.
+  - Rich mail formatting is broken in that reply path.
+- User also requested that the sales-note activity type currently shown as `서비스` be renamed to `메모`.
+
+**DB change required**: No schema/data field change expected.
+
+- Scheduled email processing and reply behavior use existing `ScheduledEmail` and `EmailLog` models.
+- The activity type request should preserve the existing stored value where possible and change the user-facing label.
+- If Django records a choices-only migration for label state, verify that it does not alter table schema or stored rows.
+
+**Implementation scope**:
+
+- Enable the inline scheduled-email dispatcher by default on Railway server processes while keeping management commands safe.
+- Make sent-only thread replies target the original recipient both in React and Django fallback flows.
+- Preserve sanitized rich HTML when replying from sent-only threads.
+- Rename the sales-note `service` activity label to `메모` in model/options/frontend surfaces without touching equipment service-case wording.
+
+**Validation plan**:
+
+- Focused Django mailbox tests for scheduled dispatch, sent-only reply recipient, and rich reply HTML preservation.
+- Focused Django tests/API checks for sales-note activity labels.
+- `python -m py_compile` on touched backend files.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run` after deciding whether a choices migration is required.
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `git diff --check`
+
+**Current status**:
+
+- Implementation in progress.
+
+## 2026-05-19 Reports/Profile/Business Cards React migration plan
+
+**Background**:
+
+- User confirmed that the legacy analytics, business cards, and profile workflows should now be moved into React.
+- Before migration, the existing Django views/templates and the global benchmark reference were reviewed.
+- Decision: improve analytics with equipment/service/calibration KPIs from the global reference, while migrating business cards and profile as focused parity screens with React CRM UX.
+
+**DB change required**: No.
+
+- Reuse existing `History`, `FollowUp`, `CustomerAsset`, `ServiceCase`, `CalibrationRecord`, `BusinessCard`, `User`, and `UserProfile` models.
+- No model fields or migrations are expected.
+- Preserve existing `/reporting/analytics/`, `/reporting/business-cards/`, and `/reporting/profile/` Django fallback pages until production manual verification is complete.
+
+**Implementation scope**:
+
+- Backend:
+  - Add React-facing JSON APIs for reports, profile, and business cards under `/reporting/api/*`.
+  - Preserve session authentication, CSRF behavior, company/user scoping, manager/admin visibility, and owner-only business card access.
+  - Keep existing analytics CSV/XLSX export endpoints and expose their links through the reports API.
+  - Return active business cards by default for React and keep soft delete behavior.
+- Frontend:
+  - Replace the temporary fallback pages with real React screens.
+  - Use canonical React routes `/reports/`, `/mailbox/business-cards/`, and `/profile/`.
+  - Keep `/analytics/` and `/business-cards/` as aliases to the new React screens.
+  - Update navigation to point to canonical routes.
+  - Render business card signature previews in an isolated preview surface rather than injecting into the app DOM.
+- Documentation:
+  - Update `AGENT_REPORT.md` with implementation result, validation, deployment status, known limitations, and manual production test process.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\gmail_views.py reporting\urls.py reporting\tests.py`
+- Focused Django tests for reports/profile/business card APIs.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- Production smoke after Railway deploy:
+  - React `/reports/`, `/analytics/`, `/mailbox/business-cards/`, `/business-cards/`, `/profile/` return 200.
+  - Anonymous `/reporting/api/reports/`, `/reporting/api/profile/`, and `/reporting/api/business-cards/` return login-required JSON.
+  - Legacy Django fallback routes remain protected/available.
+
+**Current status**:
+
+- Implementation in progress.
+
 ## 2026-05-19 React legacy fallback menu visibility plan
 
 **Background**:

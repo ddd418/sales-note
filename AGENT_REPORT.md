@@ -1,5 +1,97 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Reports/Profile/Business Cards React Migration and Mailbox Fixes
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행 예정
+
+### 요약
+
+`분석`, `명함`, `프로필`을 기존 Django fallback 연결이 아니라 React CRM 화면으로 이관했습니다. 분석은 장비/서비스/교정 지표까지 포함한 `/reports/` 화면으로 확장했고, 명함은 `/mailbox/business-cards/`, 프로필은 `/profile/`에서 직접 조회/수정할 수 있게 했습니다.
+
+추가로 예약 메일 자동 발송, sent-only 메일 스레드 답장 수신자, 답장 HTML 서식 깨짐 문제를 수정했고, 영업노트 활동 유형의 `service` 표시 라벨을 `서비스`에서 `메모`로 바꿨습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`, `reporting/urls.py`: reports/profile JSON API와 React route용 navigation 링크 추가.
+- `reporting/gmail_views.py`: business card JSON API, sent-only thread reply 링크/수신자 보정, rich HTML 답장 보존.
+- `reporting/scheduled_email_worker.py`: Railway 서버 프로세스에서 예약 메일 inline dispatcher 기본 활성화.
+- `reporting/models.py`, `reporting/migrations/0106_alter_history_action_type.py`, `reporting/decorators.py`: 영업노트 `service` 표시 라벨을 `메모`로 변경.
+- `reporting/templates/reporting/gmail/reply_email.html`, `reporting/templates/reporting/history_form.html`, `reporting/templates/reporting/history_list.html`: Django fallback 답장 수신자와 영업노트 라벨 보정.
+- `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/styles.css`: reports/profile/business card React 화면, API client, 라우팅, UI 스타일 추가.
+- `reporting/tests.py`: React migration API, mailbox bugs, scheduled dispatcher, 영업노트 라벨 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- React에서 `/reports/`, `/mailbox/business-cards/`, `/profile/`을 실제 업무 화면으로 사용할 수 있습니다.
+- `/analytics/`와 `/business-cards/`는 새 React 화면 alias로 유지했습니다.
+- 예약 발송은 Railway web process에서도 due mail dispatcher가 켜지도록 보정했습니다.
+- 내가 보낸 메일만 있는 스레드에서 답장해도 원래 수신자에게 발송되며, HTML 서식은 sanitize 후 보존됩니다.
+- 영업노트 활동 유형의 `서비스` 라벨은 `메모`로 표시됩니다. 장비/교정/서비스 관리 화면의 장비 서비스 케이스 용어는 유지했습니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/*` Django fallback routes와 로그인/권한 흐름은 삭제하지 않았습니다.
+- business card 삭제는 기존처럼 soft delete를 유지합니다.
+- profile password 변경은 Django `PasswordChangeForm`과 session hash update를 사용합니다.
+- `History.action_type` 저장 값은 유지하고 choices 표시 라벨만 변경했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\gmail_views.py reporting\urls.py reporting\tests.py reporting\models.py reporting\decorators.py reporting\scheduled_email_worker.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_thread_api_uses_sent_email_as_reply_target_when_no_customer_reply reporting.tests.ReactMailboxApiTests.test_mailbox_reply_api_can_reply_to_sent_only_thread_recipient_with_rich_format reporting.tests.ReactMailboxApiTests.test_scheduled_email_inline_worker_defaults_on_in_railway_server_process reporting.tests.ReactMailboxApiTests.test_process_due_scheduled_emails_sends_and_creates_email_log reporting.tests.NotesSummaryApiTests.test_notes_summary_api_labels_service_activity_as_memo --verbosity=2
+→ Ran 5 tests, OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests reporting.tests.ReactNavigationApiTests reporting.tests.ReactMailboxApiTests reporting.tests.NotesSummaryApiTests --verbosity=1
+→ Ran 59 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-4Ra9Bm07.js and /assets/index-B_ACANUD.css. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- `History.action_type='service'`의 DB 저장 값은 호환성을 위해 그대로 유지했습니다. 사용자 화면 라벨만 `메모`입니다.
+- 예약 메일은 web process 내부 dispatcher로 보강했습니다. 별도 worker/cron 분리는 장기적으로 더 안정적인 운영 구조입니다.
+- production 인증 세션이 필요한 상세 API payload는 배포 후 사용자가 로그인 상태에서 수동 검수해야 합니다.
+
+### 권장 다음 단계
+
+운영 수동 검수 후, 장비를 포함한 글로벌 기능 이관 범위를 React 화면 기준으로 이어서 정리하는 것이 다음 순서입니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에 로그인 후 `/reports/`, `/analytics/`에서 분석 화면과 export 링크가 보이는지 확인합니다.
+2. `/mailbox/business-cards/`, `/business-cards/`에서 명함 목록, 생성, 기본 명함 지정, 삭제가 동작하는지 확인합니다.
+3. `/profile/`에서 프로필 수정, 비밀번호 변경, 메일 연결 상태 표시가 동작하는지 확인합니다.
+4. 메일함에서 예약 발송을 현재 시각보다 1~2분 뒤로 등록하고, 시간이 지난 뒤 발송/보낸편지함 전환을 확인합니다.
+5. 아직 고객 답장이 없는 보낸 메일 스레드에서 답장할 때 받는 사람이 내가 아니라 원래 고객인지 확인합니다.
+6. 같은 답장에서 굵게/링크/줄바꿈 같은 서식이 보존되는지 확인합니다.
+7. 영업노트 작성/목록/필터에서 기존 `서비스` 활동 유형이 `메모`로 보이는지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commit/deployment: 커밋/푸시 후 Railway 배포와 smoke를 진행합니다.
+- DB migration: `reporting.0106_alter_history_action_type` choices label migration required.
+
 ## 2026-05-19 — React Legacy Fallback Menu Visibility
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway backend/frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

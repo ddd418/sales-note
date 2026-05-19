@@ -305,11 +305,11 @@
             <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
                 
-                <!-- 받는 사람 (원본 발신자) -->
+                <!-- 받는 사람 (받은 메일은 원본 발신자, 보낸 메일은 원본 수신자) -->
                 <div class="mb-3">
                     <label class="form-label">받는 사람</label>
                     <input type="email" class="form-control" name="to_email" 
-                           value="{{ original_email.sender_email }}" readonly>
+                           value="{{ reply_target_email|default:original_email.sender_email }}" readonly>
                 </div>
                 
                 <!-- CC -->

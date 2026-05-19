@@ -663,7 +663,7 @@ class HistoryForm(forms.ModelForm):
             'followup': '관련 고객 정보',
             'schedule': '관련 일정',
             'action_type': '활동 유형',
-            'service_status': '서비스 상태',
+            'service_status': '상태',
             'content': '활동 내용',
             'delivery_amount': '납품 금액 (원)',
             'delivery_items': '납품 품목',
@@ -2217,7 +2217,7 @@ def navigation_api(request):
 
     items = [
         {'id': 'dashboard', 'label': '대시보드', 'href': '/dashboard/'},
-        {'id': 'analytics', 'label': '분석', 'href': '/analytics/'},
+        {'id': 'analytics', 'label': '분석', 'href': '/reports/'},
         {'id': 'customers', 'label': '고객', 'href': '/customers/'},
         {'id': 'assets', 'label': '장비', 'href': '/assets/'},
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
@@ -2229,7 +2229,7 @@ def navigation_api(request):
         items.append({'id': 'tasksManager', 'label': '업무하달', 'href': '/tasks/manager/'})
     if profile.role != 'manager':
         items.append({'id': 'mail', 'label': '메일', 'href': '/mailbox/'})
-    items.append({'id': 'businessCards', 'label': '명함', 'href': '/business-cards/'})
+    items.append({'id': 'businessCards', 'label': '명함', 'href': '/mailbox/business-cards/'})
     items.extend([
         {'id': 'weeklyReports', 'label': '주간보고', 'href': '/weekly-reports/'},
         {'id': 'documents', 'label': '서류', 'href': '/documents/'},
@@ -4707,7 +4707,7 @@ def notes_update_api(request, history_id):
     service_status = str(payload.get('serviceStatus') or '').strip()
     valid_service_statuses = {value for value, _label in History.SERVICE_STATUS_CHOICES}
     if action_type == 'service' and service_status not in valid_service_statuses:
-        return JsonResponse({'success': False, 'error': '서비스 상태를 선택하세요.'}, status=400)
+        return JsonResponse({'success': False, 'error': '상태를 선택하세요.'}, status=400)
 
     history.followup = followup
     if history.schedule_id and history.schedule.followup_id != followup.id:
@@ -23530,6 +23530,191 @@ def profile_edit_view(request):
     return render(request, 'reporting/profile_edit.html', context)
 
 
+def _react_request_payload(request):
+    if request.content_type and 'application/json' in request.content_type:
+        try:
+            return json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            return {}
+    return request.POST
+
+
+def _profile_connection_payload(profile):
+    connected = bool(profile.gmail_token or profile.imap_connected_at)
+    provider = 'gmail' if profile.gmail_token else profile.email_provider
+    address = profile.gmail_email if profile.gmail_token else profile.imap_email
+    connected_at = profile.gmail_connected_at if profile.gmail_token else profile.imap_connected_at
+    last_sync_at = profile.gmail_last_sync_at if profile.gmail_token else profile.imap_last_sync_at
+    return {
+        'enabled': profile.role != 'manager',
+        'connected': connected,
+        'provider': provider or 'gmail',
+        'providerLabel': 'Gmail' if profile.gmail_token else profile.get_email_provider_display(),
+        'address': address or '',
+        'connectedAt': connected_at.isoformat() if connected_at else None,
+        'lastSyncAt': last_sync_at.isoformat() if last_sync_at else None,
+        'gmailConnected': bool(profile.gmail_token),
+        'imapConnected': bool(profile.imap_connected_at),
+        'links': {
+            'mailbox': '/mailbox/',
+            'businessCards': '/mailbox/business-cards/',
+            'gmailConnect': reverse('reporting:gmail_connect'),
+            'imapConnect': reverse('reporting:imap_connect'),
+            'imapSync': reverse('reporting:sync_imap_emails'),
+            'disconnect': reverse('reporting:profile_email_disconnect_api'),
+        },
+    }
+
+
+def _profile_api_payload(request):
+    user = request.user
+    profile = get_user_profile(user)
+    company = profile.company
+    return {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'firstName': user.first_name or '',
+            'lastName': user.last_name or '',
+            'fullName': _user_display_name(user),
+            'email': user.email or '',
+            'dateJoined': user.date_joined.isoformat() if user.date_joined else None,
+            'lastLogin': user.last_login.isoformat() if user.last_login else None,
+        },
+        'profile': {
+            'role': profile.role,
+            'roleLabel': profile.get_role_display(),
+            'company': company.name if company else '',
+            'canUseAi': bool(profile.can_use_ai),
+            'canDownloadExcel': bool(profile.can_excel_download()),
+        },
+        'emailConnection': _profile_connection_payload(profile),
+        'links': {
+            'update': reverse('reporting:profile_api_update'),
+            'password': reverse('reporting:profile_api_password'),
+            'legacy': reverse('reporting:profile'),
+            'legacyEdit': reverse('reporting:profile_edit'),
+            'dashboard': '/dashboard/',
+        },
+    }
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def profile_api(request):
+    """React 프로필 화면용 조회 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    return JsonResponse(_profile_api_payload(request), encoder=DjangoJSONEncoder)
+
+
+@never_cache
+@require_http_methods(["POST"])
+def profile_update_api(request):
+    """React 프로필 기본 정보 수정 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload = _react_request_payload(request)
+    username = (payload.get('username') or '').strip()
+    first_name = (payload.get('firstName') or payload.get('first_name') or '').strip()
+    last_name = (payload.get('lastName') or payload.get('last_name') or '').strip()
+    email_value = (payload.get('email') or '').strip()
+
+    errors = {}
+    if not username:
+        errors['username'] = '사용자명을 입력하세요.'
+    elif User.objects.exclude(pk=request.user.pk).filter(username=username).exists():
+        errors['username'] = '이미 사용 중인 사용자명입니다.'
+    if email_value:
+        email_field = forms.EmailField(required=False)
+        try:
+            email_field.clean(email_value)
+        except forms.ValidationError:
+            errors['email'] = '올바른 이메일 주소를 입력하세요.'
+    if errors:
+        return JsonResponse({'success': False, 'errors': errors, 'error': '입력값을 확인하세요.'}, status=400)
+
+    user = request.user
+    user.username = username
+    user.first_name = first_name
+    user.last_name = last_name
+    user.email = email_value
+    user.save(update_fields=['username', 'first_name', 'last_name', 'email'])
+    response_payload = _profile_api_payload(request)
+    response_payload['message'] = '프로필 정보를 저장했습니다.'
+    return JsonResponse(response_payload, encoder=DjangoJSONEncoder)
+
+
+@never_cache
+@require_http_methods(["POST"])
+def profile_password_api(request):
+    """React 프로필 비밀번호 변경 API."""
+    from django.contrib.auth import update_session_auth_hash
+    from django.contrib.auth.forms import PasswordChangeForm
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload = _react_request_payload(request)
+    form = PasswordChangeForm(request.user, {
+        'old_password': payload.get('oldPassword') or payload.get('old_password') or '',
+        'new_password1': payload.get('newPassword1') or payload.get('new_password1') or '',
+        'new_password2': payload.get('newPassword2') or payload.get('new_password2') or '',
+    })
+    if not form.is_valid():
+        return JsonResponse({
+            'success': False,
+            'error': '비밀번호 입력값을 확인하세요.',
+            'errors': {field: [str(error) for error in values] for field, values in form.errors.items()},
+        }, status=400)
+
+    user = form.save()
+    update_session_auth_hash(request, user)
+    return JsonResponse({
+        'success': True,
+        'message': '비밀번호를 변경했습니다.',
+    })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def profile_email_disconnect_api(request):
+    """React 프로필 이메일 연동 해제 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    profile = get_user_profile(request.user)
+    profile.gmail_token = None
+    profile.gmail_email = ''
+    profile.gmail_connected_at = None
+    profile.gmail_last_sync_at = None
+    profile.email_provider = 'gmail'
+    profile.imap_email = ''
+    profile.imap_host = ''
+    profile.imap_port = 993
+    profile.imap_username = ''
+    profile.imap_password = ''
+    profile.smtp_host = ''
+    profile.smtp_port = 587
+    profile.smtp_username = ''
+    profile.smtp_password = ''
+    profile.imap_connected_at = None
+    profile.imap_last_sync_at = None
+    profile.save()
+    response_payload = _profile_api_payload(request)
+    response_payload['message'] = '이메일 연동을 해제했습니다.'
+    return JsonResponse(response_payload, encoder=DjangoJSONEncoder)
+
+
 @login_required
 def followup_quote_items_api(request, followup_id):
     """
@@ -31255,6 +31440,219 @@ def analytics_dashboard_view(request):
         'max_pipeline_count': max_pipeline_count,
     }
     return render(request, 'reporting/analytics_dashboard.html', context)
+
+
+def _analytics_api_date_range(request, today):
+    import datetime as dt
+
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str = request.GET.get('date_to', '')
+    try:
+        date_from = dt.date.fromisoformat(date_from_str) if date_from_str else (today - dt.timedelta(days=30))
+    except ValueError:
+        date_from = today - dt.timedelta(days=30)
+    try:
+        date_to = dt.date.fromisoformat(date_to_str) if date_to_str else today
+    except ValueError:
+        date_to = today
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    return date_from, date_to
+
+
+def _analytics_api_scope_users(request, user_profile):
+    selected_user_id = (request.GET.get('user_id') or '').strip()
+    salesperson_list = User.objects.none()
+    selected_user = None
+
+    if user_profile.is_admin() or user_profile.is_manager():
+        if user_profile.company:
+            salesperson_list = User.objects.filter(
+                userprofile__company=user_profile.company,
+                userprofile__role='salesman',
+                is_active=True,
+            )
+        else:
+            salesperson_list = User.objects.filter(
+                userprofile__role='salesman',
+                is_active=True,
+            )
+        salesperson_list = salesperson_list.select_related('userprofile').order_by('last_name', 'first_name', 'username')
+        if selected_user_id:
+            try:
+                selected_user = salesperson_list.get(pk=int(selected_user_id))
+            except (User.DoesNotExist, ValueError):
+                selected_user = None
+        if selected_user:
+            return User.objects.filter(pk=selected_user.pk), salesperson_list, selected_user
+        return salesperson_list, salesperson_list, None
+
+    return User.objects.filter(pk=request.user.pk), salesperson_list, request.user
+
+
+def _analytics_user_payload(user):
+    return {
+        'id': user.id,
+        'name': _user_display_name(user),
+        'username': user.username,
+    }
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def reports_summary_api(request):
+    """React 보고서/분석 화면용 JSON API."""
+    from django.db.models import Max
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    today = timezone.localdate()
+    date_from, date_to = _analytics_api_date_range(request, today)
+    filter_users, salesperson_list, selected_user = _analytics_api_scope_users(request, user_profile)
+
+    histories_qs = History.objects.filter(
+        user__in=filter_users,
+        created_at__date__gte=date_from,
+        created_at__date__lte=date_to,
+        parent_history__isnull=True,
+    )
+    followups_qs = FollowUp.objects.filter(user__in=filter_users)
+
+    total_histories = histories_qs.count()
+    completed_followups = histories_qs.filter(
+        next_action_date__isnull=False,
+        reviewed_at__isnull=False,
+    ).count()
+    overdue_followups = History.objects.filter(
+        user__in=filter_users,
+        next_action_date__lt=today,
+        next_action_date__isnull=False,
+        reviewed_at__isnull=True,
+        parent_history__isnull=True,
+    ).count()
+    upcoming_followups = History.objects.filter(
+        user__in=filter_users,
+        next_action_date__gte=today,
+        next_action_date__isnull=False,
+        reviewed_at__isnull=True,
+        parent_history__isnull=True,
+    ).count()
+    active_pipeline = followups_qs.filter(
+        status='active',
+        pipeline_stage__in=['potential', 'contact', 'quote', 'negotiation'],
+    ).count()
+
+    activity_report = []
+    for user in filter_users.select_related('userprofile'):
+        user_histories = histories_qs.filter(user=user)
+        user_hist_all = History.objects.filter(user=user, parent_history__isnull=True)
+        activity_report.append({
+            'user': _analytics_user_payload(user),
+            'historyCount': user_histories.count(),
+            'followupCount': FollowUp.objects.filter(user=user, status='active').count(),
+            'overdueCount': user_hist_all.filter(
+                next_action_date__lt=today,
+                next_action_date__isnull=False,
+                reviewed_at__isnull=True,
+            ).count(),
+            'lastActivityAt': user_histories.aggregate(last=Max('created_at'))['last'],
+        })
+    activity_report.sort(key=lambda item: item['historyCount'], reverse=True)
+
+    active_followup_ids = histories_qs.values_list('followup_id', flat=True).distinct()
+    customer_report = []
+    for followup in FollowUp.objects.filter(
+        pk__in=active_followup_ids,
+    ).select_related('company', 'department', 'user').order_by('-updated_at')[:50]:
+        last_hist = History.objects.filter(
+            followup=followup,
+            parent_history__isnull=True,
+        ).aggregate(last=Max('created_at'), next_date=Max('next_action_date'))
+        customer_report.append({
+            'id': followup.id,
+            'customer': followup.customer_name or '',
+            'company': followup.company.name if followup.company else '',
+            'department': followup.department.name if followup.department else '',
+            'owner': _user_display_name(followup.user),
+            'pipelineStage': followup.pipeline_stage,
+            'pipelineStageLabel': followup.get_pipeline_stage_display(),
+            'lastActivityAt': last_hist['last'],
+            'nextActionDate': last_hist['next_date'],
+            'href': f'/customers/{followup.id}/',
+            'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
+        })
+
+    stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
+    pipeline_summary = []
+    for stage in stage_order:
+        pipeline_summary.append({
+            'stage': stage,
+            'label': dict(FollowUp.PIPELINE_STAGE_CHOICES).get(stage, stage),
+            'count': followups_qs.filter(pipeline_stage=stage).count(),
+        })
+
+    open_service_statuses = ['received', 'in_progress', 'waiting']
+    asset_scope = CustomerAsset.objects.filter(created_by__in=filter_users)
+    asset_metrics = {
+        'totalAssets': asset_scope.count(),
+        'activeAssets': asset_scope.filter(status='active').count(),
+        'openServiceAssets': asset_scope.filter(service_cases__status__in=open_service_statuses).distinct().count(),
+        'overdueServiceAssets': asset_scope.filter(
+            service_cases__status__in=open_service_statuses,
+            service_cases__due_date__lt=today,
+        ).distinct().count(),
+        'dueCalibrationAssets': asset_scope.filter(
+            calibration_records__next_due_date__gte=today,
+            calibration_records__next_due_date__lte=today + timedelta(days=30),
+        ).distinct().count(),
+        'overdueCalibrationAssets': asset_scope.filter(
+            calibration_records__next_due_date__lt=today,
+        ).distinct().count(),
+    }
+
+    query = f'?date_from={date_from.isoformat()}&date_to={date_to.isoformat()}'
+    can_export = bool(user_profile.is_admin() or user_profile.is_manager())
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'filters': {
+            'dateFrom': date_from.isoformat(),
+            'dateTo': date_to.isoformat(),
+            'selectedUserId': selected_user.id if selected_user and (user_profile.is_admin() or user_profile.is_manager()) else None,
+        },
+        'scope': {
+            'canFilterUsers': bool(user_profile.is_admin() or user_profile.is_manager()),
+            'canExport': can_export,
+            'label': _user_display_name(selected_user) if selected_user else (
+                f'{user_profile.company.name} 팀' if user_profile.company else '전체'
+            ),
+            'salespeople': [_analytics_user_payload(user) for user in salesperson_list],
+        },
+        'metrics': {
+            'totalHistories': total_histories,
+            'completedFollowups': completed_followups,
+            'overdueFollowups': overdue_followups,
+            'upcomingFollowups': upcoming_followups,
+            'activePipeline': active_pipeline,
+            **asset_metrics,
+        },
+        'activityReport': activity_report,
+        'customerReport': customer_report,
+        'pipelineSummary': pipeline_summary,
+        'links': {
+            'activityCsv': reverse('reporting:analytics_activity_csv') + query,
+            'pipelineCsv': reverse('reporting:analytics_pipeline_csv') + query,
+            'activityXlsx': reverse('reporting:analytics_activity_xlsx') + query,
+            'pipelineXlsx': reverse('reporting:analytics_pipeline_xlsx') + query,
+            'assets': '/assets/',
+            'legacy': reverse('reporting:analytics_dashboard'),
+        },
+    }, encoder=DjangoJSONEncoder)
 
 
 def _get_activity_export_date_range(request, today):

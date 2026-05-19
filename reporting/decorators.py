@@ -75,7 +75,7 @@ def get_allowed_action_types(request):
         return [
             ('customer_meeting', '고객 미팅'),
             ('delivery_schedule', '납품 일정'),
-            ('service', '서비스'),
+            ('service', '메모'),
             ('memo', '메모'),
         ]
     else:

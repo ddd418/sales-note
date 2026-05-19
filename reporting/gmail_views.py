@@ -32,6 +32,15 @@ def _normalize_email_body_text(value):
     return (value or '').replace('\r\n', '\n').replace('\r', '\n')
 
 
+def _reply_target_email(email_log):
+    """Return the external address that should receive a reply for an EmailLog."""
+    if not email_log:
+        return ''
+    if email_log.email_type == 'sent':
+        return (email_log.recipient_email or '').strip()
+    return (email_log.sender_email or '').strip()
+
+
 def _plain_email_body_to_html(value):
     from html import escape
 
@@ -1222,6 +1231,7 @@ def reply_email(request, email_log_id):
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
         'original_email': email_log,
+        'reply_target_email': _reply_target_email(email_log),
         'original_email_display_body': _email_body_text(email_log),
         'business_cards': BusinessCard.objects.filter(user=request.user, is_active=True),
         'default_card': BusinessCard.objects.filter(user=request.user, is_default=True, is_active=True).first(),
@@ -1260,6 +1270,10 @@ def _handle_email_send(
         cc_emails = request.POST.get('cc_emails', '')
         bcc_emails = request.POST.get('bcc_emails', '')
         subject = request.POST.get('subject', '')
+        if reply_to:
+            reply_target = _reply_target_email(reply_to)
+            if reply_target and (not to_email or to_email == (reply_to.sender_email or '').strip()):
+                to_email = reply_target
         body_text = _clean_outgoing_body_text(request.POST.get('body_text', ''))
         body_html = _sanitize_outgoing_email_html(request.POST.get('body_html', ''))
         if body_text and _html_matches_escaped_plain_body(body_html, request.POST.get('body_text', '')):
@@ -2242,6 +2256,8 @@ def mailbox_api_thread(request, thread_id):
 
     first_email = emails.first()
     last_received_email = emails.filter(email_type='received').order_by('-sent_at', '-received_at', '-created_at').first()
+    last_email = emails.order_by('-sent_at', '-received_at', '-created_at').first()
+    reply_target_email = last_received_email or last_email
     profile = request.user.userprofile
     email_rows = list(emails)
     for email in email_rows:
@@ -2261,7 +2277,7 @@ def mailbox_api_thread(request, thread_id):
         'links': {
             'mailbox': '/mailbox/',
             'djangoThread': reverse('reporting:mailbox_thread', args=[thread_id]),
-            'reply': reverse('reporting:mailbox_api_reply', args=[last_received_email.id]) if last_received_email else '',
+            'reply': reverse('reporting:mailbox_api_reply', args=[reply_target_email.id]) if reply_target_email else '',
         },
         'create': _mailbox_create_payload(request.user),
         'emails': [_serialize_email_item(email) for email in email_rows],
@@ -3008,6 +3024,170 @@ def delete_email(request, email_id):
 # ============================================
 # 명함 관리
 # ============================================
+
+def _business_card_bool(value):
+    return str(value or '').lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _business_card_payload(card, request=None, include_signature=True):
+    logo_url = ''
+    if card.logo:
+        logo_url = card.logo.url
+        if request:
+            logo_url = request.build_absolute_uri(logo_url)
+    return {
+        'id': card.id,
+        'name': card.name or '',
+        'fullName': card.full_name or '',
+        'title': card.title or '',
+        'companyName': card.company_name or '',
+        'department': card.department or '',
+        'phone': card.phone or '',
+        'mobile': card.mobile or '',
+        'email': card.email or '',
+        'address': card.address or '',
+        'website': card.website or '',
+        'fax': card.fax or '',
+        'logoUrl': card.logo_url or '',
+        'logoFileUrl': logo_url,
+        'logoLinkUrl': card.logo_link_url or '',
+        'signatureHtml': card.signature_html or '',
+        'signaturePreviewHtml': card.generate_signature(request=request) if include_signature else '',
+        'isDefault': bool(card.is_default),
+        'isActive': bool(card.is_active),
+        'createdAt': card.created_at.isoformat() if card.created_at else None,
+        'updatedAt': card.updated_at.isoformat() if card.updated_at else None,
+        'links': {
+            'update': reverse('reporting:business_card_api_update', args=[card.id]),
+            'delete': reverse('reporting:business_card_api_delete', args=[card.id]),
+            'setDefault': reverse('reporting:business_card_api_set_default', args=[card.id]),
+            'legacyEdit': reverse('reporting:business_card_edit', args=[card.id]),
+        },
+    }
+
+
+def _business_cards_api_payload(request, message=''):
+    cards = BusinessCard.objects.filter(
+        user=request.user,
+        is_active=True,
+    ).order_by('-is_default', '-created_at')
+    payload = {
+        'success': True,
+        'source': 'django',
+        'cards': [_business_card_payload(card, request=request) for card in cards],
+        'links': {
+            'create': reverse('reporting:business_card_api_create'),
+            'legacy': reverse('reporting:business_card_list'),
+            'mailbox': '/mailbox/',
+            'profile': '/profile/',
+        },
+    }
+    if message:
+        payload['message'] = message
+    return payload
+
+
+def _assign_business_card_fields(card, request):
+    data = request.POST
+    card.name = (data.get('name') or '').strip()
+    card.full_name = (data.get('fullName') or data.get('full_name') or '').strip()
+    card.title = (data.get('title') or '').strip()
+    card.company_name = (data.get('companyName') or data.get('company_name') or '').strip()
+    card.department = (data.get('department') or '').strip()
+    card.phone = (data.get('phone') or '').strip()
+    card.mobile = (data.get('mobile') or '').strip()
+    card.email = (data.get('email') or '').strip()
+    card.address = (data.get('address') or '').strip()
+    card.website = (data.get('website') or '').strip()
+    card.fax = (data.get('fax') or '').strip()
+    card.logo_url = (data.get('logoUrl') or data.get('logo_url') or '').strip()
+    card.logo_link_url = (data.get('logoLinkUrl') or data.get('logo_link_url') or '').strip()
+    card.signature_html = data.get('signatureHtml') or data.get('signature_html') or ''
+    card.is_default = _business_card_bool(data.get('isDefault') or data.get('is_default'))
+    if request.FILES.get('logo'):
+        card.logo = request.FILES['logo']
+
+
+def _validate_business_card(card):
+    errors = {}
+    if not card.name:
+        errors['name'] = '명함 이름을 입력하세요.'
+    if not card.full_name:
+        errors['fullName'] = '이름을 입력하세요.'
+    if not card.email:
+        errors['email'] = '이메일을 입력하세요.'
+    else:
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        try:
+            validate_email(card.email)
+        except ValidationError:
+            errors['email'] = '올바른 이메일 주소를 입력하세요.'
+    return errors
+
+
+@login_required
+def business_card_api_list(request):
+    """React 명함 관리 목록 API."""
+    if request.method != 'GET':
+        return JsonResponse({'success': False, 'error': 'GET 요청만 허용됩니다.'}, status=405)
+    return JsonResponse(_business_cards_api_payload(request))
+
+
+@login_required
+def business_card_api_create(request):
+    """React 명함 생성 API."""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    card = BusinessCard(user=request.user)
+    _assign_business_card_fields(card, request)
+    errors = _validate_business_card(card)
+    if errors:
+        return JsonResponse({'success': False, 'error': '입력값을 확인하세요.', 'errors': errors}, status=400)
+    card.save()
+    return JsonResponse(_business_cards_api_payload(request, '명함을 생성했습니다.'))
+
+
+@login_required
+def business_card_api_update(request, card_id):
+    """React 명함 수정 API."""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    card = get_object_or_404(BusinessCard, id=card_id, user=request.user, is_active=True)
+    _assign_business_card_fields(card, request)
+    errors = _validate_business_card(card)
+    if errors:
+        return JsonResponse({'success': False, 'error': '입력값을 확인하세요.', 'errors': errors}, status=400)
+    card.save()
+    return JsonResponse(_business_cards_api_payload(request, '명함을 저장했습니다.'))
+
+
+@login_required
+def business_card_api_delete(request, card_id):
+    """React 명함 soft delete API."""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    card = get_object_or_404(BusinessCard, id=card_id, user=request.user, is_active=True)
+    card.is_active = False
+    card.save(update_fields=['is_active', 'updated_at'])
+    return JsonResponse(_business_cards_api_payload(request, '명함을 삭제했습니다.'))
+
+
+@login_required
+def business_card_api_set_default(request, card_id):
+    """React 기본 명함 설정 API."""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    card = get_object_or_404(BusinessCard, id=card_id, user=request.user, is_active=True)
+    BusinessCard.objects.filter(user=request.user, is_default=True).update(is_default=False)
+    card.is_default = True
+    card.save()
+    return JsonResponse(_business_cards_api_payload(request, f'{card.name} 명함을 기본으로 설정했습니다.'))
+
 
 @login_required
 def business_card_list(request):

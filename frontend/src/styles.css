@@ -10174,6 +10174,283 @@ tbody tr:hover {
   color: #b91c1c;
 }
 
+.reports-page,
+.business-cards-page,
+.profile-page {
+  display: grid;
+  gap: 18px;
+}
+
+.form-success-message,
+.form-error-message {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.form-success-message {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.form-error-message {
+  border: 1px solid #fecaca;
+  background: #fff7f7;
+  color: #b91c1c;
+}
+
+.reports-actions,
+.profile-connection-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reports-filter-bar label {
+  display: grid;
+  gap: 5px;
+  min-width: 150px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reports-filter-bar input,
+.reports-filter-bar select {
+  min-height: 38px;
+}
+
+.reports-metric-grid {
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+}
+
+.reports-layout,
+.business-cards-layout,
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 18px;
+  align-items: start;
+}
+
+.profile-password-panel {
+  grid-column: 1 / -1;
+}
+
+.reports-pipeline-list,
+.business-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reports-bar-row {
+  display: grid;
+  gap: 8px;
+}
+
+.reports-bar-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.reports-table-wrap td,
+.reports-table-wrap th {
+  white-space: nowrap;
+}
+
+.business-card-item {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.business-card-item.default {
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.business-card-item-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.business-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.business-card-title-row span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.business-card-item p,
+.business-card-item small {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.business-card-signature-frame {
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.business-card-preview-empty {
+  min-height: 90px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--panel-soft);
+}
+
+.business-card-editor {
+  position: sticky;
+  top: 18px;
+}
+
+.business-card-form,
+.profile-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.business-card-form label,
+.profile-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.business-card-form input,
+.business-card-form textarea,
+.profile-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.business-card-form textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.business-card-form-wide,
+.business-card-default-toggle,
+.profile-readonly-grid,
+.profile-form .primary-button {
+  grid-column: 1 / -1;
+}
+
+.business-card-default-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+
+.business-card-default-toggle input {
+  width: 16px;
+  min-height: 16px;
+}
+
+.profile-readonly-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-readonly-grid div,
+.profile-connection-state {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.profile-readonly-grid span,
+.profile-connection-state span,
+.profile-connection-state small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.profile-connection-state.connected {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+@media (max-width: 1180px) {
+  .reports-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reports-layout,
+  .business-cards-layout,
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .business-card-editor {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .reports-metric-grid,
+  .business-card-form,
+  .profile-form,
+  .profile-readonly-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .business-card-item-main,
+  .reports-actions,
+  .profile-connection-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reports-table-wrap,
+  .reports-customer-panel .customers-table-wrap {
+    overflow-x: auto;
+  }
+}
+
 .form-grid.two-columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

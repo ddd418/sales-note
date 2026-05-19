@@ -152,6 +152,194 @@ export type DashboardData = {
   }>;
 };
 
+export type ReportsData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  filters: {
+    dateFrom: string;
+    dateTo: string;
+    selectedUserId: number | null;
+  };
+  scope: {
+    canFilterUsers: boolean;
+    canExport: boolean;
+    label: string;
+    salespeople: Array<{ id: number; name: string; username: string }>;
+  };
+  metrics: {
+    totalHistories: number;
+    completedFollowups: number;
+    overdueFollowups: number;
+    upcomingFollowups: number;
+    activePipeline: number;
+    totalAssets: number;
+    activeAssets: number;
+    openServiceAssets: number;
+    overdueServiceAssets: number;
+    dueCalibrationAssets: number;
+    overdueCalibrationAssets: number;
+  };
+  activityReport: Array<{
+    user: { id: number; name: string; username: string };
+    historyCount: number;
+    followupCount: number;
+    overdueCount: number;
+    lastActivityAt: string | null;
+  }>;
+  customerReport: Array<{
+    id: number;
+    customer: string;
+    company: string;
+    department: string;
+    owner: string;
+    pipelineStage: string;
+    pipelineStageLabel: string;
+    lastActivityAt: string | null;
+    nextActionDate: string | null;
+    href: string;
+    djangoHref: string;
+  }>;
+  pipelineSummary: Array<{ stage: string; label: string; count: number }>;
+  links: {
+    activityCsv: string;
+    pipelineCsv: string;
+    activityXlsx: string;
+    pipelineXlsx: string;
+    assets: string;
+    legacy: string;
+  };
+};
+
+export type ProfileData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  user: {
+    id: number | null;
+    username: string;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    email: string;
+    dateJoined: string | null;
+    lastLogin: string | null;
+  };
+  profile: {
+    role: string;
+    roleLabel: string;
+    company: string;
+    canUseAi: boolean;
+    canDownloadExcel: boolean;
+  };
+  emailConnection: {
+    enabled: boolean;
+    connected: boolean;
+    provider: string;
+    providerLabel: string;
+    address: string;
+    connectedAt: string | null;
+    lastSyncAt: string | null;
+    gmailConnected: boolean;
+    imapConnected: boolean;
+    links: {
+      mailbox: string;
+      businessCards: string;
+      gmailConnect: string;
+      imapConnect: string;
+      imapSync: string;
+      disconnect: string;
+    };
+  };
+  links: {
+    update: string;
+    password: string;
+    legacy: string;
+    legacyEdit: string;
+    dashboard: string;
+  };
+};
+
+export type ProfileUpdatePayload = {
+  username: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
+export type ProfilePasswordPayload = {
+  oldPassword: string;
+  newPassword1: string;
+  newPassword2: string;
+};
+
+export type BusinessCardItem = {
+  id: number;
+  name: string;
+  fullName: string;
+  title: string;
+  companyName: string;
+  department: string;
+  phone: string;
+  mobile: string;
+  email: string;
+  address: string;
+  website: string;
+  fax: string;
+  logoUrl: string;
+  logoFileUrl: string;
+  logoLinkUrl: string;
+  signatureHtml: string;
+  signaturePreviewHtml: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  links: {
+    update: string;
+    delete: string;
+    setDefault: string;
+    legacyEdit: string;
+  };
+};
+
+export type BusinessCardsData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  error?: string;
+  message?: string;
+  cards: BusinessCardItem[];
+  links: {
+    create: string;
+    legacy: string;
+    mailbox: string;
+    profile: string;
+  };
+};
+
+export type BusinessCardPayload = {
+  name: string;
+  fullName: string;
+  title: string;
+  companyName: string;
+  department: string;
+  phone: string;
+  mobile: string;
+  email: string;
+  address: string;
+  website: string;
+  fax: string;
+  logoUrl: string;
+  logoLinkUrl: string;
+  signatureHtml: string;
+  isDefault: boolean;
+  logo?: File | null;
+};
+
 export type MailboxType = 'inbox' | 'sent' | 'scheduled' | 'starred' | 'archived' | 'trash';
 
 export type MailboxEmailItem = {
@@ -3725,6 +3913,108 @@ const emptyDashboardData: DashboardData = {
   teamActivity: [],
 };
 
+const emptyReportsData: ReportsData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  filters: {
+    dateFrom: '',
+    dateTo: '',
+    selectedUserId: null,
+  },
+  scope: {
+    canFilterUsers: false,
+    canExport: false,
+    label: '',
+    salespeople: [],
+  },
+  metrics: {
+    totalHistories: 0,
+    completedFollowups: 0,
+    overdueFollowups: 0,
+    upcomingFollowups: 0,
+    activePipeline: 0,
+    totalAssets: 0,
+    activeAssets: 0,
+    openServiceAssets: 0,
+    overdueServiceAssets: 0,
+    dueCalibrationAssets: 0,
+    overdueCalibrationAssets: 0,
+  },
+  activityReport: [],
+  customerReport: [],
+  pipelineSummary: [],
+  links: {
+    activityCsv: '/reporting/analytics/export/activity.csv',
+    pipelineCsv: '/reporting/analytics/export/pipeline.csv',
+    activityXlsx: '/reporting/analytics/export/activity.xlsx',
+    pipelineXlsx: '/reporting/analytics/export/pipeline.xlsx',
+    assets: '/assets/',
+    legacy: '/reporting/analytics/',
+  },
+};
+
+const emptyProfileData: ProfileData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  user: {
+    id: null,
+    username: '',
+    firstName: '',
+    lastName: '',
+    fullName: '',
+    email: '',
+    dateJoined: null,
+    lastLogin: null,
+  },
+  profile: {
+    role: '',
+    roleLabel: '',
+    company: '',
+    canUseAi: false,
+    canDownloadExcel: false,
+  },
+  emailConnection: {
+    enabled: false,
+    connected: false,
+    provider: '',
+    providerLabel: '',
+    address: '',
+    connectedAt: null,
+    lastSyncAt: null,
+    gmailConnected: false,
+    imapConnected: false,
+    links: {
+      mailbox: '/mailbox/',
+      businessCards: '/mailbox/business-cards/',
+      gmailConnect: '/reporting/gmail/connect/',
+      imapConnect: '/reporting/imap/connect/',
+      imapSync: '/reporting/imap/sync/',
+      disconnect: '/reporting/api/profile/email/disconnect/',
+    },
+  },
+  links: {
+    update: '/reporting/api/profile/update/',
+    password: '/reporting/api/profile/password/',
+    legacy: '/reporting/profile/',
+    legacyEdit: '/reporting/profile/edit/',
+    dashboard: '/dashboard/',
+  },
+};
+
+const emptyBusinessCardsData: BusinessCardsData = {
+  success: false,
+  source: 'unavailable',
+  cards: [],
+  links: {
+    create: '/reporting/api/business-cards/create/',
+    legacy: '/reporting/business-cards/',
+    mailbox: '/mailbox/',
+    profile: '/profile/',
+  },
+};
+
 const emptyMailboxCreateOptions: MailboxCreateOptions = {
   canSend: false,
   message: '',
@@ -5070,6 +5360,294 @@ export async function loadDashboardData(): Promise<DashboardData> {
       error: error instanceof Error ? error.message : 'Dashboard API unavailable',
     };
   }
+}
+
+export async function loadReportsData(params: {
+  dateFrom?: string;
+  dateTo?: string;
+  userId?: string;
+} = {}): Promise<ReportsData> {
+  const query = new URLSearchParams();
+  if (params.dateFrom) query.set('date_from', params.dateFrom);
+  if (params.dateTo) query.set('date_to', params.dateTo);
+  if (params.userId) query.set('user_id', params.userId);
+
+  try {
+    const response = await fetch(`/reporting/api/reports/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Reports API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<ReportsData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Reports API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyReportsData,
+      ...payload,
+      filters: {
+        ...emptyReportsData.filters,
+        ...(payload.filters ?? {}),
+      },
+      scope: {
+        ...emptyReportsData.scope,
+        ...(payload.scope ?? {}),
+        salespeople: payload.scope?.salespeople ?? emptyReportsData.scope.salespeople,
+      },
+      metrics: {
+        ...emptyReportsData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: {
+        ...emptyReportsData.links,
+        ...(payload.links ?? {}),
+      },
+      activityReport: payload.activityReport ?? emptyReportsData.activityReport,
+      customerReport: payload.customerReport ?? emptyReportsData.customerReport,
+      pipelineSummary: payload.pipelineSummary ?? emptyReportsData.pipelineSummary,
+    };
+  } catch (error) {
+    return {
+      ...emptyReportsData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Reports API unavailable',
+    };
+  }
+}
+
+export async function loadProfileData(): Promise<ProfileData> {
+  try {
+    const response = await fetch('/reporting/api/profile/', {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Profile API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<ProfileData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Profile API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyProfileData,
+      ...payload,
+      user: {
+        ...emptyProfileData.user,
+        ...(payload.user ?? {}),
+      },
+      profile: {
+        ...emptyProfileData.profile,
+        ...(payload.profile ?? {}),
+      },
+      emailConnection: {
+        ...emptyProfileData.emailConnection,
+        ...(payload.emailConnection ?? {}),
+        links: {
+          ...emptyProfileData.emailConnection.links,
+          ...(payload.emailConnection?.links ?? {}),
+        },
+      },
+      links: {
+        ...emptyProfileData.links,
+        ...(payload.links ?? {}),
+      },
+    };
+  } catch (error) {
+    return {
+      ...emptyProfileData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Profile API unavailable',
+    };
+  }
+}
+
+async function postProfileJson<T>(url: string, payload?: unknown): Promise<T> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+  redirectIfLoginRequired(response);
+  const data = (await response.json()) as T & { success?: boolean; error?: string; message?: string };
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Profile request failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updateProfile(payload: ProfileUpdatePayload, submitUrl = '/reporting/api/profile/update/'): Promise<ProfileData> {
+  const data = await postProfileJson<Partial<ProfileData>>(submitUrl, payload);
+  return {
+    ...emptyProfileData,
+    ...data,
+    user: {
+      ...emptyProfileData.user,
+      ...(data.user ?? {}),
+    },
+    profile: {
+      ...emptyProfileData.profile,
+      ...(data.profile ?? {}),
+    },
+    emailConnection: {
+      ...emptyProfileData.emailConnection,
+      ...(data.emailConnection ?? {}),
+      links: {
+        ...emptyProfileData.emailConnection.links,
+        ...(data.emailConnection?.links ?? {}),
+      },
+    },
+    links: {
+      ...emptyProfileData.links,
+      ...(data.links ?? {}),
+    },
+  };
+}
+
+export async function changeProfilePassword(payload: ProfilePasswordPayload, submitUrl = '/reporting/api/profile/password/') {
+  return postProfileJson<{ success?: boolean; message?: string }>(submitUrl, payload);
+}
+
+export async function disconnectProfileEmail(submitUrl = '/reporting/api/profile/email/disconnect/'): Promise<ProfileData> {
+  const data = await postProfileJson<Partial<ProfileData>>(submitUrl);
+  return {
+    ...emptyProfileData,
+    ...data,
+    user: {
+      ...emptyProfileData.user,
+      ...(data.user ?? {}),
+    },
+    profile: {
+      ...emptyProfileData.profile,
+      ...(data.profile ?? {}),
+    },
+    emailConnection: {
+      ...emptyProfileData.emailConnection,
+      ...(data.emailConnection ?? {}),
+      links: {
+        ...emptyProfileData.emailConnection.links,
+        ...(data.emailConnection?.links ?? {}),
+      },
+    },
+    links: {
+      ...emptyProfileData.links,
+      ...(data.links ?? {}),
+    },
+  };
+}
+
+export async function loadBusinessCardsData(): Promise<BusinessCardsData> {
+  try {
+    const response = await fetch('/reporting/api/business-cards/', {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Business cards API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<BusinessCardsData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Business cards API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyBusinessCardsData,
+      ...payload,
+      cards: payload.cards ?? emptyBusinessCardsData.cards,
+      links: {
+        ...emptyBusinessCardsData.links,
+        ...(payload.links ?? {}),
+      },
+    };
+  } catch (error) {
+    return {
+      ...emptyBusinessCardsData,
+      error: error instanceof Error ? error.message : 'Business cards API unavailable',
+    };
+  }
+}
+
+function businessCardPayloadToFormData(payload: BusinessCardPayload): FormData {
+  const body = new FormData();
+  body.set('name', payload.name);
+  body.set('fullName', payload.fullName);
+  body.set('title', payload.title);
+  body.set('companyName', payload.companyName);
+  body.set('department', payload.department);
+  body.set('phone', payload.phone);
+  body.set('mobile', payload.mobile);
+  body.set('email', payload.email);
+  body.set('address', payload.address);
+  body.set('website', payload.website);
+  body.set('fax', payload.fax);
+  body.set('logoUrl', payload.logoUrl);
+  body.set('logoLinkUrl', payload.logoLinkUrl);
+  body.set('signatureHtml', payload.signatureHtml);
+  if (payload.isDefault) body.set('isDefault', '1');
+  if (payload.logo) body.set('logo', payload.logo);
+  return body;
+}
+
+async function postBusinessCardForm(url: string, payload?: BusinessCardPayload): Promise<BusinessCardsData> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: payload ? businessCardPayloadToFormData(payload) : undefined,
+  });
+  redirectIfLoginRequired(response);
+  const data = (await response.json()) as Partial<BusinessCardsData>;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Business card request failed: ${response.status}`);
+  }
+  return {
+    ...emptyBusinessCardsData,
+    ...data,
+    cards: data.cards ?? emptyBusinessCardsData.cards,
+    links: {
+      ...emptyBusinessCardsData.links,
+      ...(data.links ?? {}),
+    },
+  };
+}
+
+export async function saveBusinessCard(payload: BusinessCardPayload, submitUrl: string): Promise<BusinessCardsData> {
+  return postBusinessCardForm(submitUrl, payload);
+}
+
+export async function deleteBusinessCard(submitUrl: string): Promise<BusinessCardsData> {
+  return postBusinessCardForm(submitUrl);
+}
+
+export async function setDefaultBusinessCard(submitUrl: string): Promise<BusinessCardsData> {
+  return postBusinessCardForm(submitUrl);
 }
 
 export async function loadMailboxData(params: {

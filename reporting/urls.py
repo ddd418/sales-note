@@ -186,6 +186,11 @@ urlpatterns = [
     
     # Admin 전용 API URL들
     path('api/users/', views.api_users_list, name='api_users_list'),
+    path('api/reports/', views.reports_summary_api, name='reports_summary_api'),
+    path('api/profile/', views.profile_api, name='profile_api'),
+    path('api/profile/update/', views.profile_update_api, name='profile_api_update'),
+    path('api/profile/password/', views.profile_password_api, name='profile_api_password'),
+    path('api/profile/email/disconnect/', views.profile_email_disconnect_api, name='profile_email_disconnect_api'),
     path('api/customers/', views.customers_summary_api, name='customers_summary_api'),
     path('api/customer-assets/', views.customer_assets_summary_api, name='customer_assets_summary_api'),
     path('api/customers/<int:followup_id>/', views.customer_detail_summary_api, name='customer_detail_summary_api'),
@@ -355,6 +360,11 @@ urlpatterns = [
     path('api/mailbox/<int:email_id>/restore/', lazy_view('reporting.gmail_views.mailbox_api_restore'), name='mailbox_api_restore'),
     path('api/mailbox/<int:email_id>/delete/', lazy_view('reporting.gmail_views.mailbox_api_delete'), name='mailbox_api_delete'),
     path('api/mailbox/<int:email_id>/attachments/<int:attachment_index>/', lazy_view('reporting.gmail_views.mailbox_api_attachment_download'), name='mailbox_api_attachment_download'),
+    path('api/business-cards/', lazy_view('reporting.gmail_views.business_card_api_list'), name='business_card_api_list'),
+    path('api/business-cards/create/', lazy_view('reporting.gmail_views.business_card_api_create'), name='business_card_api_create'),
+    path('api/business-cards/<int:card_id>/update/', lazy_view('reporting.gmail_views.business_card_api_update'), name='business_card_api_update'),
+    path('api/business-cards/<int:card_id>/delete/', lazy_view('reporting.gmail_views.business_card_api_delete'), name='business_card_api_delete'),
+    path('api/business-cards/<int:card_id>/set-default/', lazy_view('reporting.gmail_views.business_card_api_set_default'), name='business_card_api_set_default'),
     
     # 명함 관리
     path('business-cards/', lazy_view('reporting.gmail_views.business_card_list'), name='business_card_list'),

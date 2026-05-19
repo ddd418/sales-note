@@ -307,13 +307,13 @@ a.text-decoration-none {
                   href="{% url 'reporting:history_list' %}?action_type=service&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'service' %}btn-warning{% else %}btn-outline-warning{% endif %}"
                 >
-                  <i class="fas fa-cogs me-1"></i>서비스 ({{ service_count }})
+                  <i class="fas fa-sticky-note me-1"></i>메모 ({{ service_count }})
                 </a>
                 <a
                   href="{% url 'reporting:history_list' %}?action_type=memo&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}"
                   class="btn {% if action_type_filter == 'memo' %}btn-info{% else %}btn-outline-info{% endif %}"
                 >
-                  <i class="fas fa-sticky-note me-1"></i>메모 ({{ memo_count|default:0 }})
+                  <i class="fas fa-comment-dots me-1"></i>댓글 메모 ({{ memo_count|default:0 }})
                 </a>
                 <a
                   href="{% url 'reporting:history_list' %}?action_type=personal_schedule&data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}{% if month_filter %}&months={{ month_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
