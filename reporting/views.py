@@ -11132,15 +11132,11 @@ Follow this step-by-step process:
 6) Provide specific next actions, prioritized by expected impact, difficulty, speed, and risk.
 7) Include measurement guidance: KPIs, success criteria, tracking setup, testing plan, and review cadence.
 
-Output format:
-- Situation diagnosis
-- Key assumptions
-- Strategic direction
-- Recommended CRM actions
-- Optimal conditions and constraints
-- Priority roadmap
-- KPI and testing plan
-- Risks and countermeasures
+Output style:
+- Match the user's requested deliverable. If they ask for a prompt, email, script, memo, checklist, or one-page summary, produce that artifact directly.
+- Use sections, tables, cards, or prioritized actions only when they make the answer clearer for that exact request.
+- Do not force the same headings or decision template into every answer.
+- For choice questions, make a clear recommendation first, then explain only the useful caveats.
 
 Style:
 Use clear, practical Korean. Be strategic but concrete. Avoid vague advice. Use tables when comparing options. Do not over-explain theory unless it directly supports the recommendation.
@@ -11210,6 +11206,14 @@ def _ai_workspace_question_text(value, limit=600):
     return text[:limit - 1].rstrip() + '...'
 
 
+def _ai_workspace_question_answer_text(value, limit=4200):
+    text = _ai_workspace_feedback_display_text(value)
+    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip() + '...'
+
+
 def _ai_workspace_question_feedback_rating_label(rating):
     return {
         'helpful': '좋음',
@@ -11249,7 +11253,7 @@ def _ai_workspace_question_feedback_answer_snapshot(answer):
         return {}
 
     snapshot = {
-        'summary': _ai_workspace_question_text(answer.get('summary') or answer.get('answer'), 1800),
+        'summary': _ai_workspace_question_answer_text(answer.get('summary') or answer.get('answer'), 1800),
         'bullets': [
             _ai_workspace_question_text(item, 420)
             for item in _ai_json_list(answer.get('bullets'))[:6]
@@ -11291,7 +11295,7 @@ def _ai_workspace_question_log_answer_snapshot(answer):
         return {}
 
     snapshot = {
-        'summary': _ai_workspace_question_text(answer.get('summary') or answer.get('answer'), 4200),
+        'summary': _ai_workspace_question_answer_text(answer.get('summary') or answer.get('answer'), 4200),
         'bullets': [
             _ai_workspace_question_text(item, 700)
             for item in _ai_json_list(answer.get('bullets'))[:10]
@@ -13146,7 +13150,7 @@ def _ai_workspace_normalize_department_question_answer(data, fallback, context=N
         or data.get('directAnswer')
         or ''
     )
-    answer = _ai_workspace_question_text(answer_text, 4200)
+    answer = _ai_workspace_question_answer_text(answer_text, 4200)
     bullets = [
         _ai_workspace_question_text(item, 700)
         for item in _ai_json_list(data.get('bullets') or data.get('keyPoints'))[:10]
@@ -13154,8 +13158,8 @@ def _ai_workspace_normalize_department_question_answer(data, fallback, context=N
     ]
     evidence_items = data.get('evidence') or data.get('sourceNotes') or data.get('sources')
     evidence = _ai_workspace_question_evidence_payload(evidence_items, limit=10, value_limit=700)
-    decision = _ai_workspace_question_decision_payload(data, fallback.get('decision'))
-    perspective = _ai_workspace_question_perspective_payload(data, fallback.get('perspective'))
+    decision = _ai_workspace_question_decision_payload(data)
+    perspective = _ai_workspace_question_perspective_payload(data)
 
     action_items = []
     raw_action_items = data.get('actionItems') or data.get('actions') or data.get('recommendedActions')
@@ -13202,9 +13206,9 @@ def _ai_workspace_normalize_department_question_answer(data, fallback, context=N
         return _ai_workspace_apply_product_fact_guard(fallback, context or {})
     result = {
         'summary': answer,
-        'bullets': bullets or fallback.get('bullets', []),
-        'evidence': evidence or fallback.get('evidence', []),
-        'actionItems': action_items or fallback.get('actionItems', []),
+        'bullets': bullets,
+        'evidence': evidence,
+        'actionItems': action_items,
         'confidence': confidence,
     }
     if decision:
@@ -13223,6 +13227,64 @@ def _ai_workspace_question_needs_web_search(question):
     if any(keyword in normalized for keyword in explicit_search):
         return True
     return '최신' in normalized and any(keyword in normalized for keyword in external_topics)
+
+
+def _ai_workspace_question_response_guidance(question):
+    text = str(question or '').strip()
+    compact = re.sub(r'\s+', '', text.lower())
+    if not compact:
+        return {
+            'intent': 'general_crm_answer',
+            'instruction': '질문 의도에 맞는 자연스러운 답변 형식을 선택한다.',
+        }
+
+    wants_prompt = (
+        any(keyword in compact for keyword in ['프롬프트', 'prompt'])
+        and any(keyword in compact for keyword in ['만들', '작성', '보낼', '복붙', '그대로', '상담'])
+    )
+    if wants_prompt:
+        return {
+            'intent': 'external_ai_prompt',
+            'instruction': (
+                '외부 AI에게 보낼 완성형 프롬프트 자체를 answer에 바로 제공한다. '
+                '추천 판단/버릴 선택/예외 조건/고객별 actionItems 같은 CRM 전략 카드로 풀지 않는다. '
+                '필요하면 앞에 한 문장 설명만 붙이고, 대부분은 사용자가 그대로 복사할 수 있는 프롬프트 본문에 집중한다.'
+            ),
+        }
+
+    wants_email_or_script = (
+        any(keyword in compact for keyword in ['메일', '이메일', '회신', '답장', '문자', '카톡', '말문', '스크립트'])
+        and any(keyword in compact for keyword in ['써', '작성', '초안', '문안', '보낼', '다듬'])
+    )
+    if wants_email_or_script:
+        return {
+            'intent': 'draft_message',
+            'instruction': (
+                '고객에게 보낼 문안/메일/스크립트 자체를 answer에 완성형으로 쓴다. '
+                '분석 카드보다 바로 보낼 수 있는 문장, 제목, 본문 구조를 우선한다.'
+            ),
+        }
+
+    wants_artifact = any(
+        keyword in compact
+        for keyword in ['정리본', '1페이지', '한페이지', '체크리스트', '요약본', '비교표', '자료']
+    )
+    if wants_artifact:
+        return {
+            'intent': 'business_artifact',
+            'instruction': (
+                '사용자가 요청한 정리본/비교표/체크리스트 형식으로 바로 쓸 수 있게 작성한다. '
+                '필요한 경우에만 간단한 판단 근거를 붙인다.'
+            ),
+        }
+
+    return {
+        'intent': 'strategy_answer',
+        'instruction': (
+            '질문 성격에 맞춰 자유롭게 답변한다. 선택 판단이나 우선순위 질문이면 구조화해도 되지만, '
+            '불필요한 고정 항목을 채우지 않는다.'
+        ),
+    }
 
 
 def _ai_workspace_response_output_text(response):
@@ -13272,10 +13334,12 @@ def _ai_workspace_generate_department_question_answer(
 
         client = get_openai_client()
         model = model or os.environ.get('OPENAI_MODEL_AI_WORKSPACE') or get_standard_openai_model() or AI_WORKSPACE_DEFAULT_QUESTION_MODEL
+        response_guidance = _ai_workspace_question_response_guidance(question)
         prompt_payload = {
             'question': question,
             'crmContext': context,
             'webSearchAllowed': use_web_search,
+            'responseGuidance': response_guidance,
             'rules': [
                 '제공된 crmContext에 있는 사실만 사용한다.',
                 'crmContext.recentFeedbacks는 사용자가 AI 추천 실행 목록에 남긴 최신 현장 답변이다. 같은 주제에서는 recentFeedbacks가 older recentSchedules/recentNotes보다 우선한다.',
@@ -13296,19 +13360,23 @@ def _ai_workspace_generate_department_question_answer(
                 '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
                 'webSearchAllowed가 true이고 최신 외부 정보가 필요한 질문에서만 웹 검색 결과를 보조 근거로 사용한다. 내부 CRM 고객명/영업내용을 웹 검색어로 노출하지 않는다.',
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',
-                '단, CRM 근거가 있는 고객 심리/구매 의도 해석은 perspective.customerPerspective에 "고객 입장에서는", "가능성이 있습니다"처럼 추정임을 표시해 쓴다.',
+                '단, CRM 근거가 있는 고객 심리/구매 의도 해석은 answer 또는 perspective에 "고객 입장에서는", "가능성이 있습니다"처럼 추정임을 표시해 쓴다.',
                 '고객 마음을 단정하지 말고, CRM 사실과 추정을 분리한다.',
-                '질문이 "할까/말까", "A가 좋을까 B가 좋을까", "아니면", "굳이"처럼 선택지형이면 반드시 하나를 골라 decision.recommendedChoice에 쓴다.',
-                '선택지형 질문에서는 버릴 선택지를 decision.rejectedChoice에 쓰고, 왜 버리는지와 예외 조건을 각각 reason/exception에 쓴다.',
-                '선택지형 질문의 answer 첫 문장은 추천 선택을 먼저 말하고, CRM 브리핑으로 시작하지 않는다.',
-                '질문이 영업 판단을 요구하면 perspective에 고객 입장 추정, 영업 판단, 추천 접근, 실제 말문 예시, 주의점을 채운다.',
-                'answer는 2-4문장으로 결론과 우선순위 판단을 설명한다.',
-                '실행해야 할 작업이 있으면 actionItems에 최대 5개를 우선순위 순서로 넣는다.',
+                'responseGuidance.intent와 responseGuidance.instruction을 우선 적용한다.',
+                '질문이 프롬프트/메일/문안/정리본 생성을 요구하면 answer에 그 산출물 자체를 완성형으로 쓴다.',
+                '프롬프트 생성 요청에서는 추천 판단, 버릴 선택, 예외 조건, 고객별 actionItems를 만들지 않는다.',
+                '답변 형식은 질문 의도에 맞게 자유롭게 선택한다. 모든 답변에 같은 제목이나 카드 구조를 반복하지 않는다.',
+                '질문이 "할까/말까", "A가 좋을까 B가 좋을까", "아니면", "굳이"처럼 선택지형이면 answer 첫 문장에 추천 선택을 먼저 말한다.',
+                'decision은 선택지가 분명하고 별도 판단 카드가 유용할 때만 넣는다. 단순 산출물 작성 요청에는 decision을 비운다.',
+                'perspective는 고객 심리 추정이나 영업 관점 분리가 실제로 도움이 될 때만 넣는다. 단순 산출물 작성 요청에는 perspective를 비운다.',
+                '실행해야 할 작업 목록 자체가 질문의 목적이면 actionItems에 최대 5개를 우선순위 순서로 넣는다.',
+                '단순 설명, 프롬프트 작성, 메일 초안, 문안 작성 요청에는 actionItems를 비우거나 생략한다.',
                 '각 actionItems 항목은 title, customer, company, department, priority, reason, nextAction, timing, crmEvidence를 채운다.',
                 'reason, nextAction, timing은 짧은 단어 조각이 아니라 실행자가 바로 이해할 수 있는 한 문장 이상으로 쓴다.',
                 'bullets는 보조 요약만 넣고, 고객별 실행 상세는 actionItems에 넣는다.',
                 '이 애플리케이션은 JSON 객체만 파싱한다. JSON 바깥의 Markdown 본문은 쓰지 않는다.',
-                '반드시 {"answer": string, "bullets": string[], "decision": {"recommendedChoice": string, "rejectedChoice": string, "reason": string, "exception": string}, "perspective": {"customerPerspective": string, "salesJudgment": string, "recommendedApproach": string, "talkTrack": string, "caution": string}, "actionItems": [{"rank": number, "title": string, "customer": string, "company": string, "department": string, "priority": string, "reason": string, "nextAction": string, "timing": string, "crmEvidence": [{"label": string, "value": string}]}], "evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"} 형태의 JSON 객체만 반환한다.',
+                '반드시 JSON 객체만 반환한다. 기본 형태는 {"answer": string, "bullets": string[], "evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"} 이다.',
+                '필요할 때만 선택적으로 "decision", "perspective", "actionItems"를 추가한다.',
             ],
         }
         system_prompt = AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT

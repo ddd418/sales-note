@@ -8744,6 +8744,81 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('crmContext.recentEmails', rules_text)
         self.assertIn('메일/이메일/회신/답장', rules_text)
 
+    @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_department_question_prompt_request_stays_freeform(self, mock_client):
+        from types import SimpleNamespace
+
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                content = json.dumps({
+                    'answer': (
+                        '아래 프롬프트를 외부 AI에 그대로 보내세요.\n\n'
+                        '상황: 고객은 내부 비교 검토 중이며 행정 담당자에게 전달할 자료가 필요합니다.\n'
+                        '요청: 다음 메일 전략과 확인해야 할 조건을 CRM 맥락 기준으로 제안해 주세요.'
+                    ),
+                    'confidence': 'high',
+                })
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+        mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+        _followup, department = self._create_customer(self.user, '외부프롬프트')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '외부 AI한테 전략 상담받게 보낼 프롬프트 하나 만들어줘',
+                'model': 'gpt-5.4-mini',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'openai')
+        self.assertIn('외부 AI에 그대로', payload['answer']['summary'])
+        self.assertIn('\n', payload['answer']['summary'])
+        self.assertEqual(payload['answer']['actionItems'], [])
+        self.assertNotIn('decision', payload['answer'])
+        self.assertNotIn('perspective', payload['answer'])
+
+        prompt_payload = json.loads(captured['messages'][1]['content'])
+        self.assertEqual(prompt_payload['responseGuidance']['intent'], 'external_ai_prompt')
+        rules_text = '\n'.join(prompt_payload['rules'])
+        self.assertIn('답변 형식은 질문 의도에 맞게 자유롭게 선택', rules_text)
+        self.assertIn('프롬프트 생성 요청에서는 추천 판단', rules_text)
+
+    def test_ai_workspace_department_question_normalizer_does_not_inject_fallback_cards(self):
+        from reporting.views import _ai_workspace_normalize_department_question_answer
+
+        result = _ai_workspace_normalize_department_question_answer({
+            'answer': '완성형 프롬프트:\n상황과 목표를 넣고 다음 액션 전략을 제안해 달라고 요청하세요.',
+            'confidence': 'high',
+        }, {
+            'summary': 'fallback',
+            'bullets': ['fallback bullet'],
+            'evidence': [{'label': 'fallback', 'value': 'fallback evidence'}],
+            'actionItems': [{
+                'rank': 1,
+                'title': 'fallback action',
+                'nextAction': 'fallback next action',
+            }],
+            'decision': {'recommendedChoice': 'fallback decision'},
+            'perspective': {'recommendedApproach': 'fallback approach'},
+            'confidence': 'low',
+        })
+
+        self.assertEqual(result['confidence'], 'high')
+        self.assertEqual(result['bullets'], [])
+        self.assertEqual(result['evidence'], [])
+        self.assertEqual(result['actionItems'], [])
+        self.assertNotIn('decision', result)
+        self.assertNotIn('perspective', result)
+
     def test_ai_workspace_department_question_product_guard_replaces_unsupported_label(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 

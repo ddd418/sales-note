@@ -39,6 +39,7 @@ import {
   Reply,
   Search,
   Send,
+  ShieldCheck,
   Sparkles,
   Star,
   Target,
@@ -4806,6 +4807,12 @@ function ReportsPage({
     { label: '교정 예정', value: `${formatNumber(data.metrics.dueCalibrationAssets)}건`, detail: `지연 ${formatNumber(data.metrics.overdueCalibrationAssets)}건`, icon: CalendarDays, tone: data.metrics.overdueCalibrationAssets > 0 ? 'red' as const : 'green' as const },
   ];
   const maxPipeline = Math.max(...data.pipelineSummary.map((item) => item.count), 1);
+  const riskTotal = data.metrics.overdueFollowups + data.metrics.overdueServiceAssets + data.metrics.overdueCalibrationAssets;
+  const activeAssetRate = data.metrics.totalAssets > 0
+    ? Math.round((data.metrics.activeAssets / data.metrics.totalAssets) * 100)
+    : 0;
+  const dateRangeLabel = `${formatDateLabel(data.filters.dateFrom)} - ${formatDateLabel(data.filters.dateTo)}`;
+  const generatedDate = (data.generatedAt || localDateInputValue()).slice(0, 10);
 
   return (
     <section className="reports-page">
@@ -4824,7 +4831,7 @@ function ReportsPage({
         <div>
           <span className="eyebrow">Reports</span>
           <h2>{data.scope.label || '영업 분석'}</h2>
-          <p>영업 활동, 후속조치, 파이프라인, 장비/A/S/교정 상태를 함께 봅니다.</p>
+          <p>{dateRangeLabel}</p>
         </div>
         <div className="reports-actions">
           {data.scope.canExport ? (
@@ -4839,23 +4846,50 @@ function ReportsPage({
         </div>
       </div>
 
-      <div className="customers-filter-bar reports-filter-bar">
-        <label>
-          <span>시작일</span>
-          <input type="date" value={dateFrom || data.filters.dateFrom} onChange={(event) => onDateFromChange(event.target.value)} />
-        </label>
-        <label>
-          <span>종료일</span>
-          <input type="date" value={dateTo || data.filters.dateTo} onChange={(event) => onDateToChange(event.target.value)} />
-        </label>
-        {data.scope.canFilterUsers ? (
-          <select value={userId} onChange={(event) => onUserChange(event.target.value)}>
-            <option value="">담당자 전체</option>
-            {data.scope.salespeople.map((user) => (
-              <option key={user.id} value={user.id}>{user.name}</option>
-            ))}
-          </select>
-        ) : null}
+      <div className="reports-control-band">
+        <div className="reports-filter-bar">
+          <label>
+            <span>시작일</span>
+            <input type="date" value={dateFrom || data.filters.dateFrom} onChange={(event) => onDateFromChange(event.target.value)} />
+          </label>
+          <label>
+            <span>종료일</span>
+            <input type="date" value={dateTo || data.filters.dateTo} onChange={(event) => onDateToChange(event.target.value)} />
+          </label>
+          {data.scope.canFilterUsers ? (
+            <label>
+              <span>담당자</span>
+              <select value={userId} onChange={(event) => onUserChange(event.target.value)}>
+                <option value="">전체</option>
+                {data.scope.salespeople.map((user) => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+        <div className="reports-signal-strip">
+          <div className={riskTotal > 0 ? 'risk' : 'stable'}>
+            <AlertTriangle size={16} />
+            <span>리스크</span>
+            <strong>{formatNumber(riskTotal)}건</strong>
+          </div>
+          <div>
+            <Wrench size={16} />
+            <span>활성 장비</span>
+            <strong>{formatNumber(data.metrics.activeAssets)} / {formatNumber(data.metrics.totalAssets)}</strong>
+          </div>
+          <div>
+            <CheckCircle2 size={16} />
+            <span>완료 고객</span>
+            <strong>{formatNumber(data.metrics.completedFollowups)}건</strong>
+          </div>
+          <div>
+            <Activity size={16} />
+            <span>가동률</span>
+            <strong>{activeAssetRate}%</strong>
+          </div>
+        </div>
       </div>
 
       <section className="dashboard-metric-grid customers-metric-grid reports-metric-grid" aria-label="분석 핵심 지표">
@@ -4872,7 +4906,7 @@ function ReportsPage({
       </section>
 
       <div className="reports-layout">
-        <section className="dashboard-panel">
+        <section className="dashboard-panel reports-pipeline-panel">
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Pipeline</span>
@@ -4895,7 +4929,7 @@ function ReportsPage({
           </div>
         </section>
 
-        <section className="dashboard-panel">
+        <section className="dashboard-panel reports-activity-panel">
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Activity</span>
@@ -4920,7 +4954,7 @@ function ReportsPage({
                     <td><strong>{row.user.name}</strong></td>
                     <td>{formatNumber(row.historyCount)}</td>
                     <td>{formatNumber(row.followupCount)}</td>
-                    <td>{formatNumber(row.overdueCount)}</td>
+                    <td><span className={row.overdueCount > 0 ? 'status-pill danger' : 'status-pill done'}>{formatNumber(row.overdueCount)}</span></td>
                     <td>{row.lastActivityAt ? formatDateTimeLabel(row.lastActivityAt) : '-'}</td>
                   </tr>
                 )) : (
@@ -4961,9 +4995,15 @@ function ReportsPage({
                     </a>
                   </td>
                   <td>{customer.owner}</td>
-                  <td>{customer.pipelineStageLabel}</td>
+                  <td><span className="status-pill neutral">{customer.pipelineStageLabel}</span></td>
                   <td>{customer.lastActivityAt ? formatDateTimeLabel(customer.lastActivityAt) : '-'}</td>
-                  <td>{customer.nextActionDate ? formatDateLabel(customer.nextActionDate) : '-'}</td>
+                  <td>
+                    {customer.nextActionDate ? (
+                      <span className={customer.nextActionDate < generatedDate ? 'status-pill danger' : 'status-pill pending'}>
+                        {formatDateLabel(customer.nextActionDate)}
+                      </span>
+                    ) : '-'}
+                  </td>
                 </tr>
               )) : (
                 <tr><td colSpan={5}>기간 내 고객 활동이 없습니다.</td></tr>
@@ -5037,6 +5077,8 @@ function BusinessCardsPage({
   }
   if (!data) return null;
   const editingCard = data.cards.find((card) => card.id === editingId);
+  const defaultCard = data.cards.find((card) => card.isDefault) || null;
+  const cardsWithPreview = data.cards.filter((card) => card.signaturePreviewHtml.trim()).length;
 
   return (
     <section className="business-cards-page">
@@ -5057,12 +5099,30 @@ function BusinessCardsPage({
         <div>
           <span className="eyebrow">Signature</span>
           <h2>명함 관리</h2>
-          <p>메일 발송에 사용할 개인 명함과 서명 미리보기를 관리합니다.</p>
+          <p>{defaultCard ? `${defaultCard.name} 기본 사용 중` : '기본 명함 미지정'}</p>
         </div>
         <div className="reports-actions">
           <a className="route-secondary-action" href={data.links.mailbox}>메일함</a>
           <button className="route-secondary-action" onClick={onRefresh} type="button"><RefreshCw size={15} />새로고침</button>
           <button className="route-primary-action" onClick={onCreateOpen} type="button"><Plus size={16} />새 명함</button>
+        </div>
+      </div>
+
+      <div className="business-card-summary-strip">
+        <div>
+          <ImagePlus size={17} />
+          <span>등록 명함</span>
+          <strong>{formatNumber(data.cards.length)}개</strong>
+        </div>
+        <div className={defaultCard ? 'stable' : 'risk'}>
+          <Star size={17} />
+          <span>기본 명함</span>
+          <strong>{defaultCard?.name || '없음'}</strong>
+        </div>
+        <div>
+          <Eye size={17} />
+          <span>서명 미리보기</span>
+          <strong>{formatNumber(cardsWithPreview)}개</strong>
         </div>
       </div>
 
@@ -5089,6 +5149,10 @@ function BusinessCardsPage({
                       </div>
                       <p>{[card.fullName, card.title, card.companyName].filter(Boolean).join(' · ')}</p>
                       <small>{[card.email, card.mobile || card.phone].filter(Boolean).join(' · ')}</small>
+                      <div className="business-card-meta-grid">
+                        <span>{card.department || '부서 없음'}</span>
+                        <span>{card.updatedAt ? formatDateLabel(card.updatedAt) : '수정일 없음'}</span>
+                      </div>
                     </div>
                     <div className="customer-row-actions">
                       <button className="customer-row-action" onClick={() => onEditOpen(card)} type="button"><Pencil size={14} />수정</button>
@@ -5098,7 +5162,13 @@ function BusinessCardsPage({
                       <button className="customer-row-action danger" disabled={actioningId === card.id} onClick={() => onDelete(card)} type="button"><Trash2 size={14} />삭제</button>
                     </div>
                   </div>
-                  <BusinessCardSignaturePreview html={card.signaturePreviewHtml} />
+                  <div className="business-card-preview-block">
+                    <div>
+                      <span>서명 미리보기</span>
+                      {card.logoFileUrl || card.logoUrl ? <small>로고 포함</small> : <small>텍스트 서명</small>}
+                    </div>
+                    <BusinessCardSignaturePreview html={card.signaturePreviewHtml} />
+                  </div>
                 </article>
               ))}
             </div>
@@ -5119,17 +5189,20 @@ function BusinessCardsPage({
           </div>
           {formOpen ? (
             <form className="business-card-form" onSubmit={onSubmit}>
+              <div className="business-card-form-section-title">표시 정보</div>
               <label>명함 이름<input value={form.name} onChange={(event) => onFormChange('name', event.target.value)} required /></label>
               <label>이름<input value={form.fullName} onChange={(event) => onFormChange('fullName', event.target.value)} required /></label>
               <label>직함<input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} /></label>
               <label>회사명<input value={form.companyName} onChange={(event) => onFormChange('companyName', event.target.value)} /></label>
               <label>부서<input value={form.department} onChange={(event) => onFormChange('department', event.target.value)} /></label>
+              <div className="business-card-form-section-title">연락처</div>
               <label>이메일<input type="email" value={form.email} onChange={(event) => onFormChange('email', event.target.value)} required /></label>
               <label>휴대폰<input value={form.mobile} onChange={(event) => onFormChange('mobile', event.target.value)} /></label>
               <label>전화번호<input value={form.phone} onChange={(event) => onFormChange('phone', event.target.value)} /></label>
               <label>팩스<input value={form.fax} onChange={(event) => onFormChange('fax', event.target.value)} /></label>
               <label>웹사이트<input type="url" value={form.website} onChange={(event) => onFormChange('website', event.target.value)} placeholder="https://" /></label>
               <label className="business-card-form-wide">주소<textarea value={form.address} onChange={(event) => onFormChange('address', event.target.value)} /></label>
+              <div className="business-card-form-section-title">서명</div>
               <label>로고 URL<input type="url" value={form.logoUrl} onChange={(event) => onFormChange('logoUrl', event.target.value)} placeholder="https://" /></label>
               <label>로고 링크<input type="url" value={form.logoLinkUrl} onChange={(event) => onFormChange('logoLinkUrl', event.target.value)} placeholder="https://" /></label>
               <label className="business-card-form-wide">로고 업로드<input type="file" accept="image/*" onChange={(event) => onFormChange('logo', event.target.files?.[0] ?? null)} /></label>
@@ -5193,6 +5266,11 @@ function ProfileSettingsPage({
   }
   if (!data) return null;
   const connection = data.emailConnection;
+  const permissionItems = [
+    { label: 'AI 사용', enabled: data.profile.canUseAi },
+    { label: '엑셀 다운로드', enabled: data.profile.canDownloadExcel },
+    { label: '메일 연동', enabled: connection.enabled && connection.connected },
+  ];
 
   return (
     <section className="profile-page">
@@ -5218,6 +5296,29 @@ function ProfileSettingsPage({
         <a className="route-secondary-action" href={data.links.dashboard}>대시보드</a>
       </div>
 
+      <div className="profile-overview-strip">
+        <div>
+          <Users size={18} />
+          <span>계정</span>
+          <strong>{data.user.username || '-'}</strong>
+        </div>
+        <div>
+          <Building2 size={18} />
+          <span>소속</span>
+          <strong>{data.profile.company || '-'}</strong>
+        </div>
+        <div className={connection.connected ? 'stable' : 'risk'}>
+          <Mail size={18} />
+          <span>메일</span>
+          <strong>{connection.connected ? connection.providerLabel : '미연동'}</strong>
+        </div>
+        <div>
+          <ShieldCheck size={18} />
+          <span>권한</span>
+          <strong>{permissionItems.filter((item) => item.enabled).length} / {permissionItems.length}</strong>
+        </div>
+      </div>
+
       <div className="profile-layout">
         <section className="dashboard-panel profile-info-panel">
           <div className="dashboard-panel-heading">
@@ -5228,15 +5329,22 @@ function ProfileSettingsPage({
             <Users size={18} />
           </div>
           <form className="profile-form" onSubmit={onSubmit}>
-            <label>사용자명<input value={form.username} onChange={(event) => onFormChange('username', event.target.value)} required /></label>
+            <label className="profile-form-wide">사용자명<input value={form.username} onChange={(event) => onFormChange('username', event.target.value)} required /></label>
             <label>성<input value={form.firstName} onChange={(event) => onFormChange('firstName', event.target.value)} /></label>
             <label>이름<input value={form.lastName} onChange={(event) => onFormChange('lastName', event.target.value)} /></label>
-            <label>이메일<input type="email" value={form.email} onChange={(event) => onFormChange('email', event.target.value)} /></label>
+            <label className="profile-form-wide">이메일<input type="email" value={form.email} onChange={(event) => onFormChange('email', event.target.value)} /></label>
             <div className="profile-readonly-grid">
               <div><span>권한</span><strong>{data.profile.roleLabel || '-'}</strong></div>
               <div><span>소속</span><strong>{data.profile.company || '-'}</strong></div>
               <div><span>가입일</span><strong>{data.user.dateJoined ? formatDateLabel(data.user.dateJoined) : '-'}</strong></div>
               <div><span>최종 로그인</span><strong>{data.user.lastLogin ? formatDateTimeLabel(data.user.lastLogin) : '-'}</strong></div>
+            </div>
+            <div className="profile-permission-row">
+              {permissionItems.map((item) => (
+                <span className={item.enabled ? 'status-pill done' : 'status-pill neutral'} key={item.label}>
+                  {item.label}
+                </span>
+              ))}
             </div>
             <button className="primary-button" disabled={saving} type="submit">
               {saving ? <Loader2 className="spin-icon" size={16} /> : <Check size={16} />}
@@ -5257,9 +5365,17 @@ function ProfileSettingsPage({
             <DashboardEmpty label="관리자 계정은 메일 연동 관리를 사용하지 않습니다" />
           ) : connection.connected ? (
             <div className="profile-connection-state connected">
-              <strong>{connection.providerLabel} 연결됨</strong>
-              <span>{connection.address}</span>
+              <div className="profile-connection-heading">
+                <div>
+                  <Mail size={18} />
+                </div>
+                <div>
+                  <strong>{connection.providerLabel} 연결됨</strong>
+                  <span>{connection.address}</span>
+                </div>
+              </div>
               <small>마지막 동기화 {connection.lastSyncAt ? formatDateTimeLabel(connection.lastSyncAt) : '-'}</small>
+              <small>연결일 {connection.connectedAt ? formatDateTimeLabel(connection.connectedAt) : '-'}</small>
               <div className="profile-connection-actions">
                 <a className="route-secondary-action" href={connection.links.mailbox}>메일함</a>
                 <a className="route-secondary-action" href={connection.links.businessCards}>명함 관리</a>
@@ -5272,8 +5388,15 @@ function ProfileSettingsPage({
             </div>
           ) : (
             <div className="profile-connection-state">
-              <strong>연동된 이메일이 없습니다</strong>
-              <span>메일 발송과 수신을 사용하려면 계정을 연결하세요.</span>
+              <div className="profile-connection-heading">
+                <div>
+                  <Mail size={18} />
+                </div>
+                <div>
+                  <strong>연동된 이메일이 없습니다</strong>
+                  <span>메일 발송과 수신 준비가 필요합니다.</span>
+                </div>
+              </div>
               <div className="profile-connection-actions">
                 <a className="route-secondary-action" href={connection.links.gmailConnect}>Gmail 연결</a>
                 <a className="route-secondary-action" href={connection.links.imapConnect}>회사 이메일 연결</a>
@@ -5290,7 +5413,7 @@ function ProfileSettingsPage({
             </div>
             <Target size={18} />
           </div>
-          <form className="profile-form" onSubmit={onPasswordSubmit}>
+          <form className="profile-form profile-password-form" onSubmit={onPasswordSubmit}>
             <label>현재 비밀번호<input type="password" value={passwordForm.oldPassword} onChange={(event) => onPasswordFormChange('oldPassword', event.target.value)} required /></label>
             <label>새 비밀번호<input type="password" value={passwordForm.newPassword1} onChange={(event) => onPasswordFormChange('newPassword1', event.target.value)} required /></label>
             <label>새 비밀번호 확인<input type="password" value={passwordForm.newPassword2} onChange={(event) => onPasswordFormChange('newPassword2', event.target.value)} required /></label>
