@@ -1,5 +1,62 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 React Reports/Profile/Business Cards UI polish plan
+
+**Background**:
+
+- User completed production manual verification for the newly migrated React pages.
+- User requested proper UI improvement for each page created in that batch.
+- Target pages: `/reports/`, `/mailbox/business-cards/`, `/profile/`.
+
+**DB change required**: No.
+
+- Frontend-only visual and interaction polish.
+- Preserve existing React routes, Django JSON APIs, permissions, and fallback routes.
+
+**Implementation scope**:
+
+- Reports:
+  - Improve scan hierarchy for filters, metrics, activity mix, customer ranking, and operational risk tables.
+  - Keep reporting dense and internal-CRM oriented rather than marketing-style.
+- Business cards:
+  - Make list/editor layout more usable, improve card state, default badge, preview surface, and form rhythm.
+  - Preserve isolated iframe preview behavior.
+- Profile:
+  - Make account, role, email connection, and password panels easier to scan and act on.
+  - Preserve existing submit/disconnect flows.
+- Validation:
+  - Run frontend type check/build.
+  - Use Playwright or equivalent local browser verification on the three target routes.
+  - Update `AGENT_REPORT.md`, commit, push, deploy, and smoke test.
+
+**Current status**:
+
+- Implementation, local validation, runtime commit/push, Railway backend/frontend deployment, and production smoke are complete. User production manual verification is next.
+
+## 2026-05-19 AI workspace free-form answer plan
+
+**Background**:
+
+- User reported that AI workspace answers are too template-like.
+- Example failure: when asking for a copy-paste prompt for an external AI strategy consultation, the answer still forced `추천 판단`, `버릴 선택`, `판단 이유`, `예외 조건`, `추천 접근`, and action-card sections.
+
+**DB change required**: No.
+
+- Prompting and response normalization change only.
+- Preserve existing AI permissions, question logging, feedback memory, CRM context, and JSON API contract.
+
+**Implementation scope**:
+
+- Make the AI answer style follow the user's requested deliverable instead of forcing one strategy template.
+- Keep `decision`, `perspective`, and `actionItems` optional, used only when the question actually benefits from those structures.
+- Ensure external-AI prompt, email draft, script, memo, and similar generation requests return the requested artifact directly.
+- Preserve structured CRM action cards for whole-workspace prioritization questions where action lists are the actual request.
+- Add focused backend tests and rerun AI/frontend validation.
+
+**Current status**:
+
+- Implementation, local validation, runtime commit/push, Railway backend/frontend deployment, and production smoke are complete. User production manual verification is next.
+
 ## 2026-05-19 Mailbox bugfix and sales-note activity label plan
 
 **Background**:

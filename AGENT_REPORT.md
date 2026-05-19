@@ -1,5 +1,113 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — React Utility Page UI Polish and AI Free-Form Answer Fix
+
+**상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend/frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
+
+### 요약
+
+수동 검수가 끝난 React `분석`, `명함`, `프로필` 화면을 내부 CRM 화면답게 다시 다듬었습니다. 각 페이지에 요약 스트립, 위험/상태 표시, 스캔 가능한 폼/패널 구조, 모바일 보정을 추가했고, 공통 모바일 상단 메뉴와 API 오류 배너 줄바꿈도 정리했습니다.
+
+추가 요청으로 AI 워크스페이스 답변이 `추천 판단/버릴 선택/예외 조건/actionItems` 같은 고정 템플릿으로 과하게 나오는 문제를 수정했습니다. 이제 외부 AI용 프롬프트, 메일 초안, 문안, 정리본 요청은 요청한 산출물 자체를 자유형으로 반환하고, 판단 카드와 actionItems는 실제로 필요한 질문에서만 선택적으로 표시됩니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`: reports/business cards/profile 화면 정보 구조와 상태 표시 개선.
+- `frontend/src/styles.css`: 새 요약/상태 스트립, 명함/프로필 폼, 모바일 상단 메뉴, API 배너, AI 답변 줄바꿈 스타일 보정.
+- `reporting/views.py`: AI 질문 응답 의도 분류, 자유형 답변 지침, optional `decision/perspective/actionItems`, 줄바꿈 보존 정규화 추가.
+- `reporting/tests.py`: 외부 AI 프롬프트 요청이 자유형으로 유지되고 fallback 카드가 주입되지 않는 회귀 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- `/reports/`에서 기간/담당자 필터와 리스크, 활성 장비, 완료 고객, 가동률을 한눈에 볼 수 있습니다.
+- `/mailbox/business-cards/`에서 기본 명함 상태, 서명 미리보기 수, 카드 메타 정보와 편집 폼 구성이 더 명확해졌습니다.
+- `/profile/`에서 계정, 소속, 메일, 권한 상태를 먼저 스캔하고 계정/메일/비밀번호 작업으로 내려갈 수 있습니다.
+- AI 질문에서 “외부 AI한테 보낼 프롬프트 만들어줘” 같은 요청은 바로 복붙 가능한 프롬프트 중심으로 답합니다.
+
+### 기존 기능 보존
+
+- 기존 React route와 Django `/reporting/*` fallback/API/auth/permission 흐름은 유지했습니다.
+- 명함 iframe 미리보기 sandbox, profile 저장/비밀번호/메일 연결 흐름은 그대로 유지했습니다.
+- AI 질문 기록, 검수 피드백, 검수 기억, product fact guard, 전체 부서 우선순위 actionItems 동작은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+cd frontend; npm run build
+→ OK, Vite bundle built as /assets/index-Ct0mnHpd.js and /assets/index-CDXhcZa4.css. Existing large chunk warning remains.
+
+cd frontend; node --check server.mjs
+→ OK
+
+Playwright local browser checks
+→ /reports/, /mailbox/business-cards/, /profile/ desktop/mobile screenshots reviewed. Local API 502 banners were expected because local Django backend was not running.
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_request_stays_freeform reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizer_does_not_inject_fallback_cards reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_includes_recent_email_history reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_action_items reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_decision reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizes_perspective
+→ Ran 6 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests
+→ Ran 84 tests, OK
+
+python -m py_compile reporting/views.py reporting/tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git commit -m "feat: polish utility pages and loosen AI answer format"
+→ 22ecfa7
+
+git push
+→ origin/main updated to 22ecfa7
+
+railway deployment up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy UI polish and AI answer format 22ecfa7"
+→ sales-note-frontend deployment 96fc29b5-3676-4114-82b4-82ebf5c67943 reached SUCCESS
+
+Railway GitHub auto-deploy for web
+→ web deployment aed11df2-ff9d-4d67-b99b-1335f003d1b0 reached SUCCESS
+
+production smoke
+→ /reports/, /mailbox/business-cards/, /profile/ returned 200
+→ /reporting/login/ returned 200
+→ /reporting/api/reports/, /reporting/api/business-cards/, /reporting/api/profile/ returned 401 login_required JSON for anonymous users
+```
+
+### 알려진 제한
+
+- 운영 로그인 세션이 필요한 실제 AI 답변 품질은 자동 smoke로 검증하지 못했습니다. 사용자가 운영 계정에서 직접 질문해 확인해야 합니다.
+- AI 답변은 이제 자유형을 허용하지만, 명확한 전체 부서 우선순위 질문에서는 기존처럼 actionItems 카드가 나오는 것이 정상입니다.
+- Vite build의 large chunk warning은 기존 경고입니다.
+
+### 권장 다음 단계
+
+운영 수동 검수 후, AI 답변 톤/형식이 실제 업무 문맥에서 충분히 자연스러운지 확인하고 필요하면 검수 기억에 “답변 선호”로 축적하는 것이 좋습니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에 로그인 후 `/reports/`에서 필터, 리스크/장비/완료 고객/가동률 스트립, 표 상태 표시를 확인합니다.
+2. `/mailbox/business-cards/`에서 기본 명함 상태, 새 명함 폼 섹션, 카드 미리보기 영역을 확인합니다.
+3. `/profile/`에서 계정/소속/메일/권한 스트립, 기본 정보, 메일 연동, 비밀번호 변경 패널을 확인합니다.
+4. 모바일 폭에서 세 페이지 상단 메뉴, API 배너, 주요 버튼 줄바꿈이 깨지지 않는지 확인합니다.
+5. AI 메뉴에서 `외부 AI한테 전략 상담받게 보낼 프롬프트 하나 만들어줘`처럼 질문하고, 답변이 고정 판단 카드가 아니라 복붙 가능한 프롬프트 중심인지 확인합니다.
+6. AI 메뉴에서 `전체 부서 중 오늘 먼저 챙길 고객 찾아줘`처럼 action list가 필요한 질문을 하고, 기존 우선순위 카드가 유지되는지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: `22ecfa7 feat: polish utility pages and loosen AI answer format`
+- Frontend Railway deployment: `96fc29b5-3676-4114-82b4-82ebf5c67943` SUCCESS
+- Backend Railway deployment: `aed11df2-ff9d-4d67-b99b-1335f003d1b0` SUCCESS
+- GitHub: `main` pushed.
+
 ## 2026-05-19 — Reports/Profile/Business Cards React Migration and Mailbox Fixes
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway backend/frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
