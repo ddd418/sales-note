@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — AI Today Task Filtering with Verified Memory and Recent Sent Mail
 
-**상태**: 구현/로컬 검증 완료, 런타임 커밋/푸시/Railway backend 배포 예정
+**상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -47,6 +47,20 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: filter resolved AI task candidates"
+→ 2e12efb
+
+git push
+→ origin/main updated to 2e12efb
+
+Railway GitHub auto-deploy for web
+→ web deployment be8fd246-1a89-41ea-81e4-2670c7d9033a reached SUCCESS
+
+production smoke
+→ /reporting/login/ returned 200
+→ /reporting/api/ai-workspace/ returned 401 login_required JSON for anonymous users
+→ /reporting/api/reports/ returned 401 login_required JSON for anonymous users
 ```
 
 ### 알려진 제한
@@ -68,9 +82,9 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Runtime commit: pending
-- Backend Railway deployment: pending
-- GitHub: pending
+- Runtime commit: `2e12efb fix: filter resolved AI task candidates`
+- Backend Railway deployment: `be8fd246-1a89-41ea-81e4-2670c7d9033a` SUCCESS
+- GitHub: `main` pushed.
 
 ## 2026-05-19 — AI Workspace Answer Readability Line Breaks
 
