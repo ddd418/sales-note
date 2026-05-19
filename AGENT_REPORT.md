@@ -1,8 +1,105 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Core CRM React Redirect Cutover Phase 1
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 준비
+
+### 요약
+
+- 핵심 Django 템플릿 화면의 authenticated `GET/HEAD` 진입을 React CRM으로 돌리는 1차 전환을 구현했습니다.
+- 대상은 dashboard, followups/customers, histories/notes, schedules/calendar, funnel/pipeline입니다.
+- Django API, 로그인/로그아웃, static/media, export/download, Gmail/IMAP/OAuth, non-GET legacy action은 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/react_redirects.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/server.mjs`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- 사용자가 `/reporting/followups/`, `/reporting/histories/`, `/reporting/schedules/`, `/reporting/dashboard/` 같은 legacy URL을 밟아도 React CRM으로 이동합니다.
+- React 화면 안의 핵심 고객/노트/일정 링크에서 Django 템플릿 CTA를 제거했습니다.
+- 기존 API payload의 core legacy href는 React route로 정규화되어 화면 이동이 더 일관됩니다.
+
+### 기존 기능 보존
+
+- DB schema 변경은 없습니다.
+- 익명 사용자는 기존처럼 login flow로 이동합니다.
+- legacy form `POST`는 transition 기간 동안 기존 Django view로 전달합니다.
+- export/download/OAuth/API 경로는 redirect 대상에서 제외했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\urls.py reporting\react_redirects.py reporting\tests.py
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests --verbosity=1
+→ Ran 5 tests, OK
+
+python manage.py test reporting.tests.AuthenticationSmoke reporting.tests.DashboardSmokeTests reporting.tests.AnonymousAccessTests reporting.tests.ManagerRolePermissionTests --verbosity=1
+→ Ran 41 tests, OK
+
+python manage.py test reporting.tests.DashboardScheduleDisplayTests --verbosity=1
+→ Ran 8 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DqN4a6dY.js / dist/assets/index-CDXhcZa4.css generated
+→ Vite chunk-size warning only
+
+Local frontend server smoke
+→ /reporting/followups/?pipeline_stage=quote&q=Kim returned 302 to /customers/?stage=quote&q=Kim
+→ /reporting/schedules/create/?followup=7&date=2026-05-20 returned 302 to /schedules/?customer=7&date=2026-05-20&create=1
+→ /reporting/histories/create-from-schedule/9/ returned 302 to /notes/?create=1&schedule=9
+→ HEAD /reporting/api/dashboard/ was proxied to Django and returned 405, confirming API was not redirected to React
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- Django 템플릿 파일은 아직 삭제하지 않았습니다. 운영 수동검수 후 삭제 후보를 별도 확정해야 합니다.
+- 1차 범위 밖인 products, prepayments, weekly reports, documents, mailbox, profile, business cards, manager/admin 화면은 아직 Django fallback이 남아 있습니다.
+- 개인 일정 생성/상세 등 일부 보조 일정 흐름은 다음 배치에서 정리 대상입니다.
+
+### 권장 다음 단계
+
+운영 수동검수 후 2차 배치로 products, prepayments, weekly reports, documents, mailbox/profile/business cards의 legacy GET redirect를 확장합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 운영 smoke를 진행합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/reporting/dashboard/` 접속 시 `/dashboard/`로 이동하는지 확인합니다.
+3. `/reporting/followups/`, `/reporting/histories/`, `/reporting/schedules/`, `/reporting/schedules/calendar/`, `/reporting/funnel/pipeline/`이 각각 React 화면으로 이동하는지 확인합니다.
+4. 고객 상세, 노트 상세, 일정 상세 legacy URL이 React 상세 화면으로 이동하는지 확인합니다.
+5. `/reporting/api/dashboard/` 같은 API가 React 화면으로 redirect되지 않고 기존 인증/API 동작을 유지하는지 확인합니다.
+
 ## 2026-05-19 — Read-only API and Asset AI Actions
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료
 
 ### 요약
 
@@ -69,6 +166,19 @@ Local read-only Bearer smoke
 git diff --check --cached
 → OK
 ```
+
+### 운영 배포 상태
+
+- Runtime commit: `5a8982d feat: add readonly CRM API and asset AI actions`
+- GitHub: `main` pushed.
+- Railway `web`: `31c4a05c-3c3f-44af-9fae-086987cf09e8` SUCCESS.
+- Railway `sales-note-frontend`: `2a1d37e0-be12-46f6-ba22-6671f7780037` SUCCESS.
+- Production smoke:
+  - `/reporting/login/` returned 200.
+  - `/reporting/api/followups/` anonymous returned 401.
+  - `/reporting/api/pipeline/` invalid token returned 401.
+  - `/ai-workspace/` returned 200.
+  - Latest frontend JS `index-C5tnbzPq.js` returned 200.
 
 ### 알려진 제한
 

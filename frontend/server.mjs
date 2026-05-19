@@ -96,6 +96,101 @@ function getPathname(requestUrl) {
   }
 }
 
+function buildReactLocation(pathname, sourceParams, options = {}) {
+  const rename = options.rename || {};
+  const drop = new Set(options.drop || []);
+  const params = new URLSearchParams();
+
+  for (const [key, value] of sourceParams.entries()) {
+    const targetKey = rename[key] || key;
+    if (drop.has(key) || drop.has(targetKey)) {
+      continue;
+    }
+    params.append(targetKey, value);
+  }
+
+  for (const [key, value] of Object.entries(options.extra || {})) {
+    params.set(key, String(value));
+  }
+
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function getCoreCrmReactLocation(requestUrl) {
+  let parsed;
+  try {
+    parsed = new URL(requestUrl || '/', 'http://frontend.local');
+  } catch {
+    return '';
+  }
+
+  const pathname = parsed.pathname;
+  const params = parsed.searchParams;
+  let match;
+
+  if (pathname === '/reporting/dashboard/' || pathname === '/reporting/dashboard') {
+    return buildReactLocation('/dashboard/', params);
+  }
+  if (pathname === '/reporting/followups/' || pathname === '/reporting/followups') {
+    return buildReactLocation('/customers/', params, { rename: { pipeline_stage: 'stage' } });
+  }
+  if (pathname === '/reporting/followups/create/' || pathname === '/reporting/followups/create') {
+    return buildReactLocation('/customers/', params, { extra: { create: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/followups\/(\d+)\/(?:edit\/?)?$/);
+  if (match) {
+    return buildReactLocation(`/customers/${match[1]}/`, params);
+  }
+  if (pathname === '/reporting/customer-report/' || pathname === '/reporting/customer-report') {
+    return buildReactLocation('/customers/', params);
+  }
+  match = pathname.match(/^\/reporting\/customer-report\/(\d+)\/?$/);
+  if (match) {
+    return buildReactLocation(`/customers/${match[1]}/`, params);
+  }
+
+  if (pathname === '/reporting/histories/' || pathname === '/reporting/histories') {
+    return buildReactLocation('/notes/', params);
+  }
+  match = pathname.match(/^\/reporting\/histories\/create-from-schedule\/(\d+)\/?$/);
+  if (match) {
+    return buildReactLocation('/notes/', params, { extra: { create: '1', schedule: match[1] } });
+  }
+  match = pathname.match(/^\/reporting\/histories\/(\d+)\/(?:edit\/?)?$/);
+  if (match) {
+    return buildReactLocation(`/notes/${match[1]}/`, params);
+  }
+
+  if (pathname === '/reporting/schedules/' || pathname === '/reporting/schedules') {
+    return buildReactLocation('/schedules/', params);
+  }
+  if (pathname === '/reporting/schedules/calendar/' || pathname === '/reporting/schedules/calendar') {
+    return buildReactLocation('/schedules/calendar/', params);
+  }
+  if (pathname === '/reporting/schedules/create/' || pathname === '/reporting/schedules/create') {
+    return buildReactLocation('/schedules/', params, { rename: { followup: 'customer' }, extra: { create: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/schedules\/(\d+)\/(?:edit\/?)?$/);
+  if (match) {
+    return buildReactLocation(`/schedules/${match[1]}/`, params);
+  }
+
+  if (
+    pathname === '/reporting/funnel/' ||
+    pathname === '/reporting/funnel' ||
+    pathname === '/reporting/funnel/pipeline/' ||
+    pathname === '/reporting/funnel/pipeline'
+  ) {
+    return buildReactLocation('/pipeline/', params);
+  }
+  if (/^\/reporting\/funnel\/\d+\/?$/.test(pathname)) {
+    return buildReactLocation('/pipeline/', params);
+  }
+
+  return '';
+}
+
 function isDjangoApiRequest(pathname) {
   return pathname === '/reporting/api' || pathname.startsWith('/reporting/api/');
 }
@@ -143,6 +238,19 @@ function shouldRedirectToDjangoPage(clientRequest) {
   );
 }
 
+function shouldRedirectToReactPage(clientRequest) {
+  const method = (clientRequest.method || 'GET').toUpperCase();
+  return (method === 'GET' || method === 'HEAD') && Boolean(getCoreCrmReactLocation(clientRequest.url || '/'));
+}
+
+function redirectToReact(clientRequest, clientResponse) {
+  clientResponse.writeHead(302, {
+    'Cache-Control': 'no-cache',
+    Location: getCoreCrmReactLocation(clientRequest.url || '/') || '/',
+  });
+  clientResponse.end();
+}
+
 function redirectToDjango(clientRequest, clientResponse) {
   const target = new URL(clientRequest.url || '/', djangoBaseUrl);
   clientResponse.writeHead(302, {
@@ -163,6 +271,10 @@ function shouldProxy(requestUrl) {
 
 createServer((request, response) => {
   const requestUrl = request.url || '/';
+  if (shouldRedirectToReactPage(request)) {
+    redirectToReact(request, response);
+    return;
+  }
   if (shouldRedirectToDjangoPage(request)) {
     redirectToDjango(request, response);
     return;
@@ -174,7 +286,8 @@ createServer((request, response) => {
   sendStatic(response, resolveStaticPath(requestUrl));
 }).listen(port, '0.0.0.0', () => {
   console.log(`Frontend server listening on ${port}`);
-  console.log(`Redirecting legacy Django pages to ${djangoBaseUrl.origin}`);
+  console.log('Redirecting migrated core CRM legacy pages to React routes');
+  console.log(`Redirecting non-migrated legacy Django pages to ${djangoBaseUrl.origin}`);
   console.log(
     `Proxying /reporting/api/*, session routes, /static/*, /media/* and non-GET legacy actions to ${djangoBaseUrl.origin}`,
   );

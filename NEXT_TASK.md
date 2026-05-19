@@ -2,67 +2,51 @@
 
 ## 다음 시작 작업
 
-**작업명**: 장비/글로벌 기능 및 AI 액션 통합 재개
+**작업명**: React CRM 전환 2차 배치 준비
 
-**상태**: 구현 중단분이 stash에 보관되어 있음.
-
-```text
-stash@{0}: wip-asset-ai-action-integration-before-memory-hotfix
-```
+**상태**: 1차 핵심 CRM redirect cutover 구현/로컬 검증 완료. 커밋/푸시/Railway 배포와 운영 수동검수 후 다음 작업으로 넘어갑니다.
 
 ## 왜 이 작업인가
 
-- 사용자가 AI hotfix 때문에 잠깐 멈추라고 요청하기 전 진행 중이던 작업입니다.
-- 목표는 장비를 포함한 글로벌 기능을 확장하기 전에, 장비/서비스/교정 데이터가 AI 워크스페이스와 React CRM 흐름에서 제대로 활용되도록 정리하는 것입니다.
-- 이후 글로벌 기능 추가, Django 메뉴 선별/React 이관, 장비 관련 고객 흐름 확장을 이어갈 수 있습니다.
+- 사용자는 Django 템플릿 프론트를 빠르게 닫고 React CRM을 안정화하길 원합니다.
+- 1차 범위는 dashboard, customers/followups, notes/histories, schedules, pipeline입니다.
+- 다음 단계는 남은 React 이관 화면의 legacy GET 진입을 닫는 것입니다.
 
 ## 다음 세션 시작 순서
 
-1. 사용자에게 이번 AI 메일/기억 hotfix 운영 수동검수 결과를 먼저 확인합니다.
-2. 검수 완료 또는 진행 지시가 있으면 stash 내용을 먼저 확인합니다.
+1. 먼저 1차 배포 운영 수동검수 결과를 확인합니다.
+2. 문제가 있으면 1차 redirect mapping 또는 React 링크 정규화를 먼저 수정합니다.
+3. 검수 완료 후 2차 배치 범위를 확정합니다.
 
-```powershell
-git stash show --stat stash@{0}
-git stash show -p stash@{0}
-```
+## 2차 후보 범위
 
-3. 최신 `main` 기준으로 stash를 적용합니다.
-
-```powershell
-git stash apply stash@{0}
-```
-
-4. 충돌이 있으면 `reporting/views.py`, `reporting/tests.py`를 특히 주의해서 병합합니다. 이번 세션에서 AI 메일/기억 필터 로직이 추가됐기 때문입니다.
-5. 변경 범위가 여전히 아래 파일 중심인지 확인합니다.
-
-```text
-AGENT_PLAN.md
-frontend/src/App.tsx
-frontend/src/api.ts
-reporting/tests.py
-reporting/views.py
-```
+- products
+- prepayments
+- weekly reports
+- documents
+- mailbox / business cards
+- profile
+- 개인 일정 보조 화면
 
 ## 구현 방향
 
-- 장비/서비스/교정 데이터는 Django 모델과 API를 기준으로 사용합니다.
-- React는 고객/AI/글로벌 화면에서 필요한 데이터만 호출하도록 유지합니다.
-- AI 액션 큐는 이미 해결된 메일/검수 기억/최근 연락 필터와 충돌하지 않아야 합니다.
-- 고객 상세 화면에 별도 Department AI 사이드 패널을 다시 넣지 않습니다. 고객 상세 AI는 제거하기로 한 사용자 결정이 우선입니다.
+- Django 템플릿 삭제는 아직 하지 않습니다.
+- 각 legacy `GET/HEAD` 화면에 React replacement가 있으면 redirect로 닫습니다.
+- `/reporting/api/*`, 파일 다운로드, export, OAuth, send/sync/upload/delete 같은 민감 action은 redirect 대상에서 제외합니다.
+- React 내부에서 `Django` CTA로 보이는 핵심 업무 링크는 React route 또는 실제 필요한 backend action 링크로 정리합니다.
 
 ## 검증 기준
 
-- `python -m py_compile reporting\views.py reporting\tests.py`
-- 관련 AI Workspace focused tests
-- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- focused redirect/auth tests
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
-- frontend 변경이 있으면 `cd frontend; npx tsc --noEmit --pretty false`
-- 런타임 영향이 있으면 commit/push/Railway 배포/smoke까지 진행합니다.
+- `cd frontend; node --check server.mjs`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- runtime 변경 시 commit/push/Railway 배포/smoke
 
 ## 주의사항
 
-- stash 적용 전에 새 작업을 시작하지 않습니다.
-- 사용자 수동검수 대기 상태라면 먼저 확인을 받고 진행합니다.
-- unrelated stash는 건드리지 않습니다.
-- `public_site`는 이번 작업 범위가 아닙니다.
+- 사용자의 운영 수동검수 확인 전에는 다음 구현 배치를 시작하지 않습니다.
+- Django template 파일 삭제는 별도 cleanup 단계에서만 진행합니다.
+- `public_site`는 이번 React CRM 전환 범위가 아닙니다.

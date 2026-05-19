@@ -1,5 +1,45 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 Core CRM Django frontend shutdown phase 1 plan
+
+**Background**:
+
+- User wants to close the Django frontend quickly and stabilize React as the primary CRM UI.
+- First batch is core CRM only: dashboard, customers/followups, notes/histories, schedules, and pipeline.
+- Template deletion is intentionally deferred until production manual verification is complete.
+
+**DB change required**: No.
+
+- Redirect and React link cleanup only.
+- Preserve existing models, migrations, APIs, auth, file handling, exports, and OAuth/session routes.
+
+**Implementation scope**:
+
+- Backend:
+  - Add authenticated legacy GET/HEAD redirects from core Django template URLs to React routes.
+  - Preserve non-GET legacy form behavior for the transition period.
+  - Keep `/reporting/api/*`, login/logout, static/media, export/download, Gmail/IMAP/OAuth, manager/admin, and non-core pages on Django.
+- Frontend server:
+  - Redirect the same core `/reporting/*` GET/HEAD page URLs to React instead of proxying them to Django.
+  - Continue proxying APIs, auth/session routes, static/media, and non-GET legacy actions.
+- React:
+  - Replace visible core CRM links that point at Django templates with React routes where React equivalents exist.
+  - Preserve export/download/OAuth links.
+- Docs:
+  - Update `AGENT_REPORT.md` and `NEXT_TASK.md` with the deployed state and next batch.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\urls.py reporting\react_redirects.py reporting\tests.py`
+- Focused redirect/auth tests for core legacy URLs.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; node --check server.mjs`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `git diff --check`
+- Commit, push, deploy Railway `web` and `sales-note-frontend`, then smoke production legacy redirects and React bundle/API protection.
+
 ## 2026-05-19 AI asset/service/calibration action integration plan
 
 **Background**:

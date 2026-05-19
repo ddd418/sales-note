@@ -3897,7 +3897,7 @@ const emptyDashboardData: DashboardData = {
     operationalDashboard: '/dashboard/',
     createNote: '/notes/?create=1',
     customers: '/customers/',
-    customerReport: '/reporting/customer-report/',
+    customerReport: '/customers/',
     notes: '/notes/',
     schedules: '/schedules/',
     calendar: '/schedules/calendar/',
@@ -4144,7 +4144,7 @@ const emptyCustomersData: CustomersData = {
     createCustomer: '/customers/?create=1',
     customers: '/customers/',
     companies: '/reporting/companies/',
-    customerReport: '/reporting/customer-report/',
+    customerReport: '/customers/',
     createNote: '/notes/?create=1',
   },
   create: {
@@ -4153,7 +4153,7 @@ const emptyCustomersData: CustomersData = {
     submitUrl: '/reporting/api/followups/create/',
     companySubmitUrl: '/reporting/api/companies/create/',
     departmentSubmitUrl: '/reporting/api/departments/create/',
-    advancedUrl: '/reporting/followups/create/',
+    advancedUrl: '/customers/?create=1',
     priorities: [],
     companies: [],
     departments: [],
@@ -4496,12 +4496,12 @@ const emptySchedulesData: SchedulesData = {
   statusCounts: [],
   activityCounts: [],
   links: {
-    createSchedule: '/reporting/schedules/create/',
+    createSchedule: '/schedules/?create=1',
     createPersonalSchedule: '/reporting/personal-schedules/create/',
     schedules: '/schedules/',
-    djangoSchedules: '/reporting/schedules/',
+    djangoSchedules: '/schedules/',
     calendar: '/schedules/calendar/',
-    djangoCalendar: '/reporting/schedules/calendar/',
+    djangoCalendar: '/schedules/calendar/',
     weeklyReports: '/weekly-reports/',
   },
   create: {
@@ -4559,10 +4559,10 @@ const emptyScheduleCalendarData: ScheduleCalendarData = {
   },
   links: {
     schedules: '/schedules/',
-    djangoSchedules: '/reporting/schedules/',
+    djangoSchedules: '/schedules/',
     calendar: '/schedules/calendar/',
-    djangoCalendar: '/reporting/schedules/calendar/',
-    createSchedule: '/reporting/schedules/create/',
+    djangoCalendar: '/schedules/calendar/',
+    createSchedule: '/schedules/?create=1',
     createPersonalSchedule: '/reporting/personal-schedules/create/',
     weeklyReports: '/weekly-reports/',
   },
@@ -4596,7 +4596,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
   schedule: null,
   links: {
     schedules: '/schedules/',
-    djangoSchedules: '/reporting/schedules/',
+    djangoSchedules: '/schedules/',
     calendar: '/schedules/calendar/',
     djangoDetail: '',
     djangoEdit: '',
@@ -4681,7 +4681,7 @@ const emptyPersonalScheduleDetailData: PersonalScheduleDetailData = {
   schedule: null,
   links: {
     calendar: '/schedules/calendar/',
-    djangoCalendar: '/reporting/schedules/calendar/',
+    djangoCalendar: '/schedules/calendar/',
     djangoDetail: '',
     djangoEdit: '',
     deleteSchedule: '',
@@ -5307,6 +5307,147 @@ function redirectIfLoginRequired(response: Response, payload?: unknown): void {
   }
 }
 
+function buildReactHref(pathname: string, sourceParams: URLSearchParams, options: {
+  rename?: Record<string, string>;
+  extra?: Record<string, string | number>;
+  drop?: string[];
+} = {}): string {
+  const params = new URLSearchParams();
+  const drop = new Set(options.drop ?? []);
+  sourceParams.forEach((value, key) => {
+    const targetKey = options.rename?.[key] ?? key;
+    if (!drop.has(key) && !drop.has(targetKey)) {
+      params.append(targetKey, value);
+    }
+  });
+  Object.entries(options.extra ?? {}).forEach(([key, value]) => {
+    params.set(key, String(value));
+  });
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function normalizeCoreCrmHref(href?: string | null): string {
+  if (!href) {
+    return '';
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(href, window.location.origin);
+  } catch {
+    return href;
+  }
+
+  const pathname = parsed.pathname;
+  const params = parsed.searchParams;
+  const hash = parsed.hash;
+  let match: RegExpMatchArray | null;
+
+  if ((pathname === '/reporting/dashboard/' || pathname === '/reporting/dashboard') && hash === '#dashboardNoteModal') {
+    return '/notes/?create=1';
+  }
+  if (pathname === '/reporting/dashboard/' || pathname === '/reporting/dashboard') {
+    return buildReactHref('/dashboard/', params);
+  }
+  if (pathname === '/reporting/followups/' || pathname === '/reporting/followups') {
+    return buildReactHref('/customers/', params, { rename: { pipeline_stage: 'stage' } });
+  }
+  if (pathname === '/reporting/followups/create/' || pathname === '/reporting/followups/create') {
+    return buildReactHref('/customers/', params, { extra: { create: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/followups\/(\d+)\/(?:edit\/?)?$/);
+  if (match) {
+    return buildReactHref(`/customers/${match[1]}/`, params);
+  }
+  if (pathname === '/reporting/customer-report/' || pathname === '/reporting/customer-report') {
+    return buildReactHref('/customers/', params);
+  }
+  match = pathname.match(/^\/reporting\/customer-report\/(\d+)\/?$/);
+  if (match) {
+    return buildReactHref(`/customers/${match[1]}/`, params);
+  }
+  if (pathname === '/reporting/histories/' || pathname === '/reporting/histories') {
+    return buildReactHref('/notes/', params);
+  }
+  match = pathname.match(/^\/reporting\/histories\/create-from-schedule\/(\d+)\/?$/);
+  if (match) {
+    return buildReactHref('/notes/', params, { extra: { create: '1', schedule: match[1] } });
+  }
+  match = pathname.match(/^\/reporting\/histories\/(\d+)\/(?:edit\/?)?$/);
+  if (match) {
+    return buildReactHref(`/notes/${match[1]}/`, params);
+  }
+  if (pathname === '/reporting/schedules/' || pathname === '/reporting/schedules') {
+    return buildReactHref('/schedules/', params);
+  }
+  if (pathname === '/reporting/schedules/calendar/' || pathname === '/reporting/schedules/calendar') {
+    return buildReactHref('/schedules/calendar/', params);
+  }
+  if (pathname === '/reporting/schedules/create/' || pathname === '/reporting/schedules/create') {
+    return buildReactHref('/schedules/', params, { rename: { followup: 'customer' }, extra: { create: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/schedules\/(\d+)\/(?:edit\/?)?$/);
+  if (match) {
+    return buildReactHref(`/schedules/${match[1]}/`, params);
+  }
+  if (
+    pathname === '/reporting/funnel/' ||
+    pathname === '/reporting/funnel' ||
+    pathname === '/reporting/funnel/pipeline/' ||
+    pathname === '/reporting/funnel/pipeline' ||
+    /^\/reporting\/funnel\/\d+\/?$/.test(pathname)
+  ) {
+    return buildReactHref('/pipeline/', params);
+  }
+  return href;
+}
+
+function normalizeHrefFields<T extends object>(item: T, fields: string[]): T {
+  const normalized: Record<string, unknown> = { ...(item as Record<string, unknown>) };
+  fields.forEach((field) => {
+    if (typeof normalized[field] === 'string') {
+      normalized[field] = normalizeCoreCrmHref(normalized[field] as string);
+    }
+  });
+  return normalized as T;
+}
+
+function normalizeScheduleLinks<T extends ScheduleItem | DashboardScheduleItem>(item: T): T {
+  const normalized = normalizeHrefFields(item, [
+    'href',
+    'djangoHref',
+    'customerHref',
+    'djangoCustomerHref',
+    'createHistoryHref',
+    'djangoCreateHistoryHref',
+    'djangoEditHref',
+  ]) as T & { reports?: ScheduleReportItem[] };
+  if (Array.isArray(normalized.reports)) {
+    normalized.reports = normalized.reports.map((report) => normalizeHrefFields(report, ['href', 'djangoHref']));
+  }
+  return normalized as T;
+}
+
+function normalizeNoteLinks<T extends NoteItem>(item: T): T {
+  return normalizeHrefFields(item, [
+    'href',
+    'djangoHref',
+    'customerHref',
+    'djangoCustomerHref',
+    'scheduleHref',
+  ]);
+}
+
+function normalizeCustomerLinks<T extends CustomerItem | DashboardCustomerItem>(item: T): T {
+  const normalized = normalizeHrefFields(item, ['href', 'companyHref', 'createScheduleHref']) as T & {
+    upcomingSchedule?: CustomerItem['upcomingSchedule'];
+  };
+  if (normalized.upcomingSchedule) {
+    normalized.upcomingSchedule = normalizeHrefFields(normalized.upcomingSchedule, ['href', 'createHistoryHref']);
+  }
+  return normalized as T;
+}
+
 export async function loadDashboardData(): Promise<DashboardData> {
   try {
     const response = await fetch('/reporting/api/dashboard/', {
@@ -5344,19 +5485,37 @@ export async function loadDashboardData(): Promise<DashboardData> {
         ...emptyDashboardData.revenuePeriod,
         ...(payload.revenuePeriod ?? {}),
       },
-      links: {
-        ...emptyDashboardData.links,
-        ...(payload.links ?? {}),
-      },
       today: {
         ...emptyDashboardData.today,
         ...(payload.today ?? {}),
+        items: (payload.today?.items ?? emptyDashboardData.today.items).map(normalizeScheduleLinks),
       },
-      upcomingSchedules: payload.upcomingSchedules ?? emptyDashboardData.upcomingSchedules,
-      overdueActions: payload.overdueActions ?? emptyDashboardData.overdueActions,
-      dueTodayActions: payload.dueTodayActions ?? emptyDashboardData.dueTodayActions,
-      recentActivities: payload.recentActivities ?? emptyDashboardData.recentActivities,
-      priorityCustomers: payload.priorityCustomers ?? emptyDashboardData.priorityCustomers,
+      links: normalizeHrefFields({
+        ...emptyDashboardData.links,
+        ...(payload.links ?? {}),
+      }, [
+        'operationalDashboard',
+        'createNote',
+        'customers',
+        'customerReport',
+        'notes',
+        'schedules',
+        'calendar',
+        'pipeline',
+        'weeklyReports',
+        'pendingReviews',
+      ]),
+      upcomingSchedules: (payload.upcomingSchedules ?? emptyDashboardData.upcomingSchedules).map(normalizeScheduleLinks),
+      overdueActions: (payload.overdueActions ?? emptyDashboardData.overdueActions).map((item) => (
+        normalizeHrefFields(item, ['href', 'customerHref'])
+      )),
+      dueTodayActions: (payload.dueTodayActions ?? emptyDashboardData.dueTodayActions).map((item) => (
+        normalizeHrefFields(item, ['href', 'customerHref'])
+      )),
+      recentActivities: (payload.recentActivities ?? emptyDashboardData.recentActivities).map((item) => (
+        normalizeHrefFields(item, ['href', 'customerHref'])
+      )),
+      priorityCustomers: (payload.priorityCustomers ?? emptyDashboardData.priorityCustomers).map(normalizeCustomerLinks),
       pipelineSummary: payload.pipelineSummary ?? emptyDashboardData.pipelineSummary,
       teamActivity: payload.teamActivity ?? emptyDashboardData.teamActivity,
     };
@@ -5417,7 +5576,9 @@ export async function loadReportsData(params: {
         ...(payload.links ?? {}),
       },
       activityReport: payload.activityReport ?? emptyReportsData.activityReport,
-      customerReport: payload.customerReport ?? emptyReportsData.customerReport,
+      customerReport: (payload.customerReport ?? emptyReportsData.customerReport).map((customer) => (
+        normalizeHrefFields(customer, ['href', 'djangoHref'])
+      )),
       pipelineSummary: payload.pipelineSummary ?? emptyReportsData.pipelineSummary,
     };
   } catch (error) {
@@ -5993,16 +6154,17 @@ export async function loadCustomersData(params: {
         ...emptyCustomersData.metrics,
         ...(payload.metrics ?? {}),
       },
-      links: {
-        ...emptyCustomersData.links,
-        ...(payload.links ?? {}),
-      },
       create: {
         ...emptyCustomersData.create,
         ...(payload.create ?? {}),
+        advancedUrl: normalizeCoreCrmHref(payload.create?.advancedUrl ?? emptyCustomersData.create.advancedUrl),
       },
-      customers: payload.customers ?? emptyCustomersData.customers,
-      priorityCustomers: payload.priorityCustomers ?? emptyCustomersData.priorityCustomers,
+      links: normalizeHrefFields({
+        ...emptyCustomersData.links,
+        ...(payload.links ?? {}),
+      }, ['createCustomer', 'customers', 'customerReport', 'createNote']),
+      customers: (payload.customers ?? emptyCustomersData.customers).map(normalizeCustomerLinks),
+      priorityCustomers: (payload.priorityCustomers ?? emptyCustomersData.priorityCustomers).map(normalizeCustomerLinks),
     };
   } catch (error) {
     return {
@@ -6226,7 +6388,9 @@ export async function loadCustomerAssetDirectoryData(params: {
         ...emptyCustomerAssetDirectoryData.links,
         ...(payload.links ?? {}),
       },
-      assets: payload.assets ?? emptyCustomerAssetDirectoryData.assets,
+      assets: (payload.assets ?? emptyCustomerAssetDirectoryData.assets).map((asset) => (
+        normalizeHrefFields(asset, ['customerHref', 'djangoCustomerHref', 'assetDirectoryHref'])
+      )),
     };
   } catch (error) {
     return {
@@ -6327,10 +6491,10 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
         ...emptyCustomerDetailData.metrics,
         ...(payload.metrics ?? {}),
       },
-      links: {
+      links: normalizeHrefFields({
         ...emptyCustomerDetailData.links,
         ...(payload.links ?? {}),
-      },
+      }, ['customers', 'djangoDetail', 'djangoEdit', 'createSchedule', 'createNote']),
       prepaymentSummary: {
         ...emptyCustomerDetailData.prepaymentSummary,
         ...(payload.prepaymentSummary ?? {}),
@@ -6364,13 +6528,14 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
       edit: {
         ...emptyCustomerDetailData.edit,
         ...(payload.edit ?? {}),
+        djangoUrl: normalizeCoreCrmHref(payload.edit?.djangoUrl ?? emptyCustomerDetailData.edit.djangoUrl),
       },
-      recentNotes: payload.recentNotes ?? emptyCustomerDetailData.recentNotes,
-      overdueActions: payload.overdueActions ?? emptyCustomerDetailData.overdueActions,
-      upcomingActions: payload.upcomingActions ?? emptyCustomerDetailData.upcomingActions,
-      upcomingSchedules: payload.upcomingSchedules ?? emptyCustomerDetailData.upcomingSchedules,
-      recentSchedules: payload.recentSchedules ?? emptyCustomerDetailData.recentSchedules,
-      customer: payload.customer ?? emptyCustomerDetailData.customer,
+      recentNotes: (payload.recentNotes ?? emptyCustomerDetailData.recentNotes).map(normalizeNoteLinks),
+      overdueActions: (payload.overdueActions ?? emptyCustomerDetailData.overdueActions).map(normalizeNoteLinks),
+      upcomingActions: (payload.upcomingActions ?? emptyCustomerDetailData.upcomingActions).map(normalizeNoteLinks),
+      upcomingSchedules: (payload.upcomingSchedules ?? emptyCustomerDetailData.upcomingSchedules).map(normalizeScheduleLinks),
+      recentSchedules: (payload.recentSchedules ?? emptyCustomerDetailData.recentSchedules).map(normalizeScheduleLinks),
+      customer: payload.customer ? normalizeCustomerLinks(payload.customer) : emptyCustomerDetailData.customer,
     };
   } catch (error) {
     return {
@@ -6486,16 +6651,19 @@ export async function loadNotesData(params: {
         ...emptyNotesData.metrics,
         ...(payload.metrics ?? {}),
       },
-      links: {
+      links: normalizeHrefFields({
         ...emptyNotesData.links,
         ...(payload.links ?? {}),
-      },
+      }, ['createNote', 'notes', 'unreviewed', 'weeklyReports']),
       create: {
         ...emptyNotesData.create,
         ...(payload.create ?? {}),
+        customers: payload.create?.customers?.map((customer) => (
+          normalizeHrefFields(customer, ['href'])
+        )) ?? emptyNotesData.create.customers,
       },
       actionCounts: payload.actionCounts ?? emptyNotesData.actionCounts,
-      notes: payload.notes ?? emptyNotesData.notes,
+      notes: (payload.notes ?? emptyNotesData.notes).map(normalizeNoteLinks),
     };
   } catch (error) {
     return {
@@ -6531,20 +6699,24 @@ export async function loadNoteDetailData(noteId: number): Promise<NoteDetailData
         ...emptyNoteDetailData.scope,
         ...(payload.scope ?? {}),
       },
-      links: {
+      links: normalizeHrefFields({
         ...emptyNoteDetailData.links,
         ...(payload.links ?? {}),
-      },
+      }, ['notes', 'djangoDetail', 'djangoEdit', 'customer', 'djangoCustomer', 'schedule', 'createNote']),
       edit: {
         ...emptyNoteDetailData.edit,
         ...(payload.edit ?? {}),
+        djangoUrl: normalizeCoreCrmHref(payload.edit?.djangoUrl ?? emptyNoteDetailData.edit.djangoUrl),
+        customers: payload.edit?.customers?.map((customer) => (
+          normalizeHrefFields(customer, ['href', 'djangoHref'])
+        )) ?? emptyNoteDetailData.edit.customers,
       },
       comments: {
         ...emptyNoteDetailData.comments,
         ...(payload.comments ?? {}),
       },
-      note: payload.note ?? emptyNoteDetailData.note,
-      relatedNotes: payload.relatedNotes ?? emptyNoteDetailData.relatedNotes,
+      note: payload.note ? normalizeNoteLinks(payload.note) : emptyNoteDetailData.note,
+      relatedNotes: (payload.relatedNotes ?? emptyNoteDetailData.relatedNotes).map(normalizeNoteLinks),
     };
   } catch (error) {
     return {
@@ -6776,13 +6948,16 @@ export async function loadSchedulesData(params: {
         ...emptySchedulesData.metrics,
         ...(payload.metrics ?? {}),
       },
-      links: {
+      links: normalizeHrefFields({
         ...emptySchedulesData.links,
         ...(payload.links ?? {}),
-      },
+      }, ['createSchedule', 'schedules', 'djangoSchedules', 'calendar', 'djangoCalendar', 'weeklyReports']),
       create: {
         ...emptySchedulesData.create,
         ...(payload.create ?? {}),
+        customers: payload.create?.customers?.map((customer) => (
+          normalizeHrefFields(customer, ['href', 'djangoHref'])
+        )) ?? emptySchedulesData.create.customers,
         personalSchedule: {
           canCreate: payload.create?.personalSchedule?.canCreate ?? emptySchedulesData.create.personalSchedule?.canCreate ?? false,
           message: payload.create?.personalSchedule?.message ?? emptySchedulesData.create.personalSchedule?.message ?? '',
@@ -6792,10 +6967,10 @@ export async function loadSchedulesData(params: {
       },
       statusCounts: payload.statusCounts ?? emptySchedulesData.statusCounts,
       activityCounts: payload.activityCounts ?? emptySchedulesData.activityCounts,
-      today: payload.today ?? emptySchedulesData.today,
-      upcoming: payload.upcoming ?? emptySchedulesData.upcoming,
-      overdue: payload.overdue ?? emptySchedulesData.overdue,
-      schedules: payload.schedules ?? emptySchedulesData.schedules,
+      today: (payload.today ?? emptySchedulesData.today).map(normalizeScheduleLinks),
+      upcoming: (payload.upcoming ?? emptySchedulesData.upcoming).map(normalizeScheduleLinks),
+      overdue: (payload.overdue ?? emptySchedulesData.overdue).map(normalizeScheduleLinks),
+      schedules: (payload.schedules ?? emptySchedulesData.schedules).map(normalizeScheduleLinks),
     };
   } catch (error) {
     return {
@@ -6854,13 +7029,16 @@ export async function loadScheduleCalendarData(params: {
         ...emptyScheduleCalendarData.metrics,
         ...(payload.metrics ?? {}),
       },
-      links: {
+      links: normalizeHrefFields({
         ...emptyScheduleCalendarData.links,
         ...(payload.links ?? {}),
-      },
+      }, ['schedules', 'djangoSchedules', 'calendar', 'djangoCalendar', 'createSchedule', 'weeklyReports']),
       create: {
         ...emptyScheduleCalendarData.create,
         ...(payload.create ?? {}),
+        customers: payload.create?.customers?.map((customer) => (
+          normalizeHrefFields(customer, ['href', 'djangoHref'])
+        )) ?? emptyScheduleCalendarData.create.customers,
         personalSchedule: {
           canCreate: payload.create?.personalSchedule?.canCreate ?? emptyScheduleCalendarData.create.personalSchedule?.canCreate ?? false,
           message: payload.create?.personalSchedule?.message ?? emptyScheduleCalendarData.create.personalSchedule?.message ?? '',
@@ -6868,7 +7046,7 @@ export async function loadScheduleCalendarData(params: {
           djangoUrl: payload.create?.personalSchedule?.djangoUrl ?? emptyScheduleCalendarData.create.personalSchedule?.djangoUrl ?? '/reporting/personal-schedules/create/',
         },
       },
-      schedules: payload.schedules ?? emptyScheduleCalendarData.schedules,
+      schedules: (payload.schedules ?? emptyScheduleCalendarData.schedules).map(normalizeScheduleLinks),
     };
   } catch (error) {
     return {
@@ -7649,20 +7827,34 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         ...emptyScheduleDetailData.scope,
         ...(payload.scope ?? {}),
       },
-      links: {
+      links: normalizeHrefFields({
         ...emptyScheduleDetailData.links,
         ...(payload.links ?? {}),
-      },
+      }, [
+        'schedules',
+        'djangoSchedules',
+        'calendar',
+        'djangoDetail',
+        'djangoEdit',
+        'customer',
+        'djangoCustomer',
+        'createNote',
+        'djangoCreateNote',
+      ]),
       edit: {
         ...emptyScheduleDetailData.edit,
         ...(payload.edit ?? {}),
+        djangoUrl: normalizeCoreCrmHref(payload.edit?.djangoUrl ?? emptyScheduleDetailData.edit.djangoUrl),
+        customers: payload.edit?.customers?.map((customer) => (
+          normalizeHrefFields(customer, ['href', 'djangoHref'])
+        )) ?? emptyScheduleDetailData.edit.customers,
       },
       ai: {
         ...emptyScheduleDetailData.ai,
         ...(payload.ai ?? {}),
       },
-      schedule: payload.schedule ?? emptyScheduleDetailData.schedule,
-      relatedNotes: payload.relatedNotes ?? emptyScheduleDetailData.relatedNotes,
+      schedule: payload.schedule ? normalizeScheduleLinks(payload.schedule) : emptyScheduleDetailData.schedule,
+      relatedNotes: (payload.relatedNotes ?? emptyScheduleDetailData.relatedNotes).map(normalizeNoteLinks),
       deliveryItems: payload.deliveryItems ?? emptyScheduleDetailData.deliveryItems,
       documents: {
         ...emptyScheduleDetailData.documents,
@@ -7706,15 +7898,16 @@ export async function loadPersonalScheduleDetailData(scheduleId: number): Promis
     return {
       ...emptyPersonalScheduleDetailData,
       ...payload,
-      links: {
+      links: normalizeHrefFields({
         ...emptyPersonalScheduleDetailData.links,
         ...(payload.links ?? {}),
-      },
+      }, ['calendar', 'djangoCalendar', 'djangoDetail', 'djangoEdit']),
       edit: {
         ...emptyPersonalScheduleDetailData.edit,
         ...(payload.edit ?? {}),
+        djangoUrl: normalizeCoreCrmHref(payload.edit?.djangoUrl ?? emptyPersonalScheduleDetailData.edit.djangoUrl),
       },
-      schedule: payload.schedule ?? emptyPersonalScheduleDetailData.schedule,
+      schedule: payload.schedule ? normalizeScheduleLinks(payload.schedule) : emptyPersonalScheduleDetailData.schedule,
     };
   } catch (error) {
     return {
@@ -9299,6 +9492,7 @@ export async function loadPipelineData(): Promise<PipelineData> {
     }
     const deals = payload.deals.map((deal) => ({
       ...deal,
+      detailUrl: normalizeCoreCrmHref(deal.detailUrl),
       aiDepartment: deal.aiDepartment
         ? normalizeCustomerAiDepartment(deal.aiDepartment as Partial<CustomerAiDepartment>)
         : deal.aiDepartment,

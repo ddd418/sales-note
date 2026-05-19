@@ -4,6 +4,7 @@ from . import views
 from . import backup_api
 from . import personal_schedule_views
 from . import funnel_views
+from .react_redirects import frontend_url, id_react_page, query_with, react_page_redirect, static_react_page
 from django.contrib.auth import views as auth_views # auth_views 임포트
 from importlib import import_module
 
@@ -24,20 +25,47 @@ app_name = 'reporting'  # 앱 네임스페이스 설정
 
 urlpatterns = [
     # 팔로우업 URL들
-    path('followups/', views.followup_list_view, name='followup_list'),
-    path('followups/<int:pk>/', views.followup_detail_view, name='followup_detail'),
-    path('followups/create/', views.followup_create_view, name='followup_create'),
-    path('followups/<int:pk>/edit/', views.followup_edit_view, name='followup_edit'),
+    path('followups/', react_page_redirect(
+        views.followup_list_view,
+        static_react_page('customers/', rename={'pipeline_stage': 'stage'}),
+    ), name='followup_list'),
+    path('followups/<int:pk>/', react_page_redirect(
+        views.followup_detail_view,
+        id_react_page('customers/{pk}/'),
+    ), name='followup_detail'),
+    path('followups/create/', react_page_redirect(
+        views.followup_create_view,
+        static_react_page('customers/', extra={'create': '1'}),
+    ), name='followup_create'),
+    path('followups/<int:pk>/edit/', react_page_redirect(
+        views.followup_edit_view,
+        id_react_page('customers/{pk}/'),
+    ), name='followup_edit'),
     path('followups/<int:pk>/delete/', views.followup_delete_view, name='followup_delete'),
     path('followups/excel-download/', views.followup_excel_download, name='followup_excel_download'),
     path('followups/basic-excel-download/', views.followup_basic_excel_download, name='followup_basic_excel_download'),
       # 일정 URL들
-    path('schedules/', views.schedule_list_view, name='schedule_list'),
-    path('schedules/calendar/', views.schedule_calendar_view, name='schedule_calendar'),
+    path('schedules/', react_page_redirect(
+        views.schedule_list_view,
+        static_react_page('schedules/'),
+    ), name='schedule_list'),
+    path('schedules/calendar/', react_page_redirect(
+        views.schedule_calendar_view,
+        static_react_page('schedules/calendar/'),
+    ), name='schedule_calendar'),
     path('schedules/api/', views.schedule_api_view, name='schedule_api'),
-    path('schedules/<int:pk>/', views.schedule_detail_view, name='schedule_detail'),
-    path('schedules/create/', views.schedule_create_view, name='schedule_create'),  # 캘린더 더블클릭에서 사용
-    path('schedules/<int:pk>/edit/', views.schedule_edit_view, name='schedule_edit'),
+    path('schedules/<int:pk>/', react_page_redirect(
+        views.schedule_detail_view,
+        id_react_page('schedules/{pk}/'),
+    ), name='schedule_detail'),
+    path('schedules/create/', react_page_redirect(
+        views.schedule_create_view,
+        static_react_page('schedules/', rename={'followup': 'customer'}, extra={'create': '1'}),
+    ), name='schedule_create'),  # 캘린더 더블클릭에서 사용
+    path('schedules/<int:pk>/edit/', react_page_redirect(
+        views.schedule_edit_view,
+        id_react_page('schedules/{pk}/'),
+    ), name='schedule_edit'),
     path('schedules/<int:pk>/update-delivery-items/', views.schedule_update_delivery_items, name='schedule_update_delivery_items'),
     path('schedules/<int:schedule_id>/delivery-items-api/', views.schedule_delivery_items_api, name='schedule_delivery_items_api'),
     path('schedules/<int:pk>/move/', views.schedule_move_api, name='schedule_move_api'),
@@ -60,12 +88,27 @@ urlpatterns = [
     path('api/tasks/<int:pk>/delete/', lazy_view('todos.views.tasks_delete_api'), name='tasks_delete_api'),
     path('api/tasks/<int:pk>/attachments/', lazy_view('todos.views.tasks_attachment_upload_api'), name='tasks_attachment_upload_api'),
     path('api/tasks/<int:pk>/status/', lazy_view('todos.views.tasks_status_api'), name='tasks_status_api'),
-      # 히스토리 URL들
-    path('histories/', views.history_list_view, name='history_list'),
-    path('histories/<int:pk>/', views.history_detail_view, name='history_detail'),
+    # 히스토리 URL들
+    path('histories/', react_page_redirect(
+        views.history_list_view,
+        static_react_page('notes/'),
+    ), name='history_list'),
+    path('histories/<int:pk>/', react_page_redirect(
+        views.history_detail_view,
+        id_react_page('notes/{pk}/'),
+    ), name='history_detail'),
     # 삭제됨 - 히스토리 직접 추가 불가: path('histories/create/', views.history_create_view, name='history_create'),
-    path('histories/create-from-schedule/<int:schedule_id>/', views.history_create_from_schedule, name='history_create_from_schedule'),  # 캘린더에서 사용
-    path('histories/<int:pk>/edit/', views.history_edit_view, name='history_edit'),
+    path('histories/create-from-schedule/<int:schedule_id>/', react_page_redirect(
+        views.history_create_from_schedule,
+        lambda request, schedule_id: frontend_url(
+            'notes/',
+            query_with(request, extra={'create': '1', 'schedule': schedule_id}),
+        ),
+    ), name='history_create_from_schedule'),  # 캘린더에서 사용
+    path('histories/<int:pk>/edit/', react_page_redirect(
+        views.history_edit_view,
+        id_react_page('notes/{pk}/'),
+    ), name='history_edit'),
     path('histories/<int:pk>/delete/', views.history_delete_view, name='history_delete'),
     path('histories/<int:pk>/toggle-reviewed/', views.history_toggle_reviewed, name='history_toggle_reviewed'),
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
@@ -74,8 +117,14 @@ urlpatterns = [
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     
     # 고객 리포트 URL들
-    path('customer-report/', views.customer_report_view, name='customer_report'),
-    path('customer-report/<int:followup_id>/', views.customer_detail_report_view_simple, name='customer_detail_report'),
+    path('customer-report/', react_page_redirect(
+        views.customer_report_view,
+        static_react_page('customers/'),
+    ), name='customer_report'),
+    path('customer-report/<int:followup_id>/', react_page_redirect(
+        views.customer_detail_report_view_simple,
+        lambda request, followup_id: frontend_url(f'customers/{followup_id}/', query_with(request)),
+    ), name='customer_detail_report'),
     path('customer-report/<int:followup_id>/toggle-all-tax-invoices/', views.toggle_all_tax_invoices, name='toggle_all_tax_invoices'),
     path('followups/<int:followup_id>/priority-update/', views.customer_priority_update, name='customer_priority_update'),
     
@@ -174,7 +223,10 @@ urlpatterns = [
     # 인증 및 기타 URL들
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),
-    path('dashboard/', views.dashboard_view, name='dashboard'),
+    path('dashboard/', react_page_redirect(
+        views.dashboard_view,
+        static_react_page('dashboard/'),
+    ), name='dashboard'),
     
     # 프로필 관리 URL들
     path('profile/', views.profile_view, name='profile'),
@@ -393,9 +445,18 @@ urlpatterns = [
     # ============================================
     # 펀넬 관리 URL들
     # ============================================
-    path('funnel/', funnel_views.funnel_list_view, name='funnel_list'),
-    path('funnel/pipeline/', funnel_views.funnel_pipeline_view, name='funnel_pipeline'),
-    path('funnel/<int:department_id>/', funnel_views.funnel_detail_view, name='funnel_detail'),
+    path('funnel/', react_page_redirect(
+        funnel_views.funnel_list_view,
+        static_react_page('pipeline/'),
+    ), name='funnel_list'),
+    path('funnel/pipeline/', react_page_redirect(
+        funnel_views.funnel_pipeline_view,
+        static_react_page('pipeline/'),
+    ), name='funnel_pipeline'),
+    path('funnel/<int:department_id>/', react_page_redirect(
+        funnel_views.funnel_detail_view,
+        static_react_page('pipeline/'),
+    ), name='funnel_detail'),
     path('api/pipeline/', funnel_views.pipeline_command_center_api, name='pipeline_command_center_api'),
     path('funnel/api/save-target/', funnel_views.funnel_save_target, name='funnel_save_target'),
     path('funnel/api/auto-target/', funnel_views.funnel_auto_target, name='funnel_auto_target'),

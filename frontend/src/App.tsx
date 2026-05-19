@@ -2335,7 +2335,7 @@ function WorkspaceRoutePage({
           </div>
           <div className="route-deal-list">
             {urgentDeals.map((deal) => (
-              <a href={deal.detailUrl || '/reporting/followups/'} key={deal.id}>
+              <a href={deal.detailUrl || `/customers/${deal.id}/`} key={deal.id}>
                 <div>
                   <strong>{deal.company}</strong>
                   <span>{deal.contact} · {deal.owner}</span>
@@ -2555,7 +2555,7 @@ function DashboardPipelineSummary({ data }: { data: DashboardData['pipelineSumma
   return (
     <div className="dashboard-pipeline-summary">
       {data.map((item) => (
-        <a className="dashboard-pipeline-row" href={`/reporting/followups/?pipeline_stage=${item.stage}`} key={item.stage}>
+        <a className="dashboard-pipeline-row" href="/pipeline/" key={item.stage}>
           <div>
             <span>{item.label}</span>
             <strong>{formatNumber(item.count)}건</strong>
@@ -3431,7 +3431,6 @@ function CustomerDetailPage({
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/customers/">목록</a>
-          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
           {data.edit.canEdit ? (
             <button className="route-secondary-action" onClick={() => setEditOpen((open) => !open)} type="button">
               수정
@@ -4043,10 +4042,6 @@ function CustomerDetailPage({
                 />
               </label>
               <div className="notes-create-actions">
-                <a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>
-                  Django 수정
-                  <MoveUpRight size={15} />
-                </a>
                 <button className="route-primary-action" disabled={editSaving} type="submit">
                   {editSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                   저장
@@ -4607,7 +4602,6 @@ function CustomerAssetDirectoryTable({ assets }: { assets: CustomerAssetDirector
               <td>
                 <div className="customer-row-actions">
                   {asset.customerHref ? <a className="customer-row-action" href={asset.customerHref}>고객 상세</a> : null}
-                  {asset.djangoCustomerHref ? <a className="customer-row-action" href={asset.djangoCustomerHref}>Django</a> : null}
                 </div>
                 <small className="asset-directory-updated">{asset.updatedAt ? formatDateTimeLabel(asset.updatedAt) : '-'}</small>
               </td>
@@ -5857,7 +5851,6 @@ function NoteDetailPage({
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/notes/">목록</a>
           {data.links.customer ? <a className="route-secondary-action" href={data.links.customer}>고객</a> : null}
-          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
           {note.canReview && note.reviewToggleHref ? (
             <button className="route-secondary-action" disabled={reviewing} onClick={handleToggleReview} type="button">
               {reviewing ? <Loader2 className="spin-icon" size={15} /> : <CheckCircle2 size={15} />}
@@ -5994,10 +5987,6 @@ function NoteDetailPage({
                 />
               </label>
               <div className="notes-create-actions">
-                <a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>
-                  Django 수정
-                  <MoveUpRight size={15} />
-                </a>
                 <button className="route-primary-action" disabled={editSaving} type="submit">
                   {editSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                   저장
@@ -6065,8 +6054,7 @@ function NoteDetailPage({
             </dl>
           </div>
           <div className="customers-side-actions note-detail-actions">
-            {data.links.customer ? <a href={data.links.customer}>React 고객 상세</a> : null}
-            {data.links.djangoCustomer ? <a href={data.links.djangoCustomer}>Django 고객 상세</a> : null}
+            {data.links.customer ? <a href={data.links.customer}>고객 상세</a> : null}
             {data.links.schedule ? <a href={data.links.schedule}>연결 일정</a> : null}
             <a href={data.links.createNote}>새 노트 작성</a>
           </div>
@@ -6384,7 +6372,7 @@ function NotesPage({
                 />
               </label>
               <div className="notes-create-actions">
-                <a className="route-secondary-action" href="/reporting/dashboard/#dashboardNoteModal">
+                <a className="route-secondary-action" href="/notes/?create=1">
                   상세 작성
                   <MoveUpRight size={15} />
                 </a>
@@ -6723,8 +6711,6 @@ function ScheduleCalendarSelectedList({
               <a href={item.href}>상세</a>
               {item.customerHref ? <a href={item.customerHref}>고객</a> : null}
               {item.createHistoryHref ? <a href={item.createHistoryHref}>보고</a> : null}
-              {item.djangoHref ? <a href={item.djangoHref}>Django 상세</a> : null}
-              {item.djangoEditHref ? <a href={item.djangoEditHref}>Django 수정</a> : null}
             </div>
             {canChangeStatus ? (
               <div className="schedule-calendar-status-actions" aria-label={`${item.customer || item.title} 상태 변경`}>
@@ -7223,9 +7209,6 @@ function ScheduleCalendarPage({
           <a className="route-secondary-action" href={data.links.schedules}>
             목록
           </a>
-          <a className="route-secondary-action" href={data.links.djangoCalendar}>
-            Django 캘린더
-          </a>
           <button
             className={data.create.canCreate ? 'route-primary-action' : 'route-secondary-action'}
             onClick={openCalendarCreatePanel}
@@ -7674,12 +7657,6 @@ function ScheduleCalendarPage({
                     <a className="route-secondary-action" href={calendarEditData.schedule.href}>
                       상세
                     </a>
-                    {calendarEditData.edit.djangoUrl ? (
-                      <a className="route-secondary-action" href={calendarEditData.edit.djangoUrl}>
-                        Django 수정
-                        <MoveUpRight size={15} />
-                      </a>
-                    ) : null}
                     <button className="route-primary-action" disabled={calendarEditSaving} type="submit">
                       {calendarEditSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                       저장
@@ -7750,12 +7727,6 @@ function ScheduleCalendarPage({
                     <a className="route-secondary-action" href={personalEditData.schedule.href}>
                       상세
                     </a>
-                    {personalEditData.edit.djangoUrl ? (
-                      <a className="route-secondary-action" href={personalEditData.edit.djangoUrl}>
-                        Django 수정
-                        <MoveUpRight size={15} />
-                      </a>
-                    ) : null}
                     <button className="route-primary-action" disabled={personalEditSaving} type="submit">
                       {personalEditSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                       저장
@@ -9460,7 +9431,6 @@ function ScheduleDetailPage({
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/schedules/">목록</a>
           {data.links.customer ? <a className="route-secondary-action" href={data.links.customer}>고객</a> : null}
-          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
           {schedule.canEdit ? (
             <button className="route-secondary-action" onClick={handleScheduleNoteToggle} type="button">
               {scheduleNoteOpen ? '작성 닫기' : '영업노트 작성'}
@@ -9781,10 +9751,6 @@ function ScheduleDetailPage({
                 />
               </label>
               <div className="notes-create-actions">
-                <a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>
-                  Django 수정
-                  <MoveUpRight size={15} />
-                </a>
                 <button className="route-primary-action" disabled={editSaving} type="submit">
                   {editSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                   저장
@@ -9868,8 +9834,7 @@ function ScheduleDetailPage({
             ) : null}
           </div>
           <div className="customers-side-actions note-detail-actions">
-            {data.links.customer ? <a href={data.links.customer}>React 고객 상세</a> : null}
-            {data.links.djangoCustomer ? <a href={data.links.djangoCustomer}>Django 고객 상세</a> : null}
+            {data.links.customer ? <a href={data.links.customer}>고객 상세</a> : null}
             {data.links.sendMail ? (
               <a href={`${data.links.sendMail}${schedule.customerEmail ? `&to=${encodeURIComponent(schedule.customerEmail)}` : ''}&subject=${encodeURIComponent(scheduleMailSubject)}`}>
                 메일 발송
@@ -10708,8 +10673,7 @@ function SchedulesPage({
           <SchedulesCountRows data={data} />
           <div className="customers-side-actions">
             <a href={data.links.calendar}>일정 캘린더</a>
-            <a href={data.links.djangoSchedules || data.links.schedules}>Django 일정 목록</a>
-            {data.links.djangoCalendar ? <a href={data.links.djangoCalendar}>Django 캘린더</a> : null}
+            <a href={data.links.schedules}>일정 목록</a>
             <a href={data.links.weeklyReports}>주간보고</a>
           </div>
         </aside>
@@ -18452,7 +18416,7 @@ function DetailPanel({
       </div>
       {deal.detailUrl ? (
         <a className="detail-primary-link" href={deal.detailUrl}>
-          Django 고객 상세 열기
+          고객 상세 열기
           <MoveUpRight size={16} />
         </a>
       ) : null}
@@ -18495,10 +18459,12 @@ export function App() {
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
   const [customerDetailLoading, setCustomerDetailLoading] = useState(Boolean(customerDetailId));
-  const [customerQuery, setCustomerQuery] = useState('');
-  const [customerOwner, setCustomerOwner] = useState('');
-  const [customerPriority, setCustomerPriority] = useState('');
-  const [customerStage, setCustomerStage] = useState('');
+  const [customerQuery, setCustomerQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [customerOwner, setCustomerOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
+  const [customerPriority, setCustomerPriority] = useState(() => new URLSearchParams(window.location.search).get('priority') || '');
+  const [customerStage, setCustomerStage] = useState(
+    () => new URLSearchParams(window.location.search).get('stage') || new URLSearchParams(window.location.search).get('pipeline_stage') || '',
+  );
   const [assetsData, setAssetsData] = useState<CustomerAssetDirectoryData | null>(null);
   const [assetsLoading, setAssetsLoading] = useState(currentView === 'assets');
   const [assetDirectoryQuery, setAssetDirectoryQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
@@ -18520,11 +18486,13 @@ export function App() {
   const [notesLoading, setNotesLoading] = useState(currentView === 'notes' && !noteDetailId);
   const [noteDetailData, setNoteDetailData] = useState<NoteDetailData | null>(null);
   const [noteDetailLoading, setNoteDetailLoading] = useState(Boolean(noteDetailId));
-  const [noteQuery, setNoteQuery] = useState('');
-  const [noteOwner, setNoteOwner] = useState('');
-  const [noteActionType, setNoteActionType] = useState('');
+  const [noteQuery, setNoteQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [noteOwner, setNoteOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
+  const [noteActionType, setNoteActionType] = useState(
+    () => new URLSearchParams(window.location.search).get('action_type') || new URLSearchParams(window.location.search).get('actionType') || '',
+  );
   const [noteReview, setNoteReview] = useState(() => getNoteReviewParam());
-  const [noteNextAction, setNoteNextAction] = useState('');
+  const [noteNextAction, setNoteNextAction] = useState(() => new URLSearchParams(window.location.search).get('next_action') || '');
   const [noteReviewingId, setNoteReviewingId] = useState<number | null>(null);
   const [noteReviewError, setNoteReviewError] = useState('');
   const [noteReviewMessage, setNoteReviewMessage] = useState('');
@@ -18551,11 +18519,13 @@ export function App() {
   const [scheduleCalendarStatusUpdatingKey, setScheduleCalendarStatusUpdatingKey] = useState('');
   const [scheduleCalendarStatusError, setScheduleCalendarStatusError] = useState('');
   const [scheduleCalendarStatusMessage, setScheduleCalendarStatusMessage] = useState('');
-  const [scheduleQuery, setScheduleQuery] = useState('');
-  const [scheduleOwner, setScheduleOwner] = useState('');
-  const [scheduleStatus, setScheduleStatus] = useState('');
-  const [scheduleActivityType, setScheduleActivityType] = useState('');
-  const [scheduleRange, setScheduleRange] = useState('');
+  const [scheduleQuery, setScheduleQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [scheduleOwner, setScheduleOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
+  const [scheduleStatus, setScheduleStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
+  const [scheduleActivityType, setScheduleActivityType] = useState(
+    () => new URLSearchParams(window.location.search).get('activity_type') || new URLSearchParams(window.location.search).get('activityType') || '',
+  );
+  const [scheduleRange, setScheduleRange] = useState(() => new URLSearchParams(window.location.search).get('range') || '');
   const [prepaymentsData, setPrepaymentsData] = useState<PrepaymentsData | null>(null);
   const [prepaymentsLoading, setPrepaymentsLoading] = useState(currentView === 'prepayments' && !prepaymentCustomerId && !prepaymentDetailId && !prepaymentCreateRoute);
   const [prepaymentCustomerData, setPrepaymentCustomerData] = useState<PrepaymentCustomerData | null>(null);

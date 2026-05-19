@@ -1,5 +1,6 @@
 import json
-from datetime import timedelta
+from datetime import time, timedelta
+from urllib.parse import urljoin
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -27,6 +28,13 @@ from reporting.models import (
     UserProfile,
     UserCompany,
 )
+
+
+FRONTEND_BASE_URL = 'https://sales-note-frontend-production.up.railway.app/'
+
+
+def frontend_url(path):
+    return urljoin(FRONTEND_BASE_URL, path.lstrip('/'))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,10 +98,11 @@ class AuthenticationSmoke(TestCase):
         self.assertEqual(response.status_code, 200)  # 로그인 페이지 재표시
 
     def test_followup_list_authenticated(self):
-        """인증 후 거래처 목록 200 응답"""
+        """인증 후 거래처 목록은 React 고객 화면으로 이동"""
         self.client.force_login(self.user)
         response = self.client.get(reverse('reporting:followup_list'))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], frontend_url('customers/'))
 
     def test_opportunity_list_url_removed(self):
         """별도 영업기회 목록 URL은 제거되어야 함"""
@@ -102,23 +111,102 @@ class AuthenticationSmoke(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_schedule_list_authenticated(self):
-        """인증 후 일정 목록 200 응답"""
+        """인증 후 일정 목록은 React 일정 화면으로 이동"""
         self.client.force_login(self.user)
         response = self.client.get(reverse('reporting:schedule_list'))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], frontend_url('schedules/'))
 
     def test_schedule_calendar_authenticated(self):
-        """인증 후 일정 캘린더 200 응답"""
+        """인증 후 일정 캘린더는 React 캘린더로 이동"""
         self.client.force_login(self.user)
         response = self.client.get(reverse('reporting:schedule_calendar'))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '일정 캘린더')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], frontend_url('schedules/calendar/'))
 
     def test_history_list_authenticated(self):
-        """인증 후 영업 활동 목록 200 응답"""
+        """인증 후 영업 활동 목록은 React 영업노트 화면으로 이동"""
         self.client.force_login(self.user)
         response = self.client.get(reverse('reporting:history_list'))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], frontend_url('notes/'))
+
+
+class CoreCrmLegacyRedirectTests(TestCase):
+    """Core Django template pages should hand users to React during migration."""
+
+    def setUp(self):
+        self.client = Client()
+        self.company_profile = UserCompany.objects.create(name='React전환회사')
+        self.user = make_user('react_redirect_user', role='salesman', company=self.company_profile)
+        self.company = Company.objects.create(name='React전환고객사', created_by=self.user)
+        self.department = Department.objects.create(name='React전환부서', company=self.company, created_by=self.user)
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            company=self.company,
+            department=self.department,
+            customer_name='React전환담당자',
+        )
+        self.schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company_profile,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(9, 0),
+            activity_type='customer_meeting',
+        )
+        self.history = History.objects.create(
+            user=self.user,
+            company=self.company_profile,
+            followup=self.followup,
+            action_type='customer_meeting',
+            content='React 전환 테스트',
+        )
+        self.client.force_login(self.user)
+
+    def assertReactRedirect(self, url, expected):
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], frontend_url(expected))
+
+    def test_core_list_page_redirects(self):
+        self.assertReactRedirect(reverse('reporting:dashboard'), 'dashboard/')
+        self.assertReactRedirect(reverse('reporting:followup_list'), 'customers/')
+        self.assertReactRedirect(reverse('reporting:history_list'), 'notes/')
+        self.assertReactRedirect(reverse('reporting:schedule_list'), 'schedules/')
+        self.assertReactRedirect(reverse('reporting:schedule_calendar'), 'schedules/calendar/')
+        self.assertReactRedirect(reverse('reporting:funnel_pipeline'), 'pipeline/')
+
+    def test_core_detail_page_redirects(self):
+        self.assertReactRedirect(reverse('reporting:followup_detail', args=[self.followup.id]), f'customers/{self.followup.id}/')
+        self.assertReactRedirect(reverse('reporting:customer_detail_report', args=[self.followup.id]), f'customers/{self.followup.id}/')
+        self.assertReactRedirect(reverse('reporting:history_detail', args=[self.history.id]), f'notes/{self.history.id}/')
+        self.assertReactRedirect(reverse('reporting:schedule_detail', args=[self.schedule.id]), f'schedules/{self.schedule.id}/')
+
+    def test_core_create_page_redirects_preserve_relevant_query(self):
+        self.assertReactRedirect(reverse('reporting:followup_create'), 'customers/?create=1')
+        self.assertReactRedirect(
+            f"{reverse('reporting:schedule_create')}?followup={self.followup.id}&date=2026-05-20",
+            f'schedules/?customer={self.followup.id}&date=2026-05-20&create=1',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:history_create_from_schedule', args=[self.schedule.id]),
+            f'notes/?create=1&schedule={self.schedule.id}',
+        )
+
+    def test_core_filter_query_is_translated(self):
+        self.assertReactRedirect(
+            f"{reverse('reporting:followup_list')}?pipeline_stage=quote&q=Kim",
+            'customers/?stage=quote&q=Kim',
+        )
+
+    def test_non_get_legacy_create_action_is_not_redirected_to_react(self):
+        response = self.client.post(reverse('reporting:schedule_create'), {
+            'followup': str(self.followup.id),
+            'visit_date': '2026-05-20',
+            'activity_type': 'customer_meeting',
+        })
+        self.assertNotEqual(response.get('Location', ''), frontend_url('schedules/?create=1'))
 
 
 class ReactNavigationApiTests(TestCase):
@@ -1815,7 +1903,7 @@ class AIPermissionTests(TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class DashboardSmokeTests(TestCase):
-    """대시보드 기본 동작 검증"""
+    """대시보드 legacy URL 전환 검증"""
 
     def setUp(self):
         self.client = Client()
@@ -1823,25 +1911,18 @@ class DashboardSmokeTests(TestCase):
         self.user = make_user('dash_user', role='salesman', company=self.company)
 
     def test_dashboard_returns_200(self):
-        """인증 후 대시보드 200 응답"""
+        """인증 후 대시보드는 React 대시보드로 이동"""
         self.client.force_login(self.user)
         r = self.client.get(reverse('reporting:dashboard'))
-        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], frontend_url('dashboard/'))
 
-    def test_dashboard_has_frontend_pipeline_return_link(self):
-        """백엔드 대시보드에서 React 파이프라인으로 돌아갈 수 있어야 함"""
+    def test_dashboard_head_redirects_to_react(self):
+        """HEAD 요청도 템플릿 렌더링 대신 React로 이동"""
         self.client.force_login(self.user)
-        r = self.client.get(reverse('reporting:dashboard'))
-        self.assertContains(r, '프론트 CRM')
-        self.assertContains(r, '파이프라인')
-        self.assertContains(r, 'https://sales-note-frontend-production.up.railway.app/')
-
-    def test_django_sidebar_schedule_points_to_calendar(self):
-        """전환 기간 Django 사이드바 일정 메뉴는 캘린더를 우선 열어야 함"""
-        self.client.force_login(self.user)
-        r = self.client.get(reverse('reporting:dashboard'))
-        self.assertContains(r, 'href="/reporting/schedules/calendar/"')
-        self.assertContains(r, '일정 캘린더')
+        r = self.client.head(reverse('reporting:dashboard'))
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], frontend_url('dashboard/'))
 
     def test_dashboard_unauthenticated_redirects(self):
         """미인증 대시보드 접근 → 로그인 리다이렉트"""
@@ -1849,34 +1930,15 @@ class DashboardSmokeTests(TestCase):
         self.assertIn(r.status_code, [301, 302])
         self.assertIn('login', r.get('Location', ''))
 
-    def test_dashboard_contains_key_elements(self):
-        """대시보드에 핵심 요소 포함 여부"""
+    def test_dashboard_api_still_returns_key_sections(self):
+        """대시보드 데이터는 React API에서 계속 제공"""
         self.client.force_login(self.user)
-        r = self.client.get(reverse('reporting:dashboard'))
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
         self.assertEqual(r.status_code, 200)
-        content = r.content.decode('utf-8', errors='replace')
-        # 대시보드에 기본 섹션 존재 여부 (HTML content 체크)
-        self.assertIn('dashboard', content.lower())
-
-    def test_dashboard_note_quick_action_handles_same_page_hash(self):
-        """상단 영업노트 링크는 같은 대시보드 페이지에서도 모달을 열 수 있어야 함"""
-        self.client.force_login(self.user)
-        r = self.client.get(reverse('reporting:dashboard'))
-        self.assertEqual(r.status_code, 200)
-        content = r.content.decode('utf-8', errors='replace')
-        self.assertIn('href="/reporting/dashboard/#dashboardNoteModal"', content)
-        self.assertIn('window.addEventListener(\'hashchange\', openDashboardNoteModalFromHash)', content)
-        self.assertIn('event.target.closest(\'a[href$="#dashboardNoteModal"]\')', content)
-
-    def test_topbar_pipeline_link_replaces_quote_opportunity_link(self):
-        """상단 견적 버튼은 프론트 파이프라인 링크로 대체되어야 함"""
-        self.client.force_login(self.user)
-        r = self.client.get(reverse('reporting:dashboard'))
-        self.assertEqual(r.status_code, 200)
-        content = r.content.decode('utf-8', errors='replace')
-        self.assertIn('href="https://sales-note-frontend-production.up.railway.app/"', content)
-        self.assertIn('파이프라인', content)
-        self.assertNotIn('href="/reporting/opportunities/"', content)
+        payload = r.json()
+        self.assertEqual(payload['source'], 'django')
+        self.assertIn('metrics', payload)
+        self.assertEqual(payload['links']['operationalDashboard'], '/dashboard/')
 
 
 class DashboardSummaryApiTests(TestCase):
@@ -12648,41 +12710,46 @@ class ManagerRolePermissionTests(TestCase):
     # ── Salesman은 정상 접근 가능 (form 렌더링) ─────────────────────────────
 
     def test_salesman_can_get_schedule_create(self):
-        """Salesman: 일정 생성 폼 GET → 200"""
+        """Salesman: 일정 생성 폼 GET → React 생성 화면"""
         self.client.force_login(self.salesman)
         r = self.client.get(reverse('reporting:schedule_create'))
-        self.assertEqual(r.status_code, 200,
-                         msg=f"Salesman GET schedule_create: expected 200, got {r.status_code}")
+        self.assertEqual(r.status_code, 302,
+                         msg=f"Salesman GET schedule_create: expected 302, got {r.status_code}")
+        self.assertEqual(r['Location'], frontend_url('schedules/?create=1'))
 
     def test_salesman_can_get_followup_create(self):
-        """Salesman: 고객 생성 폼 GET → 200"""
+        """Salesman: 고객 생성 폼 GET → React 생성 화면"""
         self.client.force_login(self.salesman)
         r = self.client.get(reverse('reporting:followup_create'))
-        self.assertEqual(r.status_code, 200,
-                         msg=f"Salesman GET followup_create: expected 200, got {r.status_code}")
+        self.assertEqual(r.status_code, 302,
+                         msg=f"Salesman GET followup_create: expected 302, got {r.status_code}")
+        self.assertEqual(r['Location'], frontend_url('customers/?create=1'))
 
     # ── 조회는 허용 ─────────────────────────────────────────────────────────
 
     def test_manager_can_view_history_list(self):
-        """Manager: 히스토리 목록 조회 → 200"""
+        """Manager: 히스토리 목록 조회 → React 영업노트"""
         self.client.force_login(self.manager)
         r = self.client.get(reverse('reporting:history_list'))
-        self.assertEqual(r.status_code, 200,
-                         msg=f"Manager GET history_list: expected 200, got {r.status_code}")
+        self.assertEqual(r.status_code, 302,
+                         msg=f"Manager GET history_list: expected 302, got {r.status_code}")
+        self.assertEqual(r['Location'], frontend_url('notes/'))
 
     def test_manager_can_view_schedule_list(self):
-        """Manager: 일정 목록 조회 → 200"""
+        """Manager: 일정 목록 조회 → React 일정"""
         self.client.force_login(self.manager)
         r = self.client.get(reverse('reporting:schedule_list'))
-        self.assertEqual(r.status_code, 200,
-                         msg=f"Manager GET schedule_list: expected 200, got {r.status_code}")
+        self.assertEqual(r.status_code, 302,
+                         msg=f"Manager GET schedule_list: expected 302, got {r.status_code}")
+        self.assertEqual(r['Location'], frontend_url('schedules/'))
 
     def test_manager_can_view_followup_list(self):
-        """Manager: 고객 목록 조회 → 200"""
+        """Manager: 고객 목록 조회 → React 고객"""
         self.client.force_login(self.manager)
         r = self.client.get(reverse('reporting:followup_list'))
-        self.assertEqual(r.status_code, 200,
-                         msg=f"Manager GET followup_list: expected 200, got {r.status_code}")
+        self.assertEqual(r.status_code, 302,
+                         msg=f"Manager GET followup_list: expected 302, got {r.status_code}")
+        self.assertEqual(r['Location'], frontend_url('customers/'))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -13438,7 +13505,7 @@ class ProductManagementReactApiTests(TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class DashboardScheduleDisplayTests(TestCase):
-    """대시보드 today_schedules / upcoming_schedules_dash / schedule_count 검증"""
+    """React dashboard API 일정 표시 검증"""
 
     def setUp(self):
         self.client = Client()
@@ -13497,64 +13564,57 @@ class DashboardScheduleDisplayTests(TestCase):
         )
 
     def test_dashboard_returns_200(self):
-        """대시보드 200 응답"""
-        r = self.client.get(reverse('reporting:dashboard'))
+        """대시보드 API 200 응답"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
         self.assertEqual(r.status_code, 200)
 
     def test_today_schedules_includes_scheduled(self):
-        """today_schedules에 오늘 예정 일정 포함"""
-        r = self.client.get(reverse('reporting:dashboard'))
-        today_scheds = list(r.context.get('today_schedules', []))
-        ids = [s.pk for s in today_scheds]
+        """today.items에 오늘 예정 일정 포함"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
+        ids = [s['id'] for s in r.json()['today']['items']]
         self.assertIn(self.today_scheduled.pk, ids,
-                      '오늘 예정 일정이 today_schedules에 포함되어야 합니다')
+                      '오늘 예정 일정이 today.items에 포함되어야 합니다')
 
     def test_today_schedules_includes_completed(self):
-        """today_schedules에 오늘 완료된 일정도 포함"""
-        r = self.client.get(reverse('reporting:dashboard'))
-        today_scheds = list(r.context.get('today_schedules', []))
-        ids = [s.pk for s in today_scheds]
+        """today.items에 오늘 완료된 일정도 포함"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
+        ids = [s['id'] for s in r.json()['today']['items']]
         self.assertIn(self.today_completed.pk, ids,
-                      '오늘 완료된 일정도 today_schedules에 포함되어야 합니다')
+                      '오늘 완료된 일정도 today.items에 포함되어야 합니다')
 
     def test_upcoming_includes_tomorrow_scheduled(self):
-        """upcoming_schedules_dash에 내일 예정 일정 포함"""
-        r = self.client.get(reverse('reporting:dashboard'))
-        upcoming = list(r.context.get('upcoming_schedules_dash', []))
-        ids = [s.pk for s in upcoming]
+        """upcomingSchedules에 내일 예정 일정 포함"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
+        ids = [s['id'] for s in r.json()['upcomingSchedules']]
         self.assertIn(self.tomorrow_scheduled.pk, ids,
-                      '내일 예정 일정이 upcoming_schedules_dash에 포함되어야 합니다')
+                      '내일 예정 일정이 upcomingSchedules에 포함되어야 합니다')
 
     def test_upcoming_includes_completed_within_range(self):
-        """upcoming_schedules_dash에 이번 주 완료된 일정도 포함 (Bug 2 핵심)"""
-        r = self.client.get(reverse('reporting:dashboard'))
-        upcoming = list(r.context.get('upcoming_schedules_dash', []))
-        ids = [s.pk for s in upcoming]
+        """upcomingSchedules에 이번 주 완료된 일정도 포함"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
+        ids = [s['id'] for s in r.json()['upcomingSchedules']]
         self.assertIn(self.upcoming_completed.pk, ids,
-                      '이번 주 완료된 일정도 upcoming_schedules_dash에 포함되어야 합니다 (Bug 2 수정)')
+                      '이번 주 완료된 일정도 upcomingSchedules에 포함되어야 합니다')
 
     def test_upcoming_excludes_out_of_range(self):
-        """upcoming_schedules_dash에 6일 초과 일정은 미포함"""
-        r = self.client.get(reverse('reporting:dashboard'))
-        upcoming = list(r.context.get('upcoming_schedules_dash', []))
-        ids = [s.pk for s in upcoming]
+        """upcomingSchedules에 6일 초과 일정은 미포함"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
+        ids = [s['id'] for s in r.json()['upcomingSchedules']]
         self.assertNotIn(self.out_of_range.pk, ids,
-                         '6일 초과 일정은 upcoming_schedules_dash에 포함되지 않아야 합니다')
+                         '6일 초과 일정은 upcomingSchedules에 포함되지 않아야 합니다')
 
     def test_upcoming_excludes_past_schedules(self):
-        """upcoming_schedules_dash에 과거 일정 미포함"""
-        r = self.client.get(reverse('reporting:dashboard'))
-        upcoming = list(r.context.get('upcoming_schedules_dash', []))
-        ids = [s.pk for s in upcoming]
+        """upcomingSchedules에 과거 일정 미포함"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
+        ids = [s['id'] for s in r.json()['upcomingSchedules']]
         self.assertNotIn(self.yesterday.pk, ids,
-                         '어제 일정은 upcoming_schedules_dash에 포함되지 않아야 합니다')
+                         '어제 일정은 upcomingSchedules에 포함되지 않아야 합니다')
 
     def test_schedule_count_nonzero_when_schedules_exist(self):
-        """일정이 있을 때 schedule_count가 0이 아님 (Bug 3 핵심)"""
-        r = self.client.get(reverse('reporting:dashboard'))
-        count = r.context.get('schedule_count', 0)
-        self.assertGreater(int(count), 0,
-                           'today/upcoming 일정이 있을 때 schedule_count > 0이어야 합니다 (Bug 3 수정)')
+        """일정이 있을 때 API 일정 지표가 0이 아님"""
+        r = self.client.get(reverse('reporting:dashboard_summary_api'))
+        metrics = r.json()['metrics']
+        self.assertGreater(int(metrics['todaySchedules']) + int(metrics['weeklySchedules']), 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
