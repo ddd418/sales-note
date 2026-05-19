@@ -4,7 +4,7 @@
 
 **작업명**: Backend public URL shutdown 준비
 
-**상태**: 1차 핵심 CRM redirect cutover와 backend public URL 노출 축소 변경 모두 배포/운영 smoke 완료. 사용자 운영 수동검수 확인 후 다음 단계로 넘어갑니다.
+**상태**: 1차 핵심 CRM redirect cutover, backend public URL 노출 축소, private backend proxy 복구 모두 배포/운영 smoke 완료. 사용자 운영 수동검수 확인 후 다음 단계로 넘어갑니다.
 
 ## 왜 이 작업인가
 
@@ -15,8 +15,8 @@
 ## 다음 세션 시작 순서
 
 1. 먼저 사용자 운영 수동검수 결과를 확인합니다.
-2. `sales-note-frontend`에서 `/reporting/analytics/` 같은 fallback URL이 backend public URL로 302되지 않는지 로그인 상태에서도 확인합니다.
-3. 그 다음 Railway private networking으로 `DJANGO_BASE_URL`을 내부 service URL로 바꿀 준비를 합니다.
+2. `sales-note-frontend`에서 대시보드가 로그인 상태로 API 데이터를 정상 로딩하는지 확인합니다.
+3. `/reporting/analytics/` 같은 fallback URL이 backend public URL로 302되지 않는지 로그인 상태에서도 확인합니다.
 4. 1차 React 수동검수까지 확인되면 2차 React 이관 범위를 확정합니다.
 
 ## 2차 후보 범위

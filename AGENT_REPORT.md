@@ -1,5 +1,80 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Private Backend Proxy Recovery
+
+**상태**: 긴급 복구/커밋/푸시/Railway 배포/운영 smoke 완료
+
+### 요약
+
+- `sales-note-frontend`의 `DJANGO_BASE_URL`이 HTTP Django URL이 아닌 DB 접속 문자열로 잘못 설정되어 프론트 proxy가 `ERR_INVALID_PROTOCOL`로 crash하던 문제를 복구했습니다.
+- `DJANGO_BASE_URL`을 `http://web.railway.internal:8080`으로 교정했습니다.
+- private backend proxy에서 Django가 `Host`를 거부하지 않도록 production `ALLOWED_HOSTS`/CSRF 허용 도메인을 보강했습니다.
+- 프론트 proxy가 잘못된 upstream protocol이나 응답 중 upstream error로 프로세스를 죽이지 않도록 방어 코드를 추가했습니다.
+
+### 변경된 파일
+
+- `frontend/server.mjs`
+- `sales_project/settings_production.py`
+
+### 실행한 명령어 및 결과
+
+```text
+railway variable --service sales-note-frontend
+→ DJANGO_BASE_URL 오설정 확인
+
+railway logs --service sales-note-frontend --deployment de6074d5-4792-4634-80a8-93e3691ecaf7 --tail 80
+→ ERR_INVALID_PROTOCOL 확인
+
+railway variable set DJANGO_BASE_URL=http://web.railway.internal:8080 --service sales-note-frontend
+→ 변수 교정
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, Vite chunk-size warning only
+
+python -m py_compile sales_project\settings_production.py
+→ OK
+
+python manage.py check --settings=sales_project.settings_production
+→ System check identified no issues
+
+git commit -m "fix: support private backend proxy host"
+→ 6fa1e72
+
+git push
+→ main updated
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy private backend proxy host fix 6fa1e72"
+→ sales-note-frontend deployment f4025c5f-2f87-4a6e-938c-e4d7c9bbbf6f SUCCESS
+
+railway deployment list --service web --limit 2 --json
+→ web deployment 6a66fdbc-e237-4c95-998c-383fad5e6417 SUCCESS
+
+Production smoke
+→ /reporting/api/dashboard/ returned 401 JSON login_required
+→ /reporting/login/ returned 200
+→ /reporting/analytics/ returned 302 to /reporting/login/?next=/reporting/analytics/
+→ /reporting/dashboard/ returned 302 to /dashboard/
+→ /dashboard/ returned 200
+
+railway logs --service web --deployment 6a66fdbc-e237-4c95-998c-383fad5e6417 --tail 80
+→ No DisallowedHost recurrence in latest smoke; only expected Unauthorized for anonymous dashboard API
+```
+
+### 기존 기능 보존
+
+- DB schema 변경은 없습니다.
+- backend public URL 없이 frontend proxy가 Django API/session/fallback 화면을 계속 처리합니다.
+- 익명 API는 기존처럼 `401 login_required` JSON을 반환합니다.
+
+### 운영 배포 상태
+
+- `sales-note-frontend`: `f4025c5f-2f87-4a6e-938c-e4d7c9bbbf6f`, SUCCESS
+- `web`: `6a66fdbc-e237-4c95-998c-383fad5e6417`, SUCCESS
+- 사용자 로그인 세션에서 React dashboard 재검수가 필요합니다.
+
 ## 2026-05-19 — Backend Public URL Exposure Reduction
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료
