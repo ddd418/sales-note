@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 AI email waiting same-followup reply rule plan
+
+**Background**:
+
+- User clarified that if a received email is connected to the same customer/follow-up, that should be enough to treat the sent email as having a reply.
+- The previous fix still required same follow-up plus normalized subject/participants when thread IDs differ.
+- CRM usage should prioritize the explicit follow-up/customer connection over brittle mail-thread metadata.
+
+**DB change required**: No.
+
+- Reuse `EmailLog.followup`, `sent_at`, `received_at`, `created_at`, and existing email type/status fields.
+- No migration or schema change.
+
+**Implementation scope**:
+
+- Backend:
+  - Treat any received email on the same follow-up after the sent email time as a reply for `email_waiting` suppression.
+  - Keep the requirement that the sent email must be connected to a follow-up.
+  - Leave the existing exact-thread behavior implicitly covered by the same follow-up rule.
+- Tests:
+  - Add/adjust regression coverage where received mail has the same follow-up but different thread id, different subject, and no matching participant metadata.
+  - Keep "no received reply" and email waiting dedupe tests passing.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused email-waiting tests.
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## 2026-05-19 AI email waiting reply detection plan
 
 **Background**:

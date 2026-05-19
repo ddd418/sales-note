@@ -9012,64 +9012,21 @@ def _ai_workspace_email_waiting_dedupe_keys(email):
     return keys
 
 
-def _ai_workspace_email_address_terms(*values):
-    terms = set()
-    for value in values:
-        for email in re.findall(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', str(value or '').lower()):
-            terms.add(email)
-    return terms
-
-
 def _ai_workspace_email_has_received_reply(email, user):
     if not email or not email.followup_id or not email.sent_at:
         return False
 
-    sent_subject = _ai_workspace_email_waiting_subject_key(email.subject)
-    sent_recipients = _ai_workspace_email_address_terms(
-        email.to_email,
-        email.recipient_email,
-    )
-    sent_senders = _ai_workspace_email_address_terms(
-        email.from_email,
-        email.sender_email,
-    )
     received_after_q = Q(received_at__gt=email.sent_at) | Q(created_at__gt=email.sent_at)
-    base_qs = EmailLog.objects.filter(
-        user=user,
-        email_type='received',
-        followup=email.followup,
-    ).filter(received_after_q)
-
-    if base_qs.filter(in_reply_to=email).exists():
-        return True
-
-    thread_values = _ai_workspace_email_thread_values(email)
-    if thread_values:
-        received_q = Q()
-        for value in thread_values:
-            received_q |= Q(gmail_thread_id=value) | Q(thread_id=value) | Q(gmail_message_id=value) | Q(message_id=value)
-        if base_qs.filter(received_q).exists():
-            return True
-
-    if not sent_subject:
-        return False
-
-    for received in base_qs.order_by('-received_at', '-created_at')[:20]:
-        if _ai_workspace_email_waiting_subject_key(received.subject) != sent_subject:
-            continue
-        received_senders = _ai_workspace_email_address_terms(
-            received.from_email,
-            received.sender_email,
+    return (
+        EmailLog.objects.filter(
+            user=user,
+            email_type='received',
+            followup=email.followup,
+            is_trashed=False,
         )
-        received_recipients = _ai_workspace_email_address_terms(
-            received.to_email,
-            received.recipient_email,
-        )
-        sender_matches = not sent_recipients or not received_senders or bool(sent_recipients & received_senders)
-        recipient_matches = not sent_senders or not received_recipients or bool(sent_senders & received_recipients)
-        if sender_matches and recipient_matches:
-            return True
-    return False
+        .filter(received_after_q)
+        .exists()
+    )
 
 
 def _ai_workspace_email_waiting_action_payload(email, today=None):

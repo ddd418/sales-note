@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — AI Email Reply Rule Uses Same Follow-Up
+
+**상태**: 구현/로컬 검증 완료, 런타임 커밋/푸시/Railway backend 배포 예정
+
+### 요약
+
+사용자 기준에 맞춰 AI의 `메일 답장 대기` 판별을 더 단순하고 강하게 바꿨습니다. 이제 보낸 메일이 특정 고객/팔로우업에 연결되어 있고, 같은 팔로우업에 보낸 시각 이후 받은 메일이 하나라도 연결되어 있으면 답장이 온 것으로 처리합니다. 제목, thread ID, 발신자/수신자 metadata가 달라도 같은 고객 ID/followup ID 연결을 우선합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: `email_waiting` suppression 기준을 same-followup received mail 기준으로 단순화.
+- `reporting/tests.py`: 같은 팔로우업의 받은 메일이면 제목/스레드/참여자 정보가 달라도 답장으로 보는 회귀 테스트 반영.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 고객/팔로우업에 연결된 받은 메일을 AI가 고객 최신 반응으로 간주합니다.
+- 김명환처럼 답장이 이미 온 고객이 `답장 유무 확인`으로 다시 추천되는 오탐을 줄였습니다.
+- 답장이 전혀 없는 다른 고객/팔로우업의 보낸 메일은 계속 대기 액션으로 남습니다.
+
+### 기존 기능 보존
+
+- 보낸 메일이 고객/팔로우업에 연결되어 있어야 `email_waiting` 후보가 됩니다.
+- 받은 메일도 같은 고객/팔로우업에 연결되어 있어야 답장으로 처리합니다.
+- DB schema 변경은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_includes_sent_email_without_received_reply reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_skips_email_waiting_when_same_followup_received_after_sent reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_queue_dedupes_email_waiting_by_thread_or_subject --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 90 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 받은 메일이 고객/팔로우업에 연결되지 않은 상태라면 AI가 같은 고객 반응으로 보지 못합니다. 이 경우는 메일 자동 고객 연결 개선이 필요합니다.
+- 같은 팔로우업에 여러 독립 메일 주제가 섞이면, 받은 메일 하나가 해당 팔로우업의 모든 이전 메일 대기 액션을 닫을 수 있습니다. 현재 사용 기준상 고객 단위 최신 반응을 우선하기 위한 의도된 동작입니다.
+
+### 권장 다음 단계
+
+운영 AI 메뉴에서 같은 질문을 다시 실행해 고객/팔로우업에 받은 메일이 연결된 김명환 연구원이 `답장 유무 확인`으로 남지 않는지 확인합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에 로그인합니다.
+2. 김명환 연구원의 받은 답장 메일이 해당 고객/팔로우업에 연결되어 있는지 확인합니다.
+3. AI 메뉴에서 전체 부서 범위로 같은 오늘 할 일 질문을 다시 실행합니다.
+4. 김명환 연구원이 `메일 답장 확인`, `답장 유무 확인`, `리마인드 메일` 후보로 추천되지 않는지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: pending
+- Backend Railway deployment: pending
+- GitHub: pending
+
 ## 2026-05-19 — AI Email Waiting Reply Detection
 
 **상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

@@ -10869,7 +10869,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
         from reporting.models import EmailLog
 
         followup, department = self._create_customer(self.user, '메일액션')
+        replied_followup, replied_department = self._create_customer(self.user, '메일액션회신')
         self._create_department_analysis(self.user, department)
+        self._create_department_analysis(self.user, replied_department)
         sent_at = timezone.now() - timedelta(days=3)
         waiting_email = EmailLog.objects.create(
             user=self.user,
@@ -10899,7 +10901,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             recipient_email='other@example.com',
             subject='회신 있는 메일',
             body='회신 있는 메일',
-            followup=followup,
+            followup=replied_followup,
             gmail_message_id='gmail-msg-replied',
             gmail_thread_id='gmail-thread-replied',
             sent_at=sent_at,
@@ -10914,7 +10916,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             to_email='sales@example.com',
             subject='Re: 회신 있는 메일',
             body='확인했습니다.',
-            followup=followup,
+            followup=replied_followup,
             gmail_message_id='gmail-msg-reply',
             gmail_thread_id='gmail-thread-replied',
             received_at=timezone.now() - timedelta(days=1),
@@ -10930,7 +10932,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(any(item['kind'] == 'email_waiting' for item in payload['actionQueue']))
         self.assertEqual(payload['dailyBrief']['counts']['emailWaiting'], 1)
 
-    def test_ai_workspace_action_queue_skips_email_waiting_when_reply_has_different_thread_id(self):
+    def test_ai_workspace_action_queue_skips_email_waiting_when_same_followup_received_after_sent(self):
         from datetime import timedelta
         from reporting.models import EmailLog
 
@@ -10961,11 +10963,11 @@ class AIWorkspaceSummaryApiTests(TestCase):
             email_type='received',
             is_sent=False,
             status='received',
-            from_email='myeonghwan@example.com',
-            sender_email='myeonghwan@example.com',
-            to_email='sales@example.com',
-            recipient_email='sales@example.com',
-            subject='Re: 견적 확인 요청',
+            from_email='',
+            sender_email='',
+            to_email='',
+            recipient_email='',
+            subject='별도 제목으로 온 답장',
             body='확인했습니다. 진행 가능 여부 검토 후 말씀드리겠습니다.',
             followup=followup,
             gmail_message_id='gmail-msg-kmh-received-different-thread',
