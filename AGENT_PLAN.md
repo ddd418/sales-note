@@ -1,5 +1,29 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 AI workspace readable line-break plan
+
+**Background**:
+
+- User confirmed the AI answer is now freer, but long single-paragraph answers are hard to read.
+- Example: a detailed Seoul National University lab sales-cycle answer returned useful content, but sections and numbered points were inline instead of separated by line breaks.
+
+**DB change required**: No.
+
+- Backend prompt/normalization and display formatting only.
+- Preserve the free-form answer behavior from the previous fix.
+
+**Implementation scope**:
+
+- Keep AI answer format flexible, but ask the model to use readable paragraph breaks.
+- Add backend normalization that inserts line breaks before inline numbered sections like `1)`, `2)`, `3)` when the answer arrives as one long paragraph.
+- Preserve existing newlines for prompt/email/artifact generation.
+- Add focused tests for readability formatting and rerun AI validation/build checks.
+- Update `AGENT_REPORT.md`, commit, push, deploy, and smoke test.
+
+**Current status**:
+
+- Implementation, local validation, runtime commit/push, Railway backend deployment, and production smoke are complete. User production manual verification is next.
+
 ## 2026-05-19 React Reports/Profile/Business Cards UI polish plan
 
 **Background**:

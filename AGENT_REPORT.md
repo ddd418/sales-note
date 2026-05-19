@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — AI Workspace Answer Readability Line Breaks
+
+**상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
+
+### 요약
+
+AI 워크스페이스 답변이 자유형으로는 나오지만 긴 한 문단으로 붙어서 읽기 어려운 문제를 수정했습니다. 모델 지침에는 긴 답변, 번호 항목, 비교/품목 목록에 줄바꿈을 넣도록 추가했고, 모델이 한 문단으로 반환해도 백엔드에서 `1)`, `2)`, `- **품목**:` 같은 인라인 구조 앞에 줄바꿈을 자동 삽입합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`: AI 답변 본문 전용 텍스트 정규화와 읽기용 줄바꿈 보정 추가, 프롬프트 지침 보강.
+- `reporting/tests.py`: 긴 한 문단 답변의 줄바꿈 보정과 기존 줄바꿈 보존 테스트 추가.
+- `AGENT_PLAN.md`, `AGENT_REPORT.md`: 계획과 결과 기록.
+
+### CRM 개선
+
+- 납품 주기, 재구매 품목, 확장 품목, 거래 가능성처럼 정보가 많은 답변이 문단/번호/품목 단위로 나뉘어 보입니다.
+- 이전에 반영한 자유형 답변 정책은 유지했습니다. 고정 카드 템플릿으로 되돌리지 않았습니다.
+
+### 기존 기능 보존
+
+- AI permissions, question logging, feedback memory, product fact guard, 전체 부서 actionItems 동작은 유지했습니다.
+- 이미 줄바꿈이 들어간 외부 AI용 프롬프트/메일 초안은 기존 줄바꿈을 보존합니다.
+- DB schema 변경은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_answer_adds_readable_line_breaks reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_answer_preserves_existing_line_breaks reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_request_stays_freeform reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_normalizer_does_not_inject_fallback_cards
+→ Ran 4 tests, OK
+
+python -m py_compile reporting/views.py reporting/tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests
+→ Ran 86 tests, OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "fix: format AI workspace answers with readable breaks"
+→ 0193c3d
+
+git push
+→ origin/main updated to 0193c3d
+
+Railway GitHub auto-deploy for web
+→ web deployment 93a2f040-fff2-4124-a76c-76de7fbe5f16 reached SUCCESS
+
+production smoke
+→ /reporting/login/ returned 200
+→ /reporting/api/ai-workspace/ returned 401 login_required JSON for anonymous users
+→ /reporting/api/reports/ returned 401 login_required JSON for anonymous users
+```
+
+### 알려진 제한
+
+- 운영 로그인 세션에서 실제 OpenAI 응답을 자동으로 생성해 검증하지는 않았습니다. 답변 줄바꿈은 백엔드 정규화 단위 테스트와 운영 smoke로 검증했습니다.
+- 번호가 아닌 아주 긴 순수 서술형 답변은 모델 지침에 의존하는 비중이 더 큽니다.
+
+### 권장 다음 단계
+
+운영 AI 메뉴에서 방금 예시와 같은 긴 질문을 다시 실행해 실제 줄바꿈 가독성을 확인합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에 로그인합니다.
+2. AI 메뉴에서 `서울대학교 미생물공생및면역연구실 기준으로 납품 주기와 앞으로 팔 수 있는 제품을 알려줘`처럼 긴 답변이 나올 질문을 실행합니다.
+3. 답변이 첫 결론, `1)`, `2)`, `3)` 항목, `- **품목**:` 단위로 줄바꿈되어 읽히는지 확인합니다.
+4. 외부 AI용 프롬프트 요청도 실행해 기존 줄바꿈이 유지되는지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: `0193c3d fix: format AI workspace answers with readable breaks`
+- Backend Railway deployment: `93a2f040-fff2-4124-a76c-76de7fbe5f16` SUCCESS
+- GitHub: `main` pushed.
+
 ## 2026-05-19 — React Utility Page UI Polish and AI Free-Form Answer Fix
 
 **상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend/frontend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
