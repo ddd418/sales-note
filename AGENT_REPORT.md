@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — AI Email Waiting Reply Detection
 
-**상태**: 구현/로컬 검증 완료, 런타임 커밋/푸시/Railway backend 배포 예정
+**상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -48,6 +48,20 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: detect replied AI email waits"
+→ 406518d
+
+git push
+→ origin/main updated to 406518d
+
+Railway GitHub auto-deploy for web
+→ web deployment df9c8a9b-ed9c-450c-9b8f-481aa8461b72 reached SUCCESS
+
+production smoke
+→ /reporting/login/ returned 200
+→ /reporting/api/ai-workspace/ returned 401 login_required JSON for anonymous users
+→ /reporting/api/reports/ returned 401 login_required JSON for anonymous users
 ```
 
 ### 알려진 제한
@@ -68,9 +82,9 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Runtime commit: pending
-- Backend Railway deployment: pending
-- GitHub: pending
+- Runtime commit: `406518d fix: detect replied AI email waits`
+- Backend Railway deployment: `df9c8a9b-ed9c-450c-9b8f-481aa8461b72` SUCCESS
+- GitHub: `main` pushed.
 
 ## 2026-05-19 — AI Today Task Filtering with Verified Memory and Recent Sent Mail
 
