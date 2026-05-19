@@ -55,11 +55,17 @@ function resolveStaticPath(urlPath) {
 
 function proxyToDjango(clientRequest, clientResponse) {
   const target = new URL(clientRequest.url || '/', djangoBaseUrl);
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    clientResponse.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    clientResponse.end('Django upstream URL must use http or https.');
+    return;
+  }
+
   const headers = Object.fromEntries(
     Object.entries(clientRequest.headers).filter(([key]) => !hopByHopHeaders.has(key.toLowerCase())),
   );
-  headers.host = djangoBaseUrl.host;
-  headers['x-forwarded-host'] = clientRequest.headers.host || '';
+  headers.host = clientRequest.headers.host || djangoBaseUrl.host;
+  headers['x-forwarded-host'] = clientRequest.headers.host || djangoBaseUrl.host;
   headers['x-forwarded-proto'] = 'https';
 
   const proxyRequest = (target.protocol === 'https:' ? httpsRequest : httpRequest)(
@@ -81,6 +87,13 @@ function proxyToDjango(clientRequest, clientResponse) {
   );
 
   proxyRequest.on('error', () => {
+    if (clientResponse.destroyed) {
+      return;
+    }
+    if (clientResponse.headersSent) {
+      clientResponse.destroy();
+      return;
+    }
     clientResponse.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
     clientResponse.end('Django upstream is unavailable.');
   });

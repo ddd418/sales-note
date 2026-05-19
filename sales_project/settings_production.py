@@ -21,6 +21,8 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
     'web-production-5096.up.railway.app',  # Railway 명시적 도메인
+    'web.railway.internal',
+    'sales-note-frontend-production.up.railway.app',
     # *.railway.app 와일드카드는 Django ALLOWED_HOSTS에서 지원되지 않으므로 제거
 ]
 
@@ -28,6 +30,9 @@ ALLOWED_HOSTS = [
 CSRF_TRUSTED_ORIGINS = [
     'https://web-production-5096.up.railway.app',
     'http://web-production-5096.up.railway.app',  # HTTP도 추가
+    'https://sales-note-frontend-production.up.railway.app',
+    'http://sales-note-frontend-production.up.railway.app',
+    'http://web.railway.internal',
     'https://*.railway.app',
     'https://*.up.railway.app',
     'http://*.railway.app',
@@ -39,8 +44,14 @@ if 'RENDER' in os.environ:
     ALLOWED_HOSTS.extend(['onrender.com'])
 elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
     # RAILWAY_PUBLIC_DOMAIN 환경변수가 있으면 동적으로 추가
-    if 'RAILWAY_PUBLIC_DOMAIN' in os.environ:
-        railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+    railway_domain_keys = (
+        'RAILWAY_PUBLIC_DOMAIN',
+        'RAILWAY_PRIVATE_DOMAIN',
+        'RAILWAY_SERVICE_SALES_NOTE_FRONTEND_URL',
+        'RAILWAY_STATIC_URL',
+    )
+    for railway_domain_key in railway_domain_keys:
+        railway_domain = os.environ.get(railway_domain_key)
         if railway_domain and railway_domain not in ALLOWED_HOSTS:
             ALLOWED_HOSTS.append(railway_domain)
             CSRF_TRUSTED_ORIGINS.extend([f'https://{railway_domain}', f'http://{railway_domain}'])
