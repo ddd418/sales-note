@@ -2,24 +2,25 @@
 
 ## 다음 시작 작업
 
-**작업명**: Backend public URL shutdown 준비
+**작업명**: Customer Asset Directory V2 운영 수동검수
 
-**상태**: 1차 핵심 CRM redirect cutover, backend public URL 노출 축소, private backend proxy 복구 모두 배포/운영 smoke 완료. 사용자 운영 수동검수 확인 후 다음 단계로 넘어갑니다.
+**상태**: `/assets/` 운영형 V2 구현, 커밋/푸시, Railway `web`/`sales-note-frontend` 배포, 익명 smoke 완료. 사용자 로그인 세션 수동검수 대기입니다.
 
 ## 왜 이 작업인가
 
 - 사용자는 Django 템플릿 프론트를 빠르게 닫고 React CRM을 안정화하길 원합니다.
-- 1차 범위는 dashboard, customers/followups, notes/histories, schedules, pipeline입니다.
-- 다음 단계는 backend public URL을 사용자 경로에서 없애고, 남은 React 이관 화면의 legacy GET 진입을 닫는 것입니다.
+- 글로벌 CRM 벤치마크 기준으로 고객 장비/A/S/교정 운영성이 우선순위로 확인되었습니다.
+- 이번 배치에서 React `/assets/`가 검색 전용에서 장비 운영 콘솔로 확장되었으므로, 실제 로그인 계정에서 저장/업로드/다운로드를 확인해야 합니다.
 
 ## 다음 세션 시작 순서
 
 1. 먼저 사용자 운영 수동검수 결과를 확인합니다.
-2. `sales-note-frontend`에서 대시보드가 로그인 상태로 API 데이터를 정상 로딩하는지 확인합니다.
-3. `/reporting/analytics/` 같은 fallback URL이 backend public URL로 302되지 않는지 로그인 상태에서도 확인합니다.
-4. 1차 React 수동검수까지 확인되면 2차 React 이관 범위를 확정합니다.
+2. `https://sales-note-frontend-production.up.railway.app/assets/`에서 장비 목록/작업 큐/상세 드로어가 보이는지 확인합니다.
+3. 장비 수정, 서비스 접수/수정, 교정 기록/수정, 파일 업로드/다운로드를 실제 데이터 1건으로 확인합니다.
+4. 매니저 계정에서 조회만 가능하고 수정 UI가 숨겨지는지 확인합니다.
+5. 통과하면 다음 React 안정화 배치를 확정합니다.
 
-## 2차 후보 범위
+## 다음 React 안정화 후보 범위
 
 - products
 - prepayments
@@ -38,7 +39,8 @@
 
 ## 검증 기준
 
-- focused redirect/auth tests
+- 사용자 로그인 세션에서 `/assets/` 수동검수 통과
+- focused asset API tests
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `cd frontend; node --check server.mjs`

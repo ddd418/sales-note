@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — Customer Asset Directory Operational V2
 
-**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행 예정
+**상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -64,6 +64,25 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, line-ending warnings only
+
+git commit -m "feat: add operational asset directory"
+→ 0b6a64e
+
+git push
+→ main updated
+
+railway up --service web --detach --message "Deploy operational asset directory API 0b6a64e"
+→ web deployment d387c07f-6c63-433c-881d-1ccff0a32622 SUCCESS
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy operational asset directory UI 0b6a64e"
+→ sales-note-frontend deployment db915259-76fe-41b1-b134-f09f4a74107e SUCCESS
+
+Production smoke
+→ /assets/ returned 200 text/html
+→ /reporting/api/customer-assets/ returned 401 JSON login_required
+→ /reporting/login/ returned 200
+→ /reporting/api/dashboard/ returned 401 JSON
+→ web/frontend latest logs show normal startup and expected anonymous 401 only
 ```
 
 ### 알려진 제한
@@ -80,9 +99,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Runtime commit: 배포 전
-- Railway `web`: 배포 전
-- Railway `sales-note-frontend`: 배포 전
+- Runtime commit: `0b6a64e feat: add operational asset directory`
+- Railway `web`: `d387c07f-6c63-433c-881d-1ccff0a32622`, SUCCESS
+- Railway `sales-note-frontend`: `db915259-76fe-41b1-b134-f09f4a74107e`, SUCCESS
+- 운영 smoke 완료. 사용자 로그인 세션에서 실제 장비 저장/파일 업로드 수동검수가 필요합니다.
 
 ### 운영 수동 검수 절차
 
