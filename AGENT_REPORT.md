@@ -2,7 +2,7 @@
 
 ## 2026-05-19 — AI Email Reply Rule Uses Same Follow-Up
 
-**상태**: 구현/로컬 검증 완료, 런타임 커밋/푸시/Railway backend 배포 예정
+**상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기
 
 ### 요약
 
@@ -46,6 +46,20 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "fix: treat same-followup received mail as reply"
+→ 43abab6
+
+git push
+→ origin/main updated to 43abab6
+
+Railway GitHub auto-deploy for web
+→ web deployment 1edfaa71-982d-421d-b21b-3d041f079de7 reached SUCCESS
+
+production smoke
+→ /reporting/login/ returned 200
+→ /reporting/api/ai-workspace/ returned 401 login_required JSON for anonymous users
+→ /reporting/api/reports/ returned 401 login_required JSON for anonymous users
 ```
 
 ### 알려진 제한
@@ -66,9 +80,9 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Runtime commit: pending
-- Backend Railway deployment: pending
-- GitHub: pending
+- Runtime commit: `43abab6 fix: treat same-followup received mail as reply`
+- Backend Railway deployment: `1edfaa71-982d-421d-b21b-3d041f079de7` SUCCESS
+- GitHub: `main` pushed.
 
 ## 2026-05-19 — AI Email Waiting Reply Detection
 
