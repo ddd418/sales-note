@@ -10930,6 +10930,61 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(any(item['kind'] == 'email_waiting' for item in payload['actionQueue']))
         self.assertEqual(payload['dailyBrief']['counts']['emailWaiting'], 1)
 
+    def test_ai_workspace_action_queue_skips_email_waiting_when_reply_has_different_thread_id(self):
+        from datetime import timedelta
+        from reporting.models import EmailLog
+
+        followup, department = self._create_customer(self.user, '김명환')
+        self._create_department_analysis(self.user, department)
+        sent_at = timezone.now() - timedelta(days=3)
+        sent_email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            provider='gmail',
+            email_type='sent',
+            is_sent=True,
+            status='sent',
+            from_email='sales@example.com',
+            sender_email='sales@example.com',
+            to_email='myeonghwan@example.com',
+            recipient_email='myeonghwan@example.com',
+            subject='견적 확인 요청',
+            body='견적 확인 부탁드립니다.',
+            followup=followup,
+            gmail_message_id='gmail-msg-kmh-sent',
+            gmail_thread_id='gmail-thread-kmh-sent',
+            sent_at=sent_at,
+        )
+        EmailLog.objects.create(
+            user=self.user,
+            provider='gmail',
+            email_type='received',
+            is_sent=False,
+            status='received',
+            from_email='myeonghwan@example.com',
+            sender_email='myeonghwan@example.com',
+            to_email='sales@example.com',
+            recipient_email='sales@example.com',
+            subject='Re: 견적 확인 요청',
+            body='확인했습니다. 진행 가능 여부 검토 후 말씀드리겠습니다.',
+            followup=followup,
+            gmail_message_id='gmail-msg-kmh-received-different-thread',
+            gmail_thread_id='gmail-thread-kmh-received-different-thread',
+            received_at=timezone.now() - timedelta(days=1),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        action_ids = {item['id'] for item in payload['actionQueue']}
+        self.assertNotIn(f'email_waiting:{sent_email.id}', action_ids)
+        self.assertFalse(any(
+            item['kind'] == 'email_waiting' and item['followupId'] == followup.id
+            for item in payload['actionQueue']
+        ))
+
     def test_ai_workspace_action_queue_dedupes_email_waiting_by_thread_or_subject(self):
         from datetime import timedelta
         from reporting.models import EmailLog

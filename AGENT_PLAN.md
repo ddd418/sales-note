@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 AI email waiting reply detection plan
+
+**Background**:
+
+- User reported that the same "오늘 내가 해야할 일이 있을까?" AI answer told them to check whether Kim Myeonghwan had replied.
+- The reply had already arrived, so the AI action queue treated a replied sent email as still waiting.
+- Existing email-waiting suppression only checks received mail by matching Gmail/message thread identifiers, which can miss replies imported with a different or missing thread id.
+
+**DB change required**: No.
+
+- Reuse `EmailLog` fields: `followup`, `email_type`, `sent_at`, `received_at`, `in_reply_to`, thread/message ids, sender/recipient, and subject.
+- No migration or schema change.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a helper that checks whether a sent email has a received reply after it was sent.
+  - Keep the existing exact thread/message id match.
+  - Add fallback matching for the same followup, normalized subject, and reciprocal email participant.
+  - Use this helper before adding `email_waiting` actions to the AI action queue.
+- Tests:
+  - Add regression coverage for a Kim Myeonghwan-style reply where the received email has a different thread id but same followup, same normalized subject, and reciprocal sender/recipient.
+  - Keep existing email-waiting queue tests passing.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused email-waiting action queue tests.
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## 2026-05-19 AI verified memory and recent outbound mail task filtering plan
 
 **Background**:
