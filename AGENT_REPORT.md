@@ -1,5 +1,91 @@
 # AGENT_REPORT.md
 
+## 2026-05-19 — Read-only API and Asset AI Actions
+
+**상태**: 구현/로컬 검증 완료, 커밋/푸시/Railway 배포 진행
+
+### 요약
+
+- AI Workspace 추천 실행 목록에 고객 보유 장비의 진행 서비스/A/S와 30일 내 교정 예정 신호를 추가했습니다.
+- 추천 액션 초안/피드백 재생성도 `service_case:*`, `calibration_due:*` 액션 ID를 처리합니다.
+- Read-only Bearer 토큰으로 dashboard/customers/followups/reports/pipeline GET API만 접근하는 래퍼와 `/reporting/api/followups/` 요약 API를 추가했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/tests.py`
+- `reporting/readonly_api.py`
+- `reporting/funnel_views.py`
+- `reporting/urls.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- 장비 서비스 지연/진행 건과 교정 예정 건이 일반 영업 후속, 견적, 납품, 메일 대기와 함께 AI 실행 후보로 보입니다.
+- AI 질문의 추천 액션 fallback이 선택 부서/전체 부서 모두에서 장비/서비스/교정 신호를 포함합니다.
+- Codex/분석용 읽기 전용 API 표면을 서버에서 `GET`과 허용 URL명으로 제한합니다.
+
+### 기존 기능 보존
+
+- DB schema 변경은 없습니다.
+- 기존 `/reporting/*`와 React CRM 라우트는 유지했습니다.
+- read-only Bearer 접근은 `GET` 및 허용 API명에만 적용되고, 비허용 API는 기존 로그인 요구를 유지합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 93 tests, OK
+
+cd frontend; npm run build
+→ OK, Vite chunk-size warning only
+
+python -m py_compile reporting\views.py reporting\tests.py reporting\funnel_views.py reporting\urls.py reporting\readonly_api.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+Local read-only Bearer smoke
+→ GET dashboard/customers/followups/reports/pipeline returned 200 JSON
+→ POST followups returned 405
+→ GET ai-workspace returned 401
+
+git diff --check --cached
+→ OK
+```
+
+### 알려진 제한
+
+- 운영 read-only 토큰은 Railway 환경변수 `SALES_NOTE_READONLY_TOKEN`과 읽기 전용 사용자 지정 변수가 설정되어야 활성화됩니다.
+- 장비 액션은 현재 `created_by`가 현재 사용자 범위인 active 장비 기준입니다.
+
+### 권장 다음 단계
+
+운영에서 read-only 토큰을 발급/설정한 뒤 외부 Codex 연결은 이 API 표면만 사용하게 제한합니다.
+
+### 운영 수동 검수 절차
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 서비스/A/S 진행 장비 또는 교정 예정 장비가 있는 경우 AI 추천 실행 목록에 `서비스 후속`, `교정 예정` 액션이 보이는지 확인합니다.
+3. 액션 카드의 `장비 보기` 링크가 `/assets/`로 이동하며 필터가 적용되는지 확인합니다.
+4. read-only 토큰 설정 후 `GET /reporting/api/followups/`가 Bearer 토큰으로 JSON을 반환하고, `POST`와 비허용 API가 차단되는지 확인합니다.
+
 ## 2026-05-19 — AI Email Reply Rule Uses Same Follow-Up
 
 **상태**: 구현/로컬 검증/런타임 커밋/푸시/Railway backend 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

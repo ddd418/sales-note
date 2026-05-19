@@ -191,6 +191,7 @@ urlpatterns = [
     path('api/profile/update/', views.profile_update_api, name='profile_api_update'),
     path('api/profile/password/', views.profile_password_api, name='profile_api_password'),
     path('api/profile/email/disconnect/', views.profile_email_disconnect_api, name='profile_email_disconnect_api'),
+    path('api/followups/', views.followups_summary_api, name='followups_summary_api'),
     path('api/customers/', views.customers_summary_api, name='customers_summary_api'),
     path('api/customer-assets/', views.customer_assets_summary_api, name='customer_assets_summary_api'),
     path('api/customers/<int:followup_id>/', views.customer_detail_summary_api, name='customer_detail_summary_api'),

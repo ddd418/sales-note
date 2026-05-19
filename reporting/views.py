@@ -18,6 +18,7 @@ from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 from .decorators import hanagwahak_only, get_allowed_action_types, get_allowed_activity_types, filter_service_for_non_hanagwahak
+from .readonly_api import api_login_required_or_readonly_response
 import os
 import mimetypes
 import logging
@@ -2194,14 +2195,7 @@ def dashboard_view(request):
 
 
 def _api_login_required_response(request):
-    if request.user.is_authenticated:
-        return None
-    return JsonResponse({
-        'success': False,
-        'error': 'login_required',
-        'message': '로그인이 필요합니다.',
-        'loginUrl': reverse('reporting:login'),
-    }, status=401)
+    return api_login_required_or_readonly_response(request)
 
 
 @never_cache
@@ -3264,6 +3258,133 @@ def customers_summary_api(request):
         'priorityCustomers': [
             _customers_followup_payload(followup, today)
             for followup in priority_customers
+        ],
+    })
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def followups_summary_api(request):
+    """Read-only follow-up action queue for CRM analysis."""
+    from django.utils.dateparse import parse_date
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+
+    q = request.GET.get('q', '').strip()
+    status = request.GET.get('status', '').strip()
+    owner = request.GET.get('owner', '').strip()
+    date_from = parse_date(request.GET.get('date_from', '').strip() or '')
+    date_to = parse_date(request.GET.get('date_to', '').strip() or '')
+    page_size = min(max(int(request.GET.get('page_size') or 50), 1), 100)
+
+    histories = History.objects.filter(
+        user__in=scope_users,
+        parent_history__isnull=True,
+        next_action_date__isnull=False,
+    ).select_related(
+        'user',
+        'followup',
+        'followup__company',
+        'followup__department',
+    )
+
+    if owner:
+        try:
+            owner_id = int(owner)
+        except ValueError:
+            owner_id = None
+        if owner_id and scope_users.filter(id=owner_id).exists():
+            histories = histories.filter(user_id=owner_id)
+
+    if q:
+        histories = histories.filter(
+            Q(next_action__icontains=q) |
+            Q(meeting_next_action__icontains=q) |
+            Q(content__icontains=q) |
+            Q(followup__customer_name__icontains=q) |
+            Q(followup__manager__icontains=q) |
+            Q(followup__company__name__icontains=q) |
+            Q(followup__department__name__icontains=q)
+        )
+
+    if date_from:
+        histories = histories.filter(next_action_date__gte=date_from)
+    if date_to:
+        histories = histories.filter(next_action_date__lte=date_to)
+
+    open_histories = histories.filter(reviewed_at__isnull=True)
+    overdue_count = open_histories.filter(next_action_date__lt=today).count()
+    due_today_count = open_histories.filter(next_action_date=today).count()
+    upcoming_count = open_histories.filter(next_action_date__gt=today).count()
+    completed_count = histories.filter(reviewed_at__isnull=False).count()
+
+    if status == 'overdue':
+        histories = open_histories.filter(next_action_date__lt=today)
+    elif status == 'today':
+        histories = open_histories.filter(next_action_date=today)
+    elif status == 'upcoming':
+        histories = open_histories.filter(next_action_date__gt=today)
+    elif status == 'completed':
+        histories = histories.filter(reviewed_at__isnull=False)
+    else:
+        histories = open_histories
+
+    histories = histories.order_by('next_action_date', '-created_at')[:page_size]
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'filters': {
+            'q': q,
+            'status': status,
+            'owner': owner,
+            'dateFrom': date_from.isoformat() if date_from else '',
+            'dateTo': date_to.isoformat() if date_to else '',
+            'pageSize': page_size,
+        },
+        'metrics': {
+            'openCount': open_histories.count(),
+            'overdueCount': overdue_count,
+            'dueTodayCount': due_today_count,
+            'upcomingCount': upcoming_count,
+            'completedCount': completed_count,
+        },
+        'followups': [
+            {
+                'id': history.id,
+                'customerId': history.followup_id,
+                'customer': (
+                    history.followup.customer_name or history.followup.manager or ''
+                ) if history.followup else '',
+                'company': history.followup.company.name if history.followup and history.followup.company else '',
+                'department': history.followup.department.name if history.followup and history.followup.department else '',
+                'owner': _user_display_name(history.user),
+                'actionType': history.action_type,
+                'actionLabel': history.get_action_type_display(),
+                'nextAction': (history.next_action or history.meeting_next_action or history.content or '').strip()[:180],
+                'nextActionDate': _date_or_none(history.next_action_date),
+                'createdAt': _datetime_or_none(history.created_at),
+                'reviewed': bool(history.reviewed_at),
+                'risk': 'overdue' if history.next_action_date and history.next_action_date < today else (
+                    'today' if history.next_action_date == today else 'upcoming'
+                ),
+                'href': reverse('reporting:history_detail', args=[history.id]),
+                'customerHref': reverse('reporting:followup_detail', args=[history.followup_id]) if history.followup_id else '',
+            }
+            for history in histories
         ],
     })
 
@@ -8752,6 +8873,8 @@ def _ai_workspace_action_kind_label(kind):
     return {
         'quote_followup': '견적 후속',
         'delivery_risk': '납품 리스크',
+        'service_case': '서비스 후속',
+        'calibration_due': '교정 예정',
         'email_waiting': '메일 답장 대기',
         'painpoint_validation': 'PainPoint 검증',
         'customer_followup': '고객 후속',
@@ -8967,6 +9090,116 @@ def _ai_workspace_action_payload(
         'hrefs': hrefs or {},
         'feedback': None,
     }
+
+
+def _ai_workspace_asset_followup(asset, fallback_followup=None):
+    if fallback_followup:
+        return fallback_followup
+    return getattr(asset, 'primary_followup', None)
+
+
+def _ai_workspace_asset_search_href(asset, extra_params=None):
+    from urllib.parse import urlencode
+
+    query = {}
+    if getattr(asset, 'serial_number', ''):
+        query['q'] = asset.serial_number
+    elif getattr(asset, 'asset_name', ''):
+        query['q'] = asset.asset_name
+    if extra_params:
+        query.update({key: value for key, value in extra_params.items() if value})
+    query_string = urlencode(query)
+    return f"/assets/{f'?{query_string}' if query_string else ''}"
+
+
+def _ai_workspace_service_case_action_payload(service_case, today=None):
+    today = today or timezone.localdate()
+    asset = service_case.asset
+    followup = _ai_workspace_asset_followup(asset, service_case.followup)
+    priority_score = {
+        'low': 0,
+        'normal': 5,
+        'high': 14,
+        'urgent': 24,
+    }.get(service_case.priority, 5)
+    status_score = {
+        'received': 8,
+        'in_progress': 6,
+        'waiting': 10,
+    }.get(service_case.status, 0)
+    due_date = service_case.due_date or service_case.received_date
+    score = 56 + priority_score + status_score + _ai_workspace_score_date(due_date, today)
+    evidence = [
+        _ai_workspace_evidence('장비', asset.asset_name, _ai_workspace_asset_search_href(asset, {'service': 'open'})),
+        _ai_workspace_evidence('유형', service_case.get_case_type_display()),
+        _ai_workspace_evidence('상태', service_case.get_status_display()),
+        _ai_workspace_evidence('우선순위', service_case.get_priority_display()),
+        _ai_workspace_evidence('처리 예정일', service_case.due_date.isoformat() if service_case.due_date else ''),
+        _ai_workspace_evidence('증상/요청', service_case.symptom),
+    ]
+    target = followup.customer_name or followup.manager if followup else asset.department.name
+    return _ai_workspace_action_payload(
+        action_id=f'service_case:{service_case.id}',
+        kind='service_case',
+        score=score,
+        title=f"{_ai_workspace_prompt_excerpt(target or '고객', 60)} {asset.asset_name} 서비스 후속",
+        recommended_action='서비스 상태, 처리 예정일, 필요한 수리/교환/대체 안내를 확인하고 고객에게 다음 처리 기준을 공유하세요.',
+        followup=followup,
+        due_date=due_date,
+        evidence=evidence,
+        draft_types=['email', 'note', 'questions'],
+        hrefs={
+            'customer': f'/customers/{followup.id}/' if followup else '',
+            'assets': _ai_workspace_asset_search_href(asset, {'service': 'open'}),
+            'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+        },
+    )
+
+
+def _ai_workspace_calibration_due_action_payload(record, today=None):
+    today = today or timezone.localdate()
+    asset = record.asset
+    followup = _ai_workspace_asset_followup(asset, record.followup)
+    due_date = record.next_due_date
+    result_score = {
+        'fail': 12,
+        'pending': 8,
+        'adjusted': 5,
+        'pass': 0,
+    }.get(record.result, 0)
+    score = 52 + result_score + _ai_workspace_score_date(due_date, today)
+    evidence = [
+        _ai_workspace_evidence('장비', asset.asset_name, _ai_workspace_asset_search_href(asset, {'calibration': 'due30'})),
+        _ai_workspace_evidence('모델/시리얼', ' / '.join(_ai_prompt_context(asset.model_name, asset.serial_number))),
+        _ai_workspace_evidence('최근 교정일', record.calibration_date.isoformat() if record.calibration_date else ''),
+        _ai_workspace_evidence('다음 교정 예정일', due_date.isoformat() if due_date else ''),
+        _ai_workspace_evidence('교정 결과', record.get_result_display()),
+        _ai_workspace_evidence('메모', record.notes),
+    ]
+    target = followup.customer_name or followup.manager if followup else asset.department.name
+    return _ai_workspace_action_payload(
+        action_id=f'calibration_due:{record.id}',
+        kind='calibration_due',
+        score=score,
+        title=f"{_ai_workspace_prompt_excerpt(target or '고객', 60)} {asset.asset_name} 교정 확인",
+        recommended_action='다음 교정 예정일, 성적서 필요 여부, 접수 방식, 장비 사용 일정을 확인해 교정 후속을 잡으세요.',
+        followup=followup,
+        due_date=due_date,
+        evidence=evidence,
+        draft_types=['email', 'note', 'questions'],
+        hrefs={
+            'customer': f'/customers/{followup.id}/' if followup else '',
+            'assets': _ai_workspace_asset_search_href(asset, {'calibration': 'due30'}),
+            'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+        },
+    )
+
+
+def _ai_workspace_latest_calibration_record(asset):
+    records = getattr(asset, 'ai_latest_calibrations', None)
+    if records is not None:
+        return records[0] if records else None
+    return asset.calibration_records.select_related('followup').order_by('-calibration_date', '-created_at', '-id').first()
 
 
 def _ai_workspace_email_thread_values(email):
@@ -9276,6 +9509,62 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20, depar
             },
         ))
 
+    open_service_statuses = ['received', 'in_progress', 'waiting']
+    service_case_qs = ServiceCase.objects.filter(
+        asset__created_by=user,
+        asset__status='active',
+        status__in=open_service_statuses,
+    )
+    if department_id:
+        service_case_qs = service_case_qs.filter(asset__department_id=department_id)
+    service_case_qs = service_case_qs.select_related(
+        'asset',
+        'asset__company',
+        'asset__department',
+        'asset__primary_followup',
+        'asset__primary_followup__company',
+        'asset__primary_followup__department',
+        'followup',
+        'followup__company',
+        'followup__department',
+        'assigned_to',
+    ).order_by('due_date', '-received_date', '-updated_at')[:8]
+    for service_case in service_case_qs:
+        actions.append(_ai_workspace_service_case_action_payload(service_case, today))
+
+    calibration_due_limit = today + timedelta(days=30)
+    asset_qs = CustomerAsset.objects.filter(
+        created_by=user,
+        status='active',
+    )
+    if department_id:
+        asset_qs = asset_qs.filter(department_id=department_id)
+    asset_qs = asset_qs.select_related(
+        'company',
+        'department',
+        'primary_followup',
+        'primary_followup__company',
+        'primary_followup__department',
+        'product',
+    ).prefetch_related(
+        Prefetch(
+            'calibration_records',
+            queryset=CalibrationRecord.objects.select_related('followup').order_by('-calibration_date', '-created_at', '-id'),
+            to_attr='ai_latest_calibrations',
+        )
+    ).order_by('-updated_at', '-created_at')[:80]
+    calibration_actions = 0
+    for asset in asset_qs:
+        latest_calibration = _ai_workspace_latest_calibration_record(asset)
+        if not latest_calibration or not latest_calibration.next_due_date:
+            continue
+        if latest_calibration.next_due_date > calibration_due_limit:
+            continue
+        actions.append(_ai_workspace_calibration_due_action_payload(latest_calibration, today))
+        calibration_actions += 1
+        if calibration_actions >= 8:
+            break
+
     sent_email_qs = EmailLog.objects.filter(
         user=user,
         email_type='sent',
@@ -9443,6 +9732,8 @@ def _ai_workspace_daily_brief(actions, week_start, week_end):
         'urgentActions': len([item for item in actions if item['priorityScore'] >= 85]),
         'quoteFollowups': len([item for item in actions if item['kind'] == 'quote_followup']),
         'deliveryRisks': len([item for item in actions if item['kind'] == 'delivery_risk']),
+        'serviceCases': len([item for item in actions if item['kind'] == 'service_case']),
+        'calibrationDue': len([item for item in actions if item['kind'] == 'calibration_due']),
         'emailWaiting': len([item for item in actions if item['kind'] == 'email_waiting']),
         'painpointValidations': len([item for item in actions if item['kind'] == 'painpoint_validation']),
         'customerFollowups': len([item for item in actions if item['kind'] == 'customer_followup']),
@@ -9466,7 +9757,7 @@ def _ai_workspace_daily_brief(actions, week_start, week_end):
                 'priorityLabel': item['priorityLabel'],
             }
             for item in actions
-            if item['kind'] in ('delivery_risk', 'customer_followup') or item['priorityScore'] >= 85
+            if item['kind'] in ('delivery_risk', 'customer_followup', 'service_case', 'calibration_due') or item['priorityScore'] >= 85
         ][:3],
         'opportunities': [
             {
@@ -9638,6 +9929,55 @@ def _ai_workspace_rebuild_action_by_id(user, action_id):
                 'djangoSchedule': reverse('reporting:schedule_detail', args=[schedule.id]),
             },
         )
+
+    service_case_id = _ai_workspace_action_numeric_id(action_id, 'service_case:')
+    if service_case_id:
+        service_case = ServiceCase.objects.filter(
+            id=service_case_id,
+            asset__created_by=user,
+            asset__status='active',
+            status__in=['received', 'in_progress', 'waiting'],
+        ).select_related(
+            'asset',
+            'asset__company',
+            'asset__department',
+            'asset__primary_followup',
+            'asset__primary_followup__company',
+            'asset__primary_followup__department',
+            'followup',
+            'followup__company',
+            'followup__department',
+            'assigned_to',
+        ).first()
+        if not service_case:
+            return None
+        return _ai_workspace_service_case_action_payload(service_case, today)
+
+    calibration_due_id = _ai_workspace_action_numeric_id(action_id, 'calibration_due:')
+    if calibration_due_id:
+        record = CalibrationRecord.objects.filter(
+            id=calibration_due_id,
+            asset__created_by=user,
+            asset__status='active',
+            next_due_date__isnull=False,
+            next_due_date__lte=today + timedelta(days=30),
+        ).select_related(
+            'asset',
+            'asset__company',
+            'asset__department',
+            'asset__primary_followup',
+            'asset__primary_followup__company',
+            'asset__primary_followup__department',
+            'followup',
+        ).first()
+        if not record:
+            return None
+        latest_record_id = CalibrationRecord.objects.filter(
+            asset_id=record.asset_id,
+        ).order_by('-calibration_date', '-created_at', '-id').values_list('id', flat=True).first()
+        if latest_record_id != record.id:
+            return None
+        return _ai_workspace_calibration_due_action_payload(record, today)
 
     email_id = _ai_workspace_action_numeric_id(action_id, 'email_waiting:')
     if email_id:
@@ -12588,6 +12928,21 @@ def _ai_workspace_department_question_context(department, user):
             'notes': _ai_workspace_question_text(schedule.notes, 300),
         })
 
+    today = timezone.localdate()
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=4)
+    action_queue = _ai_workspace_build_action_queue(
+        user,
+        week_start,
+        week_end,
+        limit=10,
+        department_id=department.id,
+    )
+    summary_payload = {
+        **(quote_delivery.get('summary') or {}),
+        'recommended_actions': len(action_queue),
+    }
+
     return {
         'scope': {
             'type': 'department',
@@ -12613,7 +12968,7 @@ def _ai_workspace_department_question_context(department, user):
             }
             for followup in followups[:20]
         ],
-        'summary': quote_delivery.get('summary') or {},
+        'summary': summary_payload,
         'productFacts': _ai_workspace_question_product_facts(quotes, deliveries),
         'lastDelivery': latest_delivery,
         'recentDeliveries': [
@@ -12640,6 +12995,10 @@ def _ai_workspace_department_question_context(department, user):
         'verifiedMemories': _ai_workspace_verified_memories(user, department_id=department.id, scope_type='department'),
         'recentQuestionLogs': _ai_workspace_recent_question_log_context(user, department=department, scope_type='department'),
         'recentSchedules': recent_schedules,
+        'recommendedActions': [
+            _ai_workspace_question_action_payload(action)
+            for action in action_queue[:8]
+        ],
     }
 
 
@@ -12955,8 +13314,9 @@ def _ai_workspace_question_fallback(question, context):
         keyword in normalized
         for keyword in ['주문', '물품', '품목', '제품', '구매', '매출', '스케일']
     )
-    asks_global_actions = scope_type == 'all' and (
-        _ai_workspace_question_is_today_task(question) or any(
+    asks_recommended_actions = (
+        _ai_workspace_question_is_today_task(question)
+        or any(
             keyword in normalized
             for keyword in ['찾아', '어디', '우선', '다음액션', '다음할일', '해야할', '할일', '일이있', '할만한', '챙길', '연락']
         )
@@ -13029,6 +13389,41 @@ def _ai_workspace_question_fallback(question, context):
             'evidence': [{'label': '메일 기록', 'value': '접근 가능한 연결 메일 없음'}],
             'actionItems': [],
             'confidence': 'low',
+        }
+
+    if asks_recommended_actions and recommended_actions:
+        top_action = recommended_actions[0]
+        candidate_labels = []
+        for item in recommended_actions[:5]:
+            candidate_label = ' · '.join(_ai_prompt_context(
+                item.get('company'),
+                item.get('department'),
+                item.get('customer'),
+            ))
+            if candidate_label and candidate_label not in candidate_labels:
+                candidate_labels.append(candidate_label)
+        candidate_scope_text = ', '.join(candidate_labels)
+        return {
+            'summary': (
+                f"{scope_label} 기준으로 지금 먼저 볼 후보는 {top_action.get('title') or '추천 액션'}입니다. "
+                'CRM의 미완료 견적, 납품, 서비스, 교정, 메일 답장 대기, 후속조치 신호를 함께 계산한 결과입니다.'
+            ),
+            'bullets': [
+                f"추천 후보 {len(recommended_actions)}건",
+                f"후보 범위: {candidate_scope_text}" if candidate_scope_text else '후보 범위: CRM 추천 액션',
+                '서비스/A/S와 교정 예정도 일반 영업 후속과 함께 우선순위에 반영합니다.',
+                '실행 전 고객에게 보낼 자료, 처리 예정일, 성적서 필요 여부처럼 빠진 조건만 확인하면 됩니다.',
+            ],
+            'evidence': _ai_workspace_question_evidence_payload(
+                [
+                    {'label': item.get('title') or item.get('kind'), 'value': item.get('recommendedAction') or ''}
+                    for item in recommended_actions[:5]
+                ],
+                limit=5,
+                value_limit=520,
+            ),
+            'actionItems': _ai_workspace_question_action_items_from_candidates(recommended_actions, limit=5),
+            'confidence': 'medium',
         }
 
     if asks_requote_sample_feedback:
@@ -13254,7 +13649,7 @@ def _ai_workspace_question_fallback(question, context):
             'confidence': 'medium' if evidence else 'low',
         }
 
-    if asks_global_actions:
+    if asks_recommended_actions:
         candidates = recommended_actions or open_followups
         if candidates:
             top = candidates[:3]
@@ -13652,7 +14047,7 @@ def _ai_workspace_generate_department_question_answer(
                 '예를 들어 productFacts에 튜브 근거가 없으면 "튜브(P4345N00)"처럼 쓰지 말고 productFacts.label 또는 "P4345N00 품목"처럼 쓴다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
-                '질문이 전체 부서 범위라면 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
+                '질문이 실행할 작업/다음 액션을 묻는다면 범위가 전체 부서든 선택 부서든 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
                 '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
                 'webSearchAllowed가 true이고 최신 외부 정보가 필요한 질문에서만 웹 검색 결과를 보조 근거로 사용한다. 내부 CRM 고객명/영업내용을 웹 검색어로 노출하지 않는다.',
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',

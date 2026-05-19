@@ -19,6 +19,7 @@ from .models import (
     Department, Company, FollowUp, Schedule, History, 
     DeliveryItem, FunnelTarget, Quote
 )
+from .readonly_api import readonly_bearer_or_login_required
 
 logger = logging.getLogger(__name__)
 
@@ -1570,7 +1571,7 @@ def _pipeline_ai_department_payload(request, followup, user_profile):
     }
 
 
-@login_required
+@readonly_bearer_or_login_required
 @require_GET
 @ensure_csrf_cookie
 def pipeline_command_center_api(request):

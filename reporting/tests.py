@@ -10181,6 +10181,151 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(all(item['evidence'] for item in payload['actionQueue']))
         self.assertTrue(any('email' in item['draftTypes'] for item in payload['actionQueue']))
 
+    def test_ai_workspace_action_queue_includes_asset_service_and_calibration_signals(self):
+        followup, department = self._create_customer(self.user, '장비액션')
+        self._create_department_analysis(self.user, department)
+        today = timezone.localdate()
+        asset = CustomerAsset.objects.create(
+            company=followup.company,
+            department=department,
+            primary_followup=followup,
+            asset_name='Pipette Service Set',
+            model_name='PIP-1000',
+            serial_number='SN-AI-1000',
+            status='active',
+            created_by=self.user,
+        )
+        service_case = ServiceCase.objects.create(
+            asset=asset,
+            followup=followup,
+            case_type='repair',
+            status='waiting',
+            priority='urgent',
+            received_date=today - timedelta(days=2),
+            due_date=today - timedelta(days=1),
+            symptom='피펫 누액 확인 필요',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        calibration = CalibrationRecord.objects.create(
+            asset=asset,
+            followup=followup,
+            calibration_date=today - timedelta(days=360),
+            next_due_date=today + timedelta(days=7),
+            result='pass',
+            notes='정기 교정 예정',
+            created_by=self.user,
+            performed_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        action_ids = {item['id'] for item in payload['actionQueue']}
+        self.assertIn(f'service_case:{service_case.id}', action_ids)
+        self.assertIn(f'calibration_due:{calibration.id}', action_ids)
+        self.assertEqual(payload['dailyBrief']['counts']['serviceCases'], 1)
+        self.assertEqual(payload['dailyBrief']['counts']['calibrationDue'], 1)
+        service_action = next(item for item in payload['actionQueue'] if item['id'] == f'service_case:{service_case.id}')
+        calibration_action = next(item for item in payload['actionQueue'] if item['id'] == f'calibration_due:{calibration.id}')
+        self.assertEqual(service_action['kindLabel'], '서비스 후속')
+        self.assertEqual(calibration_action['kindLabel'], '교정 예정')
+        self.assertIn('/assets/', service_action['hrefs']['assets'])
+        self.assertTrue(any(item['label'] == '장비' for item in service_action['evidence']))
+
+    def test_ai_workspace_asset_actions_respect_department_scope(self):
+        selected_followup, selected_department = self._create_customer(self.user, '선택장비')
+        other_followup, other_department = self._create_customer(self.user, '다른장비')
+        today = timezone.localdate()
+        selected_asset = CustomerAsset.objects.create(
+            company=selected_followup.company,
+            department=selected_department,
+            primary_followup=selected_followup,
+            asset_name='선택 부서 장비',
+            status='active',
+            created_by=self.user,
+        )
+        other_asset = CustomerAsset.objects.create(
+            company=other_followup.company,
+            department=other_department,
+            primary_followup=other_followup,
+            asset_name='다른 부서 장비',
+            status='active',
+            created_by=self.user,
+        )
+        selected_case = ServiceCase.objects.create(
+            asset=selected_asset,
+            followup=selected_followup,
+            status='received',
+            priority='high',
+            received_date=today,
+            due_date=today,
+            symptom='선택 부서 서비스',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        other_case = ServiceCase.objects.create(
+            asset=other_asset,
+            followup=other_followup,
+            status='received',
+            priority='high',
+            received_date=today,
+            due_date=today,
+            symptom='다른 부서 서비스',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': selected_department.id})
+
+        self.assertEqual(response.status_code, 200)
+        action_ids = {item['id'] for item in response.json()['actionQueue']}
+        self.assertIn(f'service_case:{selected_case.id}', action_ids)
+        self.assertNotIn(f'service_case:{other_case.id}', action_ids)
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
+    def test_ai_workspace_action_draft_api_supports_asset_actions(self, _mock_client):
+        followup, department = self._create_customer(self.user, '장비초안')
+        today = timezone.localdate()
+        asset = CustomerAsset.objects.create(
+            company=followup.company,
+            department=department,
+            primary_followup=followup,
+            asset_name='초안 장비',
+            serial_number='DRAFT-ASSET-1',
+            status='active',
+            created_by=self.user,
+        )
+        service_case = ServiceCase.objects.create(
+            asset=asset,
+            followup=followup,
+            case_type='service',
+            status='in_progress',
+            priority='normal',
+            received_date=today,
+            due_date=today + timedelta(days=1),
+            symptom='초안 생성용 서비스 케이스',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_action_draft_api'),
+            data=json.dumps({'actionId': f'service_case:{service_case.id}', 'draftType': 'email'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['action']['kind'], 'service_case')
+        self.assertEqual(payload['draftType'], 'email')
+        self.assertIn('초안 장비', json.dumps(payload['evidence'], ensure_ascii=False))
+
     def test_ai_workspace_action_queue_excludes_completed_sold_quotes(self):
         from datetime import time, timedelta
         from decimal import Decimal

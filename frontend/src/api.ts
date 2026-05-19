@@ -2824,6 +2824,8 @@ export type AIWorkspaceDraftType = 'email' | 'note' | 'questions' | 'weekly_repo
 export type AIWorkspaceActionKind =
   | 'quote_followup'
   | 'delivery_risk'
+  | 'service_case'
+  | 'calibration_due'
   | 'email_waiting'
   | 'painpoint_validation'
   | 'customer_followup'
@@ -2915,6 +2917,7 @@ export type AIWorkspaceAction = {
     schedule?: string;
     note?: string;
     report?: string;
+    assets?: string;
     ai?: string;
     aiHub?: string;
     mailboxThread?: string;
@@ -2936,6 +2939,8 @@ export type AIWorkspaceDailyBrief = {
     urgentActions: number;
     quoteFollowups: number;
     deliveryRisks: number;
+    serviceCases: number;
+    calibrationDue: number;
     emailWaiting: number;
     painpointValidations: number;
     customerFollowups: number;
@@ -4956,6 +4961,8 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
       urgentActions: 0,
       quoteFollowups: 0,
       deliveryRisks: 0,
+      serviceCases: 0,
+      calibrationDue: 0,
       emailWaiting: 0,
       painpointValidations: 0,
       customerFollowups: 0,

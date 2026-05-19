@@ -15717,6 +15717,8 @@ function AIWorkspaceDailyBriefPanel({ data }: { data: AIWorkspaceData }) {
     { label: '추천 액션', value: `${formatNumber(counts.totalActions)}건`, icon: Sparkles },
     { label: '긴급', value: `${formatNumber(counts.urgentActions)}건`, icon: AlertTriangle },
     { label: '견적 후속', value: `${formatNumber(counts.quoteFollowups)}건`, icon: CircleDollarSign },
+    { label: '서비스', value: `${formatNumber(counts.serviceCases || 0)}건`, icon: Wrench },
+    { label: '교정', value: `${formatNumber(counts.calibrationDue || 0)}건`, icon: CalendarDays },
     { label: '고객 후속', value: `${formatNumber(counts.customerFollowups)}건`, icon: Clock },
   ];
 
@@ -16634,6 +16636,7 @@ function AIWorkspaceActionQueue({
                 );
               })}
               {action.hrefs.customer ? <a href={action.hrefs.customer}>고객 보기</a> : null}
+              {action.hrefs.assets ? <a href={action.hrefs.assets}>장비 보기</a> : null}
               {action.hrefs.schedule ? <a href={action.hrefs.schedule}>일정 보기</a> : null}
               {action.hrefs.note ? <a href={action.hrefs.note}>노트 보기</a> : null}
               {action.hrefs.mailboxThread ? <a href={action.hrefs.mailboxThread}>메일 보기</a> : null}

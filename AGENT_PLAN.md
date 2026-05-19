@@ -1,5 +1,47 @@
 # AGENT_PLAN.md
 
+## 2026-05-19 AI asset/service/calibration action integration plan
+
+**Background**:
+
+- User manually verified the latest AI answer readability fix and asked to continue the previous CRM/global feature work.
+- Customer asset/service/calibration v1 and the `/assets/` directory already exist.
+- The known remaining gap is that equipment/service/calibration signals are visible in React, but not yet surfaced as AI Workspace execution recommendations.
+
+**DB change required**: No.
+
+- Reuse existing `CustomerAsset`, `ServiceCase`, `CalibrationRecord`, and `AIWorkspaceActionFeedback`.
+- Do not add migrations or change existing data shape.
+
+**Implementation scope**:
+
+- Backend:
+  - Add open/overdue service cases to AI Workspace `actionQueue`.
+  - Add due/overdue calibration records to AI Workspace `actionQueue`.
+  - Support rebuilding these action ids for draft generation and feedback submission.
+  - Include scoped asset/service/calibration actions in department and all-department AI question context.
+  - Keep existing user ownership, department scope, action feedback hiding, and auth/AI permission rules.
+- Frontend:
+  - Add action kind labels/counts/types for service and calibration actions.
+  - Add asset links in action cards where available.
+  - Keep `/assets/` creation/editing behavior unchanged.
+
+**Validation plan**:
+
+- Add focused tests proving:
+  - AI Workspace summary includes service and calibration actions.
+  - Department-scoped summary filters these actions to the selected department.
+  - Draft rebuild works for a service/calibration action after it falls out of the current top queue.
+- Run:
+  - `python -m py_compile reporting\views.py reporting\tests.py`
+  - `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1`
+  - `python manage.py check`
+  - `python manage.py makemigrations --check --dry-run`
+  - `cd frontend; npx tsc --noEmit --pretty false`
+  - `cd frontend; npm run build`
+  - `cd frontend; node --check server.mjs`
+  - `git diff --check`
+
 ## 2026-05-19 AI email waiting same-followup reply rule plan
 
 **Background**:
