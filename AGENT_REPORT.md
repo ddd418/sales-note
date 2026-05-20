@@ -1,8 +1,6 @@
 # AGENT_REPORT.md
 
-## 2026-05-20 — Customer Asset Directory Direct Create UX (local-only)
-
-**상태**: 구현/로컬 검증 완료, Railway 접근 불가로 배포 보류
+## 2026-05-20 — Customer Asset Directory Direct Create UX
 
 ### 요약
 
@@ -10,6 +8,7 @@
 - `/assets/`에서 고객/FollowUp을 검색 선택하고 장비명, 상태, 모델, 시리얼, 구매일, 보증일, 설치 위치, 메모를 입력해 바로 `CustomerAsset`을 생성할 수 있습니다.
 - 저장은 기존 고객 상세의 `customer_asset_save_api`를 재사용하므로 회사/부서/주 담당 고객 연결과 manager 읽기 전용 권한 규칙이 그대로 유지됩니다.
 - 저장 성공 후 필터를 초기화하고 `asset=<id>`로 새 장비 상세 드로어를 자동 선택합니다.
+- Railway `web`/`sales-note-frontend` 운영 배포와 anonymous production smoke를 완료했습니다.
 
 ### 변경된 파일
 
@@ -21,6 +20,9 @@
 - `frontend/src/api.ts`
 - `frontend/src/App.tsx`
 - `frontend/src/styles.css`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `frontend/railway.toml`
 
 ### CRM 개선
 
@@ -73,31 +75,59 @@ Local Playwright smoke
 → Confirmed URL changed to /assets/?asset=3, metrics updated to 1, asset row rendered, and detail drawer selected the new asset.
 → Browser console had only the existing favicon 404.
 → Temporary smoke data and local servers were cleaned up.
+
+git commit -m "feat: add asset directory direct create"
+→ d0dd3c6
+
+git push
+→ main updated
+
+npm install --package-lock-only
+→ OK
+
+git commit -m "fix: pin frontend railway node runtime"
+→ b0c82f8
+
+git commit -m "fix: configure frontend railway start command"
+→ df84b41
+
+Railway deploy/poll
+→ web 50d7f9ce-dad6-4327-92ac-6d9d84221ef5 SUCCESS
+→ sales-note-frontend b1457f47-b9e8-4c53-a848-4d4d1f77eb8f SUCCESS
+
+Production smoke
+→ https://sales-note-frontend-production.up.railway.app/assets/ 200
+→ latest JS bundle assets/index-DkKvOtE2.js 200, create marker found
+→ /reporting/api/customer-assets/ anonymous request 401 login_required
+→ /reporting/login/ 200
 ```
 
 ### 알려진 제한
 
 - 직접 등록 고객 목록은 `/reporting/api/customer-assets/` 응답에 포함된 최근/접근 가능 고객 160건 기준입니다. 고객 수가 더 커지면 remote autocomplete 방식으로 확장하는 것이 좋습니다.
-- 이번 변경은 로컬 검증만 수행했습니다. Railway가 복구되면 배포와 운영 smoke가 필요합니다.
+- Railway CLI local upload and some deploy mutations initially returned 504/operation timeout during recovery. Final deployment used GitHub source deployments and succeeded.
+- Frontend service was changed from CLI-upload-only to GitHub source `ddd418/sales-note` with `/frontend` root and `npm run start`.
 
 ### 운영 배포 상태
 
-- Railway가 현재 접속 불가라는 사용자 지시에 따라 배포하지 않았습니다.
-- Commit/push도 아직 수행하지 않았습니다. 로컬 검증 완료 상태입니다.
+- 배포 완료.
+- 최종 검증 런타임 커밋: `df84b41 fix: configure frontend railway start command`
+- `web`: `50d7f9ce-dad6-4327-92ac-6d9d84221ef5`, SUCCESS
+- `sales-note-frontend`: `b1457f47-b9e8-4c53-a848-4d4d1f77eb8f`, SUCCESS
+- DB migration: 없음.
 
-### 수동 로컬 테스트 절차
+### 수동 운영 테스트 절차
 
-1. `python manage.py runserver 127.0.0.1:8000`을 실행합니다.
-2. `cd frontend; npm run dev -- --host 127.0.0.1 --port 5173`을 실행합니다.
-3. 로컬 로그인 후 `http://127.0.0.1:5173/assets/`에 접속합니다.
-4. `장비 등록`을 누르고 고객을 선택합니다.
-5. 장비명/모델/시리얼/설치 위치를 입력하고 저장합니다.
-6. URL이 `asset=<id>`를 포함하고 새 장비 행과 오른쪽 상세 드로어가 열리는지 확인합니다.
-7. manager 계정에서는 `장비 등록` 버튼이 보이지 않는지 확인합니다.
+1. `https://sales-note-frontend-production.up.railway.app/assets/`에 접속하고 로그인합니다.
+2. `장비 등록` 버튼을 누르고 고객/FollowUp을 선택합니다.
+3. 장비명/모델/시리얼/설치 위치를 입력하고 저장합니다.
+4. URL이 `asset=<id>`를 포함하고 새 장비 행과 오른쪽 상세 드로어가 열리는지 확인합니다.
+5. 새 장비에서 장비 수정, A/S 케이스 등록/수정, 교정 기록 등록/수정이 기존처럼 동작하는지 확인합니다.
+6. manager 계정에서는 `장비 등록` 버튼이 보이지 않고 수정 액션이 차단되는지 확인합니다.
 
 ### 권장 다음 작업
 
-Railway가 복구되면 이번 로컬 변경을 커밋/푸시하고 `web`/`sales-note-frontend`에 배포한 뒤 `/assets/` 직접 등록과 기존 수정/파일 다운로드를 운영 로그인 세션에서 수동 검수합니다.
+사용자 운영 수동검수 통과 후 `/assets/` 고객 선택을 remote autocomplete로 확장하거나, 장비 등록 직후 A/S 접수까지 이어지는 빠른 작업 흐름을 보강합니다.
 
 ## 2026-05-19 — Customer Asset Directory Operational V2
 

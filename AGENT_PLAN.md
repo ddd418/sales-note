@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## 2026-05-20 Customer asset direct create deployment recovery plan
+
+**Background**:
+
+- Railway recovered enough to deploy, but initial CLI local uploads to `backboard` timed out with 504/operation timeout.
+- The backend service already had GitHub source `ddd418/sales-note`; the frontend service was previously CLI-upload based and needed GitHub source/root/start-command separation for reliable deploys.
+- The runtime feature is `/assets/` direct `장비 등록` with existing Django auth/API preservation.
+
+**DB change required**: No.
+
+**Deployment scope**:
+
+- Push runtime feature commit to `main`.
+- Deploy `web` from GitHub commit containing the backend API changes.
+- Connect `sales-note-frontend` to `ddd418/sales-note` with `/frontend` root directory.
+- Add frontend Node/runtime deploy config so Railway builds with supported Node and starts `server.mjs` via `npm run start`.
+- Verify production unauthenticated smoke:
+  - `/assets/` static shell returns 200.
+  - JS bundle contains the create flow marker.
+  - protected customer-assets API returns 401 for anonymous users.
+  - login route returns 200 through the frontend proxy.
+
+**Validation plan**:
+
+- Re-run frontend build after deploy config changes.
+- Poll Railway deployment statuses for `web` and `sales-note-frontend`.
+- Run production smoke against `https://sales-note-frontend-production.up.railway.app`.
+- Update `AGENT_REPORT.md` and `NEXT_TASK.md` with deployment status and manual server test process.
+
 ## 2026-05-20 Customer asset directory direct create local plan
 
 **Background**:
