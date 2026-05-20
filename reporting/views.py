@@ -18490,7 +18490,6 @@ def tax_invoice_update_status_api(request, request_id):
 # [재현] 대시보드 통합 검색 API — Phase 검색 기능
 # ─────────────────────────────────────────────────────────────────────────────
 
-@login_required
 @require_http_methods(["GET"])
 def dashboard_search_api(request):
     """키워드로 연구실(Department) 단위 통합 검색.
@@ -18504,6 +18503,10 @@ def dashboard_search_api(request):
     Returns:
         JSON { success, query, result_count, departments: [ ... ] }
     """
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
     q = request.GET.get('q', '').strip()
     if len(q) < 2:
         return JsonResponse({'error': '검색어를 2자 이상 입력하세요.'}, status=400)
@@ -28089,9 +28092,14 @@ def product_delete(request, product_id):
     return redirect('reporting:product_list')
 
 
-@login_required
+@never_cache
+@require_http_methods(["GET"])
 def products_management_api(request):
     """React 제품관리 목록 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
     products = _product_scope_queryset(request, include_inactive=True)
     search_query = request.GET.get('q') or request.GET.get('search') or ''
     status = request.GET.get('status') or ''
@@ -28452,9 +28460,14 @@ def products_excel_export_api(request):
     return response
 
 
-@login_required
+@never_cache
+@require_http_methods(["GET"])
 def product_api_list(request):
     """제품 목록 API (AJAX용) - 견적/납품 작성 시 제품 선택"""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
     search = request.GET.get('search', '')
     products = get_accessible_products(request)
     

@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import time, timedelta
 from urllib.parse import urljoin
 from unittest.mock import patch
@@ -238,6 +239,65 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
         self.assertEqual(items_by_id['profile']['label'], '프로필')
+
+
+class SalesNoteReadonlyBearerApiTests(TestCase):
+    """Readonly MCP bearer token access should cover safe GET API surfaces only."""
+
+    token = 'readonly-test-token'
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='Readonly MCP 회사')
+        self.readonly_user = make_user(
+            'readonly-mcp-admin',
+            role='admin',
+            company=self.company,
+            can_use_ai=True,
+        )
+
+    def _auth_headers(self):
+        return {'HTTP_AUTHORIZATION': f'Bearer {self.token}'}
+
+    @patch.dict(os.environ, {
+        'SALES_NOTE_READONLY_TOKEN': token,
+        'SALES_NOTE_READONLY_USERNAME': 'readonly-mcp-admin',
+    })
+    def test_readonly_bearer_can_read_expanded_get_apis(self):
+        endpoints = [
+            reverse('reporting:navigation_api'),
+            reverse('reporting:dashboard_summary_api'),
+            reverse('reporting:customers_summary_api'),
+            reverse('reporting:notes_summary_api'),
+            reverse('reporting:schedules_summary_api'),
+            reverse('reporting:customer_assets_summary_api'),
+            reverse('reporting:ai_workspace_summary_api'),
+            reverse('reporting:prepayment_api_list'),
+            reverse('reporting:product_api_list'),
+            reverse('reporting:products_management_api'),
+            reverse('reporting:document_templates_api'),
+            reverse('reporting:weekly_reports_api'),
+            reverse('reporting:tasks_api'),
+            reverse('reporting:business_card_api_list'),
+            reverse('reporting:mailbox_api_list'),
+        ]
+
+        for endpoint in endpoints:
+            with self.subTest(endpoint=endpoint):
+                response = self.client.get(endpoint, **self._auth_headers())
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                self.assertTrue(payload.get('success', True), payload)
+
+    @patch.dict(os.environ, {
+        'SALES_NOTE_READONLY_TOKEN': token,
+        'SALES_NOTE_READONLY_USERNAME': 'readonly-mcp-admin',
+    })
+    def test_readonly_bearer_does_not_allow_writes(self):
+        response = self.client.post(reverse('reporting:notes_create_api'), **self._auth_headers())
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
 
 
 class ReactReportsProfileBusinessCardApiTests(TestCase):
@@ -14400,7 +14460,7 @@ class DashboardSearchAPITests(TestCase):
         """비로그인 시 로그인 페이지로 리다이렉트."""
         self.client.logout()
         r = self.client.get(self._url(), {'q': 'PCR'})
-        self.assertIn(r.status_code, [302, 403])
+        self.assertIn(r.status_code, [302, 401, 403])
 
     def test_short_query_returns_400(self):
         """1자 검색어는 400 에러를 반환."""

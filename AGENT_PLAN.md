@@ -6987,3 +6987,39 @@ python pre_deployment_check.py
 - `cd frontend && node --check server.mjs`
 - Local Playwright smoke for history click/detail route
 - `git diff --check`
+
+## 2026-05-20 Sales Note MCP full read-only access plan
+
+**Background**:
+
+- Codex currently sees only five `salesnote-readonly` MCP tools: dashboard, reports, pipeline, followups, and customer summary.
+- The MCP server is a local fixed read-only bridge at `C:\Users\AnJaehyun\Documents\Codex\2026-05-19\crm\salesnote-readonly-mcp`.
+- Django already has a `SALES_NOTE_READONLY_TOKEN` bearer-token path, but its allowlist only covers a small API surface.
+
+**DB change required**: No.
+
+- This task only changes read-only API authentication allowlists and local MCP endpoint exposure.
+- No model fields or migrations are needed.
+
+**Implementation scope**:
+
+- Backend:
+  - Expand the read-only bearer allowlist to cover safe GET JSON APIs for navigation, customers, customer detail, assets, notes, note detail, schedules, calendar, schedule detail, AI workspace, prepayments, documents, weekly reports, products, tasks, business cards, and mailbox list.
+  - Keep write/upload/export/sync/delete/mail-send endpoints unavailable to the readonly token.
+  - Preserve normal session login behavior for existing React/Django users.
+- Local MCP server:
+  - Add a `salesnote_list_endpoints` tool to show all available read-only Sales Note resources.
+  - Add a `salesnote_read_endpoint` tool that can fetch a fixed allowlisted endpoint by key with optional id/query params.
+  - Keep existing specific tools working for backward compatibility.
+  - Keep redaction and response-size limits enabled by default.
+- Codex MCP config:
+  - Register the two new MCP tools so Codex can discover them after restart.
+
+**Validation plan**:
+
+- `node .\scripts\smoke-test.mjs` in the MCP server directory.
+- `python -m py_compile reporting\readonly_api.py reporting\views.py reporting\gmail_views.py todos\views.py reporting\tests.py`
+- Focused Django tests for readonly bearer access and POST rejection.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

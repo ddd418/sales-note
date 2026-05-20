@@ -21,6 +21,7 @@ from .models import (
     BusinessCard, Schedule, FollowUp, DocumentGenerationLog,
 )
 from .gmail_utils import GmailService, get_authorization_url, exchange_code_for_token
+from .readonly_api import api_login_required_or_readonly_response
 
 
 # ============================================
@@ -2145,10 +2146,15 @@ def _json_method_error():
     return JsonResponse({'success': False, 'error': 'POST 요청만 허용됩니다.'}, status=405)
 
 
-@login_required
 def mailbox_api_list(request):
     """React 메일함 목록 API"""
     from django.db.models import Q
+
+    auth_response = api_login_required_or_readonly_response(request)
+    if auth_response:
+        return auth_response
+    if request.method != 'GET':
+        return JsonResponse({'success': False, 'error': 'GET 요청만 허용됩니다.'}, status=405)
 
     mailbox_type = request.GET.get('box') or 'inbox'
     if mailbox_type not in {'inbox', 'sent', 'scheduled', 'starred', 'archived', 'trash'}:
@@ -3030,14 +3036,7 @@ def _business_card_bool(value):
 
 
 def _gmail_api_login_required_response(request):
-    if request.user.is_authenticated:
-        return None
-    return JsonResponse({
-        'success': False,
-        'error': 'login_required',
-        'message': '로그인이 필요합니다.',
-        'loginUrl': '/reporting/login/',
-    }, status=401)
+    return api_login_required_or_readonly_response(request)
 
 
 def _business_card_payload(card, request=None, include_signature=True):

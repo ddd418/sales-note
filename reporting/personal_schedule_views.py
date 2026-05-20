@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from .models import PersonalSchedule, History, UserProfile
+from .readonly_api import api_login_required_or_readonly_response
 from datetime import date, time
 import json
 import logging
@@ -19,14 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _api_login_required_response(request):
-    if request.user.is_authenticated:
-        return None
-    return JsonResponse({
-        'success': False,
-        'error': 'login_required',
-        'message': '로그인이 필요합니다.',
-        'loginUrl': reverse('reporting:login'),
-    }, status=401)
+    return api_login_required_or_readonly_response(request)
 
 
 def _user_display_name(user):

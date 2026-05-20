@@ -23269,3 +23269,100 @@ git diff --check
 1. `CRM_BENCHMARK_GAP_ANALYSIS.md`를 열어 12개 CRM 축별 평가를 확인합니다.
 2. 우선순위가 P0로 표시된 장비/교정/A/S 축이 실제 업무 우선순위와 맞는지 검토합니다.
 3. 다음 구현으로 진행할 경우 장비를 고객 기준으로 둘지, 부서/연구실 기준으로 둘지 결정합니다.
+
+---
+
+## 2026-05-20 Sales Note MCP full read-only access
+
+### 1. Summary
+
+- Codex `salesnote-readonly` MCP access was expanded from five fixed tools to a broader fixed read-only endpoint catalog.
+- Django readonly bearer access now covers safe GET JSON APIs across navigation, dashboard/search, customers, notes, schedules, assets, pipeline, AI workspace, prepayments, products, documents, weekly reports, tasks, business cards, and mailbox list.
+- Write, upload, export, sync, mail-send, attachment-download, and delete endpoints remain unavailable to the readonly token.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/readonly_api.py`
+- `reporting/views.py`
+- `reporting/gmail_views.py`
+- `reporting/personal_schedule_views.py`
+- `todos/views.py`
+- `reporting/tests.py`
+- Local Codex MCP files outside this repository:
+  - `C:\Users\AnJaehyun\Documents\Codex\2026-05-19\crm\salesnote-readonly-mcp\src\server.mjs`
+  - `C:\Users\AnJaehyun\Documents\Codex\2026-05-19\crm\salesnote-readonly-mcp\scripts\smoke-test.mjs`
+  - `C:\Users\AnJaehyun\Documents\Codex\2026-05-19\crm\salesnote-readonly-mcp\README.md`
+  - `C:\Users\AnJaehyun\.codex\config.toml`
+
+### 3. CRM Improvements
+
+- MCP can now enumerate available Sales Note read-only resources with `salesnote_list_endpoints`.
+- MCP can fetch any fixed allowed resource with `salesnote_read_endpoint`.
+- Existing specific tools such as `salesnote_get_dashboard` and `salesnote_get_customers_summary` remain backward compatible.
+
+### 4. Existing Functionality Preserved
+
+- `/reporting/*` routes were preserved.
+- Existing session-authenticated React and Django API behavior remains available.
+- Anonymous users still receive login-required JSON for affected APIs.
+- No model or migration changes were made.
+
+### 5. Commands Run
+
+```text
+node .\scripts\smoke-test.mjs
+→ Smoke test passed.
+
+node --check .\src\server.mjs
+→ OK
+
+python -m py_compile reporting\readonly_api.py reporting\views.py reporting\gmail_views.py reporting\personal_schedule_views.py todos\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SalesNoteReadonlyBearerApiTests --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.DashboardSearchAPITests.test_requires_login reporting.tests.ReactReportsProfileBusinessCardApiTests.test_business_card_api_requires_login --verbosity=1
+→ Failed because the second test name was mistyped; no application failure.
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_business_card_api_requires_login_json --verbosity=1
+→ Ran 1 test, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- Codex must be restarted before the newly registered MCP tools appear in tool discovery.
+- Local MCP server/config changes live under the user's Codex configuration directory, not in the project Git repository.
+- Mailbox thread reads are intentionally not exposed because the current thread endpoint marks unread mail as read.
+
+### 7. Production Deployment Status
+
+- Pending commit, push, and Railway `web` deployment.
+- Frontend deployment is not required because this task does not change React runtime files.
+
+### 8. Recommended Next Task
+
+After production verification, use `salesnote_list_endpoints` first, then test `salesnote_read_endpoint` against `navigation`, `customers`, `notes`, `schedules`, and one detail endpoint with a known ID.
+
+### 9. Manual Server Test Process
+
+1. Restart Codex so MCP tool registration is refreshed.
+2. In Codex, search for `salesnote_list_endpoints` and run it.
+3. Confirm endpoint keys such as `customers`, `notes`, `schedules`, `products_manage`, `tasks`, and `mailbox` are listed.
+4. Run `salesnote_read_endpoint` with `endpoint = navigation`.
+5. Run `salesnote_read_endpoint` with `endpoint = customers` and `query = {"q": "검색어"}`.
+6. Run a detail endpoint such as `customer_detail` with a known `id`.
+7. Confirm write endpoints such as note creation are not available through MCP.

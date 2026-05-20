@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST, require_http_methods
 
 from .models import Todo, TodoAttachment, TodoLog, TodoCategory
+from reporting.readonly_api import api_login_required_or_readonly_response
 
 
 # ============================================
@@ -1323,14 +1324,7 @@ TASK_ACTIVE_STATUSES = [Todo.Status.PENDING, Todo.Status.ONGOING, Todo.Status.ON
 
 
 def _tasks_api_login_required_response(request):
-    if request.user.is_authenticated:
-        return None
-    return JsonResponse({
-        'success': False,
-        'error': 'login_required',
-        'message': '로그인이 필요합니다.',
-        'loginUrl': reverse('reporting:login'),
-    }, status=401)
+    return api_login_required_or_readonly_response(request)
 
 
 def _tasks_user_profile(user):
