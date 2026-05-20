@@ -3655,6 +3655,21 @@ def _customer_asset_directory_scope_label(user_profile, request_user, selected_u
     return '전체'
 
 
+def _customer_asset_create_customer_payload(followup):
+    return {
+        'id': followup.id,
+        'customerName': followup.customer_name or followup.manager or '고객명 미정',
+        'companyName': followup.company.name if followup.company else '',
+        'departmentName': followup.department.name if followup.department else '',
+        'manager': followup.manager or '',
+        'email': followup.email or '',
+        'ownerName': _user_display_name(followup.user),
+        'priorityLabel': followup.get_priority_display(),
+        'href': f'/customers/{followup.id}/',
+        'assetCreateUrl': reverse('reporting:customer_asset_create_api', args=[followup.id]),
+    }
+
+
 def _customer_asset_work_queue_payload(scope_users, today):
     due_limit = today + timedelta(days=30)
     open_service_statuses = ['received', 'in_progress', 'waiting']
@@ -3764,6 +3779,7 @@ def customer_assets_summary_api(request):
     today = timezone.localdate()
     due_limit = today + timedelta(days=30)
     open_service_statuses = ['received', 'in_progress', 'waiting']
+    can_manage_assets = not user_profile.is_manager()
 
     q = request.GET.get('q', '').strip()
     status = request.GET.get('status', '').strip()
@@ -3872,11 +3888,22 @@ def customer_assets_summary_api(request):
         calibration_records__next_due_date__lt=today,
     ).distinct().count()
     no_calibration_assets = base_assets.filter(calibration_records__isnull=True).count()
+    create_followups = []
+    if can_manage_assets:
+        create_followups = list(
+            FollowUp.objects.filter(user__in=scope_users).select_related(
+                'user',
+                'company',
+                'department',
+            ).order_by('-updated_at', '-created_at', '-id')[:160]
+        )
 
     return JsonResponse({
         'success': True,
         'source': 'django',
         'generatedAt': timezone.now().isoformat(),
+        'canManage': can_manage_assets,
+        'message': '' if can_manage_assets else '장비/A/S/교정 정보는 읽기 전용입니다.',
         'scope': {
             'label': _customer_asset_directory_scope_label(user_profile, request.user, selected_user),
             'userCount': scope_users.count(),
@@ -3922,6 +3949,14 @@ def customer_assets_summary_api(request):
         'links': {
             'assets': '/assets/',
             'customers': '/customers/',
+        },
+        'create': {
+            'canCreate': can_manage_assets,
+            'message': '' if can_manage_assets else 'Manager는 장비를 등록할 수 없습니다.',
+            'customers': [
+                _customer_asset_create_customer_payload(followup)
+                for followup in create_followups
+            ],
         },
         'workQueue': _customer_asset_work_queue_payload(scope_users, today),
         'assets': [

@@ -2825,6 +2825,36 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()['error'], 'login_required')
 
+    def test_customer_assets_summary_api_returns_direct_create_options(self):
+        own = self._create_customer(self.user, '장비직접등록')
+        coworker = self._create_customer(self.coworker, '동료직접등록')
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_assets_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['canManage'])
+        self.assertTrue(payload['create']['canCreate'])
+        customer_ids = {item['id'] for item in payload['create']['customers']}
+        self.assertIn(own.id, customer_ids)
+        self.assertNotIn(coworker.id, customer_ids)
+        create_option = next(item for item in payload['create']['customers'] if item['id'] == own.id)
+        self.assertEqual(create_option['assetCreateUrl'], reverse('reporting:customer_asset_create_api', args=[own.id]))
+        self.assertEqual(create_option['href'], f'/customers/{own.id}/')
+
+        asset_response = self.client.post(create_option['assetCreateUrl'], {
+            'asset_name': '디렉터리 직접 등록 장비',
+            'status': 'active',
+        })
+
+        self.assertEqual(asset_response.status_code, 200)
+        asset = CustomerAsset.objects.get(id=asset_response.json()['asset']['id'])
+        self.assertEqual(asset.company, own.company)
+        self.assertEqual(asset.department, own.department)
+        self.assertEqual(asset.primary_followup, own)
+        self.assertEqual(asset.created_by, self.user)
+
     def test_customer_assets_summary_api_uses_manager_scope_and_metrics(self):
         from datetime import timedelta
         from django.utils import timezone
@@ -2880,6 +2910,9 @@ class CustomersSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertFalse(payload['canManage'])
+        self.assertFalse(payload['create']['canCreate'])
+        self.assertEqual(payload['create']['customers'], [])
         asset_ids = {item['id'] for item in payload['assets']}
         self.assertIn(own_asset.id, asset_ids)
         self.assertIn(coworker_asset.id, asset_ids)

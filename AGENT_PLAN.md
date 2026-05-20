@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## 2026-05-20 Customer asset directory direct create local plan
+
+**Background**:
+
+- Railway is currently unavailable for user-side access, so this batch will be implemented and verified locally only.
+- The previous `/assets/` operational V2 lets users update assets, service cases, and calibration records from the directory, but new asset creation still requires entering a customer detail page first.
+- The desired UX is a direct `장비 등록` flow on `/assets/` that selects a customer/follow-up, creates a `CustomerAsset`, and then opens the new asset in the directory drawer.
+
+**DB change required**: No.
+
+- Reuse `CustomerAsset` and the existing `customer_asset_save_api` rules.
+- Do not add model fields or migrations.
+
+**Implementation scope**:
+
+- Backend:
+  - Extend `/reporting/api/customer-assets/` with `canManage`, manager read-only message, and direct-create customer options.
+  - Reuse existing customer-scoped asset create URLs so manager blocking and owner/admin permission checks stay aligned with customer detail creation.
+- Frontend:
+  - Add a `장비 등록` CTA and inline create panel to `/assets/`.
+  - Let users select a customer/follow-up, enter the same asset fields used elsewhere, save, clear directory filters, and select the created asset via `asset=<id>`.
+  - Keep managers read-only by hiding/disabling the create panel.
+- Tests/docs:
+  - Add focused backend tests for direct-create metadata and manager read-only behavior.
+  - Update `AGENT_REPORT.md` after local validation.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused customer asset API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- Local browser smoke for `/assets/` if local servers are started successfully.
+- `git diff --check`
+
 ## 2026-05-19 Customer asset directory operational V2 plan
 
 **Background**:

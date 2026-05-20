@@ -853,6 +853,19 @@ export type CustomerAssetWorkQueueItem = {
   customerHref: string;
 };
 
+export type CustomerAssetCreateCustomerOption = {
+  id: number;
+  customerName: string;
+  companyName: string;
+  departmentName: string;
+  manager: string;
+  email: string;
+  ownerName: string;
+  priorityLabel: string;
+  href: string;
+  assetCreateUrl: string;
+};
+
 export type CustomerAssetDirectoryData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -897,6 +910,11 @@ export type CustomerAssetDirectoryData = {
   links: {
     assets: string;
     customers: string;
+  };
+  create: {
+    canCreate: boolean;
+    message: string;
+    customers: CustomerAssetCreateCustomerOption[];
   };
   workQueue: CustomerAssetWorkQueueItem[];
   assets: CustomerAssetDirectoryItem[];
@@ -4372,6 +4390,11 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
     assets: '/assets/',
     customers: '/customers/',
   },
+  create: {
+    canCreate: false,
+    message: '',
+    customers: [],
+  },
   workQueue: [],
   assets: [],
 };
@@ -6426,6 +6449,13 @@ export async function loadCustomerAssetDirectoryData(params: {
       links: {
         ...emptyCustomerAssetDirectoryData.links,
         ...(payload.links ?? {}),
+      },
+      create: {
+        ...emptyCustomerAssetDirectoryData.create,
+        ...(payload.create ?? {}),
+        customers: (payload.create?.customers ?? emptyCustomerAssetDirectoryData.create.customers).map((customer) => (
+          normalizeHrefFields(customer, ['href', 'assetCreateUrl'])
+        )),
       },
       workQueue: (payload.workQueue ?? emptyCustomerAssetDirectoryData.workQueue).map((item) => (
         normalizeHrefFields(item, ['href', 'customerHref'])

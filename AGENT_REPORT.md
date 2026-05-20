@@ -1,5 +1,104 @@
 # AGENT_REPORT.md
 
+## 2026-05-20 — Customer Asset Directory Direct Create UX (local-only)
+
+**상태**: 구현/로컬 검증 완료, Railway 접근 불가로 배포 보류
+
+### 요약
+
+- React `/assets/` 상단에 `장비 등록` CTA와 인라인 등록 패널을 추가했습니다.
+- `/assets/`에서 고객/FollowUp을 검색 선택하고 장비명, 상태, 모델, 시리얼, 구매일, 보증일, 설치 위치, 메모를 입력해 바로 `CustomerAsset`을 생성할 수 있습니다.
+- 저장은 기존 고객 상세의 `customer_asset_save_api`를 재사용하므로 회사/부서/주 담당 고객 연결과 manager 읽기 전용 권한 규칙이 그대로 유지됩니다.
+- 저장 성공 후 필터를 초기화하고 `asset=<id>`로 새 장비 상세 드로어를 자동 선택합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `NEXT_TASK.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 고객 상세 화면을 거치지 않고 `/assets/` 운영 콘솔에서 바로 신규 장비를 등록할 수 있습니다.
+- 장비 생성 직후 목록과 드로어가 같은 화면에서 이어져 A/S 접수나 교정 기록 추가로 바로 넘어갈 수 있습니다.
+- manager 계정은 기존처럼 조회만 가능하고 생성/수정 액션은 차단됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 고객 상세의 장비 등록/수정 API와 `/reporting/*` 라우트는 유지했습니다.
+- 서비스 케이스, 교정 기록, 파일 다운로드 API는 변경하지 않았습니다.
+- Django 템플릿 삭제는 하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_returns_direct_create_options reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_uses_manager_scope_and_metrics reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_returns_work_queue_and_directory_links reporting.tests.CustomersSummaryApiTests.test_customer_asset_directory_mutation_blocks_manager_and_other_scope --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DkKvOtE2.js / dist/assets/index-Csfl72bn.css generated
+→ Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local Playwright smoke
+→ Started local Django 127.0.0.1:8000 and Vite 127.0.0.1:5173.
+→ Created temporary local smoke user/customer, logged in, opened /assets/.
+→ Confirmed `장비 등록` CTA rendered.
+→ Opened the create panel, confirmed default customer selection, submitted a new asset.
+→ Confirmed URL changed to /assets/?asset=3, metrics updated to 1, asset row rendered, and detail drawer selected the new asset.
+→ Browser console had only the existing favicon 404.
+→ Temporary smoke data and local servers were cleaned up.
+```
+
+### 알려진 제한
+
+- 직접 등록 고객 목록은 `/reporting/api/customer-assets/` 응답에 포함된 최근/접근 가능 고객 160건 기준입니다. 고객 수가 더 커지면 remote autocomplete 방식으로 확장하는 것이 좋습니다.
+- 이번 변경은 로컬 검증만 수행했습니다. Railway가 복구되면 배포와 운영 smoke가 필요합니다.
+
+### 운영 배포 상태
+
+- Railway가 현재 접속 불가라는 사용자 지시에 따라 배포하지 않았습니다.
+- Commit/push도 아직 수행하지 않았습니다. 로컬 검증 완료 상태입니다.
+
+### 수동 로컬 테스트 절차
+
+1. `python manage.py runserver 127.0.0.1:8000`을 실행합니다.
+2. `cd frontend; npm run dev -- --host 127.0.0.1 --port 5173`을 실행합니다.
+3. 로컬 로그인 후 `http://127.0.0.1:5173/assets/`에 접속합니다.
+4. `장비 등록`을 누르고 고객을 선택합니다.
+5. 장비명/모델/시리얼/설치 위치를 입력하고 저장합니다.
+6. URL이 `asset=<id>`를 포함하고 새 장비 행과 오른쪽 상세 드로어가 열리는지 확인합니다.
+7. manager 계정에서는 `장비 등록` 버튼이 보이지 않는지 확인합니다.
+
+### 권장 다음 작업
+
+Railway가 복구되면 이번 로컬 변경을 커밋/푸시하고 `web`/`sales-note-frontend`에 배포한 뒤 `/assets/` 직접 등록과 기존 수정/파일 다운로드를 운영 로그인 세션에서 수동 검수합니다.
+
 ## 2026-05-19 — Customer Asset Directory Operational V2
 
 **상태**: 구현/로컬 검증/커밋/푸시/Railway 배포/운영 smoke 완료, 사용자 운영 수동검수 대기

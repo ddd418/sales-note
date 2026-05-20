@@ -56,6 +56,7 @@ import {
   DashboardData,
   DashboardHistoryItem,
   DashboardScheduleItem,
+  CustomerAssetCreateCustomerOption,
   CustomerAssetDirectoryData,
   CustomerAssetDirectoryItem,
   CustomerAssetWorkQueueItem,
@@ -5199,6 +5200,192 @@ function CustomerAssetDirectoryDrawer({
   );
 }
 
+function CustomerAssetDirectoryCreatePanel({
+  data,
+  open,
+  onClose,
+  onCreated,
+  onRefresh,
+}: {
+  data: CustomerAssetDirectoryData;
+  open: boolean;
+  onClose: () => void;
+  onCreated: (assetId: number | null) => void;
+  onRefresh: () => Promise<CustomerAssetDirectoryData>;
+}) {
+  const customers = data.create.customers;
+  const statusFallback = getOptionValue(data.options.assetStatuses, 'active');
+  const [customerId, setCustomerId] = useState('');
+  const [form, setForm] = useState<CustomerAssetFormState>(() => makeCustomerAssetForm(null, statusFallback));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const selectedCustomer = customers.find((customer) => String(customer.id) === customerId) ?? null;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setCustomerId((previous) => (
+      customers.some((customer) => String(customer.id) === previous)
+        ? previous
+        : (customers[0]?.id ? String(customers[0].id) : '')
+    ));
+    setForm((previous) => ({
+      ...previous,
+      status: previous.status || statusFallback,
+    }));
+    setError('');
+    setMessage('');
+  }, [customers, open, statusFallback]);
+
+  const closePanel = () => {
+    setError('');
+    setMessage('');
+    onClose();
+  };
+
+  const handleFieldChange = (field: keyof CustomerAssetFormState, value: string) => {
+    setForm((previous) => ({ ...previous, [field]: value }));
+    setError('');
+    setMessage('');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving) {
+      return;
+    }
+    if (!data.create.canCreate) {
+      setError(data.create.message || '장비 등록 권한이 없습니다.');
+      setMessage('');
+      return;
+    }
+    if (!selectedCustomer?.assetCreateUrl) {
+      setError('장비를 등록할 고객을 선택하세요.');
+      setMessage('');
+      return;
+    }
+    const { payload, error: formError } = customerAssetFormToPayload(form);
+    if (!payload || formError) {
+      setError(formError || '장비 정보를 확인하세요.');
+      setMessage('');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await saveCustomerAsset(payload, selectedCustomer.assetCreateUrl);
+      const createdAssetId = result.asset?.id ?? null;
+      onCreated(createdAssetId);
+      await onRefresh();
+      setForm(makeCustomerAssetForm(null, statusFallback));
+      setMessage(result.message || '장비를 등록했습니다.');
+      onClose();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '장비 등록에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open && !error && !message) {
+    return null;
+  }
+
+  return (
+    <section className="dashboard-panel asset-directory-create-panel">
+      <div className="asset-directory-drawer-heading">
+        <div>
+          <span className="eyebrow">New asset</span>
+          <h2>장비 등록</h2>
+          {selectedCustomer ? (
+            <p>{[selectedCustomer.companyName, selectedCustomer.departmentName, selectedCustomer.customerName].filter(Boolean).join(' · ')}</p>
+          ) : null}
+        </div>
+        <button aria-label="장비 등록 패널 닫기" className="icon-button" onClick={closePanel} type="button">
+          <X size={17} />
+        </button>
+      </div>
+
+      {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
+      {message ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{message}</span></div> : null}
+
+      {!data.create.canCreate ? (
+        <DashboardEmpty label={data.create.message || '장비 등록 권한이 없습니다'} />
+      ) : customers.length === 0 ? (
+        <DashboardEmpty label="등록 가능한 고객이 없습니다" />
+      ) : open ? (
+        <form className="notes-create-form customer-asset-form asset-directory-form asset-directory-create-form" onSubmit={handleSubmit}>
+          <div className="form-field">
+            <span>고객</span>
+            <SearchableSelect
+              ariaLabel="장비 등록 고객 선택"
+              onChange={setCustomerId}
+              options={customers.map((customer: CustomerAssetCreateCustomerOption) => makeCustomerSelectOption(customer))}
+              placeholder="고객, 회사, 부서 검색"
+              value={customerId}
+            />
+          </div>
+          <div className="notes-create-grid">
+            <label>
+              <span>장비/자산명</span>
+              <input onChange={(event) => handleFieldChange('assetName', event.target.value)} required value={form.assetName} />
+            </label>
+            <label>
+              <span>상태</span>
+              <select onChange={(event) => handleFieldChange('status', event.target.value)} required value={form.status}>
+                {data.options.assetStatuses.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>모델명</span>
+              <input onChange={(event) => handleFieldChange('modelName', event.target.value)} value={form.modelName} />
+            </label>
+            <label>
+              <span>시리얼번호</span>
+              <input onChange={(event) => handleFieldChange('serialNumber', event.target.value)} value={form.serialNumber} />
+            </label>
+            <label>
+              <span>구매일</span>
+              <input onChange={(event) => handleFieldChange('purchaseDate', event.target.value)} type="date" value={form.purchaseDate} />
+            </label>
+            <label>
+              <span>보증 만료일</span>
+              <input onChange={(event) => handleFieldChange('warrantyUntil', event.target.value)} type="date" value={form.warrantyUntil} />
+            </label>
+            <label>
+              <span>설치 위치</span>
+              <input onChange={(event) => handleFieldChange('installLocation', event.target.value)} value={form.installLocation} />
+            </label>
+          </div>
+          <label>
+            <span>메모</span>
+            <textarea onChange={(event) => handleFieldChange('notes', event.target.value)} rows={3} value={form.notes} />
+          </label>
+          <div className="notes-create-actions">
+            {selectedCustomer?.href ? (
+              <a className="route-secondary-action" href={selectedCustomer.href}>
+                고객 상세
+                <MoveUpRight size={15} />
+              </a>
+            ) : null}
+            <button className="route-secondary-action" onClick={closePanel} type="button">취소</button>
+            <button className="route-primary-action" disabled={saving} type="submit">
+              {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+              저장
+            </button>
+          </div>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
 function CustomerAssetsPage({
   calibration,
   data,
@@ -5232,6 +5419,19 @@ function CustomerAssetsPage({
   onServiceChange: (value: string) => void;
   onStatusChange: (value: string) => void;
 }) {
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const handleAssetCreated = (assetId: number | null) => {
+    onQueryChange('');
+    onStatusChange('');
+    onOwnerChange('');
+    onServiceChange('');
+    onCalibrationChange('');
+    if (assetId) {
+      onSelectedAssetChange(assetId);
+    }
+  };
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -5278,9 +5478,23 @@ function CustomerAssetsPage({
           <p>고객별 장비, 최근 A/S 상태, 다음 교정 예정일을 한 화면에서 검색합니다.</p>
         </div>
         <div className="schedules-summary-actions">
+          {data.create.canCreate ? (
+            <button className="route-primary-action" onClick={() => setCreateOpen(true)} type="button">
+              <Plus size={15} />
+              장비 등록
+            </button>
+          ) : null}
           <a className="route-secondary-action" href={data.links.customers || '/customers/'}>고객 목록</a>
         </div>
       </div>
+
+      <CustomerAssetDirectoryCreatePanel
+        data={data}
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleAssetCreated}
+        onRefresh={onRefresh}
+      />
 
       <section className="dashboard-metric-grid customers-metric-grid" aria-label="장비 핵심 지표">
         {metrics.map((metric) => (

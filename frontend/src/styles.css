@@ -1165,6 +1165,16 @@ h2 {
   line-height: 1.4;
 }
 
+.asset-directory-create-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.asset-directory-create-form {
+  max-width: 980px;
+}
+
 .assets-directory-layout {
   display: grid;
   gap: 14px;
