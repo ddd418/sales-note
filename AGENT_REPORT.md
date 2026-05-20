@@ -23340,6 +23340,32 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: expand salesnote readonly mcp access"
+→ 522c97f feat: expand salesnote readonly mcp access
+
+git push origin main
+→ main pushed to GitHub
+
+railway up --service web --detach --message "Deploy Sales Note readonly MCP access 522c97f"
+→ Network/TLS upload failed before completion.
+
+railway up --service web --detach --message "Deploy Sales Note readonly MCP access 522c97f retry"
+→ Network upload failed, but Railway created a transient deployment record that was later removed.
+
+railway deployment redeploy --service web --from-source --yes --json
+→ {"success":true}
+
+Production smoke via frontend proxy:
+→ navigation/ 200 success=True
+→ products/?limit=1 200
+→ tasks/ 200 success=True
+→ business-cards/ 200 success=True
+→ mailbox/?box=inbox 200 success=True
+→ anonymous products 401
+
+MCP JSON-RPC smoke:
+→ salesnote_read_endpoint navigation ok, sensitive redaction enabled
 ```
 
 ### 6. Known Limitations
@@ -23350,8 +23376,13 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending commit, push, and Railway `web` deployment.
-- Frontend deployment is not required because this task does not change React runtime files.
+- Runtime commit: `522c97f feat: expand salesnote readonly mcp access`
+- GitHub: `main` pushed.
+- Railway `web`: `82768709-de39-4fb6-86fd-8470eff34740` SUCCESS.
+- Railway `sales-note-frontend`: `6ca90736-b0fe-4ad0-8f3c-dc00597570cf` SUCCESS from the same GitHub push, although no React runtime files changed.
+- Transient CLI upload deployment `ece3da75-c86e-427d-ace1-6e7783e95807` was removed after Railway reported code snapshot failure.
+- DB migration: none.
+- Production smoke passed through the frontend proxy using the readonly bearer token.
 
 ### 8. Recommended Next Task
 
