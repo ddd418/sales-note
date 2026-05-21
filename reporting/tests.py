@@ -2807,6 +2807,149 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(first_asset['latestServiceCase']['caseType'], 'repair')
         self.assertEqual(first_asset['latestCalibration']['result'], 'pass')
 
+    def test_customer_detail_summary_api_includes_operational_records_with_payment_source(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from django.utils import timezone
+        from reporting.models import (
+            CustomerAsset,
+            DeliveryItem,
+            Prepayment,
+            PrepaymentUsage,
+            Product,
+            Quote,
+            QuoteItem,
+            Schedule,
+            ServiceCase,
+        )
+
+        today = timezone.localdate()
+        target = self._create_customer(self.user, '운영기록고객', priority='urgent')
+        product = Product.objects.create(
+            product_code='OP-QUOTE-001',
+            standard_price=Decimal('120000'),
+            created_by=self.user,
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=today - timedelta(days=10),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='completed',
+            notes='운영 견적 일정',
+        )
+        quote = Quote.objects.create(
+            quote_number='OP-Q-001',
+            schedule=quote_schedule,
+            followup=target,
+            user=self.user,
+            valid_until=today + timedelta(days=20),
+            stage='sent',
+            notes='운영 견적 메모',
+        )
+        QuoteItem.objects.create(
+            quote=quote,
+            product=product,
+            quantity=2,
+            unit_price=Decimal('120000'),
+        )
+        asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='운영 서비스 장비',
+            created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            asset=asset,
+            followup=target,
+            case_type='service',
+            status='in_progress',
+            priority='high',
+            received_date=today - timedelta(days=3),
+            symptom='운영 서비스 요청',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        prepayment = Prepayment.objects.create(
+            customer=target,
+            company=target.company,
+            amount=100000,
+            balance=40000,
+            payment_date=today - timedelta(days=7),
+            payer_name='운영입금자',
+            status='active',
+            created_by=self.user,
+        )
+        prepaid_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=today - timedelta(days=2),
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+            notes='구조화된 선결제 차감',
+            use_prepayment=True,
+            prepayment=prepayment,
+            prepayment_amount=Decimal('60000'),
+        )
+        prepaid_item = DeliveryItem.objects.create(
+            schedule=prepaid_schedule,
+            item_name='선결제 납품품목',
+            quantity=1,
+            unit_price=Decimal('60000'),
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=prepaid_schedule,
+            schedule_item=prepaid_item,
+            product_name='선결제 납품품목',
+            quantity=1,
+            amount=Decimal('60000'),
+            remaining_balance=Decimal('40000'),
+        )
+        normal_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=today - timedelta(days=1),
+            visit_time=time(14, 0),
+            activity_type='delivery',
+            status='completed',
+            notes='메모에 선결제라고 써도 구조화 차감 없음',
+        )
+        DeliveryItem.objects.create(
+            schedule=normal_schedule,
+            item_name='일반 납품품목',
+            quantity=1,
+            unit_price=Decimal('30000'),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        records = response.json()['operationalRecords']
+        self.assertEqual(records['metrics']['serviceRecords'], 1)
+        self.assertEqual(records['metrics']['quoteRecords'], 1)
+        self.assertEqual(records['metrics']['deliveryRecords'], 2)
+        self.assertEqual(records['metrics']['prepaymentRecords'], 1)
+        self.assertEqual(records['serviceRecords'][0]['assetName'], '운영 서비스 장비')
+        self.assertEqual(records['quoteRecords'][0]['quoteNumber'], 'OP-Q-001')
+        delivery_by_id = {item['id']: item for item in records['deliveryRecords']}
+        self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentSource'], 'prepayment')
+        self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentSourceLabel'], '선결제 차감 납품')
+        self.assertEqual(delivery_by_id[prepaid_schedule.id]['prepaymentAmount'], 60000)
+        self.assertEqual(delivery_by_id[prepaid_schedule.id]['prepaymentUsages'][0]['amount'], 60000)
+        self.assertEqual(delivery_by_id[normal_schedule.id]['paymentSource'], 'normal')
+        self.assertEqual(delivery_by_id[normal_schedule.id]['paymentSourceLabel'], '일반 납품')
+        self.assertEqual(delivery_by_id[normal_schedule.id]['prepaymentAmount'], 0)
+        self.assertIn('선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.', delivery_by_id[normal_schedule.id]['paymentEvidence'])
+        self.assertEqual(records['prepaymentRecords'][0]['payerName'], '운영입금자')
+
     def test_customer_asset_service_calibration_apis_create_records(self):
         from django.utils import timezone
         from reporting.models import CalibrationRecord, CustomerAsset, ServiceCase

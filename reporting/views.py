@@ -3441,6 +3441,429 @@ def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
     }
 
 
+def _customer_record_items_payload(items):
+    return [_schedules_delivery_item_payload(item) for item in items]
+
+
+def _customer_record_items_total(items):
+    from decimal import Decimal
+
+    total_amount = Decimal('0')
+    for item in items:
+        item_total = item.total_price
+        if item_total is None and item.unit_price is not None:
+            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
+        if item_total is not None:
+            total_amount += item_total
+    return _money_int(total_amount)
+
+
+def _customer_schedule_items(schedule, history_action_type='delivery_schedule'):
+    items = list(schedule.delivery_items_set.all().order_by('id'))
+    if items:
+        return items
+
+    prefetched_histories = getattr(schedule, '_customer_record_histories', None)
+    if prefetched_histories is None:
+        prefetched_histories = list(
+            History.objects.filter(
+                schedule=schedule,
+                action_type=history_action_type,
+                parent_history__isnull=True,
+            ).prefetch_related('delivery_items_set').order_by('-created_at')
+        )
+    for history in prefetched_histories:
+        history_items = list(history.delivery_items_set.all().order_by('id'))
+        if history_items:
+            return history_items
+    return []
+
+
+def _customer_schedule_fallback_history_amount(schedule, history_action_type='delivery_schedule'):
+    prefetched_histories = getattr(schedule, '_customer_record_histories', None)
+    if prefetched_histories is None:
+        prefetched_histories = History.objects.filter(
+            schedule=schedule,
+            action_type=history_action_type,
+            parent_history__isnull=True,
+        ).order_by('-created_at')
+    for history in prefetched_histories:
+        amount = _money_int(getattr(history, 'delivery_amount', 0))
+        if amount:
+            return amount
+    return 0
+
+
+def _customer_delivery_payment_payload(schedule):
+    usages = list(schedule.prepayment_usages.all().order_by('id'))
+    usage_total = sum(_money_int(usage.amount) for usage in usages)
+    direct_amount = _money_int(schedule.prepayment_amount)
+    prepayment_id = schedule.prepayment_id or (usages[0].prepayment_id if usages else None)
+    prepayment_amount = usage_total or direct_amount
+    uses_prepayment = bool(
+        schedule.use_prepayment
+        or prepayment_id
+        or prepayment_amount > 0
+        or usages
+    )
+
+    if not uses_prepayment:
+        return {
+            'paymentSource': 'normal',
+            'paymentSourceLabel': '일반 납품',
+            'prepaymentId': None,
+            'prepaymentAmount': 0,
+            'prepaymentUsages': [],
+            'paymentEvidence': (
+                f'Schedule #{schedule.id}: 선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.'
+            ),
+        }
+
+    evidence_parts = []
+    if schedule.use_prepayment:
+        evidence_parts.append('Schedule.use_prepayment=True')
+    if prepayment_id:
+        evidence_parts.append(f'Schedule.prepayment_id={prepayment_id}')
+    if direct_amount > 0:
+        evidence_parts.append(f'Schedule.prepayment_amount={direct_amount:,}원')
+    if usage_total > 0:
+        evidence_parts.append(f'PrepaymentUsage 합계={usage_total:,}원')
+
+    return {
+        'paymentSource': 'prepayment',
+        'paymentSourceLabel': '선결제 차감 납품',
+        'prepaymentId': prepayment_id,
+        'prepaymentAmount': prepayment_amount,
+        'prepaymentUsages': [
+            _schedules_prepayment_usage_payload(usage)
+            for usage in usages
+        ],
+        'paymentEvidence': f"Schedule #{schedule.id}: " + ', '.join(evidence_parts),
+    }
+
+
+def _customer_delivery_record_payload(schedule):
+    items = _customer_schedule_items(schedule, 'delivery_schedule')
+    total_amount = _customer_record_items_total(items)
+    if total_amount <= 0:
+        total_amount = _customer_schedule_fallback_history_amount(schedule, 'delivery_schedule')
+    payment_payload = _customer_delivery_payment_payload(schedule)
+    return {
+        'id': schedule.id,
+        'recordType': 'delivery_schedule',
+        'date': _date_or_none(schedule.visit_date),
+        'time': schedule.visit_time.isoformat(timespec='minutes') if schedule.visit_time else None,
+        'customerName': schedule.followup.customer_name or schedule.followup.manager or '',
+        'companyName': schedule.followup.company.name if schedule.followup and schedule.followup.company else '',
+        'departmentName': schedule.followup.department.name if schedule.followup and schedule.followup.department else '',
+        'ownerName': _user_display_name(schedule.user),
+        'status': schedule.status,
+        'statusLabel': schedule.get_status_display(),
+        'activityLabel': schedule.get_activity_type_display(),
+        'items': _customer_record_items_payload(items),
+        'itemCount': len(items),
+        'totalAmount': total_amount,
+        'notes': schedule.notes or '',
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
+        **payment_payload,
+    }
+
+
+def _customer_quote_item_payload(item):
+    product = item.product if item.product_id else None
+    return {
+        'id': item.id,
+        'productId': item.product_id,
+        'productCode': product.product_code if product else '',
+        'productDescription': (product.description or '') if product else '',
+        'itemName': product.product_code if product else '제품명 없음',
+        'quantity': item.quantity,
+        'unit': product.unit if product else '',
+        'unitPrice': _money_int(item.unit_price),
+        'discountRate': float(item.discount_rate or 0),
+        'discountUnitPrice': None,
+        'effectiveUnitPrice': _money_int(item.unit_price),
+        'totalPrice': _money_int(item.subtotal),
+        'taxInvoiceIssued': False,
+        'quoteGroup': '',
+        'quoteGroupLabel': _quote_group_label(''),
+        'notes': item.description or '',
+        'sourceQuoteScheduleId': None,
+        'sourceQuoteItemId': None,
+    }
+
+
+def _customer_quote_record_payload(quote):
+    items = [_customer_quote_item_payload(item) for item in quote.items.all().order_by('order', 'id')]
+    total_amount = _money_int(quote.total_amount) or sum(item['totalPrice'] for item in items)
+    schedule = quote.schedule
+    return {
+        'id': quote.id,
+        'recordType': 'quote',
+        'scheduleId': schedule.id if schedule else None,
+        'quoteNumber': quote.quote_number,
+        'date': _date_or_none(quote.quote_date or (schedule.visit_date if schedule else None)),
+        'validUntil': _date_or_none(quote.valid_until),
+        'customerName': quote.followup.customer_name or quote.followup.manager or '',
+        'companyName': quote.followup.company.name if quote.followup and quote.followup.company else '',
+        'departmentName': quote.followup.department.name if quote.followup and quote.followup.department else '',
+        'ownerName': _user_display_name(quote.user),
+        'status': quote.stage,
+        'statusLabel': quote.get_stage_display(),
+        'items': items,
+        'itemCount': len(items),
+        'totalAmount': total_amount,
+        'notes': quote.notes or quote.customer_feedback or '',
+        'href': f'/schedules/{schedule.id}/' if schedule else '',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+    }
+
+
+def _customer_quote_schedule_record_payload(schedule):
+    items = _customer_schedule_items(schedule, 'quote')
+    total_amount = _customer_record_items_total(items)
+    if total_amount <= 0 and schedule.expected_revenue:
+        total_amount = _money_int(schedule.expected_revenue)
+    return {
+        'id': schedule.id,
+        'recordType': 'quote_schedule',
+        'scheduleId': schedule.id,
+        'quoteNumber': '',
+        'date': _date_or_none(schedule.visit_date),
+        'validUntil': None,
+        'customerName': schedule.followup.customer_name or schedule.followup.manager or '',
+        'companyName': schedule.followup.company.name if schedule.followup and schedule.followup.company else '',
+        'departmentName': schedule.followup.department.name if schedule.followup and schedule.followup.department else '',
+        'ownerName': _user_display_name(schedule.user),
+        'status': schedule.status,
+        'statusLabel': schedule.get_status_display(),
+        'items': _customer_record_items_payload(items),
+        'itemCount': len(items),
+        'totalAmount': total_amount,
+        'notes': schedule.notes or schedule.quote_extra_notes or '',
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
+    }
+
+
+def _customer_service_case_record_payload(case):
+    asset = case.asset
+    customer_name = ''
+    if case.followup:
+        customer_name = case.followup.customer_name or case.followup.manager or ''
+    return {
+        'id': case.id,
+        'recordType': 'service_case',
+        'date': _date_or_none(case.received_date),
+        'dueDate': _date_or_none(case.due_date),
+        'completedDate': _date_or_none(case.completed_date),
+        'customerName': customer_name,
+        'assetName': asset.asset_name if asset else '',
+        'assetModelName': asset.model_name if asset else '',
+        'ownerName': _user_display_name(case.created_by) if case.created_by else '',
+        'assignedTo': _user_display_name(case.assigned_to) if case.assigned_to else '',
+        'status': case.status,
+        'statusLabel': case.get_status_display(),
+        'priority': case.priority,
+        'priorityLabel': case.get_priority_display(),
+        'caseType': case.case_type,
+        'caseTypeLabel': case.get_case_type_display(),
+        'summary': case.symptom or case.resolution or '',
+        'detail': case.resolution or '',
+        'href': f'/assets/?asset={asset.id}' if asset else '',
+        'djangoHref': '',
+    }
+
+
+def _customer_service_history_record_payload(history):
+    schedule = history.schedule
+    customer_name = ''
+    if history.followup:
+        customer_name = history.followup.customer_name or history.followup.manager or ''
+    return {
+        'id': history.id,
+        'recordType': 'service_history',
+        'date': _date_or_none(history.meeting_date) or _datetime_or_none(history.created_at),
+        'dueDate': _date_or_none(history.next_action_date),
+        'completedDate': _datetime_or_none(history.reviewed_at),
+        'customerName': customer_name,
+        'assetName': '',
+        'assetModelName': '',
+        'ownerName': _user_display_name(history.user),
+        'assignedTo': '',
+        'status': history.service_status or '',
+        'statusLabel': history.get_service_status_display() if history.service_status else history.get_action_type_display(),
+        'priority': '',
+        'priorityLabel': '',
+        'caseType': 'service',
+        'caseTypeLabel': history.get_action_type_display(),
+        'summary': history.content or history.next_action or '',
+        'detail': history.next_action or '',
+        'href': f'/notes/{history.id}/',
+        'djangoHref': reverse('reporting:history_detail', args=[history.id]),
+        'scheduleHref': f'/schedules/{schedule.id}/' if schedule else '',
+    }
+
+
+def _customer_service_schedule_record_payload(schedule):
+    return {
+        'id': schedule.id,
+        'recordType': 'service_schedule',
+        'date': _date_or_none(schedule.visit_date),
+        'dueDate': None,
+        'completedDate': _date_or_none(schedule.visit_date) if schedule.status == 'completed' else None,
+        'customerName': schedule.followup.customer_name or schedule.followup.manager or '',
+        'assetName': '',
+        'assetModelName': '',
+        'ownerName': _user_display_name(schedule.user),
+        'assignedTo': '',
+        'status': schedule.status,
+        'statusLabel': schedule.get_status_display(),
+        'priority': '',
+        'priorityLabel': '',
+        'caseType': 'service',
+        'caseTypeLabel': schedule.get_activity_type_display(),
+        'summary': schedule.notes or '',
+        'detail': '',
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
+    }
+
+
+def _customer_operational_records_payload(followup, scope_users, actor):
+    service_history_prefetch = Prefetch(
+        'histories',
+        queryset=History.objects.filter(parent_history__isnull=True).prefetch_related('delivery_items_set').order_by('-created_at'),
+        to_attr='_customer_record_histories',
+    )
+    delivery_schedules = list(
+        Schedule.objects.filter(
+            followup=followup,
+            user__in=scope_users,
+            activity_type='delivery',
+        ).exclude(status='cancelled').select_related(
+            'user', 'followup', 'followup__company', 'followup__department', 'prepayment'
+        ).prefetch_related(
+            'delivery_items_set',
+            service_history_prefetch,
+            Prefetch(
+                'prepayment_usages',
+                queryset=PrepaymentUsage.objects.select_related('prepayment', 'prepayment__customer').order_by('id'),
+            ),
+        ).order_by('-visit_date', '-visit_time', '-id')[:50]
+    )
+    delivery_records = [_customer_delivery_record_payload(schedule) for schedule in delivery_schedules]
+
+    quote_records_qs = Quote.objects.filter(
+        followup=followup,
+        user__in=scope_users,
+    ).select_related(
+        'schedule', 'followup', 'followup__company', 'followup__department', 'user'
+    ).prefetch_related(
+        'items__product'
+    ).order_by('-quote_date', '-created_at', '-id')
+    quote_records = [_customer_quote_record_payload(quote) for quote in list(quote_records_qs[:50])]
+    quoted_schedule_ids = {record['scheduleId'] for record in quote_records if record.get('scheduleId')}
+    quote_schedules = list(
+        Schedule.objects.filter(
+            followup=followup,
+            user__in=scope_users,
+            activity_type='quote',
+        ).exclude(
+            id__in=quoted_schedule_ids,
+        ).select_related(
+            'user', 'followup', 'followup__company', 'followup__department'
+        ).prefetch_related(
+            'delivery_items_set',
+            service_history_prefetch,
+        ).order_by('-visit_date', '-visit_time', '-id')[:50]
+    )
+    quote_records.extend(_customer_quote_schedule_record_payload(schedule) for schedule in quote_schedules)
+    quote_records = sorted(
+        quote_records,
+        key=lambda row: (row.get('date') or '', row.get('id') or 0),
+        reverse=True,
+    )[:50]
+
+    asset_ids = list(_customer_assets_queryset(followup, scope_users).values_list('id', flat=True)[:200])
+    service_cases = list(
+        ServiceCase.objects.filter(
+            Q(followup=followup) | Q(asset_id__in=asset_ids),
+            Q(created_by__in=scope_users) | Q(asset__created_by__in=scope_users) | Q(assigned_to__in=scope_users),
+        ).select_related(
+            'asset', 'followup', 'created_by', 'assigned_to'
+        ).distinct().order_by('-received_date', '-created_at', '-id')[:50]
+    )
+    service_histories = list(
+        History.objects.filter(
+            followup=followup,
+            user__in=scope_users,
+            action_type='service',
+            parent_history__isnull=True,
+        ).select_related('user', 'followup', 'schedule').order_by('-created_at', '-id')[:50]
+    )
+    service_history_schedule_ids = {history.schedule_id for history in service_histories if history.schedule_id}
+    service_schedules = list(
+        Schedule.objects.filter(
+            followup=followup,
+            user__in=scope_users,
+            activity_type='service',
+        ).exclude(
+            id__in=service_history_schedule_ids,
+        ).select_related('user', 'followup').order_by('-visit_date', '-visit_time', '-id')[:50]
+    )
+    service_records = [
+        *[_customer_service_case_record_payload(case) for case in service_cases],
+        *[_customer_service_history_record_payload(history) for history in service_histories],
+        *[_customer_service_schedule_record_payload(schedule) for schedule in service_schedules],
+    ]
+    service_records = sorted(
+        service_records,
+        key=lambda row: (row.get('date') or '', row.get('id') or 0),
+        reverse=True,
+    )[:50]
+
+    prepayments_qs = Prepayment.objects.filter(
+        customer=followup,
+        created_by__in=scope_users,
+    ).select_related(
+        'company', 'customer', 'customer__company', 'customer__department', 'created_by'
+    ).annotate(
+        usage_count=Count('usages', distinct=True),
+    ).order_by('-payment_date', '-created_at', '-id')
+    prepayment_records = [
+        _prepayment_item_payload(prepayment, actor)
+        for prepayment in list(prepayments_qs[:50])
+    ]
+
+    prepayment_delivery_records = [
+        record for record in delivery_records
+        if record.get('paymentSource') == 'prepayment'
+    ]
+    normal_delivery_records = [
+        record for record in delivery_records
+        if record.get('paymentSource') != 'prepayment'
+    ]
+
+    return {
+        'metrics': {
+            'serviceRecords': len(service_records),
+            'quoteRecords': len(quote_records),
+            'deliveryRecords': len(delivery_records),
+            'prepaymentRecords': prepayments_qs.count(),
+            'deliveryAmount': sum(record.get('totalAmount') or 0 for record in delivery_records),
+            'prepaymentDeliveryAmount': sum(record.get('totalAmount') or 0 for record in prepayment_delivery_records),
+            'normalDeliveryAmount': sum(record.get('totalAmount') or 0 for record in normal_delivery_records),
+            'prepaymentUsedAmount': sum(record.get('prepaymentAmount') or 0 for record in prepayment_delivery_records),
+        },
+        'serviceRecords': service_records,
+        'quoteRecords': quote_records,
+        'deliveryRecords': delivery_records,
+        'prepaymentRecords': prepayment_records,
+    }
+
+
 def _parse_asset_date(value, field_label):
     value = (value or '').strip()
     if not value:
@@ -4352,6 +4775,7 @@ def customer_detail_summary_api(request, followup_id):
             'createNote': f'/notes/?create=1&customer={followup.id}',
         },
         'prepaymentSummary': _customer_detail_prepayment_summary_payload(followup, scope_users, request.user),
+        'operationalRecords': _customer_operational_records_payload(followup, scope_users, request.user),
         'assetSummary': _customer_asset_summary_payload(request, followup, scope_users, can_edit_customer),
         'edit': _customers_edit_config(request, user_profile, followup, can_edit_customer),
         'recentNotes': [

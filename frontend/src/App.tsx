@@ -66,12 +66,15 @@ import {
   CustomerCalibrationRecord,
   CustomerCalibrationPayload,
   CustomerDetailData,
+  CustomerDeliveryRecord,
   CustomerAiDepartment,
   CustomerAiPainpoint,
   CustomerEditPayload,
   CustomerCreatePayload,
+  CustomerQuoteRecord,
   CustomerServiceCase,
   CustomerServiceCasePayload,
+  CustomerServiceRecord,
   CustomersData,
   CustomerItem,
   DocumentTemplateItem,
@@ -98,6 +101,7 @@ import {
   PrepaymentCustomerData,
   PrepaymentDetailData,
   PrepaymentFormPayload,
+  PrepaymentListItem,
   PrepaymentsData,
   PrepaymentOption,
   ProductBulkDeleteResult,
@@ -2782,6 +2786,153 @@ function CustomerDetailNoteList({
   );
 }
 
+function CustomerRecordItems({ items }: { items: ScheduleDeliveryItem[] }) {
+  if (!items.length) {
+    return <span className="customer-record-empty-line">품목 정보 없음</span>;
+  }
+
+  const visibleItems = items.slice(0, 3);
+  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
+
+  return (
+    <div className="customer-record-item-list">
+      {visibleItems.map((item) => (
+        <span key={`${item.id}-${item.itemName}`}>
+          <strong>{item.itemName}</strong>
+          <small>
+            {formatNumber(item.quantity)}{item.unit || 'EA'}
+            {item.totalPrice ? ` · ${formatWon(item.totalPrice)}` : ''}
+          </small>
+        </span>
+      ))}
+      {hiddenCount > 0 ? <span className="customer-record-more">외 {formatNumber(hiddenCount)}개</span> : null}
+    </div>
+  );
+}
+
+function CustomerDeliveryRecords({ records }: { records: CustomerDeliveryRecord[] }) {
+  if (!records.length) {
+    return <DashboardEmpty label="납품 기록이 없습니다" />;
+  }
+
+  return (
+    <div className="customer-record-list delivery-record-list">
+      {records.slice(0, 8).map((record) => (
+        <article className="customer-record-row" key={record.id}>
+          <div className="customer-record-main">
+            <div className="customer-record-title-line">
+              <span className={`customer-delivery-source ${record.paymentSource}`}>
+                {record.paymentSourceLabel || '일반 납품'}
+              </span>
+              <strong>{record.date ? formatDateLabel(record.date) : '납품일 없음'}</strong>
+              <span>{record.statusLabel}</span>
+            </div>
+            <CustomerRecordItems items={record.items ?? []} />
+            {record.notes ? <p>{record.notes}</p> : null}
+            <small>{record.paymentEvidence}</small>
+          </div>
+          <div className="customer-record-side">
+            <strong>{formatWon(record.totalAmount || 0)}</strong>
+            {record.paymentSource === 'prepayment' ? (
+              <span>차감 {formatWon(record.prepaymentAmount || 0)}</span>
+            ) : (
+              <span>선결제 차감 없음</span>
+            )}
+            {record.href ? <a href={record.href}>일정</a> : null}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function CustomerQuoteRecords({ records }: { records: CustomerQuoteRecord[] }) {
+  if (!records.length) {
+    return <DashboardEmpty label="견적 기록이 없습니다" />;
+  }
+
+  return (
+    <div className="customer-record-list">
+      {records.slice(0, 8).map((record) => (
+        <article className="customer-record-row" key={`${record.recordType}-${record.id}`}>
+          <div className="customer-record-main">
+            <div className="customer-record-title-line">
+              <strong>{record.quoteNumber || '견적 일정'}</strong>
+              <span>{record.date ? formatDateLabel(record.date) : '견적일 없음'}</span>
+              <span>{record.statusLabel}</span>
+            </div>
+            <CustomerRecordItems items={record.items ?? []} />
+            {record.notes ? <p>{record.notes}</p> : null}
+          </div>
+          <div className="customer-record-side">
+            <strong>{formatWon(record.totalAmount || 0)}</strong>
+            {record.validUntil ? <span>유효 {formatDateLabel(record.validUntil)}</span> : null}
+            {record.href ? <a href={record.href}>일정</a> : null}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function CustomerServiceRecords({ records }: { records: CustomerServiceRecord[] }) {
+  if (!records.length) {
+    return <DashboardEmpty label="서비스 기록이 없습니다" />;
+  }
+
+  return (
+    <div className="customer-record-list">
+      {records.slice(0, 8).map((record) => (
+        <article className="customer-record-row compact" key={`${record.recordType}-${record.id}`}>
+          <div className="customer-record-main">
+            <div className="customer-record-title-line">
+              <strong>{record.assetName || record.caseTypeLabel || '서비스 기록'}</strong>
+              <span>{record.date ? formatDateLabel(record.date) : '일자 없음'}</span>
+              <span>{record.statusLabel}</span>
+            </div>
+            <p>{record.summary || record.detail || '상세 내용 없음'}</p>
+            <small>{[record.caseTypeLabel, record.priorityLabel, record.assignedTo || record.ownerName].filter(Boolean).join(' · ')}</small>
+          </div>
+          <div className="customer-record-side">
+            {record.dueDate ? <span>처리기한 {formatDateLabel(record.dueDate)}</span> : null}
+            {record.completedDate ? <span>완료 {formatDateLabel(record.completedDate)}</span> : null}
+            {record.href ? <a href={record.href}>열기</a> : null}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function CustomerPrepaymentRecords({ records }: { records: PrepaymentListItem[] }) {
+  if (!records.length) {
+    return <DashboardEmpty label="선결제 기록이 없습니다" />;
+  }
+
+  return (
+    <div className="customer-record-list prepayment-record-list">
+      {records.slice(0, 8).map((record) => (
+        <article className="customer-record-row compact" key={record.id}>
+          <div className="customer-record-main">
+            <div className="customer-record-title-line">
+              <strong>{record.paymentDate ? formatDateLabel(record.paymentDate) : '입금일 없음'}</strong>
+              <span>{record.payerName || '입금자 미지정'}</span>
+              <PrepaymentStatusBadge label={record.statusLabel} status={record.status} />
+            </div>
+            {record.memo ? <p>{record.memo}</p> : null}
+            <small>사용 {formatWon(record.usedAmount || 0)} · 사용내역 {formatNumber(record.usageCount || 0)}건</small>
+          </div>
+          <div className="customer-record-side">
+            <strong>{formatWon(record.amount || 0)}</strong>
+            <span>잔액 {formatWon(record.balance || 0)}</span>
+            <a href={`/prepayments/${record.id}/`}>상세</a>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function CustomerAiResultPanel({
   aiDepartment,
   verificationNotes,
@@ -3427,6 +3578,7 @@ function CustomerDetailPage({
 
   const customerDetail = data.customer;
   const prepaymentSummary = data.prepaymentSummary;
+  const operationalRecords = data.operationalRecords;
   const assetSummary = data.assetSummary;
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
@@ -3439,6 +3591,14 @@ function CustomerDetailPage({
     { label: '운영 장비', value: `${formatNumber(assetSummary.metrics.activeAssetCount)}건` },
     { label: '진행 서비스', value: `${formatNumber(assetSummary.metrics.openServiceCaseCount)}건` },
     { label: '교정 예정', value: `${formatNumber(assetSummary.metrics.dueCalibrationCount)}건` },
+  ];
+  const operationalMetrics = [
+    { label: '서비스', value: `${formatNumber(operationalRecords.metrics.serviceRecords)}건` },
+    { label: '견적', value: `${formatNumber(operationalRecords.metrics.quoteRecords)}건` },
+    { label: '납품', value: `${formatNumber(operationalRecords.metrics.deliveryRecords)}건` },
+    { label: '선결제', value: `${formatNumber(operationalRecords.metrics.prepaymentRecords)}건` },
+    { label: '납품 합계', value: formatWon(operationalRecords.metrics.deliveryAmount) },
+    { label: '선결제 차감', value: formatWon(operationalRecords.metrics.prepaymentUsedAmount) },
   ];
   const customerProfileFields = [
     { label: '업체/학교', value: customerDetail.company },
@@ -3527,6 +3687,54 @@ function CustomerDetailPage({
             <span>상세 내용</span>
             <p>{customerDetailNotes || '등록된 상세 내용 없음'}</p>
           </article>
+        </div>
+      </section>
+
+      <section className="dashboard-panel customer-records-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Operational records</span>
+            <h2>고객 운영 기록</h2>
+          </div>
+          <ListChecks size={18} />
+        </div>
+        <div className="customer-record-metrics">
+          {operationalMetrics.map((metric) => (
+            <span key={metric.label}>
+              {metric.label}
+              <strong>{metric.value}</strong>
+            </span>
+          ))}
+        </div>
+        <div className="customer-record-sections">
+          <section className="customer-record-section">
+            <div className="customer-record-section-heading">
+              <h3>납품 기록</h3>
+              <span>선결제 차감 여부 표시</span>
+            </div>
+            <CustomerDeliveryRecords records={operationalRecords.deliveryRecords} />
+          </section>
+          <section className="customer-record-section">
+            <div className="customer-record-section-heading">
+              <h3>견적 기록</h3>
+              <span>견적서/견적 일정 기준</span>
+            </div>
+            <CustomerQuoteRecords records={operationalRecords.quoteRecords} />
+          </section>
+          <section className="customer-record-section">
+            <div className="customer-record-section-heading">
+              <h3>서비스 기록</h3>
+              <span>A/S, 수리, 서비스 일정</span>
+            </div>
+            <CustomerServiceRecords records={operationalRecords.serviceRecords} />
+          </section>
+          <section className="customer-record-section">
+            <div className="customer-record-section-heading">
+              <h3>선결제 기록</h3>
+              <span>입금, 잔액, 사용내역</span>
+            </div>
+            <CustomerPrepaymentRecords records={operationalRecords.prepaymentRecords} />
+          </section>
         </div>
       </section>
 

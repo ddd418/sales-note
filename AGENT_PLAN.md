@@ -1,5 +1,47 @@
 # AGENT_PLAN.md
 
+## 2026-05-21 Customer detail operational records plan
+
+**Background**:
+
+- User reported that production React customer detail `/customers/156/` should show what was delivered to that customer and how.
+- The page must show service records, quote records, delivery records, and prepayment records.
+- Delivery rows must clearly separate structured prepayment-deducted delivery from normal/no-prepayment delivery.
+- Customer detail must not show an AI panel; AI should remain available only in dedicated AI/pipeline contexts where intended.
+
+**DB change required**: No.
+
+- Reuse existing `Schedule`, `History`, `Quote`, `DeliveryItem`, `Prepayment`, `PrepaymentUsage`, `CustomerAsset`, and `ServiceCase` data.
+- No model fields or migrations are needed.
+
+**Implementation scope**:
+
+- Backend:
+  - Extend `/reporting/api/customers/<id>/` with a customer-scoped operational records payload.
+  - Include service, quote, delivery, and prepayment record lists plus counts/totals.
+  - Classify delivery payment type from `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, and `PrepaymentUsage` only.
+  - Keep unauthenticated access blocked and existing `/reporting/*` routes/API behavior preserved.
+- Frontend:
+  - Add operational record sections to React `/customers/<id>/`.
+  - Render delivery badges for `선결제 차감 납품` vs `일반 납품` with structured evidence/usage where present.
+  - Keep address/detail visibility and existing edit/assets/prepayment summary behavior.
+  - Ensure no customer-detail AI panel is rendered.
+- Tests/docs:
+  - Add focused API tests for operational record payload shape and delivery prepayment classification.
+  - Update `AGENT_REPORT.md` after validation and deployment.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused customer detail summary API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke production `/customers/156/` plus protected API behavior.
+
 ## 2026-05-21 AI prepayment delivery split factuality plan
 
 **Background**:

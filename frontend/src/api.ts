@@ -962,6 +962,96 @@ export type CustomerAssetMutationResponse = {
   calibration?: CustomerCalibrationRecord;
 };
 
+export type CustomerOperationalMetrics = {
+  serviceRecords: number;
+  quoteRecords: number;
+  deliveryRecords: number;
+  prepaymentRecords: number;
+  deliveryAmount: number;
+  prepaymentDeliveryAmount: number;
+  normalDeliveryAmount: number;
+  prepaymentUsedAmount: number;
+};
+
+export type CustomerDeliveryRecord = {
+  id: number;
+  recordType: string;
+  date: string | null;
+  time?: string | null;
+  customerName: string;
+  companyName: string;
+  departmentName: string;
+  ownerName: string;
+  status: string;
+  statusLabel: string;
+  activityLabel: string;
+  items: ScheduleDeliveryItem[];
+  itemCount: number;
+  totalAmount: number;
+  notes: string;
+  href: string;
+  djangoHref: string;
+  paymentSource: 'prepayment' | 'normal' | string;
+  paymentSourceLabel: string;
+  prepaymentId: number | null;
+  prepaymentAmount: number;
+  prepaymentUsages: SchedulePrepaymentUsage[];
+  paymentEvidence: string;
+};
+
+export type CustomerQuoteRecord = {
+  id: number;
+  recordType: string;
+  scheduleId: number | null;
+  quoteNumber: string;
+  date: string | null;
+  validUntil: string | null;
+  customerName: string;
+  companyName: string;
+  departmentName: string;
+  ownerName: string;
+  status: string;
+  statusLabel: string;
+  items: ScheduleDeliveryItem[];
+  itemCount: number;
+  totalAmount: number;
+  notes: string;
+  href: string;
+  djangoHref: string;
+};
+
+export type CustomerServiceRecord = {
+  id: number;
+  recordType: string;
+  date: string | null;
+  dueDate: string | null;
+  completedDate: string | null;
+  customerName: string;
+  assetName: string;
+  assetModelName: string;
+  ownerName: string;
+  assignedTo: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  priorityLabel: string;
+  caseType: string;
+  caseTypeLabel: string;
+  summary: string;
+  detail: string;
+  href: string;
+  djangoHref: string;
+  scheduleHref?: string;
+};
+
+export type CustomerOperationalRecords = {
+  metrics: CustomerOperationalMetrics;
+  serviceRecords: CustomerServiceRecord[];
+  quoteRecords: CustomerQuoteRecord[];
+  deliveryRecords: CustomerDeliveryRecord[];
+  prepaymentRecords: PrepaymentListItem[];
+};
+
 export type CustomerDetailData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -989,6 +1079,7 @@ export type CustomerDetailData = {
     createNote: string;
   };
   prepaymentSummary: CustomerPrepaymentSummary;
+  operationalRecords: CustomerOperationalRecords;
   assetSummary: CustomerAssetSummary;
   edit: {
     canEdit: boolean;
@@ -4298,6 +4389,22 @@ const emptyCustomerDetailData: CustomerDetailData = {
     },
     recentPrepayments: [],
   },
+  operationalRecords: {
+    metrics: {
+      serviceRecords: 0,
+      quoteRecords: 0,
+      deliveryRecords: 0,
+      prepaymentRecords: 0,
+      deliveryAmount: 0,
+      prepaymentDeliveryAmount: 0,
+      normalDeliveryAmount: 0,
+      prepaymentUsedAmount: 0,
+    },
+    serviceRecords: [],
+    quoteRecords: [],
+    deliveryRecords: [],
+    prepaymentRecords: [],
+  },
   assetSummary: {
     canManage: false,
     message: '',
@@ -6579,6 +6686,18 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
           ...(payload.prepaymentSummary?.links ?? {}),
         },
         recentPrepayments: payload.prepaymentSummary?.recentPrepayments ?? emptyCustomerDetailData.prepaymentSummary.recentPrepayments,
+      },
+      operationalRecords: {
+        ...emptyCustomerDetailData.operationalRecords,
+        ...(payload.operationalRecords ?? {}),
+        metrics: {
+          ...emptyCustomerDetailData.operationalRecords.metrics,
+          ...(payload.operationalRecords?.metrics ?? {}),
+        },
+        serviceRecords: payload.operationalRecords?.serviceRecords ?? emptyCustomerDetailData.operationalRecords.serviceRecords,
+        quoteRecords: payload.operationalRecords?.quoteRecords ?? emptyCustomerDetailData.operationalRecords.quoteRecords,
+        deliveryRecords: payload.operationalRecords?.deliveryRecords ?? emptyCustomerDetailData.operationalRecords.deliveryRecords,
+        prepaymentRecords: payload.operationalRecords?.prepaymentRecords ?? emptyCustomerDetailData.operationalRecords.prepaymentRecords,
       },
       assetSummary: {
         ...emptyCustomerDetailData.assetSummary,
