@@ -22,6 +22,10 @@ from reporting.models import (
     CustomerAsset,
     ServiceCase,
     CalibrationRecord,
+    DeliveryItem,
+    Prepayment,
+    PrepaymentUsage,
+    Quote,
     Schedule,
     ScheduledEmail,
     ScheduledEmailAttachment,
@@ -394,6 +398,118 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(payload['metrics']['overdueServiceAssets'], 1)
         self.assertEqual(payload['metrics']['dueCalibrationAssets'], 1)
         self.assertFalse(payload['scope']['canExport'])
+
+    def test_reports_api_returns_customer_operations_with_structured_payment_split(self):
+        today = timezone.localdate()
+        normal_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=normal_schedule,
+            item_name='일반 납품 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            total_price=1100,
+        )
+        prepayment = Prepayment.objects.create(
+            customer=self.followup,
+            company=self.customer_company,
+            amount=5000,
+            balance=3900,
+            payment_date=today,
+            created_by=self.user,
+        )
+        prepaid_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+            use_prepayment=True,
+            prepayment=prepayment,
+            prepayment_amount=1100,
+        )
+        prepaid_item = DeliveryItem.objects.create(
+            schedule=prepaid_schedule,
+            item_name='선결제 차감 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            total_price=1100,
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=prepaid_schedule,
+            schedule_item=prepaid_item,
+            product_name='선결제 차감 품목',
+            quantity=1,
+            amount=1100,
+            remaining_balance=3900,
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(12, 0),
+            activity_type='quote',
+            status='completed',
+        )
+        Quote.objects.create(
+            quote_number='Q-REPORT-001',
+            schedule=quote_schedule,
+            followup=self.followup,
+            user=self.user,
+            valid_until=today + timedelta(days=30),
+            subtotal=2000,
+            stage='sent',
+        )
+        asset = CustomerAsset.objects.create(
+            company=self.customer_company,
+            department=self.department,
+            primary_followup=self.followup,
+            asset_name='서비스 장비',
+            status='active',
+            created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            asset=asset,
+            followup=self.followup,
+            case_type='service',
+            status='in_progress',
+            received_date=today,
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        operations = payload['customerOperations']
+        row = next(item for item in operations['rows'] if item['id'] == self.followup.id)
+        self.assertEqual(row['deliveryCount'], 2)
+        self.assertEqual(row['normalDeliveryCount'], 1)
+        self.assertEqual(row['prepaymentDeliveryCount'], 1)
+        self.assertEqual(row['prepaymentUsedAmount'], 1100)
+        self.assertEqual(row['quoteCount'], 1)
+        self.assertEqual(row['serviceCount'], 1)
+        self.assertEqual(row['openServiceCount'], 1)
+        self.assertEqual(row['prepaymentCount'], 1)
+        self.assertEqual(row['prepaymentBalance'], 3900)
+        self.assertIn('prepayment', {item['paymentSource'] for item in row['recentDeliveryItems']})
+        self.assertIn('normal', {item['paymentSource'] for item in row['recentDeliveryItems']})
+        self.assertEqual(operations['metrics']['prepaymentDeliveryCount'], 1)
+        self.assertEqual(operations['metrics']['normalDeliveryCount'], 1)
 
     def test_reports_api_manager_can_filter_company_salesperson(self):
         History.objects.create(

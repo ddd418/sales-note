@@ -1,5 +1,47 @@
 # AGENT_PLAN.md
 
+## 2026-05-21 Reports customer operational status table plan
+
+**Background**:
+
+- User reported that React `/reports/` is currently not useful and should be rebuilt.
+- The desired page is a wide customer-by-customer operational status table.
+- It should show the same operational signals surfaced on customer detail: delivery records, quote counts, service records, and prepayment records.
+- Delivery status must distinguish structured prepayment-deducted deliveries from normal deliveries.
+
+**DB change required**: No.
+
+- Reuse existing `FollowUp`, `History`, `Schedule`, `DeliveryItem`, `Quote`, `Prepayment`, `PrepaymentUsage`, `CustomerAsset`, and `ServiceCase` data.
+- No model fields or migrations are needed.
+
+**Implementation scope**:
+
+- Backend:
+  - Keep `/reporting/api/reports/` and its authentication/scope behavior.
+  - Add customer-level operational summary rows with quote, delivery, prepayment, and service counts/totals.
+  - Classify delivery payment type only from structured schedule/prepayment usage fields.
+  - Preserve old top-level metrics enough to avoid breaking callers during the React transition.
+- Frontend:
+  - Replace the current analytics-style `/reports/` view with a dense, wide customer operations table.
+  - Show per-customer delivery count/amount, normal vs prepayment-deducted delivery counts, quote count/amount, prepayment balance/usage, service count, latest dates, and recent delivered items.
+  - Keep date and salesperson filters.
+  - Remove analytics/AI-style panels from this page.
+- Tests/docs:
+  - Update focused reports API tests for customer operational rows and structured prepayment classification.
+  - Update `AGENT_REPORT.md` after validation and deployment.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused reports API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke production `/reports/` plus protected API behavior.
+
 ## 2026-05-21 Customer detail operational records plan
 
 **Background**:

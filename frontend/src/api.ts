@@ -153,6 +153,75 @@ export type DashboardData = {
   }>;
 };
 
+export type ReportsCustomerRecentDelivery = {
+  date: string | null;
+  label: string;
+  amount: number;
+  paymentSource: 'normal' | 'prepayment' | string;
+  paymentSourceLabel: string;
+};
+
+export type ReportsCustomerOperationRow = {
+  id: number;
+  customer: string;
+  company: string;
+  department: string;
+  manager: string;
+  owner: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  priorityLabel: string;
+  pipelineStage: string;
+  pipelineStageLabel: string;
+  deliveryCount: number;
+  deliveryAmount: number;
+  normalDeliveryCount: number;
+  normalDeliveryAmount: number;
+  prepaymentDeliveryCount: number;
+  prepaymentDeliveryAmount: number;
+  prepaymentUsedAmount: number;
+  lastDeliveryDate: string | null;
+  quoteCount: number;
+  quoteAmount: number;
+  lastQuoteDate: string | null;
+  serviceCount: number;
+  openServiceCount: number;
+  lastServiceDate: string | null;
+  prepaymentCount: number;
+  prepaymentAmount: number;
+  prepaymentBalance: number;
+  prepaymentUsedTotal: number;
+  lastPrepaymentDate: string | null;
+  lastActivityDate: string | null;
+  recentDeliveryItems: ReportsCustomerRecentDelivery[];
+  href: string;
+  djangoHref: string;
+};
+
+export type ReportsCustomerOperations = {
+  metrics: {
+    totalCustomers: number;
+    customersWithDeliveries: number;
+    deliveryCount: number;
+    deliveryAmount: number;
+    normalDeliveryCount: number;
+    normalDeliveryAmount: number;
+    prepaymentDeliveryCount: number;
+    prepaymentDeliveryAmount: number;
+    prepaymentUsedAmount: number;
+    quoteCount: number;
+    quoteAmount: number;
+    serviceCount: number;
+    openServiceCount: number;
+    prepaymentCount: number;
+    prepaymentAmount: number;
+    prepaymentBalance: number;
+    prepaymentUsedTotal: number;
+  };
+  rows: ReportsCustomerOperationRow[];
+};
+
 export type ReportsData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -203,6 +272,7 @@ export type ReportsData = {
     href: string;
     djangoHref: string;
   }>;
+  customerOperations: ReportsCustomerOperations;
   pipelineSummary: Array<{ stage: string; label: string; count: number }>;
   links: {
     activityCsv: string;
@@ -4086,6 +4156,28 @@ const emptyReportsData: ReportsData = {
   },
   activityReport: [],
   customerReport: [],
+  customerOperations: {
+    metrics: {
+      totalCustomers: 0,
+      customersWithDeliveries: 0,
+      deliveryCount: 0,
+      deliveryAmount: 0,
+      normalDeliveryCount: 0,
+      normalDeliveryAmount: 0,
+      prepaymentDeliveryCount: 0,
+      prepaymentDeliveryAmount: 0,
+      prepaymentUsedAmount: 0,
+      quoteCount: 0,
+      quoteAmount: 0,
+      serviceCount: 0,
+      openServiceCount: 0,
+      prepaymentCount: 0,
+      prepaymentAmount: 0,
+      prepaymentBalance: 0,
+      prepaymentUsedTotal: 0,
+    },
+    rows: [],
+  },
   pipelineSummary: [],
   links: {
     activityCsv: '/reporting/analytics/export/activity.csv',
@@ -5744,6 +5836,17 @@ export async function loadReportsData(params: {
       customerReport: (payload.customerReport ?? emptyReportsData.customerReport).map((customer) => (
         normalizeHrefFields(customer, ['href', 'djangoHref'])
       )),
+      customerOperations: {
+        ...emptyReportsData.customerOperations,
+        ...(payload.customerOperations ?? {}),
+        metrics: {
+          ...emptyReportsData.customerOperations.metrics,
+          ...(payload.customerOperations?.metrics ?? {}),
+        },
+        rows: (payload.customerOperations?.rows ?? emptyReportsData.customerOperations.rows).map((customer) => (
+          normalizeHrefFields(customer, ['href', 'djangoHref'])
+        )),
+      },
       pipelineSummary: payload.pipelineSummary ?? emptyReportsData.pipelineSummary,
     };
   } catch (error) {

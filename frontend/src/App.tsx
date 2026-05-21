@@ -286,7 +286,7 @@ import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, Sta
 
 const navItems = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
-  { id: 'analytics', label: '분석', icon: Activity, href: '/reports/' },
+  { id: 'analytics', label: '현황', icon: Activity, href: '/reports/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
@@ -5852,7 +5852,7 @@ function ReportsPage({
     return (
       <section className="dashboard-loading">
         <Loader2 className="spin-icon" size={24} />
-        <span>분석 데이터를 불러오는 중입니다</span>
+        <span>고객 운영 데이터를 불러오는 중입니다</span>
       </section>
     );
   }
@@ -5861,20 +5861,27 @@ function ReportsPage({
     return null;
   }
 
-  const metrics = [
-    { label: '영업 활동', value: `${formatNumber(data.metrics.totalHistories)}건`, detail: data.scope.label, icon: Activity, tone: 'blue' as const },
-    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueFollowups)}건`, detail: `예정 ${formatNumber(data.metrics.upcomingFollowups)}건`, icon: AlertTriangle, tone: data.metrics.overdueFollowups > 0 ? 'red' as const : 'green' as const },
-    { label: '활성 파이프라인', value: `${formatNumber(data.metrics.activePipeline)}건`, detail: '잠재/접촉/견적/협상', icon: Columns3, tone: 'teal' as const },
-    { label: '진행 서비스', value: `${formatNumber(data.metrics.openServiceAssets)}건`, detail: `지연 ${formatNumber(data.metrics.overdueServiceAssets)}건`, icon: Wrench, tone: data.metrics.overdueServiceAssets > 0 ? 'red' as const : 'amber' as const },
-    { label: '교정 예정', value: `${formatNumber(data.metrics.dueCalibrationAssets)}건`, detail: `지연 ${formatNumber(data.metrics.overdueCalibrationAssets)}건`, icon: CalendarDays, tone: data.metrics.overdueCalibrationAssets > 0 ? 'red' as const : 'green' as const },
+  const operations = data.customerOperations;
+  const rows = operations.rows;
+  const metrics = operations.metrics;
+  const customersWithRecords = rows.filter((row) => (
+    row.deliveryCount > 0 ||
+    row.quoteCount > 0 ||
+    row.serviceCount > 0 ||
+    row.prepaymentCount > 0
+  )).length;
+  const metricCards = [
+    { label: '고객', value: `${formatNumber(metrics.totalCustomers)}명`, detail: `기록 보유 ${formatNumber(customersWithRecords)}명`, icon: Users, tone: 'blue' as const },
+    { label: '납품', value: `${formatNumber(metrics.deliveryCount)}건`, detail: formatWon(metrics.deliveryAmount), icon: CalendarDays, tone: 'green' as const },
+    { label: '견적', value: `${formatNumber(metrics.quoteCount)}건`, detail: formatWon(metrics.quoteAmount), icon: FileText, tone: 'teal' as const },
+    { label: '선결제 차감', value: `${formatNumber(metrics.prepaymentDeliveryCount)}건`, detail: formatWon(metrics.prepaymentUsedAmount), icon: CircleDollarSign, tone: metrics.prepaymentDeliveryCount > 0 ? 'amber' as const : 'blue' as const },
+    { label: '선결제 잔액', value: formatWon(metrics.prepaymentBalance), detail: `${formatNumber(metrics.prepaymentCount)}건`, icon: CheckCircle2, tone: 'green' as const },
+    { label: '서비스', value: `${formatNumber(metrics.serviceCount)}건`, detail: `진행 ${formatNumber(metrics.openServiceCount)}건`, icon: Wrench, tone: metrics.openServiceCount > 0 ? 'amber' as const : 'blue' as const },
   ];
-  const maxPipeline = Math.max(...data.pipelineSummary.map((item) => item.count), 1);
-  const riskTotal = data.metrics.overdueFollowups + data.metrics.overdueServiceAssets + data.metrics.overdueCalibrationAssets;
-  const activeAssetRate = data.metrics.totalAssets > 0
-    ? Math.round((data.metrics.activeAssets / data.metrics.totalAssets) * 100)
-    : 0;
-  const dateRangeLabel = `${formatDateLabel(data.filters.dateFrom)} - ${formatDateLabel(data.filters.dateTo)}`;
-  const generatedDate = (data.generatedAt || localDateInputValue()).slice(0, 10);
+  const dateRangeLabel = `${formatDateLabel(data.filters.dateFrom) || data.filters.dateFrom} - ${formatDateLabel(data.filters.dateTo) || data.filters.dateTo}`;
+  const generatedLabel = data.generatedAt ? formatDateTimeLabel(data.generatedAt) : '';
+
+  const lastDateLabel = (value: string | null) => formatDateLabel(value) || '-';
 
   return (
     <section className="reports-page">
@@ -5882,7 +5889,7 @@ function ReportsPage({
         <div className="dashboard-api-alert">
           <AlertTriangle size={18} />
           <div>
-            <strong>분석 API에 연결되지 않았습니다</strong>
+            <strong>리포트 API에 연결되지 않았습니다</strong>
             <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
           </div>
           <a href="/reporting/login/">로그인</a>
@@ -5892,17 +5899,12 @@ function ReportsPage({
       <div className="dashboard-summary-band">
         <div>
           <span className="eyebrow">Reports</span>
-          <h2>{data.scope.label || '영업 분석'}</h2>
-          <p>{dateRangeLabel}</p>
+          <h2>고객별 납품/견적 현황</h2>
+          <p>{data.scope.label || '현재 범위'} · {dateRangeLabel} · 선결제 잔액은 현재 기준</p>
         </div>
         <div className="reports-actions">
-          {data.scope.canExport ? (
-            <>
-              <a className="route-secondary-action" href={data.links.activityXlsx}><Download size={15} />활동 XLSX</a>
-              <a className="route-secondary-action" href={data.links.pipelineXlsx}><Download size={15} />파이프라인 XLSX</a>
-            </>
-          ) : null}
-          <button className="icon-button" onClick={onRefresh} type="button" aria-label="분석 새로고침">
+          <a className="route-secondary-action" href="/customers/"><Users size={15} />고객 목록</a>
+          <button className="icon-button" onClick={onRefresh} type="button" aria-label="리포트 새로고침">
             <RefreshCw size={17} />
           </button>
         </div>
@@ -5931,31 +5933,31 @@ function ReportsPage({
           ) : null}
         </div>
         <div className="reports-signal-strip">
-          <div className={riskTotal > 0 ? 'risk' : 'stable'}>
-            <AlertTriangle size={16} />
-            <span>리스크</span>
-            <strong>{formatNumber(riskTotal)}건</strong>
+          <div>
+            <Users size={16} />
+            <span>표시 고객</span>
+            <strong>{formatNumber(metrics.totalCustomers)}명</strong>
+          </div>
+          <div className={metrics.prepaymentDeliveryCount > 0 ? 'stable' : ''}>
+            <CircleDollarSign size={16} />
+            <span>선결제 차감 납품</span>
+            <strong>{formatNumber(metrics.prepaymentDeliveryCount)}건</strong>
           </div>
           <div>
-            <Wrench size={16} />
-            <span>활성 장비</span>
-            <strong>{formatNumber(data.metrics.activeAssets)} / {formatNumber(data.metrics.totalAssets)}</strong>
+            <CalendarDays size={16} />
+            <span>일반 납품</span>
+            <strong>{formatNumber(metrics.normalDeliveryCount)}건</strong>
           </div>
           <div>
-            <CheckCircle2 size={16} />
-            <span>완료 고객</span>
-            <strong>{formatNumber(data.metrics.completedFollowups)}건</strong>
-          </div>
-          <div>
-            <Activity size={16} />
-            <span>가동률</span>
-            <strong>{activeAssetRate}%</strong>
+            <Clock size={16} />
+            <span>갱신</span>
+            <strong>{generatedLabel || '방금'}</strong>
           </div>
         </div>
       </div>
 
-      <section className="dashboard-metric-grid customers-metric-grid reports-metric-grid" aria-label="분석 핵심 지표">
-        {metrics.map((metric) => (
+      <section className="dashboard-metric-grid customers-metric-grid reports-metric-grid" aria-label="고객 운영 핵심 지표">
+        {metricCards.map((metric) => (
           <DashboardMetricCard
             detail={metric.detail}
             icon={metric.icon}
@@ -5967,108 +5969,98 @@ function ReportsPage({
         ))}
       </section>
 
-      <div className="reports-layout">
-        <section className="dashboard-panel reports-pipeline-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Pipeline</span>
-              <h2>파이프라인 단계</h2>
-            </div>
-            <Columns3 size={18} />
-          </div>
-          <div className="reports-pipeline-list">
-            {data.pipelineSummary.map((stage) => (
-              <div className="reports-bar-row" key={stage.stage}>
-                <div>
-                  <span>{stage.label}</span>
-                  <strong>{formatNumber(stage.count)}건</strong>
-                </div>
-                <div className="notes-count-bar">
-                  <div style={{ width: `${(stage.count / maxPipeline) * 100}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="dashboard-panel reports-activity-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Activity</span>
-              <h2>담당자별 활동</h2>
-            </div>
-            {loading ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
-          </div>
-          <div className="customers-table-wrap reports-table-wrap">
-            <table className="customers-table">
-              <thead>
-                <tr>
-                  <th>담당자</th>
-                  <th>활동</th>
-                  <th>고객</th>
-                  <th>지연</th>
-                  <th>최근 활동</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.activityReport.length > 0 ? data.activityReport.map((row) => (
-                  <tr key={row.user.id}>
-                    <td><strong>{row.user.name}</strong></td>
-                    <td>{formatNumber(row.historyCount)}</td>
-                    <td>{formatNumber(row.followupCount)}</td>
-                    <td><span className={row.overdueCount > 0 ? 'status-pill danger' : 'status-pill done'}>{formatNumber(row.overdueCount)}</span></td>
-                    <td>{row.lastActivityAt ? formatDateTimeLabel(row.lastActivityAt) : '-'}</td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={5}>기간 내 활동이 없습니다.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-
-      <section className="dashboard-panel reports-customer-panel">
+      <section className="dashboard-panel reports-customer-panel reports-operations-panel">
         <div className="dashboard-panel-heading">
           <div>
-            <span className="eyebrow">Accounts</span>
-            <h2>기간 내 활동 고객</h2>
+            <span className="eyebrow">Operations</span>
+            <h2>고객별 운영 현황표</h2>
           </div>
-          <a className="route-secondary-action" href="/customers/">고객 목록</a>
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <FileSpreadsheet size={18} />}
         </div>
-        <div className="customers-table-wrap">
-          <table className="customers-table">
+        <div className="customers-table-wrap reports-operations-table-wrap">
+          <table className="customers-table reports-operations-table">
             <thead>
               <tr>
                 <th>고객</th>
-                <th>담당자</th>
-                <th>단계</th>
-                <th>최근 활동</th>
-                <th>다음 연락</th>
+                <th>담당/상태</th>
+                <th>납품</th>
+                <th>선결제 차감</th>
+                <th>일반 납품</th>
+                <th>견적</th>
+                <th>선결제</th>
+                <th>서비스</th>
+                <th>최근 납품 품목</th>
+                <th>최근일</th>
               </tr>
             </thead>
             <tbody>
-              {data.customerReport.length > 0 ? data.customerReport.map((customer) => (
+              {rows.length > 0 ? rows.map((customer) => (
                 <tr key={customer.id}>
-                  <td>
+                  <td className="reports-account-cell">
                     <a href={customer.href}>
                       <strong>{customer.customer || customer.company}</strong>
-                      <span>{[customer.company, customer.department].filter(Boolean).join(' · ')}</span>
+                      <span>{[customer.company, customer.department].filter(Boolean).join(' · ') || '업체/부서 미지정'}</span>
                     </a>
+                    {customer.manager ? <small>책임자 {customer.manager}</small> : null}
                   </td>
-                  <td>{customer.owner}</td>
-                  <td><span className="status-pill neutral">{customer.pipelineStageLabel}</span></td>
-                  <td>{customer.lastActivityAt ? formatDateTimeLabel(customer.lastActivityAt) : '-'}</td>
-                  <td>
-                    {customer.nextActionDate ? (
-                      <span className={customer.nextActionDate < generatedDate ? 'status-pill danger' : 'status-pill pending'}>
-                        {formatDateLabel(customer.nextActionDate)}
-                      </span>
-                    ) : '-'}
+                  <td className="reports-stack-cell">
+                    <strong>{customer.owner}</strong>
+                    <span className="status-pill neutral">{customer.pipelineStageLabel}</span>
+                    <small>{customer.statusLabel} · {customer.priorityLabel}</small>
+                  </td>
+                  <td className="reports-money-cell">
+                    <strong>{formatNumber(customer.deliveryCount)}건</strong>
+                    <span>{formatWon(customer.deliveryAmount)}</span>
+                    <small>최근 {lastDateLabel(customer.lastDeliveryDate)}</small>
+                  </td>
+                  <td className="reports-money-cell">
+                    <strong>{formatNumber(customer.prepaymentDeliveryCount)}건</strong>
+                    <span>{formatWon(customer.prepaymentUsedAmount)}</span>
+                    <small>선결제 차감 납품</small>
+                  </td>
+                  <td className="reports-money-cell">
+                    <strong>{formatNumber(customer.normalDeliveryCount)}건</strong>
+                    <span>{formatWon(customer.normalDeliveryAmount)}</span>
+                    <small>선결제 사용 기록 없음</small>
+                  </td>
+                  <td className="reports-money-cell">
+                    <strong>{formatNumber(customer.quoteCount)}건</strong>
+                    <span>{formatWon(customer.quoteAmount)}</span>
+                    <small>최근 {lastDateLabel(customer.lastQuoteDate)}</small>
+                  </td>
+                  <td className="reports-money-cell">
+                    <strong>{formatWon(customer.prepaymentAmount)}</strong>
+                    <span>잔액 {formatWon(customer.prepaymentBalance)}</span>
+                    <small>{formatNumber(customer.prepaymentCount)}건 · 사용 {formatWon(customer.prepaymentUsedTotal)}</small>
+                  </td>
+                  <td className="reports-money-cell">
+                    <strong>{formatNumber(customer.serviceCount)}건</strong>
+                    <span>진행 {formatNumber(customer.openServiceCount)}건</span>
+                    <small>최근 {lastDateLabel(customer.lastServiceDate)}</small>
+                  </td>
+                  <td className="reports-delivery-items-cell">
+                    {customer.recentDeliveryItems.length > 0 ? (
+                      <div className="reports-delivery-chip-list">
+                        {customer.recentDeliveryItems.map((item, index) => (
+                          <span className={item.paymentSource === 'prepayment' ? 'prepayment' : ''} key={`${customer.id}-${item.date || index}-${index}`}>
+                            <strong>{item.label}</strong>
+                            <small>{[lastDateLabel(item.date), item.paymentSourceLabel, item.amount ? formatWon(item.amount) : ''].filter(Boolean).join(' · ')}</small>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="reports-empty-cell">납품 없음</span>
+                    )}
+                  </td>
+                  <td className="reports-stack-cell">
+                    <strong>{lastDateLabel(customer.lastActivityDate)}</strong>
+                    <a className="customer-row-action" href={customer.href}>
+                      상세보기 <MoveUpRight size={13} />
+                    </a>
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={5}>기간 내 고객 활동이 없습니다.</td></tr>
+                <tr><td colSpan={10}>표시할 고객 운영 기록이 없습니다.</td></tr>
               )}
             </tbody>
           </table>

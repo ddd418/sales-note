@@ -10951,7 +10951,7 @@ tbody tr:hover {
 }
 
 .reports-metric-grid {
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
 }
 
 .reports-layout,
@@ -10997,6 +10997,23 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+.reports-operations-table {
+  min-width: 1760px;
+}
+
+.reports-operations-table th {
+  white-space: nowrap;
+}
+
+.reports-operations-table td {
+  min-width: 128px;
+}
+
+.reports-account-cell {
+  width: 240px;
+  min-width: 240px !important;
+}
+
 .reports-customer-panel .customers-table a strong,
 .reports-customer-panel .customers-table a span {
   display: block;
@@ -11007,6 +11024,73 @@ tbody tr:hover {
   margin-top: 3px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.reports-account-cell small,
+.reports-stack-cell small,
+.reports-money-cell small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.reports-stack-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.reports-stack-cell > strong,
+.reports-money-cell > strong {
+  display: block;
+  font-size: 14px;
+}
+
+.reports-money-cell span {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.reports-delivery-items-cell {
+  width: 360px;
+  min-width: 360px !important;
+}
+
+.reports-delivery-chip-list {
+  display: grid;
+  gap: 7px;
+}
+
+.reports-delivery-chip-list > span {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.reports-delivery-chip-list > span.prepayment {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.reports-delivery-chip-list strong,
+.reports-delivery-chip-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.reports-delivery-chip-list small,
+.reports-empty-cell {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .business-card-item {

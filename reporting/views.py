@@ -33350,6 +33350,340 @@ def _analytics_user_payload(user):
     }
 
 
+def _reports_latest_date(current_value, candidate_value):
+    candidate = _date_or_none(candidate_value)
+    if not candidate:
+        return current_value
+    if not current_value or candidate > current_value:
+        return candidate
+    return current_value
+
+
+def _reports_customer_row_base(followup):
+    return {
+        'id': followup.id,
+        'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'company': followup.company.name if followup.company else '',
+        'department': followup.department.name if followup.department else '',
+        'manager': followup.manager or '',
+        'owner': _user_display_name(followup.user),
+        'status': followup.status,
+        'statusLabel': followup.get_status_display(),
+        'priority': followup.priority,
+        'priorityLabel': followup.get_priority_display(),
+        'pipelineStage': followup.pipeline_stage,
+        'pipelineStageLabel': followup.get_pipeline_stage_display(),
+        'deliveryCount': 0,
+        'deliveryAmount': 0,
+        'normalDeliveryCount': 0,
+        'normalDeliveryAmount': 0,
+        'prepaymentDeliveryCount': 0,
+        'prepaymentDeliveryAmount': 0,
+        'prepaymentUsedAmount': 0,
+        'lastDeliveryDate': None,
+        'quoteCount': 0,
+        'quoteAmount': 0,
+        'lastQuoteDate': None,
+        'serviceCount': 0,
+        'openServiceCount': 0,
+        'lastServiceDate': None,
+        'prepaymentCount': 0,
+        'prepaymentAmount': 0,
+        'prepaymentBalance': 0,
+        'prepaymentUsedTotal': 0,
+        'lastPrepaymentDate': None,
+        'lastActivityDate': None,
+        'recentDeliveryItems': [],
+        'href': f'/customers/{followup.id}/',
+        'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
+def _reports_delivery_item_summary(record):
+    labels = []
+    for item in record.get('items', [])[:3]:
+        name = (
+            item.get('itemName')
+            or item.get('productCode')
+            or item.get('productDescription')
+            or ''
+        )
+        if not name:
+            continue
+        quantity = item.get('quantity') or 0
+        unit = item.get('unit') or ''
+        if quantity:
+            labels.append(f'{name} {quantity}{unit}')
+        else:
+            labels.append(name)
+    if not labels:
+        notes = (record.get('notes') or '').strip().replace('\n', ' ')
+        if notes:
+            return notes[:80]
+        return '품목 미기재'
+    hidden_count = max((record.get('itemCount') or 0) - len(labels), 0)
+    summary = ', '.join(labels)
+    if hidden_count:
+        summary += f' 외 {hidden_count}개'
+    return summary
+
+
+def _reports_customer_operations_payload(followups_qs, filter_users, date_from, date_to, actor):
+    service_history_prefetch = Prefetch(
+        'histories',
+        queryset=History.objects.filter(
+            parent_history__isnull=True,
+        ).prefetch_related('delivery_items_set').order_by('-created_at'),
+        to_attr='_customer_record_histories',
+    )
+    followups = list(
+        followups_qs.select_related(
+            'user', 'company', 'department',
+        ).order_by('company__name', 'department__name', 'customer_name', 'id')
+    )
+    followup_ids = [followup.id for followup in followups]
+    rows_by_id = {
+        followup.id: _reports_customer_row_base(followup)
+        for followup in followups
+    }
+
+    if not followup_ids:
+        return {
+            'metrics': {
+                'totalCustomers': 0,
+                'customersWithDeliveries': 0,
+                'deliveryCount': 0,
+                'deliveryAmount': 0,
+                'normalDeliveryCount': 0,
+                'normalDeliveryAmount': 0,
+                'prepaymentDeliveryCount': 0,
+                'prepaymentDeliveryAmount': 0,
+                'prepaymentUsedAmount': 0,
+                'quoteCount': 0,
+                'quoteAmount': 0,
+                'serviceCount': 0,
+                'openServiceCount': 0,
+                'prepaymentCount': 0,
+                'prepaymentAmount': 0,
+                'prepaymentBalance': 0,
+                'prepaymentUsedTotal': 0,
+            },
+            'rows': [],
+        }
+
+    delivery_schedules = list(
+        Schedule.objects.filter(
+            followup_id__in=followup_ids,
+            user__in=filter_users,
+            activity_type='delivery',
+            visit_date__gte=date_from,
+            visit_date__lte=date_to,
+        ).exclude(status='cancelled').select_related(
+            'user', 'followup', 'followup__company', 'followup__department', 'prepayment',
+        ).prefetch_related(
+            'delivery_items_set',
+            service_history_prefetch,
+            Prefetch(
+                'prepayment_usages',
+                queryset=PrepaymentUsage.objects.select_related(
+                    'prepayment', 'prepayment__customer',
+                ).order_by('id'),
+            ),
+        ).order_by('-visit_date', '-visit_time', '-id')
+    )
+    for schedule in delivery_schedules:
+        row = rows_by_id.get(schedule.followup_id)
+        if not row:
+            continue
+        record = _customer_delivery_record_payload(schedule)
+        total_amount = record.get('totalAmount') or 0
+        row['deliveryCount'] += 1
+        row['deliveryAmount'] += total_amount
+        row['lastDeliveryDate'] = _reports_latest_date(row['lastDeliveryDate'], schedule.visit_date)
+        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], schedule.visit_date)
+        if record.get('paymentSource') == 'prepayment':
+            row['prepaymentDeliveryCount'] += 1
+            row['prepaymentDeliveryAmount'] += total_amount
+            row['prepaymentUsedAmount'] += record.get('prepaymentAmount') or 0
+        else:
+            row['normalDeliveryCount'] += 1
+            row['normalDeliveryAmount'] += total_amount
+        if len(row['recentDeliveryItems']) < 5:
+            row['recentDeliveryItems'].append({
+                'date': record.get('date'),
+                'label': _reports_delivery_item_summary(record),
+                'amount': total_amount,
+                'paymentSource': record.get('paymentSource') or 'normal',
+                'paymentSourceLabel': record.get('paymentSourceLabel') or '일반 납품',
+            })
+
+    quote_schedules_by_id = set()
+    quote_records = list(
+        Quote.objects.filter(
+            followup_id__in=followup_ids,
+            user__in=filter_users,
+            quote_date__gte=date_from,
+            quote_date__lte=date_to,
+        ).select_related(
+            'schedule', 'followup', 'user',
+        ).prefetch_related('items__product').order_by('-quote_date', '-created_at', '-id')
+    )
+    for quote in quote_records:
+        row = rows_by_id.get(quote.followup_id)
+        if not row:
+            continue
+        if quote.schedule_id:
+            quote_schedules_by_id.add(quote.schedule_id)
+        record = _customer_quote_record_payload(quote)
+        row['quoteCount'] += 1
+        row['quoteAmount'] += record.get('totalAmount') or 0
+        row['lastQuoteDate'] = _reports_latest_date(row['lastQuoteDate'], quote.quote_date)
+        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], quote.quote_date)
+
+    quote_schedules = list(
+        Schedule.objects.filter(
+            followup_id__in=followup_ids,
+            user__in=filter_users,
+            activity_type='quote',
+            visit_date__gte=date_from,
+            visit_date__lte=date_to,
+        ).exclude(
+            id__in=quote_schedules_by_id,
+        ).select_related(
+            'user', 'followup', 'followup__company', 'followup__department',
+        ).prefetch_related(
+            'delivery_items_set',
+            service_history_prefetch,
+        ).order_by('-visit_date', '-visit_time', '-id')
+    )
+    for schedule in quote_schedules:
+        row = rows_by_id.get(schedule.followup_id)
+        if not row:
+            continue
+        record = _customer_quote_schedule_record_payload(schedule)
+        row['quoteCount'] += 1
+        row['quoteAmount'] += record.get('totalAmount') or 0
+        row['lastQuoteDate'] = _reports_latest_date(row['lastQuoteDate'], schedule.visit_date)
+        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], schedule.visit_date)
+
+    open_service_statuses = ['received', 'in_progress', 'waiting']
+    service_cases = list(
+        ServiceCase.objects.filter(
+            followup_id__in=followup_ids,
+            received_date__gte=date_from,
+            received_date__lte=date_to,
+        ).filter(
+            Q(created_by__in=filter_users) | Q(assigned_to__in=filter_users) | Q(asset__created_by__in=filter_users),
+        ).select_related('followup', 'asset', 'created_by', 'assigned_to').distinct().order_by('-received_date', '-created_at')
+    )
+    for case in service_cases:
+        row = rows_by_id.get(case.followup_id)
+        if not row:
+            continue
+        row['serviceCount'] += 1
+        if case.status in open_service_statuses:
+            row['openServiceCount'] += 1
+        row['lastServiceDate'] = _reports_latest_date(row['lastServiceDate'], case.received_date)
+        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], case.received_date)
+
+    service_histories = list(
+        History.objects.filter(
+            followup_id__in=followup_ids,
+            user__in=filter_users,
+            action_type='service',
+            parent_history__isnull=True,
+            created_at__date__gte=date_from,
+            created_at__date__lte=date_to,
+        ).select_related('followup', 'schedule', 'user').order_by('-created_at', '-id')
+    )
+    service_history_schedule_ids = set()
+    for history in service_histories:
+        row = rows_by_id.get(history.followup_id)
+        if not row:
+            continue
+        if history.schedule_id:
+            service_history_schedule_ids.add(history.schedule_id)
+        activity_date = history.meeting_date or history.created_at.date()
+        row['serviceCount'] += 1
+        if history.service_status in open_service_statuses:
+            row['openServiceCount'] += 1
+        row['lastServiceDate'] = _reports_latest_date(row['lastServiceDate'], activity_date)
+        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], activity_date)
+
+    service_schedules = list(
+        Schedule.objects.filter(
+            followup_id__in=followup_ids,
+            user__in=filter_users,
+            activity_type='service',
+            visit_date__gte=date_from,
+            visit_date__lte=date_to,
+        ).exclude(
+            id__in=service_history_schedule_ids,
+        ).select_related('followup', 'user').order_by('-visit_date', '-visit_time', '-id')
+    )
+    for schedule in service_schedules:
+        row = rows_by_id.get(schedule.followup_id)
+        if not row:
+            continue
+        row['serviceCount'] += 1
+        if schedule.status != 'completed':
+            row['openServiceCount'] += 1
+        row['lastServiceDate'] = _reports_latest_date(row['lastServiceDate'], schedule.visit_date)
+        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], schedule.visit_date)
+
+    prepayments = list(
+        Prepayment.objects.filter(
+            customer_id__in=followup_ids,
+            created_by__in=filter_users,
+        ).select_related('customer', 'created_by').order_by('-payment_date', '-created_at')
+    )
+    for prepayment in prepayments:
+        row = rows_by_id.get(prepayment.customer_id)
+        if not row:
+            continue
+        amount = _money_int(prepayment.amount)
+        balance = _money_int(prepayment.balance)
+        row['prepaymentCount'] += 1
+        row['prepaymentAmount'] += amount
+        row['prepaymentBalance'] += balance
+        row['prepaymentUsedTotal'] += max(amount - balance, 0)
+        row['lastPrepaymentDate'] = _reports_latest_date(row['lastPrepaymentDate'], prepayment.payment_date)
+
+    rows = sorted(
+        rows_by_id.values(),
+        key=lambda row: (
+            row['lastActivityDate'] or row['lastDeliveryDate'] or row['lastQuoteDate'] or row['lastPrepaymentDate'] or '',
+            row['company'],
+            row['department'],
+            row['customer'],
+        ),
+        reverse=True,
+    )
+    metrics = {
+        'totalCustomers': len(rows),
+        'customersWithDeliveries': sum(1 for row in rows if row['deliveryCount'] > 0),
+        'deliveryCount': sum(row['deliveryCount'] for row in rows),
+        'deliveryAmount': sum(row['deliveryAmount'] for row in rows),
+        'normalDeliveryCount': sum(row['normalDeliveryCount'] for row in rows),
+        'normalDeliveryAmount': sum(row['normalDeliveryAmount'] for row in rows),
+        'prepaymentDeliveryCount': sum(row['prepaymentDeliveryCount'] for row in rows),
+        'prepaymentDeliveryAmount': sum(row['prepaymentDeliveryAmount'] for row in rows),
+        'prepaymentUsedAmount': sum(row['prepaymentUsedAmount'] for row in rows),
+        'quoteCount': sum(row['quoteCount'] for row in rows),
+        'quoteAmount': sum(row['quoteAmount'] for row in rows),
+        'serviceCount': sum(row['serviceCount'] for row in rows),
+        'openServiceCount': sum(row['openServiceCount'] for row in rows),
+        'prepaymentCount': sum(row['prepaymentCount'] for row in rows),
+        'prepaymentAmount': sum(row['prepaymentAmount'] for row in rows),
+        'prepaymentBalance': sum(row['prepaymentBalance'] for row in rows),
+        'prepaymentUsedTotal': sum(row['prepaymentUsedTotal'] for row in rows),
+    }
+    return {
+        'metrics': metrics,
+        'rows': rows,
+    }
+
+
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
@@ -33373,6 +33707,13 @@ def reports_summary_api(request):
         parent_history__isnull=True,
     )
     followups_qs = FollowUp.objects.filter(user__in=filter_users)
+    customer_operations = _reports_customer_operations_payload(
+        followups_qs,
+        filter_users,
+        date_from,
+        date_to,
+        request.user,
+    )
 
     total_histories = histories_qs.count()
     completed_followups = histories_qs.filter(
@@ -33495,6 +33836,7 @@ def reports_summary_api(request):
         },
         'activityReport': activity_report,
         'customerReport': customer_report,
+        'customerOperations': customer_operations,
         'pipelineSummary': pipeline_summary,
         'links': {
             'activityCsv': reverse('reporting:analytics_activity_csv') + query,
