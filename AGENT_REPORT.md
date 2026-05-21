@@ -1,5 +1,81 @@
 # AGENT_REPORT.md
 
+## 2026-05-21 — AI 선결제 납품 분리 정확도 개선
+
+### 요약
+
+- AI Workspace가 "선결제로 납품된 것 / 그냥 결제로 납품된 것"을 메모 문구로 추정하지 않도록 수정했습니다.
+- 납품 컨텍스트에 `deliveryPaymentSplit`을 추가해 `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, `PrepaymentUsage` 구조화 필드로만 선결제 사용 납품을 분류합니다.
+- 선결제 사용 내역이 없는 납품은 "일반결제 확정"이 아니라 "선결제 사용 기록 없음"으로 표현하게 했습니다.
+- 메모에 "선결제"라는 말이 있어도 실제 차감 내역이 없으면 선결제 납품으로 분류하지 않는 테스트를 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/services.py`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- AI 답변이 납품 메모/메일/이전 AI 답변을 근거로 선결제 여부를 추정하지 않고, 실제 선결제 장부 사용 내역을 우선합니다.
+- 부서 범위와 전체 범위 질문 모두 납품별 선결제 사용/미사용 분리 컨텍스트를 갖습니다.
+- 선결제 차감 금액, 사용 내역, 일정 ID, 품목을 근거로 함께 전달해 사용자가 답변을 검증할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `reporting` 앱과 `/reporting/*` 라우트는 유지했습니다.
+- 기존 AI Workspace 질문/액션/메모리/메일 컨텍스트 기능은 유지했습니다.
+- React 프론트엔드 파일은 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_splits_delivery_payment_source_from_structured_prepayment reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_fallback_splits_prepayment_deliveries_without_notes_inference reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_includes_delivery_payment_split_rules --verbosity=2
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Ran 96 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- CRM에는 아직 별도 "일반결제" 확정 필드가 없습니다. 따라서 AI는 일반결제라고 단정하지 않고 "선결제 사용 기록 없음"으로 답합니다.
+- 선결제 여부가 납품 일정에 구조화되어 있지 않은 오래된 납품 활동은 선결제 사용 기록 없음으로만 구분됩니다.
+
+### 권장 다음 작업
+
+- 필요하면 납품/결제 방식 전용 필드를 추가해 "선결제", "일반결제", "후불/세금계산서" 같은 결제수단을 거래 단위로 명시하는 설계를 검토합니다.
+
+### 운영 배포 상태
+
+- 로컬 검증 완료.
+- Railway 배포는 커밋/푸시 후 진행 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 CRM에 로그인합니다.
+2. AI Workspace에서 선결제/납품 기록이 있는 부서 또는 전체 범위를 선택합니다.
+3. `선결제로 납품된거랑 선결제 없이 납품된거 분리해줘`라고 질문합니다.
+4. 답변에서 선결제 목록이 실제 `PrepaymentUsage` 또는 일정 선결제 필드가 있는 납품만 포함하는지 확인합니다.
+5. 메모에만 선결제 표현이 있는 납품은 "선결제 사용 기록 없음" 쪽으로 표시되는지 확인합니다.
+
 ## 2026-05-20 — Customer Asset Directory Direct Create UX
 
 ### 요약

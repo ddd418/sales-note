@@ -291,6 +291,101 @@ def _delivery_items_payload(items, amount_key='total_price'):
     return payload, total, has_amount
 
 
+def _schedule_prepayment_payload(schedule):
+    """Return structured prepayment evidence for a delivery schedule."""
+    empty_without_prepayment = {
+        'payment_source': 'without_prepayment',
+        'paymentSource': 'without_prepayment',
+        'payment_source_label': '선결제 사용 기록 없음',
+        'paymentSourceLabel': '선결제 사용 기록 없음',
+        'prepayment_id': None,
+        'prepaymentId': None,
+        'prepayment_amount': 0,
+        'prepaymentAmount': 0,
+        'prepayment_usages': [],
+        'prepaymentUsages': [],
+        'payment_evidence': '연결된 납품 일정의 선결제 사용 필드 또는 PrepaymentUsage가 없습니다.',
+        'paymentEvidence': '연결된 납품 일정의 선결제 사용 필드 또는 PrepaymentUsage가 없습니다.',
+    }
+    if not schedule:
+        payload = dict(empty_without_prepayment)
+        payload['payment_evidence'] = '납품 활동에 연결된 일정이 없어 구조화된 선결제 사용 내역이 없습니다.'
+        payload['paymentEvidence'] = payload['payment_evidence']
+        return payload
+
+    usage_rows = []
+    try:
+        usages = schedule.prepayment_usages.all()
+    except Exception:
+        usages = []
+
+    for usage in usages:
+        prepayment = getattr(usage, 'prepayment', None)
+        amount = _money_to_int(getattr(usage, 'amount', 0))
+        usage_rows.append({
+            'id': getattr(usage, 'id', None),
+            'prepayment_id': getattr(usage, 'prepayment_id', None),
+            'prepaymentId': getattr(usage, 'prepayment_id', None),
+            'payment_date': prepayment.payment_date.strftime('%Y-%m-%d') if prepayment and prepayment.payment_date else '',
+            'paymentDate': prepayment.payment_date.strftime('%Y-%m-%d') if prepayment and prepayment.payment_date else '',
+            'payer_name': getattr(prepayment, 'payer_name', '') if prepayment else '',
+            'payerName': getattr(prepayment, 'payer_name', '') if prepayment else '',
+            'product': getattr(usage, 'product_name', '') or '',
+            'quantity': getattr(usage, 'quantity', 1) or 1,
+            'amount': amount,
+            'remaining_balance': _money_to_int(getattr(usage, 'remaining_balance', 0)),
+            'remainingBalance': _money_to_int(getattr(usage, 'remaining_balance', 0)),
+            'used_at': usage.used_at.strftime('%Y-%m-%d') if getattr(usage, 'used_at', None) else '',
+            'usedAt': usage.used_at.strftime('%Y-%m-%d') if getattr(usage, 'used_at', None) else '',
+        })
+
+    usage_total = sum(row['amount'] for row in usage_rows)
+    direct_amount = _money_to_int(getattr(schedule, 'prepayment_amount', 0))
+    prepayment_id = getattr(schedule, 'prepayment_id', None)
+    if not prepayment_id and usage_rows:
+        prepayment_id = usage_rows[0]['prepayment_id']
+    prepayment_amount = usage_total or direct_amount
+    uses_prepayment = bool(
+        getattr(schedule, 'use_prepayment', False)
+        or prepayment_id
+        or prepayment_amount > 0
+    )
+
+    if not uses_prepayment:
+        payload = dict(empty_without_prepayment)
+        payload['payment_evidence'] = (
+            f"Schedule #{schedule.id}: use_prepayment=False, prepayment_id 없음, "
+            "prepayment_amount=0, PrepaymentUsage 없음"
+        )
+        payload['paymentEvidence'] = payload['payment_evidence']
+        return payload
+
+    evidence_parts = []
+    if getattr(schedule, 'use_prepayment', False):
+        evidence_parts.append('Schedule.use_prepayment=True')
+    if prepayment_id:
+        evidence_parts.append(f'Schedule.prepayment_id={prepayment_id}')
+    if direct_amount > 0:
+        evidence_parts.append(f'Schedule.prepayment_amount={direct_amount:,}원')
+    if usage_total > 0:
+        evidence_parts.append(f'PrepaymentUsage 합계={usage_total:,}원')
+
+    return {
+        'payment_source': 'prepayment',
+        'paymentSource': 'prepayment',
+        'payment_source_label': '선결제 사용 납품',
+        'paymentSourceLabel': '선결제 사용 납품',
+        'prepayment_id': prepayment_id,
+        'prepaymentId': prepayment_id,
+        'prepayment_amount': prepayment_amount,
+        'prepaymentAmount': prepayment_amount,
+        'prepayment_usages': usage_rows,
+        'prepaymentUsages': usage_rows,
+        'payment_evidence': f"Schedule #{schedule.id}: " + ', '.join(evidence_parts),
+        'paymentEvidence': f"Schedule #{schedule.id}: " + ', '.join(evidence_parts),
+    }
+
+
 def _quote_items_payload(items):
     payload = []
     for item in items:
@@ -399,9 +494,11 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
     ).select_related(
         'followup',
         'schedule',
+        'schedule__prepayment',
     ).prefetch_related(
         'delivery_items_set__product',
         'schedule__delivery_items_set__product',
+        'schedule__prepayment_usages__prepayment',
     ).order_by('-created_at')
 
     quote_history_schedule_ids = set()
@@ -510,6 +607,7 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
             'source': '납품 활동',
             'schedule_id': history.schedule_id,
             'notes': history.content or '',
+            **_schedule_prepayment_payload(history.schedule if history.schedule_id else None),
         })
 
     delivery_schedules = Schedule.objects.filter(
@@ -522,8 +620,10 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
         id__in=delivery_history_schedule_ids,
     ).select_related(
         'followup',
+        'prepayment',
     ).prefetch_related(
         'delivery_items_set__product',
+        'prepayment_usages__prepayment',
     ).order_by('-visit_date', '-visit_time')
 
     for schedule in delivery_schedules:
@@ -540,6 +640,7 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
             'source': '납품 일정',
             'schedule_id': schedule.pk,
             'notes': schedule.notes or '',
+            **_schedule_prepayment_payload(schedule),
         })
 
     quote_list.sort(key=lambda item: item.get('date') or '', reverse=True)
@@ -597,6 +698,11 @@ def gather_quote_delivery_data(department, user):
 
     followups = FollowUp.objects.filter(user=user, department=department)
     followup_ids = list(followups.values_list('id', flat=True))
+    return _gather_quote_delivery_data_for_followup_ids(followup_ids, user)
+
+
+def gather_quote_delivery_data_for_followup_ids(followup_ids, user):
+    """Public wrapper for AI workspace scopes that already selected followups."""
     return _gather_quote_delivery_data_for_followup_ids(followup_ids, user)
 
 

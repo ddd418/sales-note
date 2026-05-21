@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-21 AI prepayment delivery split factuality plan
+
+**Background**:
+
+- AI Workspace answered a request to split deliveries into prepayment vs normal payment by inferring from memo text.
+- The CRM already stores structured prepayment usage on delivery schedules through `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, and `PrepaymentUsage`.
+- The fix should make AI answers use those structured fields, not note wording, previous AI logs, or delivery memo guesses.
+
+**DB change required**: No.
+
+- Reuse existing `Schedule`, `DeliveryItem`, `Prepayment`, and `PrepaymentUsage` fields.
+- No model fields or migrations are needed.
+
+**Implementation scope**:
+
+- Enrich AI quote/delivery gathering so each delivery carries structured prepayment classification and usage evidence.
+- Add an AI Workspace `deliveryPaymentSplit` context for prepayment-used deliveries and deliveries with no prepayment usage record.
+- Add fallback and prompt rules for 선결제/일반결제/선결제 없이 납품 분리 questions:
+  - classify as prepayment only from structured schedule/prepayment usage fields;
+  - never classify from memo text alone;
+  - phrase non-prepayment rows as "선결제 사용 기록 없음" unless a separate payment method field exists.
+- Add focused tests for context, fallback answer behavior, and OpenAI prompt payload/rules.
+
+**Validation plan**:
+
+- `python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py`
+- Focused AI Workspace tests for prepayment delivery split.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Push and deploy the runtime backend/frontend source through Railway if validation passes.
+
 ## 2026-05-20 Customer asset direct create deployment recovery plan
 
 **Background**:

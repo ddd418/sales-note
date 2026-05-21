@@ -7972,6 +7972,73 @@ class AIWorkspaceSummaryApiTests(TestCase):
         )
         return analysis
 
+    def _create_prepayment_delivery_split_fixture(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, Prepayment, PrepaymentUsage, Schedule
+
+        followup, department = self._create_customer(self.user, '선결제분리')
+        today = timezone.localdate()
+        prepayment = Prepayment.objects.create(
+            customer=followup,
+            company=followup.company,
+            amount=Decimal('100000'),
+            balance=Decimal('60000'),
+            payment_date=today - timedelta(days=20),
+            payer_name='구조화입금자',
+            created_by=self.user,
+        )
+        prepaid_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today - timedelta(days=7),
+            visit_time=time(10, 0),
+            status='completed',
+            activity_type='delivery',
+            expected_revenue=Decimal('40000'),
+            use_prepayment=True,
+            prepayment=prepayment,
+            prepayment_amount=Decimal('40000'),
+            notes='실제 선결제 차감 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=prepaid_schedule,
+            item_name='선결제Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=Decimal('40000'),
+            total_price=Decimal('40000'),
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=prepaid_schedule,
+            product_name='선결제Kit',
+            quantity=1,
+            amount=Decimal('40000'),
+            remaining_balance=Decimal('60000'),
+        )
+        normal_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today - timedelta(days=3),
+            visit_time=time(14, 0),
+            status='completed',
+            activity_type='delivery',
+            expected_revenue=Decimal('30000'),
+            notes='20,000,000원 견적서 및 선결제 진행 요청 받음',
+        )
+        DeliveryItem.objects.create(
+            schedule=normal_schedule,
+            item_name='일반Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=Decimal('30000'),
+            total_price=Decimal('30000'),
+        )
+        return followup, department, prepaid_schedule, normal_schedule
+
     def test_ai_workspace_summary_api_requires_login_json(self):
         response = self.client.get(self.url)
 
@@ -8640,6 +8707,101 @@ class AIWorkspaceSummaryApiTests(TestCase):
         evidence_text = ' '.join(item['value'] for item in payload['answer']['evidence'])
         self.assertIn(latest_date, evidence_text)
         self.assertIn('qPCR Mix', evidence_text)
+
+    def test_ai_workspace_question_context_splits_delivery_payment_source_from_structured_prepayment(self):
+        from reporting.views import _ai_workspace_department_question_context
+
+        _followup, department, prepaid_schedule, normal_schedule = self._create_prepayment_delivery_split_fixture()
+
+        context = _ai_workspace_department_question_context(department, self.user)
+
+        split = context['deliveryPaymentSplit']
+        self.assertEqual(split['prepaymentCount'], 1)
+        self.assertEqual(split['withoutPrepaymentCount'], 1)
+        prepayment_text = json.dumps(split['prepaymentDeliveries'], ensure_ascii=False)
+        without_prepayment_text = json.dumps(split['withoutPrepaymentDeliveries'], ensure_ascii=False)
+        self.assertIn('선결제Kit', prepayment_text)
+        self.assertIn(str(prepaid_schedule.id), prepayment_text)
+        self.assertIn('PrepaymentUsage', prepayment_text)
+        self.assertNotIn('일반Kit', prepayment_text)
+        self.assertIn('일반Kit', without_prepayment_text)
+        self.assertIn(str(normal_schedule.id), without_prepayment_text)
+        self.assertIn('선결제 사용 기록 없음', without_prepayment_text)
+        self.assertIn('메모', split['classificationRule'])
+
+    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
+    def test_ai_workspace_department_question_fallback_splits_prepayment_deliveries_without_notes_inference(self, _mock_client):
+        _followup, department, _prepaid_schedule, _normal_schedule = self._create_prepayment_delivery_split_fixture()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '선결제로 납품된거랑 그냥 결제로 납품된거 분리해줘',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'fallback')
+        split = payload['context']['deliveryPaymentSplit']
+        self.assertEqual(split['prepaymentCount'], 1)
+        self.assertEqual(split['withoutPrepaymentCount'], 1)
+        answer_text = payload['answer']['summary']
+        prepayment_section = answer_text.split('2) 선결제 사용 기록 없는 납품')[0]
+        self.assertIn('선결제Kit', prepayment_section)
+        self.assertNotIn('일반Kit', prepayment_section)
+        self.assertIn('일반Kit', answer_text)
+        self.assertIn('일반결제 확정', answer_text)
+        self.assertIn('메모에 "선결제"', answer_text)
+        self.assertIn('선결제 사용 기록 없음', answer_text)
+
+    @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_department_question_prompt_includes_delivery_payment_split_rules(self, mock_client):
+        from types import SimpleNamespace
+
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                content = json.dumps({
+                    'answer': '구조화된 선결제 사용 내역 기준으로만 분리했습니다.',
+                    'bullets': ['메모 문구는 분류 근거로 쓰지 않았습니다.'],
+                    'evidence': [{'label': '분류 기준', 'value': 'PrepaymentUsage'}],
+                    'confidence': 'high',
+                })
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+        mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+        _followup, department, _prepaid_schedule, _normal_schedule = self._create_prepayment_delivery_split_fixture()
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '선결제 납품이랑 선결제 없이 납품된거 구분해줘',
+                'model': 'gpt-5.4-mini',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['source'], 'openai')
+        prompt_payload = json.loads(captured['messages'][1]['content'])
+        split = prompt_payload['crmContext']['deliveryPaymentSplit']
+        self.assertEqual(split['prepaymentCount'], 1)
+        self.assertEqual(split['withoutPrepaymentCount'], 1)
+        self.assertIn('선결제Kit', json.dumps(split['prepaymentDeliveries'], ensure_ascii=False))
+        self.assertIn('일반Kit', json.dumps(split['withoutPrepaymentDeliveries'], ensure_ascii=False))
+        self.assertEqual(prompt_payload['responseGuidance']['intent'], 'delivery_payment_split')
+        rules_text = '\n'.join(prompt_payload['rules'])
+        self.assertIn('crmContext.deliveryPaymentSplit', rules_text)
+        self.assertIn('PrepaymentUsage', rules_text)
+        self.assertIn('메모', rules_text)
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_answers_global_action_search_without_department(self, _mock_client):

@@ -12797,6 +12797,32 @@ def _ai_workspace_question_delivery_payload(delivery):
     if not date_value:
         return None
     items_text = _ai_workspace_question_delivery_item_text(delivery.get('items') or [])
+    payment_source = _ai_workspace_question_text(
+        delivery.get('paymentSource') or delivery.get('payment_source') or 'without_prepayment',
+        80,
+    )
+    if payment_source != 'prepayment':
+        payment_source = 'without_prepayment'
+    payment_label = _ai_workspace_question_text(
+        delivery.get('paymentSourceLabel') or delivery.get('payment_source_label'),
+        120,
+    ) or ('선결제 사용 납품' if payment_source == 'prepayment' else '선결제 사용 기록 없음')
+    prepayment_amount = _money_int(delivery.get('prepaymentAmount') or delivery.get('prepayment_amount') or 0)
+    prepayment_usages = []
+    for usage in _ai_json_list(delivery.get('prepaymentUsages') or delivery.get('prepayment_usages'))[:4]:
+        if not isinstance(usage, dict):
+            continue
+        amount = _money_int(usage.get('amount') or 0)
+        prepayment_usages.append({
+            'prepaymentId': usage.get('prepaymentId') or usage.get('prepayment_id'),
+            'paymentDate': _ai_workspace_question_text(usage.get('paymentDate') or usage.get('payment_date'), 40),
+            'payerName': _ai_workspace_question_text(usage.get('payerName') or usage.get('payer_name'), 80),
+            'product': _ai_workspace_question_text(usage.get('product'), 160),
+            'quantity': usage.get('quantity') or 1,
+            'amount': amount,
+            'amountLabel': _ai_workspace_money(amount),
+            'usedAt': _ai_workspace_question_text(usage.get('usedAt') or usage.get('used_at'), 40),
+        })
     return {
         'date': date_value,
         'customer': _ai_workspace_question_text(delivery.get('customer'), 120),
@@ -12805,7 +12831,71 @@ def _ai_workspace_question_delivery_payload(delivery):
         'items': items_text,
         'source': _ai_workspace_question_text(delivery.get('source'), 80),
         'scheduleId': delivery.get('schedule_id'),
+        'paymentSource': payment_source,
+        'paymentSourceLabel': payment_label,
+        'prepaymentId': delivery.get('prepaymentId') or delivery.get('prepayment_id'),
+        'prepaymentAmount': prepayment_amount,
+        'prepaymentAmountLabel': _ai_workspace_money(prepayment_amount),
+        'prepaymentUsages': prepayment_usages,
+        'paymentEvidence': _ai_workspace_question_text(
+            delivery.get('paymentEvidence') or delivery.get('payment_evidence'),
+            320,
+        ),
         'notes': _ai_workspace_question_text(delivery.get('notes'), 280),
+    }
+
+
+def _ai_workspace_question_delivery_payment_payload(delivery):
+    payload = _ai_workspace_question_delivery_payload(delivery)
+    if not payload:
+        return None
+    return {
+        'date': payload['date'],
+        'customer': payload['customer'],
+        'amount': payload['amount'],
+        'amountLabel': payload['amountLabel'],
+        'items': payload['items'],
+        'source': payload['source'],
+        'scheduleId': payload['scheduleId'],
+        'paymentSource': payload['paymentSource'],
+        'paymentSourceLabel': payload['paymentSourceLabel'],
+        'prepaymentId': payload['prepaymentId'],
+        'prepaymentAmount': payload['prepaymentAmount'],
+        'prepaymentAmountLabel': payload['prepaymentAmountLabel'],
+        'prepaymentUsages': payload['prepaymentUsages'],
+        'paymentEvidence': payload['paymentEvidence'],
+    }
+
+
+def _ai_workspace_question_delivery_payment_split(deliveries, limit_per_bucket=24):
+    rows = [
+        payload
+        for payload in (_ai_workspace_question_delivery_payment_payload(item) for item in deliveries or [])
+        if payload
+    ]
+    prepayment_deliveries = [item for item in rows if item.get('paymentSource') == 'prepayment']
+    without_prepayment_deliveries = [item for item in rows if item.get('paymentSource') != 'prepayment']
+
+    return {
+        'classificationRule': (
+            '선결제 사용 납품은 Schedule.use_prepayment, Schedule.prepayment, '
+            'Schedule.prepayment_amount, PrepaymentUsage 중 하나가 구조화 데이터로 확인될 때만 분류한다. '
+            '납품/일정/메일 메모의 선결제 언급만으로는 선결제 납품으로 분류하지 않는다.'
+        ),
+        'nonPrepaymentLabelRule': (
+            '선결제 사용 내역이 없는 납품은 별도 결제수단 확정이 아니라 '
+            '"선결제 사용 기록 없음"으로 표현한다.'
+        ),
+        'totalDeliveryCount': len(rows),
+        'prepaymentCount': len(prepayment_deliveries),
+        'withoutPrepaymentCount': len(without_prepayment_deliveries),
+        'prepaymentDeliveryAmount': sum(item.get('amount') or 0 for item in prepayment_deliveries),
+        'withoutPrepaymentDeliveryAmount': sum(item.get('amount') or 0 for item in without_prepayment_deliveries),
+        'prepaymentUsedAmount': sum(item.get('prepaymentAmount') or 0 for item in prepayment_deliveries),
+        'prepaymentDeliveries': prepayment_deliveries[:limit_per_bucket],
+        'withoutPrepaymentDeliveries': without_prepayment_deliveries[:limit_per_bucket],
+        'omittedPrepaymentCount': max(len(prepayment_deliveries) - limit_per_bucket, 0),
+        'omittedWithoutPrepaymentCount': max(len(without_prepayment_deliveries) - limit_per_bucket, 0),
     }
 
 
@@ -13302,6 +13392,7 @@ def _ai_workspace_department_question_context(department, user):
     deliveries = quote_delivery.get('deliveries') or []
     quotes = quote_delivery.get('quotes') or []
     latest_delivery = _ai_workspace_question_latest_delivery(deliveries)
+    delivery_payment_split = _ai_workspace_question_delivery_payment_split(deliveries)
 
     recent_histories = []
     history_qs = History.objects.filter(
@@ -13381,6 +13472,7 @@ def _ai_workspace_department_question_context(department, user):
         'summary': summary_payload,
         'productFacts': _ai_workspace_question_product_facts(quotes, deliveries),
         'lastDelivery': latest_delivery,
+        'deliveryPaymentSplit': delivery_payment_split,
         'recentDeliveries': [
             payload
             for payload in (_ai_workspace_question_delivery_payload(item) for item in deliveries[:8])
@@ -13516,8 +13608,40 @@ def _ai_workspace_question_action_items_from_candidates(candidates, limit=5):
     return action_items
 
 
+def _ai_workspace_question_is_delivery_payment_split(question):
+    normalized = re.sub(r'\s+', '', str(question or '').lower())
+    if not normalized:
+        return False
+    prepayment_terms = ['선결제', '선급', 'prepayment']
+    delivery_terms = ['납품', '주문', '구매']
+    split_terms = ['분리', '구분', '나눠', '나누', '없이', '일반결제', '그냥결제', '결제별']
+    return (
+        any(keyword in normalized for keyword in prepayment_terms)
+        and any(keyword in normalized for keyword in delivery_terms)
+        and ('결제' in normalized or any(keyword in normalized for keyword in split_terms))
+    )
+
+
+def _ai_workspace_delivery_payment_line(item):
+    parts = [
+        item.get('date') or '날짜 없음',
+        item.get('customer') or '고객명 미정',
+    ]
+    amount_label = item.get('amountLabel') or _ai_workspace_money(item.get('amount') or 0)
+    if amount_label:
+        parts.append(amount_label)
+    if item.get('items'):
+        parts.append(item.get('items'))
+    if item.get('prepaymentAmount'):
+        parts.append(f"선결제 차감 {item.get('prepaymentAmountLabel') or _ai_workspace_money(item.get('prepaymentAmount'))}")
+    if item.get('paymentEvidence'):
+        parts.append(item.get('paymentEvidence'))
+    return ' / '.join(part for part in parts if part)
+
+
 def _ai_workspace_global_question_context(user):
     from datetime import timedelta
+    from ai_chat.services import gather_quote_delivery_data_for_followup_ids
 
     today = timezone.localdate()
     week_start = today - timedelta(days=today.weekday())
@@ -13627,6 +13751,12 @@ def _ai_workspace_global_question_context(user):
         })
 
     action_queue = _ai_workspace_build_action_queue(user, week_start, week_end, limit=14)
+    quote_delivery = gather_quote_delivery_data_for_followup_ids(followup_ids, user)
+    deliveries = quote_delivery.get('deliveries') or []
+    quotes = quote_delivery.get('quotes') or []
+    latest_delivery = _ai_workspace_question_latest_delivery(deliveries)
+    delivery_payment_split = _ai_workspace_question_delivery_payment_split(deliveries)
+    quote_delivery_summary = quote_delivery.get('summary') or {}
 
     return {
         'scope': {
@@ -13654,15 +13784,32 @@ def _ai_workspace_global_question_context(user):
             for followup in followups[:40]
         ],
         'summary': {
+            **quote_delivery_summary,
             'department_count': len(departments),
             'customer_count': len(followups),
             'open_followups': len(open_followups),
             'recommended_actions': len(action_queue),
         },
-        'productFacts': [],
-        'lastDelivery': None,
-        'recentDeliveries': [],
-        'recentQuotes': [],
+        'productFacts': _ai_workspace_question_product_facts(quotes, deliveries),
+        'lastDelivery': latest_delivery,
+        'deliveryPaymentSplit': delivery_payment_split,
+        'recentDeliveries': [
+            payload
+            for payload in (_ai_workspace_question_delivery_payload(item) for item in deliveries[:8])
+            if payload
+        ],
+        'recentQuotes': [
+            {
+                'date': item.get('date') or '',
+                'customer': _ai_workspace_question_text(item.get('customer'), 120),
+                'stage': _ai_workspace_question_text(item.get('stage'), 80),
+                'amount': _money_int(item.get('total_amount') or 0),
+                'source': _ai_workspace_question_text(item.get('source'), 80),
+                'items': _ai_workspace_question_delivery_item_text(item.get('items') or []),
+                'notes': _ai_workspace_question_text(item.get('notes'), 240),
+            }
+            for item in quotes[:8]
+        ],
         'recentNotes': recent_histories,
         'recentEmails': _ai_workspace_recent_email_context(user, followup_ids=followup_ids, limit=16),
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
@@ -13690,6 +13837,7 @@ def _ai_workspace_question_fallback(question, context):
     department = context.get('department') or {}
     summary = context.get('summary') or {}
     latest_delivery = context.get('lastDelivery')
+    delivery_payment_split = context.get('deliveryPaymentSplit') or {}
     recent_feedbacks = context.get('recentFeedbacks') or []
     recent_notes = context.get('recentNotes') or []
     recent_emails = context.get('recentEmails') or []
@@ -13735,6 +13883,85 @@ def _ai_workspace_question_fallback(question, context):
         keyword in normalized
         for keyword in ['메일', '이메일', '회신', '답장', '인박스', '받은편지', '보낸메일', 'mail', 'email']
     )
+    asks_delivery_payment_split = _ai_workspace_question_is_delivery_payment_split(question)
+
+    if asks_delivery_payment_split:
+        prepayment_deliveries = delivery_payment_split.get('prepaymentDeliveries') or []
+        without_prepayment_deliveries = delivery_payment_split.get('withoutPrepaymentDeliveries') or []
+        total_delivery_count = delivery_payment_split.get('totalDeliveryCount') or 0
+        if not total_delivery_count:
+            return {
+                'summary': (
+                    f"{scope_label} 기준으로 구조화된 납품 기록을 찾지 못했습니다. "
+                    '선결제/비선결제 구분은 Schedule 선결제 필드와 PrepaymentUsage가 있는 납품에서만 확인할 수 있습니다.'
+                ),
+                'bullets': [
+                    '선결제 사용 납품: 0건',
+                    '선결제 사용 기록 없는 납품: 0건',
+                    '메모 문구만으로 선결제 납품을 추정하지 않았습니다.',
+                ],
+                'evidence': [{'label': '분류 기준', 'value': delivery_payment_split.get('classificationRule') or '구조화 납품/선결제 사용 내역 없음'}],
+                'actionItems': [],
+                'confidence': 'low',
+            }
+
+        prepayment_lines = [
+            f"- {_ai_workspace_delivery_payment_line(item)}"
+            for item in prepayment_deliveries
+        ] or ['- 없음']
+        without_prepayment_lines = [
+            f"- {_ai_workspace_delivery_payment_line(item)}"
+            for item in without_prepayment_deliveries
+        ] or ['- 없음']
+        if delivery_payment_split.get('omittedPrepaymentCount'):
+            prepayment_lines.append(f"- 외 {delivery_payment_split.get('omittedPrepaymentCount')}건은 목록 길이 제한으로 생략")
+        if delivery_payment_split.get('omittedWithoutPrepaymentCount'):
+            without_prepayment_lines.append(f"- 외 {delivery_payment_split.get('omittedWithoutPrepaymentCount')}건은 목록 길이 제한으로 생략")
+
+        summary_text = (
+            'CRM 구조화 데이터 기준으로만 분리했습니다. 선결제 납품은 '
+            '`Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, '
+            '`PrepaymentUsage` 중 하나가 확인된 납품만 넣었습니다. 메모에 "선결제"라는 말이 있어도 '
+            '실제 선결제 사용 내역이 없으면 선결제 납품으로 분류하지 않았습니다.\n\n'
+            f"1) 선결제 사용 납품 ({delivery_payment_split.get('prepaymentCount') or 0}건)\n"
+            + '\n'.join(prepayment_lines)
+            + '\n\n'
+            f"2) 선결제 사용 기록 없는 납품 ({delivery_payment_split.get('withoutPrepaymentCount') or 0}건)\n"
+            + '\n'.join(without_prepayment_lines)
+            + '\n\n'
+            '주의: CRM에는 별도의 "일반결제" 확정 필드가 없으므로, 두 번째 목록은 '
+            '"일반결제 확정"이 아니라 "선결제 사용 기록 없음"으로 보는 것이 정확합니다.'
+        )
+        evidence_rows = [{'label': '분류 기준', 'value': delivery_payment_split.get('classificationRule') or ''}]
+        for index, item in enumerate(prepayment_deliveries[:4], start=1):
+            evidence_rows.append({
+                'label': f'선결제 납품 {index}',
+                'value': _ai_workspace_delivery_payment_line(item),
+            })
+        for index, item in enumerate(without_prepayment_deliveries[:4], start=1):
+            evidence_rows.append({
+                'label': f'선결제 사용 기록 없음 {index}',
+                'value': _ai_workspace_delivery_payment_line(item),
+            })
+        return {
+            'summary': summary_text,
+            'bullets': [
+                (
+                    f"선결제 사용 납품: {delivery_payment_split.get('prepaymentCount') or 0}건 / "
+                    f"납품금액 {_ai_workspace_money(delivery_payment_split.get('prepaymentDeliveryAmount') or 0)} / "
+                    f"선결제 차감 {_ai_workspace_money(delivery_payment_split.get('prepaymentUsedAmount') or 0)}"
+                ),
+                (
+                    f"선결제 사용 기록 없는 납품: {delivery_payment_split.get('withoutPrepaymentCount') or 0}건 / "
+                    f"납품금액 {_ai_workspace_money(delivery_payment_split.get('withoutPrepaymentDeliveryAmount') or 0)}"
+                ),
+                '메모/메일/이전 AI 답변은 선결제 납품 분류 근거로 쓰지 않았습니다.',
+                '별도 결제수단 필드가 생기기 전까지는 "일반결제"보다 "선결제 사용 기록 없음"이라고 답해야 합니다.',
+            ],
+            'evidence': _ai_workspace_question_evidence_payload(evidence_rows, limit=9, value_limit=700),
+            'actionItems': [],
+            'confidence': 'high',
+        }
 
     if asks_email_context:
         if recent_emails:
@@ -14336,6 +14563,17 @@ def _ai_workspace_question_response_guidance(question):
             'instruction': '질문 의도에 맞는 자연스러운 답변 형식을 선택한다.',
         }
 
+    if _ai_workspace_question_is_delivery_payment_split(question):
+        return {
+            'intent': 'delivery_payment_split',
+            'instruction': (
+                '선결제/일반결제/선결제 없이 납품 분리 질문이다. '
+                'crmContext.deliveryPaymentSplit의 prepaymentDeliveries와 withoutPrepaymentDeliveries만 기준으로 답한다. '
+                '메모에 선결제 표현이 있어도 PrepaymentUsage 또는 Schedule 선결제 필드가 없으면 선결제 납품으로 분류하지 않는다. '
+                '별도 결제수단 필드가 없으므로 일반결제 확정이라고 쓰지 말고 "선결제 사용 기록 없음"으로 표현한다.'
+            ),
+        }
+
     wants_prompt = (
         any(keyword in compact for keyword in ['프롬프트', 'prompt'])
         and any(keyword in compact for keyword in ['만들', '작성', '보낼', '복붙', '그대로', '상담'])
@@ -14455,6 +14693,9 @@ def _ai_workspace_generate_department_question_answer(
                 'crmContext.productFacts는 제품 코드별 제품 마스터 설명/규격/단위다. 제품 코드의 품목 성격은 productFacts와 CRM 품목 메모를 우선 근거로 삼는다.',
                 '제품 코드는 식별자다. productFacts.label/description/specification 또는 CRM 메모에 없는 품목 유형을 코드 앞에 새로 붙이지 않는다.',
                 '예를 들어 productFacts에 튜브 근거가 없으면 "튜브(P4345N00)"처럼 쓰지 말고 productFacts.label 또는 "P4345N00 품목"처럼 쓴다.',
+                'crmContext.deliveryPaymentSplit은 납품별 선결제 사용 여부를 구조화 데이터로 분리한 표다. 선결제 납품은 Schedule.use_prepayment, Schedule.prepayment, Schedule.prepayment_amount, PrepaymentUsage 중 하나가 확인될 때만 prepaymentDeliveries에 들어간다.',
+                '선결제/일반결제/그냥 결제/선결제 없이 납품 구분 질문에서는 crmContext.deliveryPaymentSplit을 우선 근거로 사용하고, recentNotes/recentEmails/recentQuestionLogs/납품 notes의 선결제 언급만으로 분류하지 않는다.',
+                'withoutPrepaymentDeliveries는 별도 결제수단 확정이 아니라 구조화 선결제 사용 기록이 없는 납품이다. CRM에 일반결제 필드가 없으면 "일반결제 확정"이 아니라 "선결제 사용 기록 없음"이라고 표현한다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 실행할 작업/다음 액션을 묻는다면 범위가 전체 부서든 선택 부서든 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
@@ -15632,6 +15873,7 @@ def ai_workspace_department_question_api(request):
             'departmentCount': len(context.get('departments') or []) or (1 if context.get('department') else 0),
             'summary': context.get('summary') or {},
             'lastDelivery': context.get('lastDelivery'),
+            'deliveryPaymentSplit': context.get('deliveryPaymentSplit') or {},
             'recommendedActionCount': len(context.get('recommendedActions') or []),
             'filteredActionCount': len((context.get('actionFilter') or {}).get('skippedActions') or []),
             'actionFilter': context.get('actionFilter') or {},
