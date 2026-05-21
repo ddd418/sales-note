@@ -23397,3 +23397,81 @@ After production verification, use `salesnote_list_endpoints` first, then test `
 5. Run `salesnote_read_endpoint` with `endpoint = customers` and `query = {"q": "검색어"}`.
 6. Run a detail endpoint such as `customer_detail` with a known `id`.
 7. Confirm write endpoints such as note creation are not available through MCP.
+
+## 2026-05-21 React customer detail address/detail visibility
+
+### 1. Summary
+
+- Fixed the React customer detail page so customer address and full detail notes are visible on `/customers/<id>/`.
+- Production customer 471 API was checked through the read-only Sales Note endpoint and confirmed to already include `address` and `notesFull`; the issue was frontend rendering, not missing backend data.
+- Added a `고객 기본정보` panel above the asset/service section.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- Customer detail now shows company, department, customer name, owner, manager, phone, email, pipeline stage, address, and detailed notes without opening edit mode.
+- Multiline address/detail text is preserved and mobile responsive.
+
+### 4. Existing Functionality Preserved
+
+- Existing `/reporting/*` routes and Django APIs were not changed.
+- Customer edit form, recent notes, schedules, prepayments, and asset/service sections remain in place.
+- No authentication or permission behavior was changed.
+
+### 5. Commands Run
+
+```text
+mcp salesnote_read_endpoint customer_detail id=471
+→ Production API success=True and customer payload includes address and notesFull.
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle.
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+Local built-bundle browser smoke with mocked customer 471 payload
+→ .customer-profile-panel rendered and included 상세주소 and 상세 내용.
+
+git diff --check
+→ OK, CRLF normalization warnings only.
+```
+
+### 6. Known Limitations
+
+- The smoke test used a local mocked API payload to verify built React rendering because the production frontend bundle is not updated until Railway deployment completes.
+- Production data remains redacted through the MCP read-only tool output, but the field presence was confirmed.
+
+### 7. Production Deployment Status
+
+- Pending. Runtime changes are ready to commit, push, and deploy to Railway `sales-note-frontend`.
+
+### 8. Recommended Next Task
+
+- After this fix is manually verified in production, continue improving customer detail usability by grouping recent notes, next actions, and contact data into a clearer manager review layout.
+
+### 9. Manual Server Test Process
+
+1. Open `https://sales-note-frontend-production.up.railway.app/customers/471/` after deployment.
+2. Confirm the new `고객 기본정보` panel appears near the top of the page.
+3. Confirm `상세주소` displays the customer's saved address.
+4. Confirm `상세 내용` displays the saved notes/detail text.
+5. Click `수정`, confirm the existing edit form still opens and still contains address/detail fields.
+6. Confirm recent notes, schedule actions, asset/service, and prepayment sections still load.

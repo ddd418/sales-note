@@ -7023,3 +7023,34 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-21 React customer detail address/detail visibility plan
+
+**Background**:
+
+- User reported that production React customer detail `/customers/471/` does not show customer address and detail content.
+- Django `FollowUp` already has `address` and `notes` fields.
+- The React customer detail API already includes `address`, `notes`, and `notesFull` in the customer payload.
+- Current React detail page only displays contact summary, next action, and latest activity in the customer summary area.
+
+**DB change required**: No.
+
+- No model fields or migrations are needed.
+- This is a scoped React rendering fix for an existing API payload.
+
+**Implementation scope**:
+
+- Frontend:
+  - Add a visible customer basic/detail information panel on `/customers/<id>/`.
+  - Show company, department, customer name, owner, manager, phone, email, address, and full detail notes.
+  - Preserve existing edit form, notes, schedules, assets, prepayments, and `/reporting/*` fallback links.
+  - Add CSS for responsive basic information rows and multiline detail text.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`

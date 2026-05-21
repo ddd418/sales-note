@@ -3440,6 +3440,17 @@ function CustomerDetailPage({
     { label: '진행 서비스', value: `${formatNumber(assetSummary.metrics.openServiceCaseCount)}건` },
     { label: '교정 예정', value: `${formatNumber(assetSummary.metrics.dueCalibrationCount)}건` },
   ];
+  const customerProfileFields = [
+    { label: '업체/학교', value: customerDetail.company },
+    { label: '부서/연구실', value: customerDetail.department },
+    { label: '고객명', value: customerDetail.customer },
+    { label: '담당자', value: customerDetail.owner },
+    { label: '책임자', value: customerDetail.manager },
+    { label: '전화번호', value: customerDetail.phone },
+    { label: '이메일', value: customerDetail.email },
+    { label: '파이프라인', value: customerDetail.pipelineLabel },
+  ];
+  const customerDetailNotes = customerDetail.notesFull || customerDetail.notes;
 
   return (
     <section className="customers-page customer-detail-page">
@@ -3489,6 +3500,34 @@ function CustomerDetailPage({
             value={metric.value}
           />
         ))}
+      </section>
+
+      <section className="dashboard-panel customer-profile-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Customer profile</span>
+            <h2>고객 기본정보</h2>
+          </div>
+          <Building2 size={18} />
+        </div>
+        <dl className="customer-profile-grid">
+          {customerProfileFields.map((field) => (
+            <div key={field.label}>
+              <dt>{field.label}</dt>
+              <dd>{field.value || '-'}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="customer-profile-text-grid">
+          <article className={`customer-profile-text ${customerDetail.address ? '' : 'empty'}`}>
+            <span>상세주소</span>
+            <p>{customerDetail.address || '등록된 주소 없음'}</p>
+          </article>
+          <article className={`customer-profile-text ${customerDetailNotes ? '' : 'empty'}`}>
+            <span>상세 내용</span>
+            <p>{customerDetailNotes || '등록된 상세 내용 없음'}</p>
+          </article>
+        </div>
       </section>
 
       <section className="dashboard-panel customer-assets-panel">

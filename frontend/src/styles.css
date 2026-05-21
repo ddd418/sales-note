@@ -4544,6 +4544,59 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.customer-profile-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.customer-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.customer-profile-grid > div,
+.customer-profile-text {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.customer-profile-grid dt,
+.customer-profile-text span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-profile-grid dd,
+.customer-profile-text p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.customer-profile-text-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.customer-profile-text p {
+  white-space: pre-wrap;
+}
+
+.customer-profile-text.empty p {
+  color: var(--muted);
+}
+
 .customer-prepayment-card {
   display: grid;
   gap: 10px;
@@ -8599,6 +8652,14 @@ tbody tr:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .customer-profile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customer-profile-text-grid {
+    grid-template-columns: 1fr;
+  }
+
   .asset-directory-drawer-meta {
     grid-template-columns: 1fr;
   }
@@ -8651,6 +8712,10 @@ tbody tr:hover {
 
   .ai-memory-toolbar,
   .ai-memory-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-profile-grid {
     grid-template-columns: 1fr;
   }
 
