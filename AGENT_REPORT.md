@@ -1,5 +1,112 @@
 # AGENT_REPORT.md
 
+## 2026-05-21 — Reports Customer Operations Table
+
+### 요약
+
+- React `/reports/`를 기존 활동/파이프라인 분석 화면에서 고객별 운영 현황표로 재구성했습니다.
+- 고객별 납품, 견적, 선결제, 서비스 현황을 한 화면의 넓은 표로 볼 수 있게 했습니다.
+- 납품은 구조화된 `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, `PrepaymentUsage` 기준으로만 `선결제 차감 납품`과 `선결제 사용 기록 없음`을 구분합니다.
+- 이 화면에는 AI 패널/AI 답변 영역을 두지 않았습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- `/reports/`에서 고객별 납품 건수/금액, 일반 납품 건수, 선결제 차감 납품 건수/차감액을 바로 비교할 수 있습니다.
+- 견적 횟수/금액, 선결제 총액/잔액/사용액, 서비스 건수/진행 건수를 고객별로 함께 표시합니다.
+- 최근 납품 품목을 행 안에 표시해 고객 상세로 들어가기 전에 납품 흐름을 빠르게 훑을 수 있습니다.
+- 기존 날짜/담당자 필터를 유지해 기간별 운영 현황 확인이 가능합니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `reporting` 앱과 `/reporting/*` 라우트는 유지했습니다.
+- `/reporting/api/reports/` 인증/권한 스코프는 유지하고, 기존 metrics/activity/pipeline payload도 전환 기간 호환용으로 남겼습니다.
+- 고객 상세, 납품 저장, 선결제 장부, AI Workspace 기능은 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK, dist/assets/index-RduguGxn.js / dist/assets/index-CZk1s1H0.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "feat: rebuild reports customer operations"
+→ 6e5743b
+
+git push
+→ main updated
+
+Railway deployment list --service web
+→ 3590ac31-7a10-44f4-9709-b1f721d59820 SUCCESS, commit 6e5743b
+
+Railway deployment list --service sales-note-frontend
+→ 13caa2d2-1f6b-4583-aefb-20ea5f5503bf SUCCESS, commit 6e5743b
+
+Production smoke
+→ /reports/ 200
+→ /reporting/api/reports/ anonymous GET 401 login_required
+→ latest JS bundle contains "고객별 납품/견적 현황", "고객별 운영 현황표", "선결제 차감 납품", "선결제 사용 기록 없음"
+```
+
+### 알려진 제한
+
+- CRM에는 아직 별도 `일반결제` 확정 필드가 없습니다. 표의 일반 납품은 구조화된 선결제 차감 기록이 없는 납품이라는 뜻입니다.
+- 로그인 세션이 필요한 실제 고객 데이터 행 검증은 사용자의 운영 계정으로 수동 확인이 필요합니다.
+- 선결제 잔액은 현재 잔액 기준이며, 납품/견적/서비스 집계는 선택 기간 기준입니다.
+
+### 권장 다음 작업
+
+- 사용자가 운영 `/reports/`에서 실제 행을 확인한 뒤, 필요하면 컬럼 순서나 필터를 업무 방식에 맞춰 조정합니다.
+
+### 운영 배포 상태
+
+- 런타임 커밋 `6e5743b feat: rebuild reports customer operations` 푸시 완료.
+- Railway `web` 배포 `3590ac31-7a10-44f4-9709-b1f721d59820` 성공.
+- Railway `sales-note-frontend` 배포 `13caa2d2-1f6b-4583-aefb-20ea5f5503bf` 성공.
+- 운영 URL: `https://sales-note-frontend-production.up.railway.app/reports/`
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/reports/`에 로그인 상태로 접속합니다.
+2. 제목이 `고객별 납품/견적 현황`이고 표 제목이 `고객별 운영 현황표`인지 확인합니다.
+3. 고객별로 납품, 선결제 차감, 일반 납품, 견적, 선결제, 서비스 컬럼이 보이는지 확인합니다.
+4. `선결제 차감`은 실제 선결제 사용 일정/사용내역이 있는 납품만 잡히는지 확인합니다.
+5. `일반 납품`은 선결제 사용 기록이 없는 납품으로 표시되는지 확인합니다.
+6. 행의 `상세보기`를 눌러 고객 상세로 이동해 같은 고객의 운영 기록과 금액 흐름이 맞는지 확인합니다.
+
 ## 2026-05-21 — Customer Detail Operational Records
 
 ### 요약
