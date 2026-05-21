@@ -1,5 +1,101 @@
 # AGENT_REPORT.md
 
+## 2026-05-21 — Customer Detail Department Shared Records
+
+### 요약
+
+- 고객 상세 운영 기록의 기준을 단일 고객/담당자명에서 같은 부서/연구실 기준으로 확장했습니다.
+- 이제 `/customers/<id>/`에서 같은 부서에 연결된 다른 FollowUp의 납품, 견적, 선결제 기록도 함께 보입니다.
+- `납품 엑셀` 다운로드도 같은 부서 기준 납품 기록을 포함하도록 수정했습니다.
+- 화면 문구도 `같은 부서 기준`으로 바꿔 사용자가 범위를 오해하지 않게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+
+### CRM 개선
+
+- 한은영처럼 특정 고객명으로 들어가도, 같은 부서/연구실에 붙은 납품 기록을 놓치지 않습니다.
+- 견적 기록과 선결제 기록도 같은 부서 단위로 공유되어 고객 상세에서 더 실제 장부 흐름에 맞게 보입니다.
+- 고객 납품 엑셀도 같은 부서의 납품 품목을 포함합니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `reporting` 앱과 `/reporting/*` 라우트는 유지했습니다.
+- 기존 로그인/권한/사용자 범위는 유지했습니다. 같은 부서라도 현재 사용자가 볼 수 없는 사용자 범위의 기록은 노출하지 않습니다.
+- 선결제 차감 납품 구분은 계속 구조화 필드와 `PrepaymentUsage` 근거만 사용합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_downloads_department_shared_deliveries reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_blocks_out_of_scope_customer reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_requires_login --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK, dist/assets/index-BCAFhaYQ.js / dist/assets/index-D2A_4Cx7.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "fix: share customer records by department"
+→ 97f65c9
+
+git push
+→ main updated
+
+Production smoke
+→ /customers/471/ 200
+→ /reporting/api/customers/471/delivery-records.xlsx anonymous GET 302 to /reporting/login/?next=/reporting/api/customers/471/delivery-records.xlsx
+→ latest JS bundle /assets/index-BCAFhaYQ.js contains "같은 부서 기준", "같은 부서 견적서/견적 일정 기준", "같은 부서 입금, 잔액, 사용내역", "납품 엑셀"
+```
+
+### 알려진 제한
+
+- 실제 같은 부서 데이터 행 확인은 로그인된 운영 계정으로 고객 471 상세에서 확인해야 합니다.
+- 권한은 기존 사용자 범위를 보존합니다. 같은 부서라도 현재 로그인 사용자의 범위 밖 사용자 기록까지 강제로 공개하지는 않습니다.
+- Railway CLI 인증은 이전 작업부터 만료되어 배포 ID 조회는 못 했지만, 운영 번들 반영과 보호 라우트 스모크는 확인했습니다.
+
+### 권장 다음 작업
+
+- 운영에서 `/customers/471/`에 들어가 같은 부서의 다른 고객/담당자에게 등록된 납품, 견적, 선결제가 함께 보이는지 확인합니다.
+
+### 운영 배포 상태
+
+- 런타임 커밋 `97f65c9 fix: share customer records by department` 푸시 완료.
+- 운영 URL `https://sales-note-frontend-production.up.railway.app/customers/471/`에서 새 번들 반영 확인.
+- Railway CLI 배포 ID 조회는 인증 만료로 실패했으나, 운영 스모크는 통과했습니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/customers/471/`에 로그인 상태로 접속합니다.
+2. `납품 기록` 제목 옆 문구가 `같은 부서 기준`으로 보이는지 확인합니다.
+3. 한은영 고객과 같은 부서/연구실에 등록된 다른 고객/담당자의 납품 기록이 함께 보이는지 확인합니다.
+4. `견적 기록`과 `선결제 기록`도 같은 부서 기준으로 함께 보이는지 확인합니다.
+5. `납품 엑셀`을 내려받아 같은 부서 납품 품목이 포함되는지 확인합니다.
+
 ## 2026-05-21 — Customer Delivery Records Excel Export
 
 ### 요약
