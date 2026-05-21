@@ -1,5 +1,107 @@
 # AGENT_REPORT.md
 
+## 2026-05-21 — Customer Delivery Records Excel Export
+
+### 요약
+
+- React 고객 상세 `/customers/<id>/`의 `납품 기록` 섹션에 `납품 엑셀` 다운로드 버튼을 추가했습니다.
+- 백엔드에 고객별 납품 기록 전용 XLSX 다운로드 엔드포인트를 추가했습니다.
+- 엑셀은 해당 고객의 납품 일정만 포함하고, 납품 품목은 항목별 행으로 펼쳐서 내려줍니다.
+- 납품 구분은 기존 고객 상세와 동일하게 구조화된 선결제 필드/사용내역 기준으로만 `선결제 차감 납품`과 `일반 납품`을 구분합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 고객 상세에서 특정 고객의 납품 기록만 바로 엑셀로 받을 수 있습니다.
+- 엑셀 컬럼에는 납품일, 일정 ID, 고객/업체/부서, 담당자, 상태, 납품구분, 선결제 차감액, 품목명, 수량, 단위, 단가, 품목금액, 일정납품합계, 비고, 구분근거, 일정링크가 포함됩니다.
+- 엑셀에서도 메모 추정이 아니라 `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, `PrepaymentUsage` 근거로만 선결제 차감 여부를 표시합니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `reporting` 앱과 `/reporting/*` 라우트는 유지했습니다.
+- 고객 상세의 서비스/견적/납품/선결제 기록 화면과 AI-free 동작은 유지했습니다.
+- 다운로드 엔드포인트는 로그인과 기존 고객 접근 권한을 요구합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_downloads_only_customer_deliveries reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_blocks_out_of_scope_customer reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_requires_login reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK, dist/assets/index-k8rMQgvi.js / dist/assets/index-D2A_4Cx7.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "feat: export customer delivery records"
+→ 93b1d1d
+
+git push
+→ main updated
+
+Railway deployment list
+→ CLI token refresh failed with invalid_grant, so deployment IDs could not be read from Railway CLI in this run.
+
+Production smoke
+→ /customers/471/ 200
+→ /reporting/api/customers/471/delivery-records.xlsx anonymous GET 302 to /reporting/login/?next=/reporting/api/customers/471/delivery-records.xlsx
+→ latest JS bundle /assets/index-k8rMQgvi.js contains "납품 엑셀", "deliveryRecordsXlsx", "선결제 차감 여부 표시"
+```
+
+### 알려진 제한
+
+- 로그인 세션이 필요한 실제 XLSX 파일 내용 검증은 운영 계정으로 직접 버튼을 눌러 확인해야 합니다.
+- 엑셀의 `일반 납품`은 CRM에 별도 일반결제 확정 필드가 있어서가 아니라, 구조화된 선결제 사용 기록이 없는 납품이라는 뜻입니다.
+- Railway CLI 인증이 만료되어 배포 ID 확인은 못 했지만, 운영 번들/라우트 스모크로 코드 반영은 확인했습니다.
+
+### 권장 다음 작업
+
+- 사용자가 `/customers/471/`에서 `납품 엑셀`을 직접 눌러 내려받은 파일의 컬럼/정렬이 업무에 맞는지 확인합니다.
+
+### 운영 배포 상태
+
+- 런타임 커밋 `93b1d1d feat: export customer delivery records` 푸시 완료.
+- 운영 URL `https://sales-note-frontend-production.up.railway.app/customers/471/`에서 새 번들 반영 확인.
+- Railway CLI 배포 ID 조회는 인증 만료로 실패했으나, 운영 스모크는 통과했습니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/customers/471/`에 로그인 상태로 접속합니다.
+2. `고객 운영 기록` 안의 `납품 기록` 섹션에서 `납품 엑셀` 버튼을 누릅니다.
+3. 다운로드된 XLSX에서 해당 고객의 납품 품목만 들어 있는지 확인합니다.
+4. `납품구분`, `선결제차감액`, `구분근거`가 고객 상세의 선결제 차감 납품/일반 납품 표시와 맞는지 확인합니다.
+5. 다른 고객의 납품 품목이 섞이지 않았는지 확인합니다.
+
 ## 2026-05-21 — Reports Customer Operations Table
 
 ### 요약
