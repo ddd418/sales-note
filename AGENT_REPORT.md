@@ -52,6 +52,17 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK
+
+Railway deployment list --service web
+→ 94004178-97cb-4e15-9376-205a3fd9ea59 SUCCESS
+
+Railway deployment list --service sales-note-frontend
+→ 0029d9d7-c49d-4927-a603-76d9ecb62a9d SUCCESS
+
+Production smoke
+→ `/` 200
+→ `/reporting/api/ai-workspace/` anonymous GET 401 login_required
+→ `/reporting/api/ai-workspace/department-question/` anonymous POST 403 CSRF/auth protection
 ```
 
 ### 알려진 제한
@@ -65,8 +76,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 로컬 검증 완료.
-- Railway 배포는 커밋/푸시 후 진행 예정입니다.
+- 커밋 `17f5a67` 푸시 완료.
+- Railway `web` 배포 `94004178-97cb-4e15-9376-205a3fd9ea59` 성공.
+- Railway `sales-note-frontend` 배포 `0029d9d7-c49d-4927-a603-76d9ecb62a9d` 성공.
+- 운영 URL: `https://sales-note-frontend-production.up.railway.app`
 
 ### 수동 서버 테스트 절차
 
