@@ -23452,6 +23452,23 @@ Local built-bundle browser smoke with mocked customer 471 payload
 
 git diff --check
 → OK, CRLF normalization warnings only.
+
+git commit -m "fix: show customer address on detail"
+→ 3cf729d fix: show customer address on detail
+
+git push origin main
+→ main pushed to GitHub
+
+Railway automatic deployment
+→ sales-note-frontend 7e689650-387e-44f6-bd9b-0505f080938a SUCCESS
+→ web ca6a7a85-6a9d-4450-95de-fda4afe670b4 SUCCESS
+
+Production frontend bundle smoke
+→ /customers/471/ returned 200
+→ JS bundle contains 고객 기본정보
+→ CSS bundle contains customer-profile-panel
+→ Anonymous /reporting/api/customers/471/ remains login-protected
+→ Read-only authenticated customer_detail id=471 returns success=True with address and notesFull fields
 ```
 
 ### 6. Known Limitations
@@ -23461,7 +23478,11 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending. Runtime changes are ready to commit, push, and deploy to Railway `sales-note-frontend`.
+- Runtime commit: `3cf729d fix: show customer address on detail`
+- GitHub: `main` pushed.
+- Railway `sales-note-frontend`: `7e689650-387e-44f6-bd9b-0505f080938a` SUCCESS.
+- Railway `web`: `ca6a7a85-6a9d-4450-95de-fda4afe670b4` SUCCESS from the same GitHub push, although no backend runtime files changed.
+- Production smoke passed for the updated frontend bundle and authenticated read-only customer detail API.
 
 ### 8. Recommended Next Task
 
