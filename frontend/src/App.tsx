@@ -3709,8 +3709,16 @@ function CustomerDetailPage({
         <div className="customer-record-sections">
           <section className="customer-record-section">
             <div className="customer-record-section-heading">
-              <h3>납품 기록</h3>
-              <span>선결제 차감 여부 표시</span>
+              <div>
+                <h3>납품 기록</h3>
+                <span>선결제 차감 여부 표시</span>
+              </div>
+              {data.links.deliveryRecordsXlsx ? (
+                <a className="route-secondary-action" href={data.links.deliveryRecordsXlsx}>
+                  <Download size={15} />
+                  납품 엑셀
+                </a>
+              ) : null}
             </div>
             <CustomerDeliveryRecords records={operationalRecords.deliveryRecords} />
           </section>

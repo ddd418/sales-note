@@ -1,5 +1,45 @@
 # AGENT_PLAN.md
 
+## 2026-05-21 Customer delivery records Excel export plan
+
+**Background**:
+
+- User wants `/customers/471/` customer detail to support downloading only that customer's delivery records as Excel.
+- The customer detail page already shows structured delivery records in React.
+- Export must use the same factual delivery split as the customer detail page: structured prepayment fields only.
+
+**DB change required**: No.
+
+- Reuse existing `FollowUp`, `Schedule`, `History`, `DeliveryItem`, `Prepayment`, and `PrepaymentUsage` data.
+- No model fields or migrations are needed.
+
+**Implementation scope**:
+
+- Backend:
+  - Add an authenticated customer-scoped delivery records XLSX endpoint.
+  - Use existing customer access/scope rules and the same operational delivery payload helper.
+  - Export one row per delivered item, with a fallback row for delivery schedules without item lines.
+  - Include delivery date, schedule id, customer/company/department, owner, status, payment source, prepayment used amount, item, quantity, unit, unit price, total amount, notes, and evidence.
+- Frontend:
+  - Add the XLSX download link to the React customer detail payload.
+  - Add a `납품 엑셀` button to the delivery records section.
+  - Keep existing customer detail sections and AI-free behavior.
+- Tests/docs:
+  - Add focused export tests for auth/scope, XLSX response, and prepayment classification text.
+  - Update `AGENT_REPORT.md` after validation and deployment.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused customer delivery export tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke production `/customers/471/` plus protected export route behavior.
+
 ## 2026-05-21 Reports customer operational status table plan
 
 **Background**:

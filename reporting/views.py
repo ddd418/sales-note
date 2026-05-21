@@ -3570,6 +3570,31 @@ def _customer_delivery_record_payload(schedule):
     }
 
 
+def _customer_delivery_record_payloads(followup, scope_users, limit=50):
+    service_history_prefetch = Prefetch(
+        'histories',
+        queryset=History.objects.filter(parent_history__isnull=True).prefetch_related('delivery_items_set').order_by('-created_at'),
+        to_attr='_customer_record_histories',
+    )
+    delivery_schedules_qs = Schedule.objects.filter(
+        followup=followup,
+        user__in=scope_users,
+        activity_type='delivery',
+    ).exclude(status='cancelled').select_related(
+        'user', 'followup', 'followup__company', 'followup__department', 'prepayment'
+    ).prefetch_related(
+        'delivery_items_set',
+        service_history_prefetch,
+        Prefetch(
+            'prepayment_usages',
+            queryset=PrepaymentUsage.objects.select_related('prepayment', 'prepayment__customer').order_by('id'),
+        ),
+    ).order_by('-visit_date', '-visit_time', '-id')
+    if limit is not None:
+        delivery_schedules_qs = delivery_schedules_qs[:limit]
+    return [_customer_delivery_record_payload(schedule) for schedule in list(delivery_schedules_qs)]
+
+
 def _customer_quote_item_payload(item):
     product = item.product if item.product_id else None
     return {
@@ -3737,23 +3762,7 @@ def _customer_operational_records_payload(followup, scope_users, actor):
         queryset=History.objects.filter(parent_history__isnull=True).prefetch_related('delivery_items_set').order_by('-created_at'),
         to_attr='_customer_record_histories',
     )
-    delivery_schedules = list(
-        Schedule.objects.filter(
-            followup=followup,
-            user__in=scope_users,
-            activity_type='delivery',
-        ).exclude(status='cancelled').select_related(
-            'user', 'followup', 'followup__company', 'followup__department', 'prepayment'
-        ).prefetch_related(
-            'delivery_items_set',
-            service_history_prefetch,
-            Prefetch(
-                'prepayment_usages',
-                queryset=PrepaymentUsage.objects.select_related('prepayment', 'prepayment__customer').order_by('id'),
-            ),
-        ).order_by('-visit_date', '-visit_time', '-id')[:50]
-    )
-    delivery_records = [_customer_delivery_record_payload(schedule) for schedule in delivery_schedules]
+    delivery_records = _customer_delivery_record_payloads(followup, scope_users, limit=50)
 
     quote_records_qs = Quote.objects.filter(
         followup=followup,
@@ -4773,6 +4782,7 @@ def customer_detail_summary_api(request, followup_id):
             'djangoEdit': reverse('reporting:followup_edit', args=[followup.id]),
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
             'createNote': f'/notes/?create=1&customer={followup.id}',
+            'deliveryRecordsXlsx': reverse('reporting:customer_delivery_records_xlsx_export_api', args=[followup.id]),
         },
         'prepaymentSummary': _customer_detail_prepayment_summary_payload(followup, scope_users, request.user),
         'operationalRecords': _customer_operational_records_payload(followup, scope_users, request.user),
@@ -4799,6 +4809,123 @@ def customer_detail_summary_api(request, followup_id):
             for schedule in list(recent_schedules[:8])
         ],
     })
+
+
+@never_cache
+@login_required
+@require_http_methods(["GET"])
+def customer_delivery_records_xlsx_export_api(request, followup_id):
+    """React 고객 상세의 고객별 납품 기록만 XLSX로 다운로드."""
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from urllib.parse import quote
+
+    user_profile = get_user_profile(request.user)
+    followup = get_object_or_404(
+        FollowUp.objects.select_related('user', 'company', 'department'),
+        pk=followup_id,
+    )
+    if not can_access_followup(request.user, followup):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    delivery_records = _customer_delivery_record_payloads(followup, scope_users, limit=None)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = '납품 기록'
+
+    headers = [
+        '납품일', '일정ID', '고객명', '업체/학교', '부서/연구실', '담당자',
+        '상태', '납품구분', '선결제차감액', '품목명', '수량', '단위',
+        '단가', '품목금액', '일정납품합계', '비고', '구분근거', '일정링크',
+    ]
+    ws.append(headers)
+
+    header_fill = PatternFill(fill_type='solid', fgColor='1F2937')
+    header_font = Font(bold=True, color='FFFFFF')
+    thin_side = Side(style='thin', color='D1D5DB')
+    border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    body_alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+    money_format = '#,##0'
+
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+        cell.border = border
+
+    for record in delivery_records:
+        items = record.get('items') or [None]
+        for item in items:
+            row = [
+                record.get('date') or '',
+                record.get('id') or '',
+                record.get('customerName') or '',
+                record.get('companyName') or '',
+                record.get('departmentName') or '',
+                record.get('ownerName') or '',
+                record.get('statusLabel') or '',
+                record.get('paymentSourceLabel') or '',
+                record.get('prepaymentAmount') or 0,
+                item.get('itemName') if item else '',
+                item.get('quantity') if item else '',
+                item.get('unit') if item else '',
+                item.get('unitPrice') if item and item.get('unitPrice') is not None else '',
+                item.get('totalPrice') if item and item.get('totalPrice') is not None else '',
+                record.get('totalAmount') or 0,
+                record.get('notes') or '',
+                record.get('paymentEvidence') or '',
+                request.build_absolute_uri(record.get('href') or '') if record.get('href') else '',
+            ]
+            ws.append(row)
+
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.border = border
+            cell.alignment = body_alignment
+        for col_idx in [9, 13, 14, 15]:
+            row[col_idx - 1].number_format = money_format
+
+    widths = [12, 10, 18, 22, 20, 12, 12, 18, 14, 24, 10, 8, 12, 14, 16, 32, 46, 42]
+    for col_idx, width in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+
+    info = wb.create_sheet(title='다운로드 정보')
+    info_rows = [
+        ('고객', followup.customer_name or followup.manager or ''),
+        ('업체/학교', followup.company.name if followup.company else ''),
+        ('부서/연구실', followup.department.name if followup.department else ''),
+        ('범위', _user_display_name(selected_user) if selected_user else (
+            f'{user_profile.company.name} 팀' if user_profile.company and user_profile.can_view_all_users() else _user_display_name(request.user)
+        )),
+        ('납품 일정 수', len(delivery_records)),
+        ('생성일시', timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')),
+        ('생성자', _user_display_name(request.user)),
+    ]
+    for row in info_rows:
+        info.append(row)
+    info.column_dimensions['A'].width = 16
+    info.column_dimensions['B'].width = 42
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    label = '_'.join([
+        part for part in [
+            followup.company.name if followup.company else '',
+            followup.department.name if followup.department else '',
+            followup.customer_name or followup.manager or f'customer_{followup.id}',
+        ] if part
+    ])
+    safe_label = re.sub(r'[\\/:*?"<>|]+', '_', label).strip()[:80] or f'customer_{followup.id}'
+    filename = f'{safe_label}_납품기록_{timezone.localdate().strftime("%Y%m%d")}.xlsx'
+    response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+    wb.save(response)
+    return response
 
 
 @never_cache

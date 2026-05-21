@@ -3066,6 +3066,131 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn('선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.', delivery_by_id[normal_schedule.id]['paymentEvidence'])
         self.assertEqual(records['prepaymentRecords'][0]['payerName'], '운영입금자')
 
+    def test_customer_delivery_records_xlsx_export_downloads_only_customer_deliveries(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Prepayment, PrepaymentUsage, Schedule
+
+        today = timezone.localdate()
+        target = self._create_customer(self.user, '납품엑셀고객', priority='urgent')
+        other_target = self._create_customer(self.user, '다른납품고객', priority='urgent')
+        prepayment = Prepayment.objects.create(
+            customer=target,
+            company=target.company,
+            amount=Decimal('200000'),
+            balance=Decimal('150000'),
+            payment_date=today - timedelta(days=3),
+            payer_name='엑셀입금자',
+            created_by=self.user,
+        )
+        prepaid_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=today - timedelta(days=2),
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+            use_prepayment=True,
+            prepayment=prepayment,
+            prepayment_amount=Decimal('50000'),
+            notes='엑셀 선결제 납품',
+        )
+        prepaid_item = DeliveryItem.objects.create(
+            schedule=prepaid_schedule,
+            item_name='엑셀 선결제 품목',
+            quantity=2,
+            unit='EA',
+            unit_price=Decimal('25000'),
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=prepaid_schedule,
+            schedule_item=prepaid_item,
+            product_name='엑셀 선결제 품목',
+            quantity=2,
+            amount=Decimal('50000'),
+            remaining_balance=Decimal('150000'),
+        )
+        normal_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=today - timedelta(days=1),
+            visit_time=time(14, 0),
+            activity_type='delivery',
+            status='completed',
+            notes='엑셀 일반 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=normal_schedule,
+            item_name='엑셀 일반 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=Decimal('30000'),
+        )
+        other_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=other_target,
+            visit_date=today,
+            visit_time=time(15, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=other_schedule,
+            item_name='다른 고객 품목',
+            quantity=1,
+            unit_price=Decimal('99999'),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_delivery_records_xlsx_export_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        self.assertIn('attachment;', response['Content-Disposition'])
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook['납품 기록']
+        rows = list(sheet.iter_rows(values_only=True))
+        self.assertEqual(rows[0][0], '납품일')
+        item_names = {row[9] for row in rows[1:]}
+        self.assertIn('엑셀 선결제 품목', item_names)
+        self.assertIn('엑셀 일반 품목', item_names)
+        self.assertNotIn('다른 고객 품목', item_names)
+        payment_labels = {row[7] for row in rows[1:]}
+        self.assertIn('선결제 차감 납품', payment_labels)
+        self.assertIn('일반 납품', payment_labels)
+        prepaid_row = next(row for row in rows[1:] if row[9] == '엑셀 선결제 품목')
+        normal_row = next(row for row in rows[1:] if row[9] == '엑셀 일반 품목')
+        self.assertEqual(prepaid_row[8], 50000)
+        self.assertIn('PrepaymentUsage 합계=50,000원', prepaid_row[16])
+        self.assertEqual(normal_row[8], 0)
+        self.assertIn('선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.', normal_row[16])
+
+    def test_customer_delivery_records_xlsx_export_blocks_out_of_scope_customer(self):
+        target = self._create_customer(self.other_user, '타사납품엑셀고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_delivery_records_xlsx_export_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_customer_delivery_records_xlsx_export_requires_login(self):
+        target = self._create_customer(self.user, '익명납품엑셀고객')
+
+        response = self.client.get(reverse('reporting:customer_delivery_records_xlsx_export_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response['Location'])
+
     def test_customer_asset_service_calibration_apis_create_records(self):
         from django.utils import timezone
         from reporting.models import CalibrationRecord, CustomerAsset, ServiceCase

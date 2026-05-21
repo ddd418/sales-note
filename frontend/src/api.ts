@@ -1147,6 +1147,7 @@ export type CustomerDetailData = {
     djangoEdit: string;
     createSchedule: string;
     createNote: string;
+    deliveryRecordsXlsx: string;
   };
   prepaymentSummary: CustomerPrepaymentSummary;
   operationalRecords: CustomerOperationalRecords;
@@ -4462,6 +4463,7 @@ const emptyCustomerDetailData: CustomerDetailData = {
     djangoEdit: '',
     createSchedule: '/schedules/?create=1',
     createNote: '/notes/?create=1',
+    deliveryRecordsXlsx: '',
   },
   prepaymentSummary: {
     metrics: {
@@ -6776,7 +6778,7 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
       links: normalizeHrefFields({
         ...emptyCustomerDetailData.links,
         ...(payload.links ?? {}),
-      }, ['customers', 'djangoDetail', 'djangoEdit', 'createSchedule', 'createNote']),
+      }, ['customers', 'djangoDetail', 'djangoEdit', 'createSchedule', 'createNote', 'deliveryRecordsXlsx']),
       prepaymentSummary: {
         ...emptyCustomerDetailData.prepaymentSummary,
         ...(payload.prepaymentSummary ?? {}),

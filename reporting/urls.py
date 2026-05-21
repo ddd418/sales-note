@@ -254,6 +254,7 @@ urlpatterns = [
     path('api/customer-assets/service-cases/<int:case_id>/report/', views.customer_asset_service_report_download_api, name='customer_asset_service_report_download_api'),
     path('api/customer-assets/calibrations/<int:record_id>/certificate/', views.customer_asset_calibration_certificate_download_api, name='customer_asset_calibration_certificate_download_api'),
     path('api/customers/<int:followup_id>/', views.customer_detail_summary_api, name='customer_detail_summary_api'),
+    path('api/customers/<int:followup_id>/delivery-records.xlsx', views.customer_delivery_records_xlsx_export_api, name='customer_delivery_records_xlsx_export_api'),
     path('api/customers/<int:followup_id>/update/', views.customer_update_api, name='customer_update_api'),
     path('api/customers/<int:followup_id>/assets/create/', views.customer_asset_save_api, name='customer_asset_create_api'),
     path('api/customers/<int:followup_id>/assets/<int:asset_id>/update/', views.customer_asset_save_api, name='customer_asset_update_api'),
