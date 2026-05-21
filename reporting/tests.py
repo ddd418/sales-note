@@ -2930,6 +2930,7 @@ class CustomersSummaryApiTests(TestCase):
         from reporting.models import (
             CustomerAsset,
             DeliveryItem,
+            FollowUp,
             Prepayment,
             PrepaymentUsage,
             Product,
@@ -2941,6 +2942,16 @@ class CustomersSummaryApiTests(TestCase):
 
         today = timezone.localdate()
         target = self._create_customer(self.user, '운영기록고객', priority='urgent')
+        sibling = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='운영기록 같은부서 담당자',
+            manager='운영기록 같은부서 책임',
+            company=target.company,
+            department=target.department,
+            priority='scheduled',
+            pipeline_stage='quote',
+        )
         product = Product.objects.create(
             product_code='OP-QUOTE-001',
             standard_price=Decimal('120000'),
@@ -2971,6 +2982,25 @@ class CustomersSummaryApiTests(TestCase):
             quantity=2,
             unit_price=Decimal('120000'),
         )
+        sibling_quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=sibling,
+            visit_date=today - timedelta(days=8),
+            visit_time=time(13, 0),
+            activity_type='quote',
+            status='completed',
+            notes='같은 부서 견적 일정',
+        )
+        Quote.objects.create(
+            quote_number='OP-Q-SAME-DEPT',
+            schedule=sibling_quote_schedule,
+            followup=sibling,
+            user=self.user,
+            valid_until=today + timedelta(days=20),
+            stage='sent',
+            notes='같은 부서 견적 메모',
+        )
         asset = CustomerAsset.objects.create(
             company=target.company,
             department=target.department,
@@ -2996,6 +3026,16 @@ class CustomersSummaryApiTests(TestCase):
             balance=40000,
             payment_date=today - timedelta(days=7),
             payer_name='운영입금자',
+            status='active',
+            created_by=self.user,
+        )
+        sibling_prepayment = Prepayment.objects.create(
+            customer=sibling,
+            company=sibling.company,
+            amount=50000,
+            balance=50000,
+            payment_date=today - timedelta(days=6),
+            payer_name='같은부서입금자',
             status='active',
             created_by=self.user,
         )
@@ -3043,18 +3083,38 @@ class CustomersSummaryApiTests(TestCase):
             quantity=1,
             unit_price=Decimal('30000'),
         )
+        sibling_delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=sibling,
+            visit_date=today,
+            visit_time=time(15, 0),
+            activity_type='delivery',
+            status='completed',
+            notes='같은 부서 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=sibling_delivery_schedule,
+            item_name='같은 부서 납품품목',
+            quantity=1,
+            unit_price=Decimal('70000'),
+        )
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
 
         self.assertEqual(response.status_code, 200)
-        records = response.json()['operationalRecords']
+        payload = response.json()
+        records = payload['operationalRecords']
         self.assertEqual(records['metrics']['serviceRecords'], 1)
-        self.assertEqual(records['metrics']['quoteRecords'], 1)
-        self.assertEqual(records['metrics']['deliveryRecords'], 2)
-        self.assertEqual(records['metrics']['prepaymentRecords'], 1)
+        self.assertEqual(records['metrics']['quoteRecords'], 2)
+        self.assertEqual(records['metrics']['deliveryRecords'], 3)
+        self.assertEqual(records['metrics']['prepaymentRecords'], 2)
+        self.assertEqual(payload['prepaymentSummary']['metrics']['totalCount'], 2)
         self.assertEqual(records['serviceRecords'][0]['assetName'], '운영 서비스 장비')
-        self.assertEqual(records['quoteRecords'][0]['quoteNumber'], 'OP-Q-001')
+        quote_numbers = {record['quoteNumber'] for record in records['quoteRecords']}
+        self.assertIn('OP-Q-001', quote_numbers)
+        self.assertIn('OP-Q-SAME-DEPT', quote_numbers)
         delivery_by_id = {item['id']: item for item in records['deliveryRecords']}
         self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentSource'], 'prepayment')
         self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentSourceLabel'], '선결제 차감 납품')
@@ -3064,18 +3124,31 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(delivery_by_id[normal_schedule.id]['paymentSourceLabel'], '일반 납품')
         self.assertEqual(delivery_by_id[normal_schedule.id]['prepaymentAmount'], 0)
         self.assertIn('선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.', delivery_by_id[normal_schedule.id]['paymentEvidence'])
-        self.assertEqual(records['prepaymentRecords'][0]['payerName'], '운영입금자')
+        self.assertEqual(delivery_by_id[sibling_delivery_schedule.id]['customerName'], '운영기록 같은부서 담당자')
+        payer_names = {record['payerName'] for record in records['prepaymentRecords']}
+        self.assertIn('운영입금자', payer_names)
+        self.assertIn('같은부서입금자', payer_names)
 
-    def test_customer_delivery_records_xlsx_export_downloads_only_customer_deliveries(self):
+    def test_customer_delivery_records_xlsx_export_downloads_department_shared_deliveries(self):
         from datetime import time, timedelta
         from decimal import Decimal
         from io import BytesIO
         from openpyxl import load_workbook
         from django.utils import timezone
-        from reporting.models import DeliveryItem, Prepayment, PrepaymentUsage, Schedule
+        from reporting.models import DeliveryItem, FollowUp, Prepayment, PrepaymentUsage, Schedule
 
         today = timezone.localdate()
         target = self._create_customer(self.user, '납품엑셀고객', priority='urgent')
+        sibling = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='납품엑셀 같은부서 담당자',
+            manager='납품엑셀 같은부서 책임',
+            company=target.company,
+            department=target.department,
+            priority='scheduled',
+            pipeline_stage='quote',
+        )
         other_target = self._create_customer(self.user, '다른납품고객', priority='urgent')
         prepayment = Prepayment.objects.create(
             customer=target,
@@ -3132,6 +3205,23 @@ class CustomersSummaryApiTests(TestCase):
             unit='EA',
             unit_price=Decimal('30000'),
         )
+        sibling_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=sibling,
+            visit_date=today,
+            visit_time=time(13, 0),
+            activity_type='delivery',
+            status='completed',
+            notes='같은 부서 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=sibling_schedule,
+            item_name='엑셀 같은부서 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=Decimal('40000'),
+        )
         other_schedule = Schedule.objects.create(
             user=self.user,
             company=self.company,
@@ -3164,7 +3254,10 @@ class CustomersSummaryApiTests(TestCase):
         item_names = {row[9] for row in rows[1:]}
         self.assertIn('엑셀 선결제 품목', item_names)
         self.assertIn('엑셀 일반 품목', item_names)
+        self.assertIn('엑셀 같은부서 품목', item_names)
         self.assertNotIn('다른 고객 품목', item_names)
+        customer_names = {row[2] for row in rows[1:]}
+        self.assertIn('납품엑셀 같은부서 담당자', customer_names)
         payment_labels = {row[7] for row in rows[1:]}
         self.assertIn('선결제 차감 납품', payment_labels)
         self.assertIn('일반 납품', payment_labels)

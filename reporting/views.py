@@ -3391,9 +3391,16 @@ def followups_summary_api(request):
     })
 
 
+def _customer_shared_followups_queryset(followup):
+    if followup.department_id:
+        return FollowUp.objects.filter(department_id=followup.department_id)
+    return FollowUp.objects.filter(pk=followup.pk)
+
+
 def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
+    shared_followups = _customer_shared_followups_queryset(followup)
     base_prepayments = Prepayment.objects.filter(
-        customer=followup,
+        customer__in=shared_followups,
         created_by__in=scope_users,
     )
     stats = base_prepayments.aggregate(
@@ -3576,8 +3583,9 @@ def _customer_delivery_record_payloads(followup, scope_users, limit=50):
         queryset=History.objects.filter(parent_history__isnull=True).prefetch_related('delivery_items_set').order_by('-created_at'),
         to_attr='_customer_record_histories',
     )
+    shared_followups = _customer_shared_followups_queryset(followup)
     delivery_schedules_qs = Schedule.objects.filter(
-        followup=followup,
+        followup__in=shared_followups,
         user__in=scope_users,
         activity_type='delivery',
     ).exclude(status='cancelled').select_related(
@@ -3762,10 +3770,11 @@ def _customer_operational_records_payload(followup, scope_users, actor):
         queryset=History.objects.filter(parent_history__isnull=True).prefetch_related('delivery_items_set').order_by('-created_at'),
         to_attr='_customer_record_histories',
     )
+    shared_followups = _customer_shared_followups_queryset(followup)
     delivery_records = _customer_delivery_record_payloads(followup, scope_users, limit=50)
 
     quote_records_qs = Quote.objects.filter(
-        followup=followup,
+        followup__in=shared_followups,
         user__in=scope_users,
     ).select_related(
         'schedule', 'followup', 'followup__company', 'followup__department', 'user'
@@ -3776,7 +3785,7 @@ def _customer_operational_records_payload(followup, scope_users, actor):
     quoted_schedule_ids = {record['scheduleId'] for record in quote_records if record.get('scheduleId')}
     quote_schedules = list(
         Schedule.objects.filter(
-            followup=followup,
+            followup__in=shared_followups,
             user__in=scope_users,
             activity_type='quote',
         ).exclude(
@@ -3834,7 +3843,7 @@ def _customer_operational_records_payload(followup, scope_users, actor):
     )[:50]
 
     prepayments_qs = Prepayment.objects.filter(
-        customer=followup,
+        customer__in=shared_followups,
         created_by__in=scope_users,
     ).select_related(
         'company', 'customer', 'customer__company', 'customer__department', 'created_by'

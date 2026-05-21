@@ -1,5 +1,44 @@
 # AGENT_PLAN.md
 
+## 2026-05-21 Customer detail department-shared records plan
+
+**Background**:
+
+- User clarified that customer detail records must not be limited to one customer/contact name.
+- If multiple FollowUps belong to the same department/lab, delivery, quote, and prepayment records are shared and should appear together.
+- This matters for cases such as a customer named "한은영" where records may be attached to another contact in the same department.
+
+**DB change required**: No.
+
+- Reuse existing `FollowUp.department`, `Schedule`, `Quote`, `DeliveryItem`, `Prepayment`, and `PrepaymentUsage`.
+- No model fields or migrations are needed.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a same-department FollowUp scope helper for customer operational records.
+  - Expand customer detail delivery, quote, and prepayment records to all FollowUps in the same department.
+  - Expand customer detail prepayment summary and customer delivery XLSX export to the same department scope.
+  - Keep existing authentication and user scope behavior; do not expose records outside the currently accessible user scope.
+- Frontend:
+  - Update customer detail section text to make it clear delivery/quote/prepayment are same-department records.
+  - Keep the existing `납품 엑셀` button.
+- Tests/docs:
+  - Add/update focused tests proving same-department delivery, quote, and prepayment records appear from sibling FollowUps.
+  - Update `AGENT_REPORT.md` after validation and deployment.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py frontend/src/App.tsx`
+- Focused customer detail/export tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke production `/customers/471/` plus protected export route behavior.
+
 ## 2026-05-21 Customer delivery records Excel export plan
 
 **Background**:

@@ -3711,7 +3711,7 @@ function CustomerDetailPage({
             <div className="customer-record-section-heading">
               <div>
                 <h3>납품 기록</h3>
-                <span>선결제 차감 여부 표시</span>
+                <span>같은 부서 기준 · 선결제 차감 여부 표시</span>
               </div>
               {data.links.deliveryRecordsXlsx ? (
                 <a className="route-secondary-action" href={data.links.deliveryRecordsXlsx}>
@@ -3725,7 +3725,7 @@ function CustomerDetailPage({
           <section className="customer-record-section">
             <div className="customer-record-section-heading">
               <h3>견적 기록</h3>
-              <span>견적서/견적 일정 기준</span>
+              <span>같은 부서 견적서/견적 일정 기준</span>
             </div>
             <CustomerQuoteRecords records={operationalRecords.quoteRecords} />
           </section>
@@ -3739,7 +3739,7 @@ function CustomerDetailPage({
           <section className="customer-record-section">
             <div className="customer-record-section-heading">
               <h3>선결제 기록</h3>
-              <span>입금, 잔액, 사용내역</span>
+              <span>같은 부서 입금, 잔액, 사용내역</span>
             </div>
             <CustomerPrepaymentRecords records={operationalRecords.prepaymentRecords} />
           </section>
