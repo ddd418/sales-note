@@ -82,7 +82,13 @@ Local preview /accounts/1/cleanup-preview/
 
 ### 운영 배포 상태
 
-- 배포 대상 변경입니다. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 확인합니다.
+- `9d0306b feat: add account cleanup preview` push 완료.
+- Railway web deployment `733b71bf-5625-4b17-aeda-60c07b0ea296` SUCCESS.
+- Railway frontend deployment `cec3d111-af3a-49ca-b23f-799c813dca4b` SUCCESS.
+- 운영 frontend route `/accounts/1/cleanup-preview/` HTTP 200 확인.
+- 운영 frontend bundle `/assets/index-DyMilIGV.js`와 `/assets/index-svmweNpr.css` 반영 확인.
+- 운영 `/reporting/api/accounts/1/cleanup-preview/` 미인증 요청은 401로 보호됨 확인.
+- web 로그에서 `No migrations to apply`와 gunicorn 기동 확인.
 
 ### 수동 운영 확인 절차
 
