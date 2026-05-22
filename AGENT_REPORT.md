@@ -70,6 +70,38 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: add account cleanup merge APIs"
+→ f95ae0c
+
+git push
+→ main pushed
+
+railway up --service web --detach --message "Deploy account cleanup merge APIs f95ae0c"
+→ Deployment c0a67fd5-747c-4aaf-aa20-3bedc07c8648 created
+
+railway deployment list --service web --limit 3 --json
+→ c0a67fd5-747c-4aaf-aa20-3bedc07c8648 SUCCESS
+→ GitHub auto deployment 59dba820-4f78-41c1-a129-7f6c69736615 was superseded/REMOVED
+
+railway logs --service web --deployment c0a67fd5-747c-4aaf-aa20-3bedc07c8648 --tail 300
+→ Applying reporting.0108_accountcleanupauditlog... OK
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/login/
+→ 200
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/accounts/1/cleanup-merge/
+→ 405 Method Not Allowed for GET, route exists and is POST-only
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/customers/1/cleanup-merge/
+→ 405 Method Not Allowed for GET, route exists and is POST-only
+
+Anonymous POST to both cleanup-merge APIs without CSRF
+→ 403 CSRF protection, not public
+
+railway run --service web --environment production -- python manage.py showmigrations reporting
+→ Could not verify from local Railway run because `postgres.railway.internal` is only resolvable inside the deployed service network.
+→ Deployment logs above confirmed migration 0108 applied successfully.
 ```
 
 ### 알려진 제한
@@ -86,7 +118,15 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전. 커밋/푸시 후 Railway `web` 서비스 배포와 운영 smoke를 진행해야 합니다.
+- Runtime commit: `f95ae0c feat: add account cleanup merge APIs`
+- GitHub: `main` pushed.
+- Railway `web`: `c0a67fd5-747c-4aaf-aa20-3bedc07c8648` SUCCESS.
+- Migration: `reporting.0108_accountcleanupauditlog` applied successfully in Railway deploy logs.
+- Production smoke:
+  - `/reporting/login/` returned 200 through the production frontend domain.
+  - `/reporting/api/accounts/1/cleanup-merge/` returned 405 for GET, confirming the POST-only route exists.
+  - `/reporting/api/customers/1/cleanup-merge/` returned 405 for GET, confirming the POST-only route exists.
+  - Anonymous POST without CSRF returned 403, confirming the new write APIs are not publicly open.
 
 ### 수동 운영 확인 절차
 
