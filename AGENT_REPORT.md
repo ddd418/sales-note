@@ -66,6 +66,13 @@ git diff --check
 Local preview /accounts/1/cleanup-preview/?target=2
 → HTTP 200 from local preview server
 → Built bundle contains `병합 전 확인 체크리스트`, `미리보기 JSON export`, and `account-cleanup-checklist`
+
+Production smoke
+→ /accounts/1/cleanup-preview/?target=2 returned 200
+→ Anonymous /reporting/api/accounts/1/cleanup-preview/?target=2 remains login-protected with 401
+→ Anonymous /reporting/api/accounts/1/cleanup-preview/?target=2&export=1 remains login-protected with 401
+→ Production JS bundle /assets/index-COWHRDW2.js contains `병합 전 확인 체크리스트` and `미리보기 JSON export`
+→ Production CSS bundle /assets/index-B-DaA3FW.css contains `account-cleanup-checklist`
 ```
 
 ### 알려진 제한
@@ -79,7 +86,12 @@ Local preview /accounts/1/cleanup-preview/?target=2
 
 ### 운영 배포 상태
 
-- Pending commit/push/Railway deployment.
+- Runtime commit: `75d490c feat: add account cleanup checklist`
+- GitHub: `main` pushed.
+- Railway `sales-note-frontend`: `cbdd829c-09cb-4841-801d-81a99125e79d` SUCCESS.
+- Railway `web`: `83f65ee0-0277-4dab-b612-f99f44791039` SUCCESS.
+- Production route/API smoke passed for cleanup preview shell, anonymous API/export protection, and frontend bundle text/class.
+- Authenticated production checklist/export verification is pending user session confirmation.
 
 ### 수동 운영 확인 절차
 
