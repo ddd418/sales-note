@@ -80,7 +80,13 @@ Local preview /accounts/1/cleanup-preview/
 
 ### 운영 배포 상태
 
-- 배포 대상 변경입니다. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 확인합니다.
+- `b5738a4 fix: search account cleanup targets` push 완료.
+- Railway web deployment `b5a73665-24a7-4b59-bb91-d5cfc23ce401` SUCCESS.
+- Railway frontend deployment `dcd3c9d9-eb98-437f-b867-943a12733c75` SUCCESS.
+- 운영 frontend route `/accounts/1/cleanup-preview/` HTTP 200 확인.
+- 운영 frontend bundle `/assets/index-Bau9ISag.js`와 `/assets/index-CXGWPmXK.css` 반영 확인.
+- 운영 `/reporting/api/accounts/search/?q=test` 미인증 요청은 401로 보호됨 확인.
+- web 로그에서 `No migrations to apply`와 gunicorn 기동 확인.
 
 ### 수동 운영 확인 절차
 
