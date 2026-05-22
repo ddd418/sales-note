@@ -74,7 +74,14 @@ Local preview /reports/
 
 ### 운영 배포 상태
 
-- 배포 전. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 진행할 예정입니다.
+- `1ecfdad feat: show data quality review evidence` push 완료.
+- Railway web deployment `f8874658-0862-4282-8038-9dc9b7fd422f` SUCCESS.
+- Railway frontend deployment `d470a88b-1cb8-4402-bb14-8eca455ac955` SUCCESS.
+- 운영 frontend bundle `/assets/index-QqMU5_4U.js`에 `검토 필요`, `recordSummary`, `departments/accountHref` 반영 확인.
+- 운영 `/reports/` HTML 응답 200 확인.
+- 운영 `/reporting/api/reports/` 미인증 요청은 401로 보호됨 확인.
+- web 로그에서 `No migrations to apply`와 gunicorn 기동 확인.
+- frontend 로그에서 React 서버 기동과 backend proxy 설정 확인.
 
 ### 수동 운영 확인 절차
 
