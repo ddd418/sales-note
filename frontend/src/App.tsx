@@ -6659,15 +6659,30 @@ function ReportsPage({
                           <strong>{group.companyName || '업체 미지정'}</strong>
                           <span>{group.riskLabel || '검토 필요'}</span>
                         </div>
+                        {group.cleanupPreviewHref ? (
+                          <div className="reports-quality-actions">
+                            <a className="reports-quality-preview-link" href={group.cleanupPreviewHref}>
+                              <MoveUpRight size={14} />
+                              정리 영향 미리보기
+                            </a>
+                          </div>
+                        ) : null}
                         <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
                         <small>{group.suggestedAction}</small>
                         {group.departments.length > 0 ? (
                           <div className="reports-quality-detail-list">
                             {group.departments.map((department) => (
-                              <a href={department.accountHref} key={department.id}>
-                                <strong>{department.name}</strong>
-                                <small>담당자 {formatNumber(department.contactCount)}명 · 기록 {formatNumber(department.recordCount)}건</small>
-                              </a>
+                              <div className="reports-quality-detail-row" key={department.id}>
+                                <a href={department.accountHref}>
+                                  <strong>{department.name}</strong>
+                                  <small>담당자 {formatNumber(department.contactCount)}명 · 기록 {formatNumber(department.recordCount)}건</small>
+                                </a>
+                                {department.cleanupPreviewHref ? (
+                                  <a className="reports-quality-mini-action" href={department.cleanupPreviewHref}>
+                                    미리보기
+                                  </a>
+                                ) : null}
+                              </div>
                             ))}
                           </div>
                         ) : (

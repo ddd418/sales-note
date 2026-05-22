@@ -1,5 +1,93 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Reports Cleanup Candidate Preview Links
+
+### 요약
+
+- `/reports/` 데이터 정리 후보의 계정명 유사 후보에 `정리 영향 미리보기` 바로가기를 추가했습니다.
+- 보고서 API가 후보 source/target 계정을 자동으로 짝지어 `/accounts/<source>/cleanup-preview/?target=<target>` 링크를 내려줍니다.
+- 후보 카드의 기본 버튼은 첫 번째 후보 계정을 source, 두 번째 후보 계정을 target으로 열고, 각 부서 행의 `미리보기`는 해당 부서를 source로 열도록 했습니다.
+- 사용자가 부서 ID를 입력하지 않아도 후보 기반으로 영향 미리보기 화면에 들어갈 수 있습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 데이터 정리 후보 검토 흐름이 `/reports/` → 영향 미리보기 화면으로 바로 이어집니다.
+- 병합/정리 실행 전 확인할 기록 범위를 더 적은 클릭으로 볼 수 있습니다.
+- 새 링크는 기존 읽기 전용 미리보기 화면만 열며 실제 데이터 변경은 하지 않습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `/reports/` 후보 탐지 조건과 빈 상태 UI는 유지했습니다.
+- 기존 `/accounts/<id>/cleanup-preview/`와 검색 기반 target 선택도 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates --verbosity=1
+→ Ran 1 test, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DX1CU5nK.js / dist/assets/index-ozpiUNvo.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local preview /reports/
+→ HTTP 200 from local preview server
+→ Built bundle contains `정리 영향 미리보기` and `reports-quality-preview-link`
+→ Playwright CLI opened the local route and confirmed the protected login redirect; authenticated candidate visual check still requires a user session
+```
+
+### 알려진 제한
+
+- 후보가 0건이면 새 버튼은 표시되지 않습니다.
+- 이번 작업은 계정명 유사 후보의 source/target 영향 미리보기 연결입니다. 담당자 중복/부서 미지정 후보는 아직 계정 병합 대상이 명확하지 않아 기존 담당자/계정 링크를 유지합니다.
+
+### 권장 다음 작업
+
+- 운영에서 후보 링크가 확인되면, 실제 병합/이관 실행 전 승인 체크리스트와 미리보기 확인 로그를 설계합니다.
+
+### 운영 배포 상태
+
+- Pending commit/push/Railway deployment.
+
+### 수동 운영 확인 절차
+
+1. `/reports/`에 접속합니다.
+2. `데이터 정리 후보`에서 계정명 유사 후보가 있는 경우 후보 카드의 `정리 영향 미리보기`를 클릭합니다.
+3. URL이 `/accounts/<source>/cleanup-preview/?target=<target>` 형태로 열리는지 확인합니다.
+4. 후보 카드 안의 개별 부서 행에서 `미리보기`를 클릭했을 때 해당 부서가 source로 열리는지 확인합니다.
+5. 영향 미리보기 화면에서 소스/대상 계정 패널과 기록 건수가 보이는지 확인합니다.
+
 ## 2026-05-22 — Account Cleanup Target Search
 
 ### 요약

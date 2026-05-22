@@ -11301,6 +11301,36 @@ tbody tr:hover {
   font-size: 11px;
 }
 
+.reports-quality-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reports-quality-preview-link,
+.reports-quality-mini-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  width: fit-content;
+  padding: 5px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.reports-quality-preview-link:hover,
+.reports-quality-mini-action:hover {
+  background: #dbeafe;
+}
+
 .reports-quality-detail-list {
   display: grid;
   gap: 0;
@@ -11308,16 +11338,35 @@ tbody tr:hover {
   border-top: 1px solid #e5e7eb;
 }
 
-.reports-quality-detail-list a {
+.reports-quality-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.reports-quality-detail-row > a:first-child,
+.reports-quality-detail-list > a {
   display: grid;
   gap: 2px;
   min-width: 0;
   padding: 7px 0;
+}
+
+.reports-quality-detail-list > a {
   border-bottom: 1px solid #e5e7eb;
 }
 
-.reports-quality-detail-list a:hover {
+.reports-quality-detail-row:hover,
+.reports-quality-detail-list > a:hover {
   background: #f8fafc;
+}
+
+.reports-quality-mini-action {
+  min-height: 24px;
+  padding: 4px 7px;
 }
 
 .reports-layout,

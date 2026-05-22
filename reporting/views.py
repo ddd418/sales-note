@@ -34719,7 +34719,23 @@ def _reports_cleanup_contact_payload(followup):
     }
 
 
-def _reports_cleanup_department_payload(department_id, grouped_followups):
+def _reports_cleanup_preview_href(source_department_id, target_department_id=None):
+    if not source_department_id:
+        return ''
+    href = f'/accounts/{source_department_id}/cleanup-preview/'
+    if target_department_id and target_department_id != source_department_id:
+        href = f'{href}?target={target_department_id}'
+    return href
+
+
+def _reports_cleanup_peer_target_id(source_department_id, department_ids):
+    for department_id in department_ids:
+        if department_id and department_id != source_department_id:
+            return department_id
+    return None
+
+
+def _reports_cleanup_department_payload(department_id, grouped_followups, peer_department_ids=None):
     department_followups = [
         item for item in grouped_followups
         if item.department_id == department_id
@@ -34728,11 +34744,14 @@ def _reports_cleanup_department_payload(department_id, grouped_followups):
         return None
     first = department_followups[0]
     contacts = [_reports_cleanup_contact_payload(item) for item in department_followups]
+    peer_department_ids = peer_department_ids or []
+    target_department_id = _reports_cleanup_peer_target_id(department_id, peer_department_ids)
     return {
         'id': department_id,
         'name': first.department.name if first.department else '부서명 없음',
         'companyName': first.company.name if first.company else '',
         'accountHref': f'/accounts/{department_id}/',
+        'cleanupPreviewHref': _reports_cleanup_preview_href(department_id, target_department_id),
         'contactCount': len(department_followups),
         'recordCount': sum(item['recordCount'] for item in contacts),
         'scheduleCount': sum(item['scheduleCount'] for item in contacts),
@@ -34796,16 +34815,19 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
         first = grouped_followups[0]
         department_payloads = [
             item for item in [
-                _reports_cleanup_department_payload(department_id, grouped_followups)
+                _reports_cleanup_department_payload(department_id, grouped_followups, department_ids)
                 for department_id in department_ids
             ] if item
         ]
         contact_payloads = [_reports_cleanup_contact_payload(item) for item in grouped_followups]
+        source_department_id = department_ids[0] if department_ids else None
+        target_department_id = _reports_cleanup_peer_target_id(source_department_id, department_ids)
         duplicate_accounts.append({
             'companyName': first.company.name if first.company else '',
             'normalizedDepartmentName': _reports_cleanup_key(first.department.name if first.department else ''),
             'departmentNames': department_names,
             'departmentIds': department_ids,
+            'cleanupPreviewHref': _reports_cleanup_preview_href(source_department_id, target_department_id),
             'contactCount': len(grouped_followups),
             'recordCount': sum(item['recordCount'] for item in contact_payloads),
             'riskLevel': 'review',

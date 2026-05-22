@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Reports cleanup candidate preview-link plan
+
+**Background**:
+
+- User wants `/reports/` data cleanup candidates to open the existing cleanup impact preview without entering department IDs.
+- Duplicate account candidates already know their candidate department IDs, so the report API can provide a ready-made `/accounts/<source>/cleanup-preview/?target=<target>` link.
+- The UI should make candidate-based navigation obvious when cleanup candidates exist.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add cleanup preview hrefs to duplicate account candidate groups and per-department candidate rows.
+  - Keep the target/source pairing deterministic and read-only.
+  - Preserve existing reports API shape and authentication.
+- Frontend:
+  - Add `정리 영향 미리보기` actions to `/reports/` data cleanup candidate cards.
+  - Normalize the new href fields through the existing React route normalizer.
+  - Keep account detail links available next to preview links.
+- Tests/docs:
+  - Extend the existing reports data-quality API regression to assert the generated source/target preview links.
+  - Run focused backend tests, React typecheck/build, checks, and deployment smoke.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Account cleanup target search plan
 
 **Background**:

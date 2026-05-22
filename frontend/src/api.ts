@@ -252,6 +252,7 @@ export type ReportsDataQualityDepartment = {
   name: string;
   companyName: string;
   accountHref: string;
+  cleanupPreviewHref: string;
   contactCount: number;
   recordCount: number;
   scheduleCount: number;
@@ -266,6 +267,7 @@ export type ReportsDuplicateAccountGroup = {
   normalizedDepartmentName: string;
   departmentNames: string[];
   departmentIds: number[];
+  cleanupPreviewHref: string;
   contactCount: number;
   recordCount: number;
   riskLevel: string;
@@ -6284,9 +6286,11 @@ export async function loadReportsData(params: {
         },
         duplicateAccounts: (payload.dataQuality?.duplicateAccounts ?? emptyReportsData.dataQuality.duplicateAccounts).map((group) => ({
           ...group,
+          cleanupPreviewHref: normalizeCoreCrmHref(group.cleanupPreviewHref),
           departments: (group.departments ?? []).map((department) => ({
             ...department,
             accountHref: normalizeCoreCrmHref(department.accountHref),
+            cleanupPreviewHref: normalizeCoreCrmHref(department.cleanupPreviewHref),
             contacts: (department.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
           })),
           contacts: (group.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),

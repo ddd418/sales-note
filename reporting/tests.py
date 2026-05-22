@@ -626,6 +626,20 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertGreaterEqual(duplicate_account['recordCount'], 0)
         self.assertTrue(duplicate_account['departments'])
         self.assertTrue(all('accountHref' in department for department in duplicate_account['departments']))
+        sorted_department_ids = sorted(duplicate_account['departmentIds'])
+        self.assertEqual(
+            duplicate_account['cleanupPreviewHref'],
+            f'/accounts/{sorted_department_ids[0]}/cleanup-preview/?target={sorted_department_ids[1]}',
+        )
+        for department in duplicate_account['departments']:
+            target_id = next(
+                department_id for department_id in sorted_department_ids
+                if department_id != department['id']
+            )
+            self.assertEqual(
+                department['cleanupPreviewHref'],
+                f'/accounts/{department["id"]}/cleanup-preview/?target={target_id}',
+            )
         self.assertTrue(all('contacts' in department for department in duplicate_account['departments']))
         duplicate_contact = next(
             group for group in data_quality['duplicateContacts']
