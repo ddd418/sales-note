@@ -336,6 +336,7 @@ export type ReportsData = {
     pipelineCsv: string;
     activityXlsx: string;
     pipelineXlsx: string;
+    customerOperationsXlsx: string;
     assets: string;
     legacy: string;
   };
@@ -4299,6 +4300,7 @@ const emptyReportsData: ReportsData = {
     pipelineCsv: '/reporting/analytics/export/pipeline.csv',
     activityXlsx: '/reporting/analytics/export/activity.xlsx',
     pipelineXlsx: '/reporting/analytics/export/pipeline.xlsx',
+    customerOperationsXlsx: '/reporting/api/reports/customer-operations.xlsx',
     assets: '/assets/',
     legacy: '/reporting/analytics/',
   },

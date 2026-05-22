@@ -639,6 +639,123 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertTrue(payload['scope']['canFilterUsers'])
         self.assertTrue(payload['scope']['canExport'])
         self.assertEqual(payload['filters']['selectedUserId'], self.user.id)
+        self.assertIn('customer-operations.xlsx', payload['links']['customerOperationsXlsx'])
+        self.assertIn(f'user_id={self.user.id}', payload['links']['customerOperationsXlsx'])
+
+    def test_reports_customer_operations_xlsx_export_downloads_table(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        today = timezone.localdate()
+        normal_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=normal_schedule,
+            item_name='현황 일반 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            total_price=1000,
+        )
+        prepayment = Prepayment.objects.create(
+            customer=self.followup,
+            company=self.customer_company,
+            amount=5000,
+            balance=2600,
+            payment_date=today,
+            created_by=self.user,
+        )
+        prepaid_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+            use_prepayment=True,
+            prepayment=prepayment,
+            prepayment_amount=2400,
+        )
+        prepaid_item = DeliveryItem.objects.create(
+            schedule=prepaid_schedule,
+            item_name='현황 선결제 품목',
+            quantity=2,
+            unit='EA',
+            unit_price=1200,
+            total_price=2400,
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=prepaid_schedule,
+            schedule_item=prepaid_item,
+            product_name='현황 선결제 품목',
+            quantity=2,
+            amount=2400,
+            remaining_balance=2600,
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(12, 0),
+            activity_type='quote',
+            status='completed',
+        )
+        Quote.objects.create(
+            quote_number='Q-OPS-XLSX',
+            schedule=quote_schedule,
+            followup=self.followup,
+            user=self.user,
+            quote_date=today,
+            valid_until=today + timedelta(days=30),
+            subtotal=3000,
+            stage='sent',
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:reports_customer_operations_xlsx'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook['계정별 운영 현황']
+        rows = list(sheet.iter_rows(values_only=True))
+        self.assertEqual(rows[0][0], '계정')
+        row = next(item for item in rows[1:] if item[0] == '연구실 A')
+        self.assertEqual(row[1], '고객사 A')
+        self.assertEqual(row[3], 1)
+        self.assertEqual(row[9], 2)
+        self.assertEqual(row[10], 3740)
+        self.assertEqual(row[11], 1)
+        self.assertEqual(row[12], 2400)
+        self.assertEqual(row[13], 1)
+        self.assertEqual(row[14], 1100)
+        self.assertEqual(row[15], 1)
+        self.assertEqual(row[16], 3300)
+        self.assertEqual(row[17], 1)
+        self.assertEqual(row[18], 5000)
+        self.assertEqual(row[19], 2600)
+        self.assertIn('현황 선결제 품목', row[28])
+        self.assertIn('/accounts/', row[29])
+
+    def test_reports_customer_operations_xlsx_export_blocks_salesman(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_customer_operations_xlsx'))
+
+        self.assertEqual(response.status_code, 403)
 
     def test_profile_api_update_and_password_change(self):
         self.client.force_login(self.user)

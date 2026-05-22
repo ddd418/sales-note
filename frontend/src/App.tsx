@@ -5973,6 +5973,12 @@ function ReportsPage({
           <p>{data.scope.label || '현재 범위'} · {dateRangeLabel} · 선결제 잔액은 현재 기준</p>
         </div>
         <div className="reports-actions">
+          {data.scope.canExport ? (
+            <a className="route-secondary-action" href={data.links.customerOperationsXlsx}>
+              <Download size={15} />
+              현황 엑셀
+            </a>
+          ) : null}
           <a className="route-secondary-action" href="/customers/"><Users size={15} />고객 목록</a>
           <button className="icon-button" onClick={onRefresh} type="button" aria-label="리포트 새로고침">
             <RefreshCw size={17} />

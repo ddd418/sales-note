@@ -239,6 +239,7 @@ urlpatterns = [
     # Admin 전용 API URL들
     path('api/users/', views.api_users_list, name='api_users_list'),
     path('api/reports/', views.reports_summary_api, name='reports_summary_api'),
+    path('api/reports/customer-operations.xlsx', views.reports_customer_operations_xlsx_export_api, name='reports_customer_operations_xlsx'),
     path('api/profile/', views.profile_api, name='profile_api'),
     path('api/profile/update/', views.profile_update_api, name='profile_api_update'),
     path('api/profile/password/', views.profile_password_api, name='profile_api_password'),

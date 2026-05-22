@@ -1,5 +1,42 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Reports customer operations XLSX plan
+
+**Background**:
+
+- User asked to continue improvement work and report what changed plus what they should check.
+- `/reports/` now shows a department/lab-account operations table, but operators still need a spreadsheet export of the same ledger for review and sharing.
+- The export must use the same structured department-account payload as the screen so delivery, quote, prepayment, and service totals do not diverge.
+
+**DB change required**: No.
+
+- Reuse the existing `/reporting/api/reports/` customer operations payload.
+- Keep current admin/manager export permission behavior.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a reports customer operations XLSX endpoint.
+  - Include selected date range and manager salesperson filter in the export URL.
+  - Export account rows with delivery split, quotes, prepayments, service counts, latest dates, recent delivery items, and account links.
+- Frontend:
+  - Add the XLSX link to Reports API types/defaults.
+  - Add a `/reports/` `현황 엑셀` action for users who can export.
+- Tests/docs:
+  - Add XLSX permission/download regression tests.
+  - Run Django/React validation.
+  - Update `AGENT_REPORT.md`, commit, push, deploy, and provide production manual test steps.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Focused reports API/XLSX Django tests.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Railway deployment status and production bundle/API smoke.
+
 ## 2026-05-22 Reports data quality candidates plan
 
 **Background**:

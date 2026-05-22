@@ -1,5 +1,95 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Reports Customer Operations XLSX Export
+
+### 요약
+
+- `/reports/` 계정별 운영 현황표를 XLSX로 내려받는 API를 추가했습니다.
+- `/reports/` 상단에 관리자/매니저용 `현황 엑셀` 버튼을 추가했습니다.
+- 다운로드 파일은 화면과 같은 부서/연구실 계정 원장 payload를 사용합니다.
+- 날짜 범위와 담당자 필터가 엑셀 다운로드 링크에도 같이 반영됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 고객별/부서별 현황표를 엑셀에서 바로 검토할 수 있습니다.
+- 납품 총액, 선결제 차감 납품, 일반 납품, 견적, 선결제 잔액, 서비스 건수가 같은 행에 정리됩니다.
+- 최근 납품 품목과 계정 상세 링크도 엑셀에 포함되어 후속 확인이 쉬워졌습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `/reports/` API와 표시는 유지했습니다.
+- 기존 활동/파이프라인 CSV/XLSX export는 유지했습니다.
+- 일반 영업사원에게는 기존과 같이 리포트 엑셀 export를 열지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_customer_operations_with_structured_payment_split reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_groups_customer_operations_by_department_account reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_manager_can_filter_company_salesperson reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_customer_operations_xlsx_export_downloads_table reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_customer_operations_xlsx_export_blocks_salesman --verbosity=1
+→ Ran 5 tests, OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates --verbosity=1
+→ Ran 1 test, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-VEK_oDFF.js / dist/assets/index-Cms_6TpV.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local Browser smoke
+→ /reports/ opens and redirects to login when unauthenticated
+```
+
+### 알려진 제한
+
+- 엑셀 export는 현재 `/reports/`와 같은 정책으로 관리자/매니저에게만 노출됩니다.
+- 운영 데이터에서 화면 표와 엑셀 숫자가 같은지는 로그인된 운영 계정으로 수동 확인이 필요합니다.
+
+### 권장 다음 작업
+
+- `/reports/` 현황표에서 특정 계정을 클릭했을 때 데이터 정리 후보/상세 원장으로 바로 이어지는 드릴다운을 강화합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시 후 Railway 상태를 확인해 업데이트합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 배포 후 `/reports/`에 접속합니다.
+2. 관리자 또는 매니저 계정에서 `현황 엑셀` 버튼이 보이는지 확인합니다.
+3. 날짜 범위와 담당자 필터를 바꾼 뒤 엑셀을 다운로드합니다.
+4. 엑셀의 납품/선결제차감/일반납품/견적/선결제잔액 숫자가 화면 표와 같은지 확인합니다.
+5. 엑셀의 `계정링크`를 열어 해당 부서/연구실 계정 상세로 이동하는지 확인합니다.
+
 ## 2026-05-22 — Reports Data Quality Candidates
 
 ### 요약

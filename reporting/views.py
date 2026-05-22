@@ -34183,7 +34183,14 @@ def reports_summary_api(request):
         ).distinct().count(),
     }
 
-    query = f'?date_from={date_from.isoformat()}&date_to={date_to.isoformat()}'
+    from urllib.parse import urlencode
+    query_payload = {
+        'date_from': date_from.isoformat(),
+        'date_to': date_to.isoformat(),
+    }
+    if selected_user and (user_profile.is_admin() or user_profile.is_manager()):
+        query_payload['user_id'] = selected_user.id
+    query = '?' + urlencode(query_payload)
     can_export = bool(user_profile.is_admin() or user_profile.is_manager())
     return JsonResponse({
         'success': True,
@@ -34220,10 +34227,165 @@ def reports_summary_api(request):
             'pipelineCsv': reverse('reporting:analytics_pipeline_csv') + query,
             'activityXlsx': reverse('reporting:analytics_activity_xlsx') + query,
             'pipelineXlsx': reverse('reporting:analytics_pipeline_xlsx') + query,
+            'customerOperationsXlsx': reverse('reporting:reports_customer_operations_xlsx') + query,
             'assets': '/assets/',
             'legacy': reverse('reporting:analytics_dashboard'),
         },
     }, encoder=DjangoJSONEncoder)
+
+
+@never_cache
+@login_required
+@require_http_methods(["GET"])
+def reports_customer_operations_xlsx_export_api(request):
+    """React 보고서의 부서/연구실 계정별 운영 현황표를 XLSX로 내보낸다."""
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from urllib.parse import quote
+
+    user_profile = get_user_profile(request.user)
+    if not (user_profile.is_admin() or user_profile.is_manager()):
+        return HttpResponseForbidden('접근 권한이 없습니다.')
+
+    today = timezone.localdate()
+    date_from, date_to = _analytics_api_date_range(request, today)
+    filter_users, _salesperson_list, selected_user = _analytics_api_scope_users(request, user_profile)
+    followups_qs = FollowUp.objects.filter(user__in=filter_users)
+    operations = _reports_customer_operations_payload(
+        followups_qs,
+        filter_users,
+        date_from,
+        date_to,
+        request.user,
+    )
+    rows = operations.get('rows') or []
+    metrics = operations.get('metrics') or {}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = '계정별 운영 현황'
+
+    headers = [
+        '계정', '업체/학교', '부서/연구실', '담당자수', '담당자 미리보기',
+        '영업 담당자', '파이프라인', '상태', '우선순위',
+        '납품건수', '납품금액', '선결제차감건수', '선결제차감액',
+        '일반납품건수', '일반납품금액', '견적건수', '견적금액',
+        '선결제건수', '선결제총액', '선결제잔액', '선결제사용액',
+        '서비스건수', '진행서비스', '최근납품일', '최근견적일', '최근선결제일',
+        '최근서비스일', '최근활동일', '최근납품품목', '계정링크',
+    ]
+    ws.append(headers)
+
+    header_fill = PatternFill(fill_type='solid', fgColor='1F2937')
+    header_font = Font(bold=True, color='FFFFFF')
+    thin_side = Side(style='thin', color='D1D5DB')
+    border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    body_alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+    money_format = '#,##0'
+
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+        cell.border = border
+
+    for row in rows:
+        recent_items = []
+        for item in row.get('recentDeliveryItems') or []:
+            parts = [
+                str(item.get('date') or ''),
+                item.get('paymentSourceLabel') or '',
+                item.get('label') or '',
+            ]
+            amount = item.get('amount') or 0
+            if amount:
+                parts.append(f'{int(amount):,}원')
+            recent_items.append(' · '.join([part for part in parts if part]))
+        ws.append([
+            row.get('customer') or '',
+            row.get('company') or '',
+            row.get('department') or '',
+            row.get('contactCount') or 0,
+            ', '.join(row.get('contactPreview') or []),
+            row.get('owner') or '',
+            row.get('pipelineStageLabel') or '',
+            row.get('statusLabel') or '',
+            row.get('priorityLabel') or '',
+            row.get('deliveryCount') or 0,
+            row.get('deliveryAmount') or 0,
+            row.get('prepaymentDeliveryCount') or 0,
+            row.get('prepaymentUsedAmount') or 0,
+            row.get('normalDeliveryCount') or 0,
+            row.get('normalDeliveryAmount') or 0,
+            row.get('quoteCount') or 0,
+            row.get('quoteAmount') or 0,
+            row.get('prepaymentCount') or 0,
+            row.get('prepaymentAmount') or 0,
+            row.get('prepaymentBalance') or 0,
+            row.get('prepaymentUsedTotal') or 0,
+            row.get('serviceCount') or 0,
+            row.get('openServiceCount') or 0,
+            row.get('lastDeliveryDate') or '',
+            row.get('lastQuoteDate') or '',
+            row.get('lastPrepaymentDate') or '',
+            row.get('lastServiceDate') or '',
+            row.get('lastActivityDate') or '',
+            '\n'.join(recent_items),
+            request.build_absolute_uri(row.get('href') or '') if row.get('href') else '',
+        ])
+
+    for sheet_row in ws.iter_rows(min_row=2):
+        for cell in sheet_row:
+            cell.border = border
+            cell.alignment = body_alignment
+        for col_idx in [11, 13, 15, 17, 19, 20, 21]:
+            sheet_row[col_idx - 1].number_format = money_format
+
+    widths = [
+        24, 24, 22, 10, 28,
+        16, 16, 14, 12,
+        10, 14, 14, 16,
+        14, 16, 10, 14,
+        12, 14, 14, 14,
+        12, 12, 12, 12, 12,
+        12, 12, 46, 46,
+    ]
+    for col_idx, width in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+
+    info = wb.create_sheet(title='다운로드 정보')
+    scope_label = _user_display_name(selected_user) if selected_user else (
+        f'{user_profile.company.name} 팀' if user_profile.company else '전체'
+    )
+    info_rows = [
+        ('보고서', '부서/연구실 계정별 운영 현황'),
+        ('기간', f'{date_from.isoformat()} ~ {date_to.isoformat()}'),
+        ('범위', scope_label),
+        ('표시 계정', metrics.get('totalCustomers') or len(rows)),
+        ('납품 건수', metrics.get('deliveryCount') or 0),
+        ('납품 금액', metrics.get('deliveryAmount') or 0),
+        ('선결제 차감 납품', metrics.get('prepaymentDeliveryCount') or 0),
+        ('일반 납품', metrics.get('normalDeliveryCount') or 0),
+        ('견적 건수', metrics.get('quoteCount') or 0),
+        ('선결제 잔액', metrics.get('prepaymentBalance') or 0),
+        ('생성일시', timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')),
+        ('생성자', _user_display_name(request.user)),
+    ]
+    for row in info_rows:
+        info.append(row)
+    info.column_dimensions['A'].width = 20
+    info.column_dimensions['B'].width = 42
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    filename = f'계정별_운영현황_{date_from.isoformat()}_{date_to.isoformat()}.xlsx'
+    response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+    wb.save(response)
+    return response
 
 
 def _get_activity_export_date_range(request, today):
