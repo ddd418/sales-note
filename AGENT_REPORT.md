@@ -80,7 +80,10 @@ Local Browser smoke
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시 후 Railway 상태를 확인해 업데이트합니다.
+- `4513fc4 feat: export reports customer operations xlsx` push 완료.
+- 운영 frontend bundle `/assets/index-VEK_oDFF.js`에 `현황 엑셀`, `customer-operations.xlsx`, `customerOperationsXlsx` 반영 확인.
+- 운영 URL `https://sales-note-frontend-production.up.railway.app/reporting/api/reports/customer-operations.xlsx`는 미인증 상태에서 `/reporting/login/?next=/reporting/api/reports/customer-operations.xlsx`로 302 redirect 확인.
+- Railway CLI OAuth 토큰이 만료되어 deployment ID와 최신 로그는 CLI로 확인하지 못했습니다. HTTP smoke 기준으로 frontend와 backend route 반영은 확인했습니다.
 
 ### 수동 서버 테스트 절차
 
