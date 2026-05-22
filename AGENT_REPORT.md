@@ -1,5 +1,64 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Reports Zero Cleanup State UX
+
+### 요약
+
+- `/reports/`에서 데이터 정리 후보가 0건일 때 빈 목록 네 개가 길게 보이던 UX를 정리했습니다.
+- 계정별 운영 현황표가 먼저 보이도록 화면 순서를 조정했습니다.
+- 정리 후보가 0건이면 `현재 범위 데이터 정리 후보 없음` 상태만 짧게 보여주고, 납품/견적/선결제는 계정별 운영 현황표 기준임을 표시합니다.
+- 후보가 있는 경우에는 기존 상세 근거 UI가 그대로 표시됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- `/reports/`의 주 목적이 고객/계정별 납품, 견적, 선결제 현황표라는 점이 화면에서 더 먼저 드러납니다.
+- 데이터 품질 문제가 없는 경우에도 페이지가 비어 보이지 않고 정상 상태로 이해됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- `/reporting/api/reports/` payload와 기존 리포트/엑셀 기능은 변경하지 않았습니다.
+- 후보가 실제로 있는 경우의 상세 후보 카드와 링크는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-CCe86wV5.js / dist/assets/index-F5tzfnuP.css generated
+→ Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 작업은 표시 순서와 0건 상태 UX만 다룹니다. 데이터 정리 후보 탐지 조건 자체는 이전 작업과 동일합니다.
+
+### 권장 다음 작업
+
+- 데이터 정리 후보 탐지 조건을 더 넓힐지 검토합니다. 예: 부서명 부분 일치, 연락처 유사도, 같은 업체 내 담당자명 중복.
+
+### 운영 배포 상태
+
+- 배포 전. 커밋/푸시 후 Railway frontend 배포와 운영 smoke를 진행할 예정입니다.
+
+### 수동 운영 확인 절차
+
+1. [운영 reports](https://sales-note-frontend-production.up.railway.app/reports/)에 접속합니다.
+2. 계정별 운영 현황표가 데이터 정리 후보보다 먼저 보이는지 확인합니다.
+3. 데이터 정리 후보가 0건이면 빈 후보 목록 네 개 대신 `현재 범위 데이터 정리 후보 없음` 상태가 보이는지 확인합니다.
+
 ## 2026-05-22 — Reports Data Quality Evidence
 
 ### 요약

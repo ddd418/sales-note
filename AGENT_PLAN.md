@@ -1,5 +1,32 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Reports zero cleanup state plan
+
+**Background**:
+
+- User confirmed `/reports/` shows data cleanup metrics all zero.
+- Zero cleanup candidates can be a valid state, but the current UI still renders four empty candidate sections and appears like the page has no useful report content.
+- The main value of `/reports/` should remain the account operations table; cleanup candidates should be secondary.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Frontend:
+  - Show the account operations table before the data cleanup panel.
+  - When cleanup candidate count is zero, replace the four empty candidate sections with one concise normal-state message.
+  - Keep the detailed candidate evidence UI for nonzero cleanup states.
+- Tests/docs:
+  - Run React typecheck/build and diff checks.
+  - Update the agent report with deployment status.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Reports data quality evidence plan
 
 **Background**:

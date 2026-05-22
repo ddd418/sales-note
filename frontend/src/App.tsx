@@ -5961,6 +5961,7 @@ function ReportsPage({
     { label: '부서 미지정', value: `${formatNumber(cleanupMetrics.contactsWithoutDepartment)}명` },
     { label: '업체 미지정', value: `${formatNumber(cleanupMetrics.contactsWithoutCompany)}명` },
   ];
+  const hasCleanupCandidates = cleanupMetrics.cleanupCandidateCount > 0;
 
   const lastDateLabel = (value: string | null) => formatDateLabel(value) || '-';
 
@@ -6072,99 +6073,111 @@ function ReportsPage({
             </span>
           ))}
         </div>
-        <p className="reports-quality-rule">{dataQuality.normalizationRule || '중복/누락 후보를 읽기 전용으로 표시합니다.'}</p>
-        <div className="reports-quality-grid">
-          <section>
-            <h3>계정명 유사 후보</h3>
-            {dataQuality.duplicateAccounts.length > 0 ? (
-              <div className="reports-quality-list">
-                {dataQuality.duplicateAccounts.map((group) => (
-                  <article key={`${group.companyName}-${group.normalizedDepartmentName}`}>
-                    <div className="reports-quality-card-head">
-                      <strong>{group.companyName || '업체 미지정'}</strong>
-                      <span>{group.riskLabel || '검토 필요'}</span>
-                    </div>
-                    <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
-                    <small>{group.suggestedAction}</small>
-                    {group.departments.length > 0 ? (
-                      <div className="reports-quality-detail-list">
-                        {group.departments.map((department) => (
-                          <a href={department.accountHref} key={department.id}>
-                            <strong>{department.name}</strong>
-                            <small>담당자 {formatNumber(department.contactCount)}명 · 기록 {formatNumber(department.recordCount)}건</small>
-                          </a>
-                        ))}
-                      </div>
-                    ) : (
-                      <small>부서 ID {group.departmentIds.join(', ')}</small>
-                    )}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <DashboardEmpty label="계정명 유사 후보 없음" />
-            )}
-          </section>
-          <section>
-            <h3>담당자 중복 후보</h3>
-            {dataQuality.duplicateContacts.length > 0 ? (
-              <div className="reports-quality-list">
-                {dataQuality.duplicateContacts.map((group) => (
-                  <article key={`${group.companyName}-${group.departmentName}-${group.identity}`}>
-                    <div className="reports-quality-card-head">
-                      <strong>{group.identity}</strong>
-                      <span>{group.riskLabel || '검토 필요'}</span>
-                    </div>
-                    <span>{[group.companyName, group.departmentName].filter(Boolean).join(' · ') || '계정 미지정'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
-                    <small>{group.suggestedAction}</small>
-                    <div className="reports-quality-detail-list">
-                      {group.contacts.map((contact) => (
-                        <a href={contact.href} key={contact.id}>
-                          <strong>{contact.name}</strong>
-                          <small>{contact.recordSummary}</small>
-                        </a>
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <DashboardEmpty label="담당자 중복 후보 없음" />
-            )}
-          </section>
-          <section>
-            <h3>부서 미지정 담당자</h3>
-            {dataQuality.contactsWithoutDepartment.length > 0 ? (
-              <div className="reports-quality-list">
-                {dataQuality.contactsWithoutDepartment.map((contact) => (
-                  <article key={contact.id}>
-                    <a href={contact.href}><strong>{contact.name}</strong></a>
-                    <span>{contact.companyName || '업체 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
-                    <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <DashboardEmpty label="부서 미지정 담당자 없음" />
-            )}
-          </section>
-          <section>
-            <h3>업체 미지정 담당자</h3>
-            {dataQuality.contactsWithoutCompany.length > 0 ? (
-              <div className="reports-quality-list">
-                {dataQuality.contactsWithoutCompany.map((contact) => (
-                  <article key={contact.id}>
-                    <a href={contact.href}><strong>{contact.name}</strong></a>
-                    <span>{contact.departmentName || '부서 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
-                    <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <DashboardEmpty label="업체 미지정 담당자 없음" />
-            )}
-          </section>
-        </div>
+        {hasCleanupCandidates ? (
+          <>
+            <p className="reports-quality-rule">{dataQuality.normalizationRule || '중복/누락 후보를 읽기 전용으로 표시합니다.'}</p>
+            <div className="reports-quality-grid">
+              <section>
+                <h3>계정명 유사 후보</h3>
+                {dataQuality.duplicateAccounts.length > 0 ? (
+                  <div className="reports-quality-list">
+                    {dataQuality.duplicateAccounts.map((group) => (
+                      <article key={`${group.companyName}-${group.normalizedDepartmentName}`}>
+                        <div className="reports-quality-card-head">
+                          <strong>{group.companyName || '업체 미지정'}</strong>
+                          <span>{group.riskLabel || '검토 필요'}</span>
+                        </div>
+                        <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
+                        <small>{group.suggestedAction}</small>
+                        {group.departments.length > 0 ? (
+                          <div className="reports-quality-detail-list">
+                            {group.departments.map((department) => (
+                              <a href={department.accountHref} key={department.id}>
+                                <strong>{department.name}</strong>
+                                <small>담당자 {formatNumber(department.contactCount)}명 · 기록 {formatNumber(department.recordCount)}건</small>
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <small>부서 ID {group.departmentIds.join(', ')}</small>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <DashboardEmpty label="계정명 유사 후보 없음" />
+                )}
+              </section>
+              <section>
+                <h3>담당자 중복 후보</h3>
+                {dataQuality.duplicateContacts.length > 0 ? (
+                  <div className="reports-quality-list">
+                    {dataQuality.duplicateContacts.map((group) => (
+                      <article key={`${group.companyName}-${group.departmentName}-${group.identity}`}>
+                        <div className="reports-quality-card-head">
+                          <strong>{group.identity}</strong>
+                          <span>{group.riskLabel || '검토 필요'}</span>
+                        </div>
+                        <span>{[group.companyName, group.departmentName].filter(Boolean).join(' · ') || '계정 미지정'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
+                        <small>{group.suggestedAction}</small>
+                        <div className="reports-quality-detail-list">
+                          {group.contacts.map((contact) => (
+                            <a href={contact.href} key={contact.id}>
+                              <strong>{contact.name}</strong>
+                              <small>{contact.recordSummary}</small>
+                            </a>
+                          ))}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <DashboardEmpty label="담당자 중복 후보 없음" />
+                )}
+              </section>
+              <section>
+                <h3>부서 미지정 담당자</h3>
+                {dataQuality.contactsWithoutDepartment.length > 0 ? (
+                  <div className="reports-quality-list">
+                    {dataQuality.contactsWithoutDepartment.map((contact) => (
+                      <article key={contact.id}>
+                        <a href={contact.href}><strong>{contact.name}</strong></a>
+                        <span>{contact.companyName || '업체 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
+                        <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <DashboardEmpty label="부서 미지정 담당자 없음" />
+                )}
+              </section>
+              <section>
+                <h3>업체 미지정 담당자</h3>
+                {dataQuality.contactsWithoutCompany.length > 0 ? (
+                  <div className="reports-quality-list">
+                    {dataQuality.contactsWithoutCompany.map((contact) => (
+                      <article key={contact.id}>
+                        <a href={contact.href}><strong>{contact.name}</strong></a>
+                        <span>{contact.departmentName || '부서 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
+                        <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <DashboardEmpty label="업체 미지정 담당자 없음" />
+                )}
+              </section>
+            </div>
+          </>
+        ) : (
+          <div className="reports-quality-empty-state">
+            <CheckCircle2 size={19} />
+            <div>
+              <strong>현재 범위 데이터 정리 후보 없음</strong>
+              <span>납품, 견적, 선결제 현황은 위 계정별 운영 현황표 기준으로 확인하세요.</span>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="dashboard-panel reports-customer-panel reports-operations-panel">
