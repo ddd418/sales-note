@@ -60,6 +60,12 @@ elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = False  # JavaScript에서 CSRF 토큰을 읽을 수 있도록 False로 설정
 SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+# 기본 30일 유지, 사용 중이면 매 요청마다 만료 시간이 갱신됩니다.
+SESSION_COOKIE_AGE = int(os.environ.get('SESSION_COOKIE_AGE', str(60 * 60 * 24 * 30)))
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = True
 
 # Phase 8: 보안 헤더 설정 ─────────────────────────────────────────────────────
 # Railway는 HTTPS를 프록시에서 종료하므로 X-Forwarded-Proto 헤더를 신뢰합니다.

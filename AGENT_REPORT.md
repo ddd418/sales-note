@@ -1,5 +1,68 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Session Persistence
+
+### 요약
+
+- 로그인 세션 유지 기간을 기본 30일로 명시했습니다.
+- 브라우저를 닫아도 세션이 바로 만료되지 않도록 했습니다.
+- 사용 중이면 요청마다 세션 만료 시간이 갱신되도록 유지했습니다.
+- 운영자가 필요하면 Railway 환경변수 `SESSION_COOKIE_AGE`로 초 단위 조정할 수 있습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `sales_project/settings.py`
+- `sales_project/settings_production.py`
+
+### CRM 개선
+
+- 사용자가 매일 다시 로그인해야 하는 불편을 줄였습니다.
+- 무기한 세션 대신 30일 기본값을 사용해 내부 CRM 보안과 편의성 사이의 균형을 잡았습니다.
+
+### 기존 기능 보존
+
+- 인증 자체는 그대로 유지했습니다.
+- 운영 환경의 secure session cookie 설정은 유지했습니다.
+- CSRF 설정은 변경하지 않았습니다.
+- DB 변경은 없습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile sales_project\settings.py sales_project\settings_production.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py diffsettings | findstr SESSION
+→ SESSION_COOKIE_AGE = 2592000
+→ SESSION_SAVE_EVERY_REQUEST = True
+```
+
+### 알려진 제한
+
+- 기존에 이미 발급된 세션 쿠키의 만료 시간은 브라우저/서버 상태에 따라 다음 로그인 또는 다음 요청 이후 새 정책이 반영됩니다.
+- 완전 무기한 로그인은 적용하지 않았습니다.
+
+### 권장 다음 작업
+
+- 필요하면 로그인 화면에 “세션은 사용 중이면 최대 30일 유지” 같은 운영 안내를 아주 작게 추가할 수 있습니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시 후 운영 smoke를 확인합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 로그아웃 후 다시 로그인합니다.
+2. 브라우저를 닫았다가 다시 열고 `/dashboard/` 또는 `/reports/`에 접속합니다.
+3. 바로 로그인 화면으로 돌아가지 않는지 확인합니다.
+4. 장기간 미사용 후에는 보안상 다시 로그인될 수 있습니다.
+
 ## 2026-05-22 — Reports Customer Operations XLSX Export
 
 ### 요약

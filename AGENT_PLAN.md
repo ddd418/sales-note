@@ -1,5 +1,29 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Session persistence plan
+
+**Background**:
+
+- User said they are logged in and do not want the session to expire quickly.
+- Current local settings explicitly use a 1-day session, while production does not document the desired CRM session lifetime.
+- We should improve persistence without weakening authentication to an unlimited session.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Set a clear 30-day default `SESSION_COOKIE_AGE` for local and production.
+- Keep `SESSION_COOKIE_HTTPONLY`, `SESSION_COOKIE_SAMESITE='Lax'`, and secure cookies in production.
+- Set `SESSION_EXPIRE_AT_BROWSER_CLOSE=False`.
+- Keep `SESSION_SAVE_EVERY_REQUEST=True` so active use refreshes expiry.
+- Allow Railway/operator override through the `SESSION_COOKIE_AGE` environment variable.
+
+**Validation plan**:
+
+- `python manage.py check`
+- `python manage.py diffsettings | findstr SESSION`
+- Production unauthenticated smoke remains login-protected.
+
 ## 2026-05-22 Reports customer operations XLSX plan
 
 **Background**:
