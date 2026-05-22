@@ -70,7 +70,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 아직 이 작업 커밋/배포 전입니다. 검증 완료 후 커밋, 푸시, Railway 상태 확인 예정입니다.
+- `d39a55f feat: show account contacts on detail` push 완료.
+- Railway frontend deployment `3641e292-eca4-4be8-8918-fb7db219b08d` SUCCESS.
+- Railway web deployment `850feff6-4627-46c7-9655-5630aa337661` SUCCESS.
+- 운영 JS bundle `/assets/index-AC_PVBD_.js`에 `계정 담당자`, `Account contacts`, `담당자 상세`, `계정 담당자 수` 반영 확인.
+- Railway status 기준 `sales-note-frontend`, `web`, `Postgres` 모두 Online.
+- web 로그에서 `No migrations to apply`와 gunicorn 기동 확인.
 
 ### 수동 서버 테스트 절차
 
