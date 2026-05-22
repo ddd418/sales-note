@@ -75,6 +75,31 @@ Local browser smoke
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "refactor: split reports api and pages"
+→ 75847d5
+
+git push origin main
+→ main pushed
+
+railway deployment list --service web --limit 5 --json
+→ 58b73dbe-59e0-4878-8cd7-77595eaee6cc SUCCESS for commit 75847d5
+
+railway deployment list --service sales-note-frontend --limit 5 --json
+→ 0ef486c3-5d38-4c96-b0fe-657e7eae263f SUCCESS for commit 75847d5
+
+railway logs --service web --deployment 58b73dbe-59e0-4878-8cd7-77595eaee6cc --tail 160
+→ No migrations to apply
+→ gunicorn booted successfully
+
+railway logs --service sales-note-frontend --deployment 0ef486c3-5d38-4c96-b0fe-657e7eae263f --tail 120
+→ Frontend server listening on 8080
+
+Production smoke
+→ /reports/ 200
+→ /reporting/login/ 200
+→ Anonymous /reporting/api/reports/ 401
+→ Production JS bundle contains reports page and cleanup preview text
 ```
 
 ### 알려진 제한
@@ -91,10 +116,16 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Runtime commit: pending.
-- GitHub: pending.
-- Railway web deployment: pending.
-- Railway frontend deployment: pending.
+- Runtime commit: `75847d5 refactor: split reports api and pages`
+- GitHub: `main` pushed.
+- Railway web deployment: `58b73dbe-59e0-4878-8cd7-77595eaee6cc` SUCCESS.
+- Railway frontend deployment: `0ef486c3-5d38-4c96-b0fe-657e7eae263f` SUCCESS.
+- 운영 마이그레이션: No migrations to apply.
+- 운영 스모크:
+  - `/reports/` returned 200.
+  - `/reporting/login/` returned 200.
+  - Anonymous `/reporting/api/reports/` returned 401.
+  - Production JS bundle contains `계정별 운영 현황표` and `계정 정리 영향 미리보기`.
 
 ### 운영 수동 확인 절차
 
