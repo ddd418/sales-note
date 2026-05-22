@@ -51,7 +51,11 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전. 커밋/푸시 후 Railway frontend 배포와 운영 smoke를 진행할 예정입니다.
+- `6e9f6c4 fix: simplify empty reports cleanup state` push 완료.
+- Railway web deployment `2d08c335-03c4-4125-92f3-a378fc4a54fe` SUCCESS.
+- Railway frontend deployment `7234c330-0377-4a91-805a-164fcf5d8a62` SUCCESS.
+- 운영 frontend bundle `/assets/index-CCe86wV5.js`와 `/assets/index-F5tzfnuP.css`에 0건 상태 문구와 패널 순서 조정 반영 확인.
+- 운영 `/reporting/api/reports/` 미인증 요청은 401로 보호됨 확인.
 
 ### 수동 운영 확인 절차
 
