@@ -4549,6 +4549,43 @@ h2 {
   gap: 14px;
 }
 
+.customer-account-ledger-strip {
+  display: grid;
+  grid-template-columns: 1.1fr minmax(220px, 0.7fr) minmax(260px, 0.9fr);
+  gap: 10px;
+}
+
+.customer-account-ledger-strip > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.customer-account-ledger-strip span {
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.customer-account-ledger-strip strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.customer-account-ledger-strip small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .customer-profile-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4697,6 +4734,28 @@ h2 {
   color: var(--text);
   font-size: 15px;
   overflow-wrap: anywhere;
+}
+
+.customer-record-ledger-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.customer-record-ledger-note span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .customer-record-sections {
@@ -4863,6 +4922,11 @@ h2 {
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.customer-record-main .customer-record-context {
+  color: var(--primary-strong);
+  font-weight: 900;
 }
 
 .customer-record-side {
@@ -8804,6 +8868,7 @@ tbody tr:hover {
   .assets-work-queue-list,
   .assets-directory-layout.has-drawer,
   .customer-inline-create-grid,
+  .customer-account-ledger-strip,
   .customer-assets-metrics,
   .customer-record-sections,
   .customer-asset-card-meta,
@@ -9011,6 +9076,10 @@ tbody tr:hover {
   }
 
   .customer-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-account-ledger-strip {
     grid-template-columns: 1fr;
   }
 

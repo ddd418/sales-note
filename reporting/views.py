@@ -3118,9 +3118,10 @@ def _customer_account_payload(followup, shared_followups, scope_users):
     account_name = followup.department.name if followup.department else (
         followup.customer_name or followup.manager or '계정명 미정'
     )
+    is_department_account = bool(followup.department_id)
     return {
         'id': account_id,
-        'type': 'department' if followup.department_id else 'followup',
+        'type': 'department' if is_department_account else 'followup',
         'name': account_name,
         'companyId': followup.company_id,
         'companyName': followup.company.name if followup.company else '',
@@ -3129,6 +3130,12 @@ def _customer_account_payload(followup, shared_followups, scope_users):
         'representativeCustomerId': followup.id,
         'representativeName': followup.customer_name or followup.manager or '대표 담당자 미정',
         'contactCount': len(contacts),
+        'ledgerScopeLabel': '부서/연구실 계정 공유 원장' if is_department_account else '담당자 단일 원장',
+        'ledgerScopeDescription': (
+            '같은 업체/부서/연구실 담당자의 납품, 견적, 선결제, 장비, 서비스 기록을 함께 집계합니다.'
+            if is_department_account else
+            '부서/연구실 연결이 없어 이 담당자에게 연결된 기록만 집계합니다.'
+        ),
         'contacts': [_customer_account_contact_payload(contact) for contact in contacts],
         'href': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
         'djangoRepresentativeHref': reverse('reporting:followup_detail', args=[followup.id]),
@@ -4027,6 +4034,8 @@ def _customer_operational_records_payload(followup, scope_users, actor):
             'serviceRecords': len(service_records),
             'quoteRecords': len(quote_records),
             'deliveryRecords': len(delivery_records),
+            'prepaymentDeliveryRecords': len(prepayment_delivery_records),
+            'normalDeliveryRecords': len(normal_delivery_records),
             'prepaymentRecords': prepayments_qs.count(),
             'deliveryAmount': sum(record.get('totalAmount') or 0 for record in delivery_records),
             'prepaymentDeliveryAmount': sum(record.get('totalAmount') or 0 for record in prepayment_delivery_records),

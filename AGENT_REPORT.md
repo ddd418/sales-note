@@ -1,5 +1,96 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Detail Shared Ledger Clarity
+
+### 요약
+
+- `/accounts/<department_id>/` 계정 상세가 부서/연구실 공유 원장 화면이라는 점을 더 명확히 보이게 했습니다.
+- 계정 payload에 `ledgerScopeLabel`, `ledgerScopeDescription`을 추가했습니다.
+- 납품 기록 metric에 `선결제 차감 납품 건수`, `일반 납품 건수`를 구조화 필드 기준으로 추가했습니다.
+- React 상세 화면에 원장 범위/공유 담당자/납품 구분 요약 strip을 추가했습니다.
+- 납품, 견적, 서비스, 선결제 기록마다 연결된 담당자와 영업/등록자를 표시했습니다.
+- 계정 담당자 카드에 주소와 상세 메모 요약을 표시했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 사용자가 `/accounts/<id>/`에서 같은 부서/연구실 담당자들의 납품, 견적, 선결제, 장비, 서비스 기록이 함께 집계된다는 점을 바로 확인할 수 있습니다.
+- 납품은 선결제 차감 납품과 일반 납품 건수가 분리되어 표시됩니다.
+- 각 기록이 어느 담당자와 연결된 것인지 보여 같은 부서 공유 기록을 검수하기 쉬워졌습니다.
+- 고객/계정 상세 화면에는 AI 분석 UI를 추가하지 않았습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- `/reporting/api/accounts/<id>/`, `/reporting/api/customers/<id>/`, 기존 납품 엑셀 다운로드는 유지했습니다.
+- 선결제 차감 납품 판정은 기존처럼 구조화된 선결제 사용 필드와 `PrepaymentUsage`만 사용합니다.
+- Django `/reporting/*` route와 인증 보호는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source --verbosity=1
+→ Ran 1 test, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-03V415e2.js / dist/assets/index-1SaLH-zN.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local preview /accounts/1/
+→ Unauthenticated route redirects to /reporting/login/?next=/accounts/1/
+```
+
+### 알려진 제한
+
+- 이번 작업은 표시 명확화입니다. 부서 병합/담당자 병합/기록 이관 기능은 아직 추가하지 않았습니다.
+- 계정 상세의 작성/수정 액션은 기존 대표 담당자 기반 링크를 유지합니다.
+
+### 권장 다음 작업
+
+- 계정 상세에서 부서/연구실 병합 전 영향 범위 미리보기 API를 추가합니다.
+- 장기적으로 선결제 상세 링크도 담당자 단위가 아니라 부서/연구실 계정 단위로 확장합니다.
+
+### 운영 배포 상태
+
+- 배포 전. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 진행할 예정입니다.
+
+### 수동 운영 확인 절차
+
+1. [운영 고객 목록](https://sales-note-frontend-production.up.railway.app/customers/)에서 계정 행을 열거나 `/accounts/<id>/`에 접속합니다.
+2. 상단에 `부서/연구실 계정 공유 원장`과 공유 담당자 수가 보이는지 확인합니다.
+3. 운영 기록에서 선결제 차감 납품/일반 납품 건수가 분리되어 보이는지 확인합니다.
+4. 납품, 견적, 서비스, 선결제 기록 행에 연결 담당자와 영업/등록자가 보이는지 확인합니다.
+5. 계정 담당자 카드에 주소와 상세 메모 요약이 보이는지 확인합니다.
+
 ## 2026-05-22 — Reports Zero Cleanup State UX
 
 ### 요약

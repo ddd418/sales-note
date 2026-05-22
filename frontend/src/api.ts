@@ -1130,6 +1130,8 @@ export type CustomerOperationalMetrics = {
   serviceRecords: number;
   quoteRecords: number;
   deliveryRecords: number;
+  prepaymentDeliveryRecords: number;
+  normalDeliveryRecords: number;
   prepaymentRecords: number;
   deliveryAmount: number;
   prepaymentDeliveryAmount: number;
@@ -1250,6 +1252,8 @@ export type CustomerAccountSummary = {
   representativeCustomerId: number | null;
   representativeName: string;
   contactCount: number;
+  ledgerScopeLabel: string;
+  ledgerScopeDescription: string;
   contacts: CustomerAccountContact[];
   href: string;
   djangoRepresentativeHref: string;
@@ -4617,6 +4621,8 @@ const emptyCustomerDetailData: CustomerDetailData = {
     representativeCustomerId: null,
     representativeName: '',
     contactCount: 0,
+    ledgerScopeLabel: '',
+    ledgerScopeDescription: '',
     contacts: [],
     href: '',
     djangoRepresentativeHref: '',
@@ -4660,6 +4666,8 @@ const emptyCustomerDetailData: CustomerDetailData = {
       serviceRecords: 0,
       quoteRecords: 0,
       deliveryRecords: 0,
+      prepaymentDeliveryRecords: 0,
+      normalDeliveryRecords: 0,
       prepaymentRecords: 0,
       deliveryAmount: 0,
       prepaymentDeliveryAmount: 0,

@@ -2846,6 +2846,9 @@ function CustomerDeliveryRecords({ records }: { records: CustomerDeliveryRecord[
               <span>{record.statusLabel}</span>
             </div>
             <CustomerRecordItems items={record.items ?? []} />
+            <small className="customer-record-context">
+              {[record.customerName ? `담당자 ${record.customerName}` : '', record.ownerName ? `영업 ${record.ownerName}` : ''].filter(Boolean).join(' · ')}
+            </small>
             {record.notes ? <p>{record.notes}</p> : null}
             <small>{record.paymentEvidence}</small>
           </div>
@@ -2880,6 +2883,9 @@ function CustomerQuoteRecords({ records }: { records: CustomerQuoteRecord[] }) {
               <span>{record.statusLabel}</span>
             </div>
             <CustomerRecordItems items={record.items ?? []} />
+            <small className="customer-record-context">
+              {[record.customerName ? `담당자 ${record.customerName}` : '', record.ownerName ? `영업 ${record.ownerName}` : ''].filter(Boolean).join(' · ')}
+            </small>
             {record.notes ? <p>{record.notes}</p> : null}
           </div>
           <div className="customer-record-side">
@@ -2908,6 +2914,9 @@ function CustomerServiceRecords({ records }: { records: CustomerServiceRecord[] 
               <span>{record.date ? formatDateLabel(record.date) : '일자 없음'}</span>
               <span>{record.statusLabel}</span>
             </div>
+            <small className="customer-record-context">
+              {[record.customerName ? `담당자 ${record.customerName}` : '', record.ownerName ? `접수 ${record.ownerName}` : '', record.assignedTo ? `배정 ${record.assignedTo}` : ''].filter(Boolean).join(' · ')}
+            </small>
             <p>{record.summary || record.detail || '상세 내용 없음'}</p>
             <small>{[record.caseTypeLabel, record.priorityLabel, record.assignedTo || record.ownerName].filter(Boolean).join(' · ')}</small>
           </div>
@@ -2937,6 +2946,9 @@ function CustomerPrepaymentRecords({ records }: { records: PrepaymentListItem[] 
               <span>{record.payerName || '입금자 미지정'}</span>
               <PrepaymentStatusBadge label={record.statusLabel} status={record.status} />
             </div>
+            <small className="customer-record-context">
+              {[record.customerName ? `담당자 ${record.customerName}` : '', record.ownerName ? `등록 ${record.ownerName}` : '', record.departmentName].filter(Boolean).join(' · ')}
+            </small>
             {record.memo ? <p>{record.memo}</p> : null}
             <small>사용 {formatWon(record.usedAmount || 0)} · 사용내역 {formatNumber(record.usageCount || 0)}건</small>
           </div>
@@ -3600,6 +3612,19 @@ function CustomerDetailPage({
   const assetSummary = data.assetSummary;
   const account = data.account;
   const accountContacts = account.contacts ?? [];
+  const ledgerScopeLabel = account.ledgerScopeLabel || (
+    account.type === 'department' ? '부서/연구실 계정 공유 원장' : '담당자 단일 원장'
+  );
+  const ledgerScopeDescription = account.ledgerScopeDescription || (
+    account.type === 'department'
+      ? '같은 업체/부서/연구실 담당자의 납품, 견적, 선결제, 장비, 서비스 기록을 함께 집계합니다.'
+      : '부서/연구실 연결이 없어 이 담당자에게 연결된 기록만 집계합니다.'
+  );
+  const accountContactPreview = accountContacts
+    .map((contact) => contact.name)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(', ');
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
@@ -3613,12 +3638,29 @@ function CustomerDetailPage({
     { label: '교정 예정', value: `${formatNumber(assetSummary.metrics.dueCalibrationCount)}건` },
   ];
   const operationalMetrics = [
-    { label: '서비스', value: `${formatNumber(operationalRecords.metrics.serviceRecords)}건` },
-    { label: '견적', value: `${formatNumber(operationalRecords.metrics.quoteRecords)}건` },
     { label: '납품', value: `${formatNumber(operationalRecords.metrics.deliveryRecords)}건` },
-    { label: '선결제', value: `${formatNumber(operationalRecords.metrics.prepaymentRecords)}건` },
-    { label: '납품 합계', value: formatWon(operationalRecords.metrics.deliveryAmount) },
-    { label: '선결제 차감', value: formatWon(operationalRecords.metrics.prepaymentUsedAmount) },
+    { label: '선결제 차감 납품', value: `${formatNumber(operationalRecords.metrics.prepaymentDeliveryRecords)}건` },
+    { label: '일반 납품', value: `${formatNumber(operationalRecords.metrics.normalDeliveryRecords)}건` },
+    { label: '견적', value: `${formatNumber(operationalRecords.metrics.quoteRecords)}건` },
+    { label: '선결제 기록', value: `${formatNumber(operationalRecords.metrics.prepaymentRecords)}건` },
+    { label: '서비스', value: `${formatNumber(operationalRecords.metrics.serviceRecords)}건` },
+  ];
+  const ledgerCards = [
+    {
+      label: '원장 범위',
+      value: ledgerScopeLabel,
+      detail: ledgerScopeDescription,
+    },
+    {
+      label: '공유 담당자',
+      value: `${formatNumber(account.contactCount || accountContacts.length)}명`,
+      detail: accountContactPreview || '담당자 없음',
+    },
+    {
+      label: '납품 구분',
+      value: `선결제 ${formatNumber(operationalRecords.metrics.prepaymentDeliveryRecords)}건 / 일반 ${formatNumber(operationalRecords.metrics.normalDeliveryRecords)}건`,
+      detail: '구조화 선결제 사용 기록 기준',
+    },
   ];
   const customerProfileFields = [
     { label: '업체/학교', value: account.companyName || customerDetail.company },
@@ -3671,6 +3713,16 @@ function CustomerDetailPage({
             <Plus size={16} />
           </a>
         </div>
+      </div>
+
+      <div className="customer-account-ledger-strip">
+        {ledgerCards.map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.detail}</small>
+          </div>
+        ))}
       </div>
 
       <section className="dashboard-metric-grid customers-metric-grid" aria-label="고객 상세 지표">
@@ -3739,6 +3791,14 @@ function CustomerDetailPage({
                     <dt>상태</dt>
                     <dd>{[contact.statusLabel, contact.priorityLabel, contact.pipelineLabel].filter(Boolean).join(' · ') || '-'}</dd>
                   </div>
+                  <div>
+                    <dt>주소</dt>
+                    <dd>{contact.address || '주소 없음'}</dd>
+                  </div>
+                  <div>
+                    <dt>상세</dt>
+                    <dd>{contact.notes || '상세 내용 없음'}</dd>
+                  </div>
                 </dl>
                 <a className="customer-row-action" href={contact.href}>
                   담당자 상세 <MoveUpRight size={13} />
@@ -3766,6 +3826,12 @@ function CustomerDetailPage({
               <strong>{metric.value}</strong>
             </span>
           ))}
+        </div>
+        <div className="customer-record-ledger-note">
+          <span>납품 합계 {formatWon(operationalRecords.metrics.deliveryAmount)}</span>
+          <span>선결제 차감 납품 {formatWon(operationalRecords.metrics.prepaymentDeliveryAmount)}</span>
+          <span>일반 납품 {formatWon(operationalRecords.metrics.normalDeliveryAmount)}</span>
+          <span>선결제 차감액 {formatWon(operationalRecords.metrics.prepaymentUsedAmount)}</span>
         </div>
         <div className="customer-record-sections">
           <section className="customer-record-section">

@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account detail shared-ledger plan
+
+**Background**:
+
+- User confirmed `/reports/` and asked to proceed with the next task.
+- Next priority is `/accounts/<department_id>/`, because the business works by department/lab account rather than individual FollowUp contact.
+- Existing API already gathers department-shared delivery, quote, prepayment, asset, and service records, but the screen should make the shared ledger scope and record ownership clearer.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add explicit account ledger scope labels to the account payload.
+  - Add explicit delivery split counts for prepayment-deduction deliveries and normal deliveries.
+  - Keep payment classification based only on structured prepayment usage fields.
+- Frontend:
+  - Add a compact account ledger scope strip on customer/account detail.
+  - Show record-level contact/owner context in delivery, quote, service, and prepayment lists.
+  - Show contact address/detail snippets in the account contact list.
+  - Keep AI out of the customer/account detail screen.
+- Tests/docs:
+  - Extend focused customer/account detail API regression tests.
+  - Run Django checks, migration dry-run, focused tests, React typecheck/build, and diff checks.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Focused customer/account detail API test.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Reports zero cleanup state plan
 
 **Background**:
