@@ -26053,6 +26053,26 @@ Local smoke
 → GET /prepayments/new/ returned the React shell
 → GET /reporting/api/prepayments/create/ returned expected anonymous 401
 → Browser smoke reached /reporting/login/?next=%2Fprepayments%2Fnew%2F with no console errors
+
+git commit -m "feat: complete account-based prepayments"
+→ 1c01a0c feat: complete account-based prepayments
+
+git push origin main
+→ main pushed to GitHub
+
+Railway automatic deployment
+→ web 1abe7030-4754-4455-b8b8-3873a13a438f SUCCESS
+→ sales-note-frontend a07349c9-7f1a-49be-8032-ec42e0823d8e SUCCESS
+
+Railway deployment logs
+→ Applying reporting.0111_prepaymentledgerentry_prepayment_department_and_more... OK
+→ Gunicorn started successfully
+
+Production smoke
+→ Frontend /prepayments/new/ returned 200
+→ Backend /reporting/login/ returned 200
+→ Frontend proxy /reporting/api/prepayments/create/ returned expected anonymous 401 login_required JSON
+→ Backend /reporting/api/prepayments/create/ returned expected anonymous 401 login_required JSON
 ```
 
 ### 6. Known Limitations
@@ -26063,7 +26083,14 @@ Local smoke
 
 ### 7. Production Deployment Status
 
-- Pending final commit, push, and Railway verification. A post-deployment update will be appended after Railway reports the deployed services.
+- Runtime commit: `1c01a0c feat: complete account-based prepayments`
+- GitHub: `main` pushed.
+- Railway `web`: `1abe7030-4754-4455-b8b8-3873a13a438f` SUCCESS.
+- Railway `sales-note-frontend`: `a07349c9-7f1a-49be-8032-ec42e0823d8e` SUCCESS.
+- Production backend URL: `https://web-production-8a820.up.railway.app`
+- Production frontend URL: `https://sales-note-frontend-production.up.railway.app`
+- Production route/API smoke passed for public shell routes and anonymous authentication protection.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 8. Recommended Next Task
 
