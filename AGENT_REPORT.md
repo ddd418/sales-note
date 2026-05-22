@@ -71,7 +71,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 아직 이 작업 커밋/배포 전입니다. 검증 완료 후 커밋, 푸시, Railway 상태 확인 예정입니다.
+- `68e7081 feat: show reports data cleanup candidates` push 완료.
+- Railway frontend deployment `a96ec7bb-9410-4143-b6dc-bf875f47b7bb` SUCCESS.
+- Railway web deployment `13c6da28-daf5-4159-af93-09563dee0e82` SUCCESS.
+- 운영 JS bundle `/assets/index-CW78eOQQ.js`에 `데이터 정리 후보`, `Data cleanup`, `계정명 유사 후보`, `담당자 중복 후보` 반영 확인.
+- Railway status 기준 `sales-note-frontend`, `web`, `Postgres` 모두 Online.
+- web 로그에서 `No migrations to apply`와 gunicorn 기동 확인.
 
 ### 수동 서버 테스트 절차
 
