@@ -1348,6 +1348,23 @@ cd frontend; npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: strengthen account asset operations"
+→ b8d223c feat: strengthen account asset operations
+
+git push origin main
+→ main pushed to origin
+
+railway deployment list --service web --limit 2 --json
+→ Backend web service deployed commit b8d223c successfully
+
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ Frontend service deployed commit b8d223c successfully
+
+Production smoke
+→ GET https://sales-note-frontend-production.up.railway.app/assets/?service=open&calibration=due30 returned React shell 200
+→ GET https://sales-note-frontend-production.up.railway.app/reporting/api/customer-assets/?service=open&calibration=due30 returned expected anonymous 401 login_required JSON
+→ GET https://web-production-8a820.up.railway.app/reporting/api/customer-assets/account-search/?q=test returned expected anonymous 401 login_required JSON
 ```
 
 ### 알려진 제한
@@ -26317,7 +26334,12 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending final commit, push, and Railway verification. A post-deployment update will be appended after Railway reports the deployed services.
+- Completed.
+- Commit `b8d223c feat: strengthen account asset operations` is present on `origin/main`.
+- Railway backend `web` service deployed commit `b8d223c` successfully.
+- Railway frontend `sales-note-frontend` service deployed commit `b8d223c` successfully.
+- Production anonymous access smoke passed: `/assets/` serves the React shell, and asset directory/account-search APIs return `401 login_required` when not authenticated.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 8. Recommended Next Task
 
