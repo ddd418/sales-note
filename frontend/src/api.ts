@@ -242,8 +242,23 @@ export type ReportsDataQualityContact = {
   quoteCount: number;
   prepaymentCount: number;
   recordCount: number;
+  recordSummary: string;
   href: string;
   accountHref: string;
+};
+
+export type ReportsDataQualityDepartment = {
+  id: number;
+  name: string;
+  companyName: string;
+  accountHref: string;
+  contactCount: number;
+  recordCount: number;
+  scheduleCount: number;
+  historyCount: number;
+  quoteCount: number;
+  prepaymentCount: number;
+  contacts: ReportsDataQualityContact[];
 };
 
 export type ReportsDuplicateAccountGroup = {
@@ -252,6 +267,11 @@ export type ReportsDuplicateAccountGroup = {
   departmentNames: string[];
   departmentIds: number[];
   contactCount: number;
+  recordCount: number;
+  riskLevel: string;
+  riskLabel: string;
+  suggestedAction: string;
+  departments: ReportsDataQualityDepartment[];
   contacts: ReportsDataQualityContact[];
 };
 
@@ -260,6 +280,11 @@ export type ReportsDuplicateContactGroup = {
   departmentName: string;
   identity: string;
   contactCount: number;
+  recordCount: number;
+  contactIds: number[];
+  riskLevel: string;
+  riskLabel: string;
+  suggestedAction: string;
   contacts: ReportsDataQualityContact[];
 };
 
@@ -6005,6 +6030,11 @@ export async function loadReportsData(params: {
         },
         duplicateAccounts: (payload.dataQuality?.duplicateAccounts ?? emptyReportsData.dataQuality.duplicateAccounts).map((group) => ({
           ...group,
+          departments: (group.departments ?? []).map((department) => ({
+            ...department,
+            accountHref: normalizeCoreCrmHref(department.accountHref),
+            contacts: (department.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
+          })),
           contacts: (group.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
         })),
         duplicateContacts: (payload.dataQuality?.duplicateContacts ?? emptyReportsData.dataQuality.duplicateContacts).map((group) => ({

@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Reports data quality evidence plan
+
+**Background**:
+
+- User confirmed the account-first customer list and asked to continue the next improvement.
+- The CRM now needs safer department/contact cleanup groundwork before any merge or transfer tooling.
+- `/reports/` already surfaces duplicate/missing data candidates, but candidates need stronger evidence so operators can review the actual department/contact records instead of relying on AI-style inference.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add read-only evidence fields to report data quality duplicate account/contact candidates.
+  - Include department-level record totals, contact previews, review labels, and suggested review actions.
+  - Keep the payload based on existing structured counts for schedules, notes, quotes, and prepayments.
+- Frontend:
+  - Show the review label, total related records, suggested action, and direct department/contact links on `/reports/`.
+  - Keep cleanup candidates read-only; no destructive merge/delete action in this step.
+- Tests/docs:
+  - Extend the reports API regression test to cover the new evidence fields.
+  - Run Django checks, focused tests, React typecheck/build, and diff checks.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Focused reports API data quality test.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Customer list account-first plan
 
 **Background**:

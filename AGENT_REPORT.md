@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Reports Data Quality Evidence
+
+### 요약
+
+- `/reports/` 데이터 정리 후보를 읽기 전용 검토 패널로 보강했습니다.
+- 계정명 유사 후보에 부서/연구실별 담당자 수, 관련 기록 수, 계정 상세 링크를 추가했습니다.
+- 담당자 중복 후보에 검토 라벨, 관련 기록 수, 담당자 상세 링크, 기록 구성 요약을 추가했습니다.
+- 병합/삭제 같은 위험한 액션은 추가하지 않았고, 실제 정리 전 근거 확인 단계로 제한했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 같은 업체 안에서 비슷한 부서/연구실명이 왜 정리 후보인지 화면에서 바로 확인할 수 있습니다.
+- 후보별로 일정, 노트, 견적, 선결제 관련 기록 수를 구조화된 API 값으로 보여줍니다.
+- AI 추정이 아니라 `/reporting/api/reports/`의 공통 리포트 payload를 기준으로 후보 근거를 표시합니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `/reports/` 리포트, 고객별 현황표, 엑셀 다운로드 링크는 유지했습니다.
+- Django `/reporting/*` route와 인증 보호는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates --verbosity=1
+→ Ran 1 test, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-QqMU5_4U.js / dist/assets/index-BfF-_aY4.css generated
+→ Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local preview /reports/
+→ Unauthenticated route redirects to /reporting/login/?next=/reports/
+```
+
+### 알려진 제한
+
+- 아직 자동 병합/이관 기능은 없습니다. 이번 단계는 위험한 정리 작업 전에 확인 근거를 강화하는 작업입니다.
+- 운영 화면의 실제 후보 데이터는 로그인된 계정의 권한/데이터 범위에 따라 다르게 보입니다.
+
+### 권장 다음 작업
+
+- 정리 후보에서 “같은 계정으로 병합할지”를 선택하기 전에 영향 범위 미리보기 API를 추가합니다.
+- 이후 부서 병합/담당자 병합/기록 이관 도구를 관리자 전용으로 단계적으로 붙입니다.
+
+### 운영 배포 상태
+
+- 배포 전. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 진행할 예정입니다.
+
+### 수동 운영 확인 절차
+
+1. [운영 reports](https://sales-note-frontend-production.up.railway.app/reports/)에 접속합니다.
+2. `데이터 정리 후보` 영역에서 계정명 유사 후보와 담당자 중복 후보를 확인합니다.
+3. 후보 카드에 `검토 필요`, 관련 기록 수, 부서/담당자 링크가 보이는지 확인합니다.
+4. 부서 링크를 눌렀을 때 `/accounts/<id>/`, 담당자 링크를 눌렀을 때 `/customers/<id>/`로 이동하는지 확인합니다.
+
 ## 2026-05-22 — Customer List Account-First View
 
 ### 요약

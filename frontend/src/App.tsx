@@ -6080,9 +6080,24 @@ function ReportsPage({
               <div className="reports-quality-list">
                 {dataQuality.duplicateAccounts.map((group) => (
                   <article key={`${group.companyName}-${group.normalizedDepartmentName}`}>
-                    <strong>{group.companyName || '업체 미지정'}</strong>
-                    <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명</span>
-                    <small>부서 ID {group.departmentIds.join(', ')}</small>
+                    <div className="reports-quality-card-head">
+                      <strong>{group.companyName || '업체 미지정'}</strong>
+                      <span>{group.riskLabel || '검토 필요'}</span>
+                    </div>
+                    <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
+                    <small>{group.suggestedAction}</small>
+                    {group.departments.length > 0 ? (
+                      <div className="reports-quality-detail-list">
+                        {group.departments.map((department) => (
+                          <a href={department.accountHref} key={department.id}>
+                            <strong>{department.name}</strong>
+                            <small>담당자 {formatNumber(department.contactCount)}명 · 기록 {formatNumber(department.recordCount)}건</small>
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <small>부서 ID {group.departmentIds.join(', ')}</small>
+                    )}
                   </article>
                 ))}
               </div>
@@ -6096,9 +6111,20 @@ function ReportsPage({
               <div className="reports-quality-list">
                 {dataQuality.duplicateContacts.map((group) => (
                   <article key={`${group.companyName}-${group.departmentName}-${group.identity}`}>
-                    <strong>{group.identity}</strong>
-                    <span>{[group.companyName, group.departmentName].filter(Boolean).join(' · ') || '계정 미지정'} · {formatNumber(group.contactCount)}건</span>
-                    <small>{group.contacts.map((contact) => contact.name).join(', ')}</small>
+                    <div className="reports-quality-card-head">
+                      <strong>{group.identity}</strong>
+                      <span>{group.riskLabel || '검토 필요'}</span>
+                    </div>
+                    <span>{[group.companyName, group.departmentName].filter(Boolean).join(' · ') || '계정 미지정'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
+                    <small>{group.suggestedAction}</small>
+                    <div className="reports-quality-detail-list">
+                      {group.contacts.map((contact) => (
+                        <a href={contact.href} key={contact.id}>
+                          <strong>{contact.name}</strong>
+                          <small>{contact.recordSummary}</small>
+                        </a>
+                      ))}
+                    </div>
                   </article>
                 ))}
               </div>

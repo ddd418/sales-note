@@ -34068,8 +34068,38 @@ def _reports_cleanup_contact_payload(followup):
         'quoteCount': int(getattr(followup, 'dq_quote_count', 0) or 0),
         'prepaymentCount': int(getattr(followup, 'dq_prepayment_count', 0) or 0),
         'recordCount': record_count,
+        'recordSummary': (
+            f"일정 {int(getattr(followup, 'dq_schedule_count', 0) or 0)}"
+            f" · 노트 {int(getattr(followup, 'dq_history_count', 0) or 0)}"
+            f" · 견적 {int(getattr(followup, 'dq_quote_count', 0) or 0)}"
+            f" · 선결제 {int(getattr(followup, 'dq_prepayment_count', 0) or 0)}"
+        ),
         'href': f'/customers/{followup.id}/',
         'accountHref': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
+    }
+
+
+def _reports_cleanup_department_payload(department_id, grouped_followups):
+    department_followups = [
+        item for item in grouped_followups
+        if item.department_id == department_id
+    ]
+    if not department_followups:
+        return None
+    first = department_followups[0]
+    contacts = [_reports_cleanup_contact_payload(item) for item in department_followups]
+    return {
+        'id': department_id,
+        'name': first.department.name if first.department else '부서명 없음',
+        'companyName': first.company.name if first.company else '',
+        'accountHref': f'/accounts/{department_id}/',
+        'contactCount': len(department_followups),
+        'recordCount': sum(item['recordCount'] for item in contacts),
+        'scheduleCount': sum(item['scheduleCount'] for item in contacts),
+        'historyCount': sum(item['historyCount'] for item in contacts),
+        'quoteCount': sum(item['quoteCount'] for item in contacts),
+        'prepaymentCount': sum(item['prepaymentCount'] for item in contacts),
+        'contacts': contacts[:6],
     }
 
 
@@ -34124,13 +34154,25 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
         if len(department_ids) < 2:
             continue
         first = grouped_followups[0]
+        department_payloads = [
+            item for item in [
+                _reports_cleanup_department_payload(department_id, grouped_followups)
+                for department_id in department_ids
+            ] if item
+        ]
+        contact_payloads = [_reports_cleanup_contact_payload(item) for item in grouped_followups]
         duplicate_accounts.append({
             'companyName': first.company.name if first.company else '',
             'normalizedDepartmentName': _reports_cleanup_key(first.department.name if first.department else ''),
             'departmentNames': department_names,
             'departmentIds': department_ids,
             'contactCount': len(grouped_followups),
-            'contacts': [_reports_cleanup_contact_payload(item) for item in grouped_followups[:6]],
+            'recordCount': sum(item['recordCount'] for item in contact_payloads),
+            'riskLevel': 'review',
+            'riskLabel': '검토 필요',
+            'suggestedAction': '같은 업체 안에서 부서/연구실명이 매우 유사합니다. 실제 같은 계정인지 확인 후 병합 후보로 검토하세요.',
+            'departments': department_payloads,
+            'contacts': contact_payloads[:6],
         })
     duplicate_accounts.sort(key=lambda item: (-item['contactCount'], item['companyName'], item['normalizedDepartmentName']))
 
@@ -34139,12 +34181,18 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
         if len(grouped_followups) < 2:
             continue
         first = grouped_followups[0]
+        contact_payloads = [_reports_cleanup_contact_payload(item) for item in grouped_followups]
         duplicate_contacts.append({
             'companyName': first.company.name if first.company else '',
             'departmentName': first.department.name if first.department else '',
             'identity': (first.email or first.customer_name or first.manager or '담당자 미정'),
             'contactCount': len(grouped_followups),
-            'contacts': [_reports_cleanup_contact_payload(item) for item in grouped_followups[:6]],
+            'recordCount': sum(item['recordCount'] for item in contact_payloads),
+            'contactIds': [item.id for item in grouped_followups],
+            'riskLevel': 'review',
+            'riskLabel': '검토 필요',
+            'suggestedAction': '같은 계정 범위에서 이메일 또는 이름 키가 같습니다. 실제 동일 담당자인지 확인 후 기록 이관/병합을 검토하세요.',
+            'contacts': contact_payloads[:6],
         })
     duplicate_contacts.sort(key=lambda item: (-item['contactCount'], item['companyName'], item['departmentName'], item['identity']))
 

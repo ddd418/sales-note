@@ -614,6 +614,25 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertIn('연구실 A', account_text)
         self.assertIn('연구실A', account_text)
         self.assertIn('dup@example.com', contact_text)
+        duplicate_account = next(
+            group for group in data_quality['duplicateAccounts']
+            if '연구실 A' in group['departmentNames'] and '연구실A' in group['departmentNames']
+        )
+        self.assertEqual(duplicate_account['riskLabel'], '검토 필요')
+        self.assertIn('suggestedAction', duplicate_account)
+        self.assertGreaterEqual(duplicate_account['recordCount'], 0)
+        self.assertTrue(duplicate_account['departments'])
+        self.assertTrue(all('accountHref' in department for department in duplicate_account['departments']))
+        self.assertTrue(all('contacts' in department for department in duplicate_account['departments']))
+        duplicate_contact = next(
+            group for group in data_quality['duplicateContacts']
+            if group['identity'] == 'dup@example.com'
+        )
+        self.assertEqual(duplicate_contact['riskLabel'], '검토 필요')
+        self.assertIn('suggestedAction', duplicate_contact)
+        self.assertGreaterEqual(duplicate_contact['recordCount'], 0)
+        self.assertTrue(duplicate_contact['contactIds'])
+        self.assertTrue(all('recordSummary' in contact for contact in duplicate_contact['contacts']))
 
     def test_reports_api_manager_can_filter_company_salesperson(self):
         History.objects.create(
