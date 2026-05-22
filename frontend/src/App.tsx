@@ -51,7 +51,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DashboardData,
   DashboardHistoryItem,
@@ -2058,6 +2058,8 @@ const formatSignedWon = (value: number) => {
 const formatSignedPercent = (value: number) => `${value > 0 ? '+' : ''}${value}%`;
 
 const formatNumber = (value: number) => new Intl.NumberFormat('ko-KR').format(value);
+
+const formatSignedNumber = (value: number) => `${value > 0 ? '+' : ''}${formatNumber(value)}`;
 
 const formatFileSize = (size: number) => {
   if (size >= 1024 * 1024) {
@@ -7076,26 +7078,52 @@ function AccountCleanupImpactTable({ account }: { account: AccountCleanupPreview
 }
 
 function ReportsPage({
+  companyId,
   data,
   dateFrom,
   dateTo,
+  deliveryFilter,
+  departmentId,
+  exportScope,
   loading,
+  prepaymentBalanceFilter,
+  query,
   userId,
   onDateFromChange,
   onDateToChange,
+  onDeliveryFilterChange,
+  onDepartmentChange,
+  onExportScopeChange,
+  onCompanyChange,
+  onPrepaymentBalanceFilterChange,
+  onQueryChange,
   onRefresh,
   onUserChange,
 }: {
+  companyId: string;
   data: ReportsData | null;
   dateFrom: string;
   dateTo: string;
+  deliveryFilter: string;
+  departmentId: string;
+  exportScope: string;
   loading: boolean;
+  prepaymentBalanceFilter: string;
+  query: string;
   userId: string;
   onDateFromChange: (value: string) => void;
   onDateToChange: (value: string) => void;
+  onDeliveryFilterChange: (value: string) => void;
+  onDepartmentChange: (value: string) => void;
+  onExportScopeChange: (value: string) => void;
+  onCompanyChange: (value: string) => void;
+  onPrepaymentBalanceFilterChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
   onRefresh: () => void;
   onUserChange: (value: string) => void;
 }) {
+  const [expandedAccountId, setExpandedAccountId] = useState<number | null>(null);
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -7137,6 +7165,35 @@ function ReportsPage({
     { label: '업체 미지정', value: `${formatNumber(cleanupMetrics.contactsWithoutCompany)}명` },
   ];
   const hasCleanupCandidates = cleanupMetrics.cleanupCandidateCount > 0;
+  const selectedCompanyId = companyId || (data.filters.companyId ? String(data.filters.companyId) : '');
+  const selectedDepartmentId = departmentId || (data.filters.departmentId ? String(data.filters.departmentId) : '');
+  const selectedDeliveryFilter = deliveryFilter || data.filters.deliveryFilter || 'any';
+  const selectedPrepaymentBalanceFilter = prepaymentBalanceFilter || data.filters.prepaymentBalanceFilter || 'any';
+  const selectedExportScope = exportScope || data.filters.exportScope || 'filtered';
+  const selectedQuery = query || data.filters.query || '';
+  const departmentOptions = selectedCompanyId
+    ? data.scope.departments.filter((department) => String(department.companyId ?? '') === selectedCompanyId)
+    : data.scope.departments;
+  const excelHref = (() => {
+    const [path, existingQuery = ''] = data.links.customerOperationsXlsx.split('?');
+    const params = new URLSearchParams(existingQuery);
+    if (selectedExportScope && selectedExportScope !== 'filtered') {
+      params.set('export_scope', selectedExportScope);
+    } else {
+      params.delete('export_scope');
+    }
+    return `${path}${params.toString() ? `?${params.toString()}` : ''}`;
+  })();
+  const comparison = data.comparison.customerOperations;
+  const previousDateRangeLabel = comparison.dateFrom && comparison.dateTo
+    ? `${formatDateLabel(comparison.dateFrom) || comparison.dateFrom} - ${formatDateLabel(comparison.dateTo) || comparison.dateTo}`
+    : '';
+  const comparisonCards = [
+    { label: '납품 증감', value: `${formatSignedNumber(comparison.deltas.deliveryCount ?? 0)}건`, detail: `${formatSignedWon(comparison.deltas.deliveryAmount ?? 0)} · 이전 ${formatNumber(comparison.metrics.deliveryCount ?? 0)}건` },
+    { label: '견적 증감', value: `${formatSignedNumber(comparison.deltas.quoteCount ?? 0)}건`, detail: `${formatSignedWon(comparison.deltas.quoteAmount ?? 0)} · 이전 ${formatNumber(comparison.metrics.quoteCount ?? 0)}건` },
+    { label: '선결제 차감 증감', value: `${formatSignedNumber(comparison.deltas.prepaymentDeliveryCount ?? 0)}건`, detail: `${formatSignedWon(comparison.deltas.prepaymentUsedAmount ?? 0)} · 이전 ${formatNumber(comparison.metrics.prepaymentDeliveryCount ?? 0)}건` },
+    { label: '서비스 증감', value: `${formatSignedNumber(comparison.deltas.serviceCount ?? 0)}건`, detail: `진행 ${formatSignedNumber(comparison.deltas.openServiceCount ?? 0)}건` },
+  ];
 
   const lastDateLabel = (value: string | null) => formatDateLabel(value) || '-';
 
@@ -7161,7 +7218,7 @@ function ReportsPage({
         </div>
         <div className="reports-actions">
           {data.scope.canExport ? (
-            <a className="route-secondary-action" href={data.links.customerOperationsXlsx}>
+            <a className="route-secondary-action" href={excelHref}>
               <Download size={15} />
               현황 엑셀
             </a>
@@ -7175,6 +7232,35 @@ function ReportsPage({
 
       <div className="reports-control-band">
         <div className="reports-filter-bar">
+          <label className="reports-filter-wide">
+            <span>업체/부서/담당자</span>
+            <input
+              type="search"
+              value={selectedQuery}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="계정, 업체, 담당자 검색"
+            />
+          </label>
+          <label>
+            <span>업체</span>
+            <select value={selectedCompanyId} onChange={(event) => onCompanyChange(event.target.value)}>
+              <option value="">전체</option>
+              {data.scope.companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>부서/연구실</span>
+            <select value={selectedDepartmentId} onChange={(event) => onDepartmentChange(event.target.value)}>
+              <option value="">전체</option>
+              {departmentOptions.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {selectedCompanyId ? department.name : `${department.companyName} · ${department.name}`}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             <span>시작일</span>
             <input type="date" value={dateFrom || data.filters.dateFrom} onChange={(event) => onDateFromChange(event.target.value)} />
@@ -7191,6 +7277,34 @@ function ReportsPage({
                 {data.scope.salespeople.map((user) => (
                   <option key={user.id} value={user.id}>{user.name}</option>
                 ))}
+              </select>
+            </label>
+          ) : null}
+          <label>
+            <span>납품</span>
+            <select value={selectedDeliveryFilter} onChange={(event) => onDeliveryFilterChange(event.target.value)}>
+              <option value="any">전체</option>
+              <option value="with">납품 있음</option>
+              <option value="without">납품 없음</option>
+            </select>
+          </label>
+          <label>
+            <span>선결제 잔액</span>
+            <select value={selectedPrepaymentBalanceFilter} onChange={(event) => onPrepaymentBalanceFilterChange(event.target.value)}>
+              <option value="any">전체</option>
+              <option value="with">잔액 있음</option>
+              <option value="without">잔액 없음</option>
+            </select>
+          </label>
+          {data.scope.canExport ? (
+            <label>
+              <span>엑셀 범위</span>
+              <select value={selectedExportScope} onChange={(event) => onExportScopeChange(event.target.value)}>
+                <option value="filtered">현재 필터</option>
+                <option value="all">전체 계정</option>
+                <option value="deliveries">납품 있는 계정</option>
+                <option value="prepayment_balance">선결제 잔액 계정</option>
+                <option value="cleanup_candidates">정리 후보 계정</option>
               </select>
             </label>
           ) : null}
@@ -7230,6 +7344,28 @@ function ReportsPage({
             value={metric.value}
           />
         ))}
+      </section>
+
+      <section className="dashboard-panel reports-comparison-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Period comparison</span>
+            <h2>직전 기간 비교</h2>
+          </div>
+          <ArrowRightLeft size={18} />
+        </div>
+        <p className="reports-quality-rule">
+          현재 선택 기간과 동일한 길이의 직전 기간을 비교합니다{previousDateRangeLabel ? `: ${previousDateRangeLabel}` : ''}.
+        </p>
+        <div className="reports-comparison-grid">
+          {comparisonCards.map((card) => (
+            <span key={card.label}>
+              {card.label}
+              <strong className={(card.value.startsWith('+') ? 'positive' : card.value.startsWith('-') ? 'negative' : '')}>{card.value}</strong>
+              <small>{card.detail}</small>
+            </span>
+          ))}
+        </div>
       </section>
 
       <section className="dashboard-panel reports-quality-panel">
@@ -7396,13 +7532,20 @@ function ReportsPage({
             </thead>
             <tbody>
               {rows.length > 0 ? rows.map((customer) => (
-                <tr key={customer.id}>
+                <Fragment key={customer.id}>
+                <tr>
                   <td className="reports-account-cell">
                     <a href={customer.href}>
                       <strong>{customer.customer || customer.company}</strong>
                       <span>{[customer.company, customer.department].filter(Boolean).join(' · ') || '업체/부서 미지정'}</span>
                     </a>
                     {customer.contactPreview?.length ? <small>담당자 {customer.contactPreview.join(', ')}{(customer.contactCount || 0) > customer.contactPreview.length ? ` 외 ${(customer.contactCount || 0) - customer.contactPreview.length}명` : ''}</small> : null}
+                    {customer.cleanupCandidateCount > 0 ? (
+                      <a className="reports-cleanup-badge" href={customer.cleanupPreviewHref || customer.href}>
+                        <AlertTriangle size={13} />
+                        {customer.cleanupRiskLabel || '정리 후보'} {formatNumber(customer.cleanupCandidateCount)}
+                      </a>
+                    ) : null}
                   </td>
                   <td className="reports-stack-cell">
                     <strong>{customer.owner}</strong>
@@ -7443,10 +7586,10 @@ function ReportsPage({
                     {customer.recentDeliveryItems.length > 0 ? (
                       <div className="reports-delivery-chip-list">
                         {customer.recentDeliveryItems.map((item, index) => (
-                          <span className={item.paymentSource === 'prepayment' ? 'prepayment' : ''} key={`${customer.id}-${item.date || index}-${index}`}>
+                          <a className={item.paymentSource === 'prepayment' ? 'prepayment' : ''} href={item.href || customer.href} key={`${customer.id}-${item.date || index}-${index}`}>
                             <strong>{item.label}</strong>
                             <small>{[lastDateLabel(item.date), item.paymentSourceLabel, item.amount ? formatWon(item.amount) : ''].filter(Boolean).join(' · ')}</small>
-                          </span>
+                          </a>
                         ))}
                       </div>
                     ) : (
@@ -7458,8 +7601,23 @@ function ReportsPage({
                     <a className="customer-row-action" href={customer.href}>
                       상세보기 <MoveUpRight size={13} />
                     </a>
+                    <button
+                      className="customer-row-action reports-row-toggle"
+                      onClick={() => setExpandedAccountId((current) => (current === customer.id ? null : customer.id))}
+                      type="button"
+                    >
+                      {expandedAccountId === customer.id ? '접기' : '드릴다운'} <Eye size={13} />
+                    </button>
                   </td>
                 </tr>
+                {expandedAccountId === customer.id ? (
+                  <tr className="reports-drilldown-row">
+                    <td colSpan={10}>
+                      <ReportsAccountDrilldown customer={customer} />
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               )) : (
                 <tr><td colSpan={10}>표시할 고객 운영 기록이 없습니다.</td></tr>
               )}
@@ -7469,6 +7627,80 @@ function ReportsPage({
       </section>
     </section>
   );
+}
+
+function ReportsAccountDrilldown({ customer }: { customer: ReportsData['customerOperations']['rows'][number] }) {
+  const renderRecords = (
+    records: ReportsData['customerOperations']['rows'][number]['drilldown']['deliveries'],
+    emptyLabel: string,
+    amountLabel = '금액',
+  ) => (
+    records.length > 0 ? (
+      <div className="reports-drilldown-list">
+        {records.map((record, index) => (
+          <a href={record.href || customer.href} key={`${record.id}-${index}`}>
+            <strong>{record.label || '기록'}</strong>
+            <span>{[lastDateForReport(record.date), record.customerName, record.statusLabel || record.paymentStatusLabel].filter(Boolean).join(' · ')}</span>
+            <small>
+              {[
+                typeof record.amount === 'number' ? `${amountLabel} ${formatWon(record.amount)}` : '',
+                typeof record.balance === 'number' ? `잔액 ${formatWon(record.balance)}` : '',
+                record.ownerName,
+              ].filter(Boolean).join(' · ')}
+            </small>
+          </a>
+        ))}
+      </div>
+    ) : <DashboardEmpty label={emptyLabel} />
+  );
+
+  return (
+    <div className="reports-drilldown-grid">
+      <section>
+        <h3>담당자</h3>
+        {customer.drilldown.contacts.length > 0 ? (
+          <div className="reports-drilldown-list compact">
+            {customer.drilldown.contacts.map((contact) => (
+              <a href={contact.href} key={contact.id}>
+                <strong>{contact.name}</strong>
+                <span>{[contact.roleLabel, contact.manager, contact.ownerName].filter(Boolean).join(' · ')}</span>
+                <small>{[contact.email, contact.phone].filter(Boolean).join(' · ') || '연락처 없음'}</small>
+              </a>
+            ))}
+          </div>
+        ) : <DashboardEmpty label="담당자가 없습니다" />}
+      </section>
+      <section>
+        <h3>납품</h3>
+        {renderRecords(customer.drilldown.deliveries, '납품 기록 없음')}
+      </section>
+      <section>
+        <h3>견적</h3>
+        {renderRecords(customer.drilldown.quotes, '견적 기록 없음')}
+      </section>
+      <section>
+        <h3>선결제</h3>
+        {renderRecords(customer.drilldown.prepayments, '선결제 기록 없음', '입금')}
+      </section>
+      <section>
+        <h3>서비스</h3>
+        {renderRecords(customer.drilldown.services, '서비스 기록 없음')}
+      </section>
+      <section>
+        <h3>연결</h3>
+        <div className="reports-drilldown-actions">
+          <a href={customer.links.account || customer.href}>계정 상세</a>
+          {customer.links.prepayments ? <a href={customer.links.prepayments}>선결제 현황</a> : null}
+          {customer.links.cleanupPreview ? <a href={customer.links.cleanupPreview}>정리 영향</a> : null}
+          {customer.links.customer ? <a href={customer.links.customer}>대표 담당자</a> : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function lastDateForReport(value?: string | null) {
+  return formatDateLabel(value) || '';
 }
 
 function BusinessCardSignaturePreview({ html }: { html: string }) {
@@ -21083,6 +21315,12 @@ export function App() {
   const [reportsDateFrom, setReportsDateFrom] = useState(() => new URLSearchParams(window.location.search).get('date_from') || '');
   const [reportsDateTo, setReportsDateTo] = useState(() => new URLSearchParams(window.location.search).get('date_to') || '');
   const [reportsUserId, setReportsUserId] = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
+  const [reportsQuery, setReportsQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [reportsCompanyId, setReportsCompanyId] = useState(() => new URLSearchParams(window.location.search).get('company_id') || '');
+  const [reportsDepartmentId, setReportsDepartmentId] = useState(() => new URLSearchParams(window.location.search).get('department_id') || '');
+  const [reportsDeliveryFilter, setReportsDeliveryFilter] = useState(() => new URLSearchParams(window.location.search).get('delivery_filter') || 'any');
+  const [reportsPrepaymentBalanceFilter, setReportsPrepaymentBalanceFilter] = useState(() => new URLSearchParams(window.location.search).get('prepayment_balance_filter') || 'any');
+  const [reportsExportScope, setReportsExportScope] = useState(() => new URLSearchParams(window.location.search).get('export_scope') || 'filtered');
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
@@ -21301,8 +21539,14 @@ export function App() {
     let alive = true;
     setReportsLoading(true);
     loadReportsData({
+      companyId: reportsCompanyId,
       dateFrom: reportsDateFrom,
       dateTo: reportsDateTo,
+      deliveryFilter: reportsDeliveryFilter,
+      departmentId: reportsDepartmentId,
+      exportScope: reportsExportScope,
+      prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
+      query: reportsQuery,
       userId: reportsUserId,
     }).then((data) => {
       if (!alive) {
@@ -21320,7 +21564,18 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, reportsDateFrom, reportsDateTo, reportsUserId]);
+  }, [
+    currentView,
+    reportsCompanyId,
+    reportsDateFrom,
+    reportsDateTo,
+    reportsDeliveryFilter,
+    reportsDepartmentId,
+    reportsExportScope,
+    reportsPrepaymentBalanceFilter,
+    reportsQuery,
+    reportsUserId,
+  ]);
 
   useEffect(() => {
     if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId) {
@@ -22690,8 +22945,14 @@ export function App() {
   };
   const refreshReportsData = async () => {
     const data = await loadReportsData({
+      companyId: reportsCompanyId,
       dateFrom: reportsDateFrom,
       dateTo: reportsDateTo,
+      deliveryFilter: reportsDeliveryFilter,
+      departmentId: reportsDepartmentId,
+      exportScope: reportsExportScope,
+      prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
+      query: reportsQuery,
       userId: reportsUserId,
     });
     setReportsData(data);
@@ -23200,10 +23461,25 @@ export function App() {
           data={reportsData}
           dateFrom={reportsDateFrom}
           dateTo={reportsDateTo}
+          deliveryFilter={reportsDeliveryFilter}
+          departmentId={reportsDepartmentId}
+          exportScope={reportsExportScope}
           loading={reportsLoading}
+          companyId={reportsCompanyId}
+          prepaymentBalanceFilter={reportsPrepaymentBalanceFilter}
+          query={reportsQuery}
           userId={reportsUserId}
           onDateFromChange={setReportsDateFrom}
           onDateToChange={setReportsDateTo}
+          onDeliveryFilterChange={setReportsDeliveryFilter}
+          onDepartmentChange={setReportsDepartmentId}
+          onExportScopeChange={setReportsExportScope}
+          onCompanyChange={(value) => {
+            setReportsCompanyId(value);
+            setReportsDepartmentId('');
+          }}
+          onPrepaymentBalanceFilterChange={setReportsPrepaymentBalanceFilter}
+          onQueryChange={setReportsQuery}
           onRefresh={() => { void refreshReportsData(); }}
           onUserChange={setReportsUserId}
         />

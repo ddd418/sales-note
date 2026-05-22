@@ -11138,6 +11138,11 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.reports-filter-bar label.reports-filter-wide {
+  min-width: 260px;
+  flex: 1 1 260px;
+}
+
 .reports-filter-bar input,
 .reports-filter-bar select {
   min-height: 38px;
@@ -11231,6 +11236,50 @@ tbody tr:hover {
 
 .reports-metric-grid {
   grid-template-columns: repeat(6, minmax(150px, 1fr));
+}
+
+.reports-comparison-panel {
+  display: grid;
+  gap: 12px;
+  order: 11;
+}
+
+.reports-comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reports-comparison-grid span {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reports-comparison-grid strong {
+  color: var(--text);
+  font-size: 17px;
+}
+
+.reports-comparison-grid strong.positive {
+  color: var(--green);
+}
+
+.reports-comparison-grid strong.negative {
+  color: var(--red);
+}
+
+.reports-comparison-grid small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .reports-quality-panel {
@@ -11540,6 +11589,22 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.reports-cleanup-badge {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  min-height: 25px;
+  margin-top: 7px;
+  padding: 4px 7px;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #92400e !important;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .reports-stack-cell {
   display: grid;
   gap: 6px;
@@ -11569,16 +11634,20 @@ tbody tr:hover {
   gap: 7px;
 }
 
-.reports-delivery-chip-list > span {
+.reports-delivery-chip-list > span,
+.reports-delivery-chip-list > a {
   display: grid;
   gap: 4px;
   padding: 8px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-soft);
+  color: inherit;
+  text-decoration: none;
 }
 
-.reports-delivery-chip-list > span.prepayment {
+.reports-delivery-chip-list > span.prepayment,
+.reports-delivery-chip-list > a.prepayment {
   border-color: #fed7aa;
   background: #fff7ed;
 }
@@ -11594,6 +11663,95 @@ tbody tr:hover {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.reports-row-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--primary-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0;
+  width: fit-content;
+}
+
+.reports-drilldown-row td {
+  background: #f8fafc;
+}
+
+.reports-drilldown-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.reports-drilldown-grid section {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.reports-drilldown-grid h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.reports-drilldown-list {
+  display: grid;
+  gap: 7px;
+}
+
+.reports-drilldown-list a,
+.reports-drilldown-actions a {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.reports-drilldown-list.compact a {
+  padding: 7px;
+}
+
+.reports-drilldown-list strong,
+.reports-drilldown-list span,
+.reports-drilldown-list small {
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.reports-drilldown-list strong {
+  font-size: 12px;
+}
+
+.reports-drilldown-list span,
+.reports-drilldown-list small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.reports-drilldown-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.reports-drilldown-actions a {
+  min-height: 34px;
+  align-content: center;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .business-card-item {
@@ -11845,6 +12003,8 @@ tbody tr:hover {
 
 @media (max-width: 1180px) {
   .reports-metric-grid,
+  .reports-comparison-grid,
+  .reports-drilldown-grid,
   .reports-quality-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -11869,6 +12029,8 @@ tbody tr:hover {
 @media (max-width: 760px) {
   .reports-metric-grid,
   .reports-signal-strip,
+  .reports-comparison-grid,
+  .reports-drilldown-grid,
   .reports-quality-metrics,
   .reports-quality-grid,
   .business-card-summary-strip,

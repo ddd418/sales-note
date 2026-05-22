@@ -154,6 +154,7 @@ export type DashboardData = {
 };
 
 export type ReportsCustomerRecentDelivery = {
+  id?: number | null;
   date: string | null;
   label: string;
   amount: number;
@@ -161,6 +162,34 @@ export type ReportsCustomerRecentDelivery = {
   paymentSourceLabel: string;
   paymentStatus?: string;
   paymentStatusLabel?: string;
+  href?: string;
+};
+
+export type ReportsOperationDrilldownContact = {
+  id: number;
+  name: string;
+  manager: string;
+  role: string;
+  roleLabel: string;
+  email: string;
+  phone: string;
+  ownerName: string;
+  href: string;
+};
+
+export type ReportsOperationDrilldownRecord = {
+  id: number;
+  date: string | null;
+  label: string;
+  amount?: number;
+  balance?: number;
+  customerName?: string;
+  ownerName?: string;
+  paymentSource?: string;
+  paymentSourceLabel?: string;
+  paymentStatusLabel?: string;
+  statusLabel?: string;
+  href: string;
 };
 
 export type ReportsCustomerOperationRow = {
@@ -201,6 +230,23 @@ export type ReportsCustomerOperationRow = {
   lastPrepaymentDate: string | null;
   lastActivityDate: string | null;
   recentDeliveryItems: ReportsCustomerRecentDelivery[];
+  cleanupCandidateCount: number;
+  cleanupRiskLabel: string;
+  cleanupTypes: string[];
+  cleanupPreviewHref: string;
+  links: {
+    account: string;
+    prepayments: string;
+    cleanupPreview: string;
+    customer: string;
+  };
+  drilldown: {
+    contacts: ReportsOperationDrilldownContact[];
+    deliveries: ReportsOperationDrilldownRecord[];
+    quotes: ReportsOperationDrilldownRecord[];
+    prepayments: ReportsOperationDrilldownRecord[];
+    services: ReportsOperationDrilldownRecord[];
+  };
   href: string;
   customerHref?: string;
   djangoHref: string;
@@ -227,6 +273,14 @@ export type ReportsCustomerOperations = {
     prepaymentUsedTotal: number;
   };
   rows: ReportsCustomerOperationRow[];
+};
+
+export type ReportsCustomerOperationsComparison = {
+  dateFrom: string;
+  dateTo: string;
+  metrics: Partial<ReportsCustomerOperations['metrics']>;
+  deltas: Partial<ReportsCustomerOperations['metrics']>;
+  changeRates: Record<string, number | null>;
 };
 
 export type ReportsDataQualityContact = {
@@ -414,12 +468,20 @@ export type ReportsData = {
     dateFrom: string;
     dateTo: string;
     selectedUserId: number | null;
+    query: string;
+    companyId: number | null;
+    departmentId: number | null;
+    deliveryFilter: string;
+    prepaymentBalanceFilter: string;
+    exportScope: string;
   };
   scope: {
     canFilterUsers: boolean;
     canExport: boolean;
     label: string;
     salespeople: Array<{ id: number; name: string; username: string }>;
+    companies: Array<{ id: number; name: string }>;
+    departments: Array<{ id: number; name: string; companyId: number | null; companyName: string }>;
   };
   metrics: {
     totalHistories: number;
@@ -455,6 +517,9 @@ export type ReportsData = {
     djangoHref: string;
   }>;
   customerOperations: ReportsCustomerOperations;
+  comparison: {
+    customerOperations: ReportsCustomerOperationsComparison;
+  };
   dataQuality: ReportsDataQuality;
   pipelineSummary: Array<{ stage: string; label: string; count: number }>;
   links: {
@@ -4632,12 +4697,20 @@ const emptyReportsData: ReportsData = {
     dateFrom: '',
     dateTo: '',
     selectedUserId: null,
+    query: '',
+    companyId: null,
+    departmentId: null,
+    deliveryFilter: 'any',
+    prepaymentBalanceFilter: 'any',
+    exportScope: 'filtered',
   },
   scope: {
     canFilterUsers: false,
     canExport: false,
     label: '',
     salespeople: [],
+    companies: [],
+    departments: [],
   },
   metrics: {
     totalHistories: 0,
@@ -4675,6 +4748,15 @@ const emptyReportsData: ReportsData = {
       prepaymentUsedTotal: 0,
     },
     rows: [],
+  },
+  comparison: {
+    customerOperations: {
+      dateFrom: '',
+      dateTo: '',
+      metrics: {},
+      deltas: {},
+      changeRates: {},
+    },
   },
   dataQuality: {
     metrics: {
@@ -6398,13 +6480,25 @@ export async function loadDashboardData(): Promise<DashboardData> {
 }
 
 export async function loadReportsData(params: {
+  companyId?: string;
   dateFrom?: string;
   dateTo?: string;
+  deliveryFilter?: string;
+  departmentId?: string;
+  exportScope?: string;
+  prepaymentBalanceFilter?: string;
+  query?: string;
   userId?: string;
 } = {}): Promise<ReportsData> {
   const query = new URLSearchParams();
+  if (params.companyId) query.set('company_id', params.companyId);
   if (params.dateFrom) query.set('date_from', params.dateFrom);
   if (params.dateTo) query.set('date_to', params.dateTo);
+  if (params.deliveryFilter && params.deliveryFilter !== 'any') query.set('delivery_filter', params.deliveryFilter);
+  if (params.departmentId) query.set('department_id', params.departmentId);
+  if (params.exportScope && params.exportScope !== 'filtered') query.set('export_scope', params.exportScope);
+  if (params.prepaymentBalanceFilter && params.prepaymentBalanceFilter !== 'any') query.set('prepayment_balance_filter', params.prepaymentBalanceFilter);
+  if (params.query) query.set('q', params.query);
   if (params.userId) query.set('user_id', params.userId);
 
   try {
@@ -6435,6 +6529,8 @@ export async function loadReportsData(params: {
         ...emptyReportsData.scope,
         ...(payload.scope ?? {}),
         salespeople: payload.scope?.salespeople ?? emptyReportsData.scope.salespeople,
+        companies: payload.scope?.companies ?? emptyReportsData.scope.companies,
+        departments: payload.scope?.departments ?? emptyReportsData.scope.departments,
       },
       metrics: {
         ...emptyReportsData.metrics,
@@ -6455,9 +6551,49 @@ export async function loadReportsData(params: {
           ...emptyReportsData.customerOperations.metrics,
           ...(payload.customerOperations?.metrics ?? {}),
         },
-        rows: (payload.customerOperations?.rows ?? emptyReportsData.customerOperations.rows).map((customer) => (
-          normalizeHrefFields(customer, ['href', 'djangoHref'])
-        )),
+        rows: (payload.customerOperations?.rows ?? emptyReportsData.customerOperations.rows).map((customer) => {
+          const normalized = normalizeHrefFields(customer, ['href', 'customerHref', 'djangoHref', 'cleanupPreviewHref']);
+          return {
+            ...normalized,
+            links: {
+              account: normalizeCoreCrmHref(customer.links?.account ?? normalized.href),
+              prepayments: normalizeCoreCrmHref(customer.links?.prepayments ?? ''),
+              cleanupPreview: normalizeCoreCrmHref(customer.links?.cleanupPreview ?? customer.cleanupPreviewHref ?? ''),
+              customer: normalizeCoreCrmHref(customer.links?.customer ?? customer.customerHref ?? ''),
+            },
+            drilldown: {
+              contacts: (customer.drilldown?.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href'])),
+              deliveries: (customer.drilldown?.deliveries ?? []).map((record) => normalizeHrefFields(record, ['href'])),
+              quotes: (customer.drilldown?.quotes ?? []).map((record) => normalizeHrefFields(record, ['href'])),
+              prepayments: (customer.drilldown?.prepayments ?? []).map((record) => normalizeHrefFields(record, ['href'])),
+              services: (customer.drilldown?.services ?? []).map((record) => normalizeHrefFields(record, ['href'])),
+            },
+            recentDeliveryItems: (customer.recentDeliveryItems ?? []).map((item) => ({
+              ...item,
+              href: normalizeCoreCrmHref(item.href ?? ''),
+            })),
+          };
+        }),
+      },
+      comparison: {
+        ...emptyReportsData.comparison,
+        ...(payload.comparison ?? {}),
+        customerOperations: {
+          ...emptyReportsData.comparison.customerOperations,
+          ...(payload.comparison?.customerOperations ?? {}),
+          metrics: {
+            ...emptyReportsData.comparison.customerOperations.metrics,
+            ...(payload.comparison?.customerOperations?.metrics ?? {}),
+          },
+          deltas: {
+            ...emptyReportsData.comparison.customerOperations.deltas,
+            ...(payload.comparison?.customerOperations?.deltas ?? {}),
+          },
+          changeRates: {
+            ...emptyReportsData.comparison.customerOperations.changeRates,
+            ...(payload.comparison?.customerOperations?.changeRates ?? {}),
+          },
+        },
       },
       dataQuality: {
         ...emptyReportsData.dataQuality,

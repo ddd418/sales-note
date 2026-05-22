@@ -26107,3 +26107,106 @@ Production smoke
 7. Edit, transfer, and cancel a test prepayment and confirm each action adds a ledger row.
 8. Click the account prepayment Excel button and confirm the downloaded workbook is scoped to the selected account.
 9. Spot-check existing `/reporting/prepayment/`, `/reporting/prepayment/create/`, and customer-level prepayment links still work.
+
+## 2026-05-23 Reports account operations enhancement
+
+### 1. Summary
+
+- Enhanced `/reports/` as an account/customer operations table.
+- Added account-level drilldowns, previous-period comparison, account/contact filters, prepayment balance filters, delivery presence filters, Excel export scope selection, and cleanup candidate links inside account rows.
+- Kept the existing `/reporting/api/reports/` and `/reporting/api/reports/customer-operations.xlsx` routes as the backend source.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- `/reports/` now supports keyword search across company, department/account, contact, email, and phone.
+- Added company and department selectors plus the existing salesperson selector.
+- Added `납품 있음/없음` and `선결제 잔액 있음/없음` filters.
+- Added previous-period comparison cards for delivery, quote, prepayment deduction, and service activity.
+- Added expandable account rows with contacts, deliveries, quotes, prepayments, services, and quick links.
+- Data cleanup candidates are now marked directly on account operation rows with cleanup preview links.
+- Excel export can be scoped to current filter, all accounts, delivery accounts, prepayment-balance accounts, or cleanup candidates.
+
+### 4. Existing Functionality Preserved
+
+- No model fields or migrations were added.
+- Existing `/reporting/*` routes remain available.
+- Existing manager/admin-only Excel permission is preserved.
+- Anonymous reports API access still returns `401 login_required`.
+- Existing reports metrics, customer operations rows, and cleanup candidate APIs remain compatible with expanded payload fields.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ First run exposed shifted XLSX column expectations after adding cleanup columns.
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 17 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+Local smoke
+→ GET http://127.0.0.1:5174/reports/?delivery_filter=with&prepayment_balance_filter=with&export_scope=prepayment_balance returned React shell 200
+→ GET http://127.0.0.1:5174/reporting/api/reports/?delivery_filter=with&prepayment_balance_filter=with&export_scope=prepayment_balance returned expected anonymous 401 login_required JSON
+→ Browser smoke reached /reporting/login/?next=/reports/... with no console errors because the local browser session was not authenticated
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- Authenticated visual verification of the expanded `/reports/` table and drilldown panels still needs production user-session testing after deployment.
+- Period comparison is based on the immediately preceding period of the same length. Current prepayment balances remain current-basis values; comparison cards focus on period activity metrics.
+- Cleanup linkage marks candidate accounts/contacts and links to preview, but merge execution still remains in the existing account cleanup flow.
+
+### 7. Production Deployment Status
+
+- Pending final commit, push, and Railway verification. A post-deployment update will be appended after Railway reports the deployed services.
+
+### 8. Recommended Next Task
+
+- Add saved report views for common manager filters, such as `이번 달 납품 있음`, `선결제 잔액 보유`, and `정리 후보`.
+
+### 9. Manual Server Test Process
+
+1. Open `https://sales-note-frontend-production.up.railway.app/reports/` after deployment and login.
+2. Try the 업체/부서/담당자 keyword search and confirm the operations table narrows.
+3. Select an 업체 and then a 부서/연구실, confirming the department list is scoped.
+4. Switch `납품` between 전체, 있음, 없음.
+5. Switch `선결제 잔액` between 전체, 잔액 있음, 잔액 없음.
+6. Confirm the 직전 기간 비교 cards change when the date range changes.
+7. Expand an account row with `드릴다운` and confirm contacts, delivery, quote, prepayment, service, and quick links appear.
+8. Confirm rows marked as `정리 후보` open the cleanup preview link.
+9. Change `엑셀 범위` and download `현황 엑셀`; confirm the workbook rows match the selected scope.

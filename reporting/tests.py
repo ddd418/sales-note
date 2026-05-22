@@ -516,8 +516,17 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertIn('normal', {item['paymentSource'] for item in row['recentDeliveryItems']})
         self.assertIn('선결제 차감 납품', {item['paymentStatusLabel'] for item in row['recentDeliveryItems']})
         self.assertIn('일반 납품', {item['paymentStatusLabel'] for item in row['recentDeliveryItems']})
+        self.assertTrue(row['drilldown']['contacts'])
+        self.assertTrue(row['drilldown']['deliveries'])
+        self.assertTrue(row['drilldown']['quotes'])
+        self.assertTrue(row['drilldown']['prepayments'])
+        self.assertIn('links', row)
+        self.assertEqual(row['links']['prepayments'], f'/prepayments/account/{self.department.id}/')
         self.assertEqual(operations['metrics']['prepaymentDeliveryCount'], 1)
         self.assertEqual(operations['metrics']['normalDeliveryCount'], 1)
+        comparison = payload['comparison']['customerOperations']
+        self.assertIn('deliveryCount', comparison['deltas'])
+        self.assertIn('dateFrom', comparison)
 
     def test_reports_api_groups_customer_operations_by_department_account(self):
         today = timezone.localdate()
@@ -655,6 +664,99 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertGreaterEqual(duplicate_contact['recordCount'], 0)
         self.assertTrue(duplicate_contact['contactIds'])
         self.assertTrue(all('recordSummary' in contact for contact in duplicate_contact['contacts']))
+        operations_row = next(
+            item for item in response.json()['customerOperations']['rows']
+            if item['id'] == self.department.id
+        )
+        self.assertGreaterEqual(operations_row['cleanupCandidateCount'], 1)
+        self.assertIn('duplicate_account', operations_row['cleanupTypes'])
+        self.assertTrue(operations_row['cleanupPreviewHref'])
+
+    def test_reports_api_filters_account_rows_and_prepayment_balance(self):
+        today = timezone.localdate()
+        other_department = Department.objects.create(
+            company=self.customer_company,
+            name='잔액 연구실',
+            created_by=self.user,
+        )
+        other_followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=other_department,
+            customer_name='잔액담당',
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='필터 납품',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            total_price=1000,
+        )
+        previous_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today - timedelta(days=1),
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=previous_schedule,
+            item_name='이전 납품',
+            quantity=1,
+            unit='EA',
+            unit_price=500,
+            total_price=500,
+        )
+        Prepayment.objects.create(
+            department=other_department,
+            customer=other_followup,
+            company=self.customer_company,
+            amount=7000,
+            balance=7000,
+            payment_date=today,
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        with_delivery = self.client.get(reverse('reporting:reports_summary_api'), {
+            'date_from': today.isoformat(),
+            'date_to': today.isoformat(),
+            'q': '연구실 A',
+            'delivery_filter': 'with',
+        })
+        self.assertEqual(with_delivery.status_code, 200)
+        payload = with_delivery.json()
+        self.assertEqual(payload['filters']['query'], '연구실 A')
+        self.assertEqual(payload['filters']['deliveryFilter'], 'with')
+        self.assertEqual(payload['customerOperations']['metrics']['deliveryCount'], 1)
+        self.assertEqual(payload['comparison']['customerOperations']['metrics']['deliveryCount'], 1)
+        self.assertEqual(payload['comparison']['customerOperations']['deltas']['deliveryAmount'], 550)
+
+        balance_without_delivery = self.client.get(reverse('reporting:reports_summary_api'), {
+            'date_from': today.isoformat(),
+            'date_to': today.isoformat(),
+            'department_id': str(other_department.id),
+            'delivery_filter': 'without',
+            'prepayment_balance_filter': 'with',
+        })
+        self.assertEqual(balance_without_delivery.status_code, 200)
+        rows = balance_without_delivery.json()['customerOperations']['rows']
+        self.assertEqual([row['id'] for row in rows], [other_department.id])
+        self.assertEqual(rows[0]['prepaymentBalance'], 7000)
+        self.assertEqual(rows[0]['deliveryCount'], 0)
 
     def test_account_cleanup_preview_api_returns_source_and_target_impact(self):
         today = timezone.localdate()
@@ -1260,8 +1362,9 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(row[17], 1)
         self.assertEqual(row[18], 5000)
         self.assertEqual(row[19], 2600)
-        self.assertIn('현황 선결제 품목', row[28])
-        self.assertIn('/accounts/', row[29])
+        self.assertEqual(row[28], 0)
+        self.assertIn('현황 선결제 품목', row[30])
+        self.assertIn('/accounts/', row[31])
 
     def test_reports_customer_operations_xlsx_export_blocks_salesman(self):
         self.client.force_login(self.user)

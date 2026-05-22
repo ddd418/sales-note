@@ -36079,6 +36079,110 @@ def _analytics_user_payload(user):
     }
 
 
+REPORTS_DELIVERY_FILTERS = {'any', 'with', 'without'}
+REPORTS_PREPAYMENT_BALANCE_FILTERS = {'any', 'with', 'without'}
+REPORTS_EXPORT_SCOPES = {'filtered', 'all', 'deliveries', 'prepayment_balance', 'cleanup_candidates'}
+
+
+def _reports_request_int(value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _reports_filter_params(request):
+    delivery_filter = (
+        request.GET.get('delivery_filter')
+        or request.GET.get('delivery')
+        or 'any'
+    ).strip()
+    if delivery_filter not in REPORTS_DELIVERY_FILTERS:
+        delivery_filter = 'any'
+
+    prepayment_balance_filter = (
+        request.GET.get('prepayment_balance_filter')
+        or request.GET.get('prepayment_balance')
+        or 'any'
+    ).strip()
+    if prepayment_balance_filter not in REPORTS_PREPAYMENT_BALANCE_FILTERS:
+        prepayment_balance_filter = 'any'
+
+    export_scope = (request.GET.get('export_scope') or 'filtered').strip()
+    if export_scope not in REPORTS_EXPORT_SCOPES:
+        export_scope = 'filtered'
+
+    return {
+        'query': (request.GET.get('q') or request.GET.get('query') or '').strip(),
+        'companyId': _reports_request_int(request.GET.get('company_id') or request.GET.get('company')),
+        'departmentId': _reports_request_int(request.GET.get('department_id') or request.GET.get('department')),
+        'deliveryFilter': delivery_filter,
+        'prepaymentBalanceFilter': prepayment_balance_filter,
+        'exportScope': export_scope,
+    }
+
+
+def _reports_apply_account_filters(followups_qs, filters):
+    query = filters.get('query') or ''
+    if query:
+        followups_qs = followups_qs.filter(
+            Q(company__name__icontains=query)
+            | Q(department__name__icontains=query)
+            | Q(customer_name__icontains=query)
+            | Q(manager__icontains=query)
+            | Q(email__icontains=query)
+            | Q(phone_number__icontains=query)
+        )
+    company_id = filters.get('companyId')
+    if company_id:
+        followups_qs = followups_qs.filter(company_id=company_id)
+    department_id = filters.get('departmentId')
+    if department_id:
+        followups_qs = followups_qs.filter(department_id=department_id)
+    return followups_qs
+
+
+def _reports_filter_options(followups_qs):
+    company_rows = (
+        followups_qs.exclude(company__isnull=True)
+        .values('company_id', 'company__name')
+        .distinct()
+        .order_by('company__name')
+    )
+    department_rows = (
+        followups_qs.exclude(department__isnull=True)
+        .values('department_id', 'department__name', 'company_id', 'company__name')
+        .distinct()
+        .order_by('company__name', 'department__name')
+    )
+    return {
+        'companies': [
+            {
+                'id': row['company_id'],
+                'name': row['company__name'] or '',
+            }
+            for row in company_rows
+        ],
+        'departments': [
+            {
+                'id': row['department_id'],
+                'name': row['department__name'] or '',
+                'companyId': row['company_id'],
+                'companyName': row['company__name'] or '',
+            }
+            for row in department_rows
+        ],
+    }
+
+
+def _reports_previous_date_range(date_from, date_to):
+    span_days = max((date_to - date_from).days + 1, 1)
+    previous_to = date_from - timedelta(days=1)
+    previous_from = previous_to - timedelta(days=span_days - 1)
+    return previous_from, previous_to
+
+
 def _reports_latest_date(current_value, candidate_value):
     candidate = _date_or_none(candidate_value)
     if not candidate:
@@ -36093,6 +36197,10 @@ def _reports_customer_row_base(followup):
     account_href = f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/'
     account_label = followup.department.name if followup.department else (followup.customer_name or followup.manager or '고객명 미정')
     contact_label = followup.customer_name or followup.manager or '담당자 미정'
+    prepayment_href = (
+        f'/prepayments/account/{followup.department_id}/'
+        if followup.department_id else f'/prepayments/customer/{followup.id}/'
+    )
     return {
         'id': account_id,
         'accountId': followup.department_id,
@@ -36131,10 +36239,49 @@ def _reports_customer_row_base(followup):
         'lastPrepaymentDate': None,
         'lastActivityDate': None,
         'recentDeliveryItems': [],
+        'cleanupCandidateCount': 0,
+        'cleanupRiskLabel': '',
+        'cleanupTypes': [],
+        'cleanupPreviewHref': '',
+        'links': {
+            'account': account_href,
+            'prepayments': prepayment_href,
+            'cleanupPreview': '',
+            'customer': f'/customers/{followup.id}/',
+        },
+        'drilldown': {
+            'contacts': [],
+            'deliveries': [],
+            'quotes': [],
+            'prepayments': [],
+            'services': [],
+        },
         'href': account_href,
         'customerHref': f'/customers/{followup.id}/',
         'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
+
+
+def _reports_contact_drilldown_payload(followup):
+    return {
+        'id': followup.id,
+        'name': followup.customer_name or followup.manager or '담당자 미정',
+        'manager': followup.manager or '',
+        'role': followup.contact_role,
+        'roleLabel': followup.get_contact_role_display(),
+        'email': followup.email or '',
+        'phone': followup.phone_number or '',
+        'ownerName': _user_display_name(followup.user),
+        'href': f'/customers/{followup.id}/',
+    }
+
+
+def _reports_append_drilldown(row, section, item, limit=6):
+    items = row.get('drilldown', {}).get(section)
+    if items is None:
+        return
+    if len(items) < limit:
+        items.append(item)
 
 
 def _reports_delivery_item_summary(record):
@@ -36188,11 +36335,13 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         contact_label = followup.customer_name or followup.manager or '담당자 미정'
         if account_key not in rows_by_key:
             rows_by_key[account_key] = _reports_customer_row_base(followup)
+            _reports_append_drilldown(rows_by_key[account_key], 'contacts', _reports_contact_drilldown_payload(followup), limit=10)
             continue
         row = rows_by_key[account_key]
         row['contactCount'] += 1
         if contact_label and contact_label not in row['contactPreview'] and len(row['contactPreview']) < 4:
             row['contactPreview'].append(contact_label)
+        _reports_append_drilldown(row, 'contacts', _reports_contact_drilldown_payload(followup), limit=10)
 
     if not followup_ids:
         return {
@@ -36257,6 +36406,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             row['normalDeliveryAmount'] += total_amount
         if len(row['recentDeliveryItems']) < 5:
             row['recentDeliveryItems'].append({
+                'id': record.get('id'),
                 'date': record.get('date'),
                 'label': _reports_delivery_item_summary(record),
                 'amount': total_amount,
@@ -36264,7 +36414,20 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
                 'paymentSourceLabel': record.get('paymentSourceLabel') or '일반 납품',
                 'paymentStatus': record.get('paymentStatus') or 'normal',
                 'paymentStatusLabel': record.get('paymentStatusLabel') or record.get('paymentSourceLabel') or '일반 납품',
+                'href': record.get('href') or '',
             })
+        _reports_append_drilldown(row, 'deliveries', {
+            'id': record.get('id'),
+            'date': record.get('date'),
+            'label': _reports_delivery_item_summary(record),
+            'amount': total_amount,
+            'customerName': record.get('customerName') or '',
+            'ownerName': record.get('ownerName') or '',
+            'paymentSource': record.get('paymentSource') or 'normal',
+            'paymentSourceLabel': record.get('paymentSourceLabel') or '일반 납품',
+            'paymentStatusLabel': record.get('paymentStatusLabel') or record.get('paymentSourceLabel') or '일반 납품',
+            'href': record.get('href') or '',
+        })
 
     quote_schedules_by_id = set()
     quote_records = list(
@@ -36288,6 +36451,16 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         row['quoteAmount'] += record.get('totalAmount') or 0
         row['lastQuoteDate'] = _reports_latest_date(row['lastQuoteDate'], quote.quote_date)
         row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], quote.quote_date)
+        _reports_append_drilldown(row, 'quotes', {
+            'id': record.get('id'),
+            'date': record.get('date'),
+            'label': record.get('quoteNumber') or '견적',
+            'amount': record.get('totalAmount') or 0,
+            'customerName': record.get('customerName') or '',
+            'ownerName': record.get('ownerName') or '',
+            'statusLabel': record.get('statusLabel') or '',
+            'href': record.get('href') or '',
+        })
 
     quote_schedules = list(
         Schedule.objects.filter(
@@ -36314,6 +36487,16 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         row['quoteAmount'] += record.get('totalAmount') or 0
         row['lastQuoteDate'] = _reports_latest_date(row['lastQuoteDate'], schedule.visit_date)
         row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], schedule.visit_date)
+        _reports_append_drilldown(row, 'quotes', {
+            'id': record.get('id'),
+            'date': record.get('date'),
+            'label': record.get('quoteNumber') or '견적 일정',
+            'amount': record.get('totalAmount') or 0,
+            'customerName': record.get('customerName') or '',
+            'ownerName': record.get('ownerName') or '',
+            'statusLabel': record.get('statusLabel') or '',
+            'href': record.get('href') or '',
+        })
 
     open_service_statuses = ['received', 'in_progress', 'waiting']
     service_cases = list(
@@ -36334,6 +36517,15 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             row['openServiceCount'] += 1
         row['lastServiceDate'] = _reports_latest_date(row['lastServiceDate'], case.received_date)
         row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], case.received_date)
+        _reports_append_drilldown(row, 'services', {
+            'id': case.id,
+            'date': _date_or_none(case.received_date),
+            'label': case.asset.asset_name if case.asset_id else case.get_case_type_display(),
+            'statusLabel': case.get_status_display(),
+            'customerName': case.followup.customer_name or case.followup.manager or '',
+            'ownerName': _user_display_name(case.created_by) if case.created_by else '',
+            'href': f'/assets/?asset={case.asset_id}' if case.asset_id else '',
+        })
 
     service_histories = list(
         History.objects.filter(
@@ -36358,6 +36550,15 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             row['openServiceCount'] += 1
         row['lastServiceDate'] = _reports_latest_date(row['lastServiceDate'], activity_date)
         row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], activity_date)
+        _reports_append_drilldown(row, 'services', {
+            'id': history.id,
+            'date': _date_or_none(activity_date),
+            'label': history.content[:80] if history.content else '서비스 기록',
+            'statusLabel': history.get_service_status_display() if history.service_status else '서비스',
+            'customerName': history.followup.customer_name or history.followup.manager or '',
+            'ownerName': _user_display_name(history.user),
+            'href': f'/notes/{history.id}/',
+        })
 
     service_schedules = list(
         Schedule.objects.filter(
@@ -36379,15 +36580,30 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             row['openServiceCount'] += 1
         row['lastServiceDate'] = _reports_latest_date(row['lastServiceDate'], schedule.visit_date)
         row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], schedule.visit_date)
+        _reports_append_drilldown(row, 'services', {
+            'id': schedule.id,
+            'date': _date_or_none(schedule.visit_date),
+            'label': schedule.notes[:80] if schedule.notes else '서비스 일정',
+            'statusLabel': schedule.get_status_display(),
+            'customerName': schedule.followup.customer_name or schedule.followup.manager or '',
+            'ownerName': _user_display_name(schedule.user),
+            'href': f'/schedules/{schedule.id}/',
+        })
 
+    department_ids = [followup.department_id for followup in followups if followup.department_id]
     prepayments = list(
         Prepayment.objects.filter(
-            customer_id__in=followup_ids,
             created_by__in=filter_users,
-        ).select_related('customer', 'created_by').order_by('-payment_date', '-created_at')
+        ).filter(
+            Q(customer_id__in=followup_ids) | Q(department_id__in=department_ids)
+        ).select_related('customer', 'department', 'created_by').distinct().order_by('-payment_date', '-created_at')
     )
     for prepayment in prepayments:
-        row = rows_by_key.get(account_key_by_followup_id.get(prepayment.customer_id))
+        account_key = (
+            f'department:{prepayment.department_id}'
+            if prepayment.department_id else account_key_by_followup_id.get(prepayment.customer_id)
+        )
+        row = rows_by_key.get(account_key)
         if not row:
             continue
         amount = _money_int(prepayment.amount)
@@ -36397,6 +36613,17 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         row['prepaymentBalance'] += balance
         row['prepaymentUsedTotal'] += max(amount - balance, 0)
         row['lastPrepaymentDate'] = _reports_latest_date(row['lastPrepaymentDate'], prepayment.payment_date)
+        _reports_append_drilldown(row, 'prepayments', {
+            'id': prepayment.id,
+            'date': _date_or_none(prepayment.payment_date),
+            'label': prepayment.payer_name or (prepayment.customer.customer_name if prepayment.customer_id else '입금자 미정'),
+            'amount': amount,
+            'balance': balance,
+            'statusLabel': prepayment.get_status_display(),
+            'customerName': prepayment.customer.customer_name if prepayment.customer_id else '',
+            'ownerName': _user_display_name(prepayment.created_by),
+            'href': f'/prepayments/{prepayment.id}/',
+        })
 
     rows = sorted(
         rows_by_key.values(),
@@ -36430,6 +36657,153 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
     return {
         'metrics': metrics,
         'rows': rows,
+    }
+
+
+def _reports_operation_metrics(rows):
+    return {
+        'totalCustomers': len(rows),
+        'customersWithDeliveries': sum(1 for row in rows if row.get('deliveryCount', 0) > 0),
+        'deliveryCount': sum(row.get('deliveryCount', 0) for row in rows),
+        'deliveryAmount': sum(row.get('deliveryAmount', 0) for row in rows),
+        'normalDeliveryCount': sum(row.get('normalDeliveryCount', 0) for row in rows),
+        'normalDeliveryAmount': sum(row.get('normalDeliveryAmount', 0) for row in rows),
+        'prepaymentDeliveryCount': sum(row.get('prepaymentDeliveryCount', 0) for row in rows),
+        'prepaymentDeliveryAmount': sum(row.get('prepaymentDeliveryAmount', 0) for row in rows),
+        'prepaymentUsedAmount': sum(row.get('prepaymentUsedAmount', 0) for row in rows),
+        'quoteCount': sum(row.get('quoteCount', 0) for row in rows),
+        'quoteAmount': sum(row.get('quoteAmount', 0) for row in rows),
+        'serviceCount': sum(row.get('serviceCount', 0) for row in rows),
+        'openServiceCount': sum(row.get('openServiceCount', 0) for row in rows),
+        'prepaymentCount': sum(row.get('prepaymentCount', 0) for row in rows),
+        'prepaymentAmount': sum(row.get('prepaymentAmount', 0) for row in rows),
+        'prepaymentBalance': sum(row.get('prepaymentBalance', 0) for row in rows),
+        'prepaymentUsedTotal': sum(row.get('prepaymentUsedTotal', 0) for row in rows),
+    }
+
+
+def _reports_cleanup_marker_map(data_quality):
+    markers = {'department': {}, 'contact': {}}
+
+    def add_marker(scope, key, marker_type, label, href=''):
+        if not key:
+            return
+        bucket = markers[scope].setdefault(key, {
+            'count': 0,
+            'types': [],
+            'labels': [],
+            'href': '',
+        })
+        bucket['count'] += 1
+        if marker_type not in bucket['types']:
+            bucket['types'].append(marker_type)
+        if label not in bucket['labels']:
+            bucket['labels'].append(label)
+        if href and not bucket['href']:
+            bucket['href'] = href
+
+    for group in data_quality.get('duplicateAccounts') or []:
+        group_href = group.get('cleanupPreviewHref') or ''
+        for department in group.get('departments') or []:
+            add_marker('department', department.get('id'), 'duplicate_account', '계정명 유사', department.get('cleanupPreviewHref') or group_href)
+        for department_id in group.get('departmentIds') or []:
+            add_marker('department', department_id, 'duplicate_account', '계정명 유사', group_href)
+
+    for group in data_quality.get('duplicateContacts') or []:
+        for contact in group.get('contacts') or []:
+            add_marker('contact', contact.get('id'), 'duplicate_contact', '담당자 중복', contact.get('accountHref') or '')
+            if contact.get('departmentId'):
+                add_marker('department', contact.get('departmentId'), 'duplicate_contact', '담당자 중복', contact.get('accountHref') or '')
+
+    for contact in data_quality.get('contactsWithoutDepartment') or []:
+        add_marker('contact', contact.get('id'), 'missing_department', '부서 미지정', contact.get('href') or '')
+
+    for contact in data_quality.get('contactsWithoutCompany') or []:
+        add_marker('contact', contact.get('id'), 'missing_company', '업체 미지정', contact.get('href') or '')
+        if contact.get('departmentId'):
+            add_marker('department', contact.get('departmentId'), 'missing_company', '업체 미지정', contact.get('accountHref') or '')
+
+    return markers
+
+
+def _reports_attach_cleanup_markers(operations, cleanup_markers):
+    for row in operations.get('rows') or []:
+        marker = {'count': 0, 'types': [], 'labels': [], 'href': ''}
+        department_id = row.get('accountId')
+        if department_id:
+            marker = cleanup_markers.get('department', {}).get(department_id, marker)
+        else:
+            marker = cleanup_markers.get('contact', {}).get(row.get('representativeCustomerId'), marker)
+        row['cleanupCandidateCount'] = marker.get('count') or 0
+        row['cleanupTypes'] = marker.get('types') or []
+        row['cleanupRiskLabel'] = '정리 후보' if marker.get('count') else ''
+        row['cleanupPreviewHref'] = marker.get('href') or ''
+        row.setdefault('links', {})['cleanupPreview'] = marker.get('href') or ''
+    return operations
+
+
+def _reports_row_matches_filters(row, filters):
+    delivery_filter = filters.get('deliveryFilter') or 'any'
+    if delivery_filter == 'with' and row.get('deliveryCount', 0) <= 0:
+        return False
+    if delivery_filter == 'without' and row.get('deliveryCount', 0) > 0:
+        return False
+
+    balance_filter = filters.get('prepaymentBalanceFilter') or 'any'
+    if balance_filter == 'with' and row.get('prepaymentBalance', 0) <= 0:
+        return False
+    if balance_filter == 'without' and row.get('prepaymentBalance', 0) > 0:
+        return False
+    return True
+
+
+def _reports_apply_row_filters(operations, filters, export_scope='filtered'):
+    rows = list(operations.get('rows') or [])
+    if export_scope == 'all':
+        filtered_rows = rows
+    elif export_scope == 'deliveries':
+        filtered_rows = [row for row in rows if row.get('deliveryCount', 0) > 0]
+    elif export_scope == 'prepayment_balance':
+        filtered_rows = [row for row in rows if row.get('prepaymentBalance', 0) > 0]
+    elif export_scope == 'cleanup_candidates':
+        filtered_rows = [row for row in rows if row.get('cleanupCandidateCount', 0) > 0]
+    else:
+        filtered_rows = [row for row in rows if _reports_row_matches_filters(row, filters)]
+    return {
+        **operations,
+        'metrics': _reports_operation_metrics(filtered_rows),
+        'rows': filtered_rows,
+    }
+
+
+def _reports_operations_comparison(current_metrics, previous_metrics, previous_from, previous_to):
+    metric_keys = [
+        'totalCustomers',
+        'customersWithDeliveries',
+        'deliveryCount',
+        'deliveryAmount',
+        'normalDeliveryCount',
+        'normalDeliveryAmount',
+        'prepaymentDeliveryCount',
+        'prepaymentUsedAmount',
+        'quoteCount',
+        'quoteAmount',
+        'serviceCount',
+        'openServiceCount',
+    ]
+    deltas = {}
+    change_rates = {}
+    for key in metric_keys:
+        current_value = current_metrics.get(key, 0) or 0
+        previous_value = previous_metrics.get(key, 0) or 0
+        deltas[key] = current_value - previous_value
+        change_rates[key] = round((current_value - previous_value) / previous_value * 100, 1) if previous_value else None
+    return {
+        'dateFrom': previous_from.isoformat(),
+        'dateTo': previous_to.isoformat(),
+        'metrics': {key: previous_metrics.get(key, 0) or 0 for key in metric_keys},
+        'deltas': deltas,
+        'changeRates': change_rates,
     }
 
 
@@ -36666,6 +37040,8 @@ def reports_summary_api(request):
     today = timezone.localdate()
     date_from, date_to = _analytics_api_date_range(request, today)
     filter_users, salesperson_list, selected_user = _analytics_api_scope_users(request, user_profile)
+    report_filters = _reports_filter_params(request)
+    previous_from, previous_to = _reports_previous_date_range(date_from, date_to)
 
     histories_qs = History.objects.filter(
         user__in=filter_users,
@@ -36673,7 +37049,9 @@ def reports_summary_api(request):
         created_at__date__lte=date_to,
         parent_history__isnull=True,
     )
-    followups_qs = FollowUp.objects.filter(user__in=filter_users)
+    base_followups_qs = FollowUp.objects.filter(user__in=filter_users)
+    filter_options = _reports_filter_options(base_followups_qs)
+    followups_qs = _reports_apply_account_filters(base_followups_qs, report_filters)
     customer_operations = _reports_customer_operations_payload(
         followups_qs,
         filter_users,
@@ -36682,6 +37060,24 @@ def reports_summary_api(request):
         request.user,
     )
     data_quality = _reports_data_quality_payload(followups_qs, filter_users)
+    cleanup_markers = _reports_cleanup_marker_map(data_quality)
+    customer_operations = _reports_attach_cleanup_markers(customer_operations, cleanup_markers)
+    customer_operations = _reports_apply_row_filters(customer_operations, report_filters)
+    previous_operations = _reports_customer_operations_payload(
+        followups_qs,
+        filter_users,
+        previous_from,
+        previous_to,
+        request.user,
+    )
+    previous_operations = _reports_attach_cleanup_markers(previous_operations, cleanup_markers)
+    previous_operations = _reports_apply_row_filters(previous_operations, report_filters)
+    operations_comparison = _reports_operations_comparison(
+        customer_operations.get('metrics') or {},
+        previous_operations.get('metrics') or {},
+        previous_from,
+        previous_to,
+    )
 
     total_histories = histories_qs.count()
     completed_followups = histories_qs.filter(
@@ -36782,6 +37178,18 @@ def reports_summary_api(request):
     }
     if selected_user and (user_profile.is_admin() or user_profile.is_manager()):
         query_payload['user_id'] = selected_user.id
+    if report_filters.get('query'):
+        query_payload['q'] = report_filters['query']
+    if report_filters.get('companyId'):
+        query_payload['company_id'] = report_filters['companyId']
+    if report_filters.get('departmentId'):
+        query_payload['department_id'] = report_filters['departmentId']
+    if report_filters.get('deliveryFilter') and report_filters['deliveryFilter'] != 'any':
+        query_payload['delivery_filter'] = report_filters['deliveryFilter']
+    if report_filters.get('prepaymentBalanceFilter') and report_filters['prepaymentBalanceFilter'] != 'any':
+        query_payload['prepayment_balance_filter'] = report_filters['prepaymentBalanceFilter']
+    if report_filters.get('exportScope') and report_filters['exportScope'] != 'filtered':
+        query_payload['export_scope'] = report_filters['exportScope']
     query = '?' + urlencode(query_payload)
     can_export = bool(user_profile.is_admin() or user_profile.is_manager())
     return JsonResponse({
@@ -36792,6 +37200,12 @@ def reports_summary_api(request):
             'dateFrom': date_from.isoformat(),
             'dateTo': date_to.isoformat(),
             'selectedUserId': selected_user.id if selected_user and (user_profile.is_admin() or user_profile.is_manager()) else None,
+            'query': report_filters.get('query') or '',
+            'companyId': report_filters.get('companyId'),
+            'departmentId': report_filters.get('departmentId'),
+            'deliveryFilter': report_filters.get('deliveryFilter') or 'any',
+            'prepaymentBalanceFilter': report_filters.get('prepaymentBalanceFilter') or 'any',
+            'exportScope': report_filters.get('exportScope') or 'filtered',
         },
         'scope': {
             'canFilterUsers': bool(user_profile.is_admin() or user_profile.is_manager()),
@@ -36800,6 +37214,7 @@ def reports_summary_api(request):
                 f'{user_profile.company.name} 팀' if user_profile.company else '전체'
             ),
             'salespeople': [_analytics_user_payload(user) for user in salesperson_list],
+            **filter_options,
         },
         'metrics': {
             'totalHistories': total_histories,
@@ -36812,6 +37227,9 @@ def reports_summary_api(request):
         'activityReport': activity_report,
         'customerReport': customer_report,
         'customerOperations': customer_operations,
+        'comparison': {
+            'customerOperations': operations_comparison,
+        },
         'dataQuality': data_quality,
         'pipelineSummary': pipeline_summary,
         'links': {
@@ -36844,13 +37262,23 @@ def reports_customer_operations_xlsx_export_api(request):
     today = timezone.localdate()
     date_from, date_to = _analytics_api_date_range(request, today)
     filter_users, _salesperson_list, selected_user = _analytics_api_scope_users(request, user_profile)
-    followups_qs = FollowUp.objects.filter(user__in=filter_users)
+    report_filters = _reports_filter_params(request)
+    base_followups_qs = FollowUp.objects.filter(user__in=filter_users)
+    followups_qs = _reports_apply_account_filters(base_followups_qs, report_filters)
+    data_quality = _reports_data_quality_payload(followups_qs, filter_users)
+    cleanup_markers = _reports_cleanup_marker_map(data_quality)
     operations = _reports_customer_operations_payload(
         followups_qs,
         filter_users,
         date_from,
         date_to,
         request.user,
+    )
+    operations = _reports_attach_cleanup_markers(operations, cleanup_markers)
+    operations = _reports_apply_row_filters(
+        operations,
+        report_filters,
+        export_scope=report_filters.get('exportScope') or 'filtered',
     )
     rows = operations.get('rows') or []
     metrics = operations.get('metrics') or {}
@@ -36866,7 +37294,7 @@ def reports_customer_operations_xlsx_export_api(request):
         '일반납품건수', '일반납품금액', '견적건수', '견적금액',
         '선결제건수', '선결제총액', '선결제잔액', '선결제사용액',
         '서비스건수', '진행서비스', '최근납품일', '최근견적일', '최근선결제일',
-        '최근서비스일', '최근활동일', '최근납품품목', '계정링크',
+        '최근서비스일', '최근활동일', '정리후보', '정리유형', '최근납품품목', '계정링크',
     ]
     ws.append(headers)
 
@@ -36926,6 +37354,8 @@ def reports_customer_operations_xlsx_export_api(request):
             row.get('lastPrepaymentDate') or '',
             row.get('lastServiceDate') or '',
             row.get('lastActivityDate') or '',
+            row.get('cleanupCandidateCount') or 0,
+            ', '.join(row.get('cleanupTypes') or []),
             '\n'.join(recent_items),
             request.build_absolute_uri(row.get('href') or '') if row.get('href') else '',
         ])
@@ -36944,7 +37374,7 @@ def reports_customer_operations_xlsx_export_api(request):
         14, 16, 10, 14,
         12, 14, 14, 14,
         12, 12, 12, 12, 12,
-        12, 12, 46, 46,
+        12, 12, 10, 20, 46, 46,
     ]
     for col_idx, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = width
@@ -36959,6 +37389,12 @@ def reports_customer_operations_xlsx_export_api(request):
         ('보고서', '부서/연구실 계정별 운영 현황'),
         ('기간', f'{date_from.isoformat()} ~ {date_to.isoformat()}'),
         ('범위', scope_label),
+        ('검색어', report_filters.get('query') or '전체'),
+        ('업체 ID', report_filters.get('companyId') or '전체'),
+        ('부서 ID', report_filters.get('departmentId') or '전체'),
+        ('납품 필터', report_filters.get('deliveryFilter') or 'any'),
+        ('선결제 잔액 필터', report_filters.get('prepaymentBalanceFilter') or 'any'),
+        ('엑셀 범위', report_filters.get('exportScope') or 'filtered'),
         ('표시 계정', metrics.get('totalCustomers') or len(rows)),
         ('납품 건수', metrics.get('deliveryCount') or 0),
         ('납품 금액', metrics.get('deliveryAmount') or 0),

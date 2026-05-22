@@ -8001,3 +8001,48 @@ python pre_deployment_check.py
 - `cd frontend && npm run build`
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
+
+## 2026-05-23 Reports account operations enhancement plan
+
+**Background**:
+
+- User requested task `3-3. /reports/ 고도화`.
+- Current `/reports/` direction is a customer/account operations table.
+- Existing backend already provides `/reporting/api/reports/`, account-based operations rows, data cleanup candidates, and account operations Excel export.
+- Existing React reports screen already renders date/user filters, account operations rows, cleanup candidate cards, and Excel download.
+
+**DB change required**: No.
+
+- Use existing `Company`, `Department`, `FollowUp`, `Schedule`, `DeliveryItem`, `Quote`, `Prepayment`, `PrepaymentUsage`, and cleanup preview APIs.
+- Add query-level filters and payload fields only.
+- No new model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Backend:
+  - Add reports filter parsing for keyword, company, department, delivery presence, prepayment balance, and Excel export scope.
+  - Keep existing salesperson filter and permission scoping intact.
+  - Add previous-period comparison metrics for account operations.
+  - Add per-account drilldown payloads: contact links, recent delivery/quote/prepayment/service summary, account/prepayment/cleanup links, and cleanup candidate markers.
+  - Connect data cleanup candidates to account operation rows through department/contact IDs.
+  - Apply the same filters and export scope to the account operations XLSX export.
+- Frontend:
+  - Add filters for 업체/부서/담당자 keyword, 납품 있음/없음, 선결제 잔액, and Excel range.
+  - Show period comparison signals.
+  - Add expandable account drilldown rows inside the operations table.
+  - Show cleanup badges/actions inside account rows where cleanup candidates exist.
+  - Build the Excel download URL from the selected export scope and active filters.
+- Tests:
+  - Extend reports API tests for new filters, comparison payloads, drilldown payloads, cleanup linkage, and scoped Excel exports.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused Django tests for `ReactReportsProfileBusinessCardApiTests`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local `/reports/` smoke where feasible
+- `git diff --check`
