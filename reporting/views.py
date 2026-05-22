@@ -2966,6 +2966,59 @@ def _customers_followup_payload(followup, today):
     }
 
 
+def _customer_account_contact_payload(followup):
+    phone = followup.phone_number or ''
+    email = followup.email or ''
+    contact_name = followup.customer_name or followup.manager or '담당자 미정'
+    return {
+        'id': followup.id,
+        'name': contact_name,
+        'manager': followup.manager or '',
+        'email': email,
+        'phone': phone,
+        'contactSummary': ' · '.join([item for item in [phone, email] if item]),
+        'ownerName': _user_display_name(followup.user),
+        'ownerId': followup.user_id,
+        'status': followup.status,
+        'statusLabel': followup.get_status_display(),
+        'priority': followup.priority,
+        'priorityLabel': followup.get_priority_display(),
+        'pipelineStage': followup.pipeline_stage,
+        'pipelineLabel': followup.get_pipeline_stage_display(),
+        'address': followup.address or '',
+        'notes': (followup.notes or '').strip()[:140],
+        'href': f'/customers/{followup.id}/',
+        'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
+def _customer_account_payload(followup, shared_followups, scope_users):
+    contacts = list(
+        shared_followups.filter(user__in=scope_users).select_related(
+            'user', 'company', 'department',
+        ).order_by('customer_name', 'manager', 'id')
+    )
+    account_id = followup.department_id or followup.id
+    account_name = followup.department.name if followup.department else (
+        followup.customer_name or followup.manager or '계정명 미정'
+    )
+    return {
+        'id': account_id,
+        'type': 'department' if followup.department_id else 'followup',
+        'name': account_name,
+        'companyId': followup.company_id,
+        'companyName': followup.company.name if followup.company else '',
+        'departmentId': followup.department_id,
+        'departmentName': followup.department.name if followup.department else '',
+        'representativeCustomerId': followup.id,
+        'representativeName': followup.customer_name or followup.manager or '대표 담당자 미정',
+        'contactCount': len(contacts),
+        'contacts': [_customer_account_contact_payload(contact) for contact in contacts],
+        'href': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
+        'djangoRepresentativeHref': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
 def _customers_edit_config(request, user_profile, followup, can_edit):
     """React 고객 상세 수정 폼에 필요한 선택지와 권한 정보를 구성한다."""
     if user_profile.is_admin():
@@ -4755,6 +4808,7 @@ def customer_detail_summary_api(request, followup_id):
             'selectedUserId': selected_user.id if selected_user else None,
         },
         'customer': _customers_followup_payload(detail_followup, today),
+        'account': _customer_account_payload(followup, shared_followups, scope_users),
         'metrics': {
             'recentNotes': notes_qs.count(),
             'upcomingSchedules': upcoming_schedules.count(),

@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account contacts detail plan
+
+**Background**:
+
+- User asked to keep moving and to report both progress and what needs manual checking after each task.
+- The first account-ledger foundation created `/accounts/<department_id>/`, but the screen still needed a clearer account-level contact roster.
+- The next useful step is to make the department/lab account detail feel less like a single 담당자 page.
+
+**DB change required**: No.
+
+- Reuse existing `FollowUp.department` membership.
+- Do not add merge/dedupe tables yet.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `account` summary payload to customer/account detail APIs.
+  - Include accessible same-department contacts with owner, status, priority, pipeline, phone/email, and links.
+- Frontend:
+  - Extend `CustomerDetailData` with `account` and `contacts`.
+  - Show account contact count in profile fields.
+  - Add a `계정 담당자` panel with same-department contacts.
+- Tests/docs:
+  - Extend customer/account detail tests to assert account contact roster.
+  - Update `AGENT_REPORT.md` after validation/deployment.
+
+**Validation plan**:
+
+- Focused Django customer/account detail test.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Commit, push, confirm Railway deployment status, and provide manual test steps.
+
 ## 2026-05-22 Department account ledger foundation plan
 
 **Background**:

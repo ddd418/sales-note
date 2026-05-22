@@ -1130,6 +1130,43 @@ export type CustomerOperationalRecords = {
   prepaymentRecords: PrepaymentListItem[];
 };
 
+export type CustomerAccountContact = {
+  id: number;
+  name: string;
+  manager: string;
+  email: string;
+  phone: string;
+  contactSummary: string;
+  ownerName: string;
+  ownerId: number;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  priorityLabel: string;
+  pipelineStage: string;
+  pipelineLabel: string;
+  address: string;
+  notes: string;
+  href: string;
+  djangoHref: string;
+};
+
+export type CustomerAccountSummary = {
+  id: number | null;
+  type: 'department' | 'followup' | string;
+  name: string;
+  companyId: number | null;
+  companyName: string;
+  departmentId: number | null;
+  departmentName: string;
+  representativeCustomerId: number | null;
+  representativeName: string;
+  contactCount: number;
+  contacts: CustomerAccountContact[];
+  href: string;
+  djangoRepresentativeHref: string;
+};
+
 export type CustomerDetailData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -1143,6 +1180,7 @@ export type CustomerDetailData = {
     selectedUserId: number | null;
   };
   customer: CustomerItem | null;
+  account: CustomerAccountSummary;
   metrics: {
     recentNotes: number;
     upcomingSchedules: number;
@@ -4461,6 +4499,21 @@ const emptyCustomerDetailData: CustomerDetailData = {
     selectedUserId: null,
   },
   customer: null,
+  account: {
+    id: null,
+    type: '',
+    name: '',
+    companyId: null,
+    companyName: '',
+    departmentId: null,
+    departmentName: '',
+    representativeCustomerId: null,
+    representativeName: '',
+    contactCount: 0,
+    contacts: [],
+    href: '',
+    djangoRepresentativeHref: '',
+  },
   metrics: {
     recentNotes: 0,
     upcomingSchedules: 0,
@@ -6786,6 +6839,19 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
       metrics: {
         ...emptyCustomerDetailData.metrics,
         ...(payload.metrics ?? {}),
+      },
+      account: {
+        ...emptyCustomerDetailData.account,
+        ...(payload.account ?? {}),
+        href: normalizeCoreCrmHref(payload.account?.href ?? emptyCustomerDetailData.account.href),
+        djangoRepresentativeHref: normalizeCoreCrmHref(
+          payload.account?.djangoRepresentativeHref ?? emptyCustomerDetailData.account.djangoRepresentativeHref,
+        ),
+        contacts: (payload.account?.contacts ?? emptyCustomerDetailData.account.contacts).map((contact) => ({
+          ...contact,
+          href: normalizeCoreCrmHref(contact.href),
+          djangoHref: normalizeCoreCrmHref(contact.djangoHref),
+        })),
       },
       links: normalizeHrefFields({
         ...emptyCustomerDetailData.links,

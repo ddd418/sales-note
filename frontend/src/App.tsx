@@ -3591,6 +3591,8 @@ function CustomerDetailPage({
   const prepaymentSummary = data.prepaymentSummary;
   const operationalRecords = data.operationalRecords;
   const assetSummary = data.assetSummary;
+  const account = data.account;
+  const accountContacts = account.contacts ?? [];
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
@@ -3612,9 +3614,10 @@ function CustomerDetailPage({
     { label: '선결제 차감', value: formatWon(operationalRecords.metrics.prepaymentUsedAmount) },
   ];
   const customerProfileFields = [
-    { label: '업체/학교', value: customerDetail.company },
-    { label: '부서/연구실', value: customerDetail.department },
+    { label: '업체/학교', value: account.companyName || customerDetail.company },
+    { label: '부서/연구실', value: account.departmentName || customerDetail.department },
     { label: '대표 담당자', value: customerDetail.customer },
+    { label: '계정 담당자 수', value: account.contactCount ? `${formatNumber(account.contactCount)}명` : '' },
     { label: '영업 담당자', value: customerDetail.owner },
     { label: '책임자', value: customerDetail.manager },
     { label: '전화번호', value: customerDetail.phone },
@@ -3639,8 +3642,8 @@ function CustomerDetailPage({
       <div className="dashboard-summary-band">
         <div>
           <span className="eyebrow">Department account</span>
-          <h2>{[customerDetail.company, customerDetail.department].filter(Boolean).join(' · ') || customerDetail.customer}</h2>
-          <p>{[customerDetail.customer, customerDetail.owner, data.scope.label].filter(Boolean).join(' · ')}</p>
+          <h2>{[account.companyName || customerDetail.company, account.departmentName || customerDetail.department].filter(Boolean).join(' · ') || account.name || customerDetail.customer}</h2>
+          <p>{[account.representativeName || customerDetail.customer, account.contactCount ? `담당자 ${formatNumber(account.contactCount)}명` : '', data.scope.label].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/customers/">목록</a>
@@ -3702,6 +3705,43 @@ function CustomerDetailPage({
             <p>{customerDetailNotes || '등록된 상세 내용 없음'}</p>
           </article>
         </div>
+      </section>
+
+      <section className="dashboard-panel customer-account-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Account contacts</span>
+            <h2>계정 담당자</h2>
+          </div>
+          <Users size={18} />
+        </div>
+        {accountContacts.length > 0 ? (
+          <div className="customer-account-contact-list">
+            {accountContacts.map((contact) => (
+              <article className="customer-account-contact-card" key={contact.id}>
+                <div>
+                  <strong>{contact.name}</strong>
+                  <span>{[contact.manager, contact.ownerName].filter(Boolean).join(' · ') || '담당자 정보 없음'}</span>
+                </div>
+                <dl>
+                  <div>
+                    <dt>연락처</dt>
+                    <dd>{contact.contactSummary || '연락처 없음'}</dd>
+                  </div>
+                  <div>
+                    <dt>상태</dt>
+                    <dd>{[contact.statusLabel, contact.priorityLabel, contact.pipelineLabel].filter(Boolean).join(' · ') || '-'}</dd>
+                  </div>
+                </dl>
+                <a className="customer-row-action" href={contact.href}>
+                  담당자 상세 <MoveUpRight size={13} />
+                </a>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <DashboardEmpty label="이 계정에 표시할 담당자가 없습니다" />
+        )}
       </section>
 
       <section className="dashboard-panel customer-records-panel">

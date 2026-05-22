@@ -3166,6 +3166,12 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         records = payload['operationalRecords']
+        self.assertEqual(payload['account']['id'], target.department_id)
+        self.assertEqual(payload['account']['type'], 'department')
+        self.assertEqual(payload['account']['contactCount'], 2)
+        contact_names = {contact['name'] for contact in payload['account']['contacts']}
+        self.assertIn('운영기록고객 담당자', contact_names)
+        self.assertIn('운영기록 같은부서 담당자', contact_names)
         self.assertEqual(records['metrics']['serviceRecords'], 1)
         self.assertEqual(records['metrics']['quoteRecords'], 2)
         self.assertEqual(records['metrics']['deliveryRecords'], 3)
@@ -3193,6 +3199,7 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(account_response.status_code, 200)
         account_payload = account_response.json()
         self.assertEqual(account_payload['links']['accountDetail'], f'/accounts/{target.department_id}/')
+        self.assertEqual(account_payload['account']['contactCount'], 2)
         self.assertEqual(account_payload['operationalRecords']['metrics']['deliveryRecords'], 3)
         self.assertEqual(account_payload['operationalRecords']['metrics']['quoteRecords'], 2)
         self.assertEqual(account_payload['operationalRecords']['metrics']['prepaymentRecords'], 2)

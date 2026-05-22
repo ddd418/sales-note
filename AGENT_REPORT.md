@@ -1,5 +1,85 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Contacts Detail
+
+### 요약
+
+- `/customers/<id>/`와 `/accounts/<department_id>/` 상세 API에 `account` 요약 payload를 추가했습니다.
+- 같은 부서/연구실 계정에 묶인 담당자 목록을 `account.contacts`로 내려주도록 했습니다.
+- React 고객/계정 상세에 `계정 담당자` 패널을 추가했습니다.
+- 계정 정보 영역에 `계정 담당자 수`를 표시합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 계정 상세가 더 이상 대표 담당자 한 명만 보는 화면처럼 보이지 않습니다.
+- 같은 부서/연구실에 연결된 담당자들의 이름, 연락처, 상태, 우선순위, 파이프라인, 담당 영업자를 한눈에 확인할 수 있습니다.
+- 기존 고객 호환 URL에서도 같은 계정의 담당자 구성이 같이 보입니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 `/reporting/*`, `/customers/<id>/`, `/accounts/<department_id>/` 라우트는 유지했습니다.
+- 같은 부서라도 기존 사용자 권한 범위 밖 담당자는 노출하지 않습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-AC_PVBD_.js / dist/assets/index-CixxfJg_.css generated
+→ Vite chunk-size warning only
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_returns_notes_and_schedules reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source --verbosity=1
+→ Ran 2 tests, OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 아직 담당자 병합/부서 병합/잘못 연결된 기록 이관 기능은 없습니다.
+- 실제 운영 데이터에서 같은 부서 담당자가 중복 또는 누락 없이 묶였는지는 로그인 상태로 수동 확인해야 합니다.
+
+### 권장 다음 작업
+
+- 운영에서 계정 담당자 패널을 확인한 뒤, 부서/담당자 중복 병합 도구 설계를 시작합니다.
+
+### 운영 배포 상태
+
+- 아직 이 작업 커밋/배포 전입니다. 검증 완료 후 커밋, 푸시, Railway 상태 확인 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 배포 후 `/customers/471/` 또는 `/accounts/<department_id>/`에 접속합니다.
+2. `계정 담당자` 패널이 보이는지 확인합니다.
+3. 같은 부서/연구실 담당자들이 모두 보이는지 확인합니다.
+4. 각 담당자의 연락처, 상태, 우선순위, 파이프라인, 담당 영업자가 업무상 맞는지 확인합니다.
+5. `담당자 상세` 링크가 해당 담당자 상세로 이동하는지 확인합니다.
+
 ## 2026-05-22 — Department Account Ledger Foundation
 
 ### 요약

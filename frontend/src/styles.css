@@ -4597,6 +4597,78 @@ h2 {
   color: var(--muted);
 }
 
+.customer-account-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.customer-account-contact-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.customer-account-contact-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.customer-account-contact-card > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.customer-account-contact-card strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.customer-account-contact-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.customer-account-contact-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.customer-account-contact-card dl > div {
+  display: grid;
+  gap: 3px;
+}
+
+.customer-account-contact-card dt,
+.customer-account-contact-card dd {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.customer-account-contact-card dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.customer-account-contact-card dd {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .customer-records-panel {
   display: grid;
   gap: 14px;
@@ -8872,6 +8944,10 @@ tbody tr:hover {
   }
 
   .customer-profile-text-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-account-contact-list {
     grid-template-columns: 1fr;
   }
 
