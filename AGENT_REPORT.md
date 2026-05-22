@@ -77,6 +77,38 @@ python manage.py migrate --plan
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: add delivery payment status"
+→ 26e3fed
+
+git push
+→ main pushed
+
+railway up --service web --detach --message "Deploy delivery payment status API 26e3fed"
+→ CLI upload failed with a transient connection reset, but GitHub-triggered web deployment for the same commit completed.
+
+railway up .\frontend --path-as-root --service sales-note-frontend --detach --message "Deploy delivery payment status UI 26e3fed"
+→ Manual upload created deployment 1af9197b but failed because Railway looked for `/frontend/railway.toml`; GitHub-triggered frontend deployment for the same commit completed.
+
+railway deployment list --service web --limit 4 --json
+→ 6fc0636e-fe18-4df1-9a6e-00c09e6b6ac8 SUCCESS for commit 26e3fed
+
+railway logs --service web --deployment 6fc0636e-fe18-4df1-9a6e-00c09e6b6ac8 --tail 160
+→ Applying reporting.0109_schedule_delivery_payment_status... OK
+
+railway deployment list --service sales-note-frontend --limit 3 --json
+→ 815a56fb-4d3e-44b2-be7b-4a921315ad11 SUCCESS for commit 26e3fed
+
+railway logs --service sales-note-frontend --deployment 815a56fb-4d3e-44b2-be7b-4a921315ad11 --tail 120
+→ Frontend server listening on 8080
+
+Production smoke
+→ /customers/471/ returned 200
+→ /reporting/login/ returned 200
+→ Anonymous /reporting/api/customers/1/ returned 401 login_required
+→ Anonymous /reporting/api/reports/ returned 401 login_required
+→ Production JS bundle contains `paymentStatusLabel`
+→ Production CSS bundle contains `customer-delivery-status`
 ```
 
 ### 알려진 제한
@@ -91,7 +123,13 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포가 필요합니다.
+- Runtime commit: `26e3fed feat: add delivery payment status`
+- GitHub: `main` pushed.
+- Railway `web`: `6fc0636e-fe18-4df1-9a6e-00c09e6b6ac8` SUCCESS.
+- Railway `sales-note-frontend`: `815a56fb-4d3e-44b2-be7b-4a921315ad11` SUCCESS.
+- Migration: `reporting.0109_schedule_delivery_payment_status` applied successfully in Railway deploy logs.
+- Production smoke passed for frontend customer route, login route, anonymous API protection, and new JS/CSS bundle markers.
+- Note: two manual web uploads remained in Railway `INITIALIZING` after transient CLI upload errors, but the GitHub-triggered deployment for the same commit is successful and serving. The manual frontend upload `1af9197b` failed due a root path/config lookup issue, while the GitHub-triggered frontend deployment succeeded.
 
 ### 수동 운영 확인 절차
 
