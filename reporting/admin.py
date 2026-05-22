@@ -83,8 +83,8 @@ class FollowUpAdmin(admin.ModelAdmin):
 # Schedule 모델 관리자 설정
 @admin.register(Schedule)
 class ScheduleAdmin(admin.ModelAdmin):
-    list_display = ('followup', 'user', 'visit_date', 'visit_time', 'location', 'status', 'created_at')
-    list_filter = ('status', 'user', 'visit_date')
+    list_display = ('followup', 'user', 'activity_type', 'delivery_payment_type', 'visit_date', 'visit_time', 'location', 'status', 'created_at')
+    list_filter = ('status', 'activity_type', 'delivery_payment_type', 'user', 'visit_date')
     search_fields = ('followup__customer_name', 'followup__company', 'user__username', 'location')
     date_hierarchy = 'visit_date'
     autocomplete_fields = ['followup', 'user'] # ForeignKey 필드 검색 기능 향상

@@ -19,6 +19,12 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 from .decorators import hanagwahak_only, get_allowed_action_types, get_allowed_activity_types, filter_service_for_non_hanagwahak
 from .readonly_api import api_login_required_or_readonly_response
+from .account_ledger import (
+    account_followups_for_followup,
+    account_representative_followup,
+    delivery_payment_payload,
+    sync_schedule_delivery_payment_type,
+)
 import os
 import mimetypes
 import logging
@@ -2954,6 +2960,7 @@ def _customers_followup_payload(followup, today):
         'overdueActionCount': len(overdue_histories),
         'upcomingSchedule': _customers_schedule_payload(upcoming_schedule) if upcoming_schedule else None,
         'href': reverse('reporting:followup_detail', args=[followup.id]),
+        'accountHref': f'/accounts/{followup.department_id}/' if followup.department_id else reverse('reporting:followup_detail', args=[followup.id]),
         'companyHref': reverse('reporting:company_detail', args=[followup.company_id]) if followup.company_id else '',
         'createScheduleHref': f"{reverse('reporting:schedule_create')}?followup={followup.id}",
     }
@@ -3276,6 +3283,7 @@ def followups_summary_api(request):
     user_profile = get_user_profile(request.user)
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
     today = timezone.localdate()
+    shared_followups = _customer_shared_followups_queryset(followup)
 
     q = request.GET.get('q', '').strip()
     status = request.GET.get('status', '').strip()
@@ -3392,9 +3400,7 @@ def followups_summary_api(request):
 
 
 def _customer_shared_followups_queryset(followup):
-    if followup.department_id:
-        return FollowUp.objects.filter(department_id=followup.department_id)
-    return FollowUp.objects.filter(pk=followup.pk)
+    return account_followups_for_followup(followup)
 
 
 def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
@@ -3502,50 +3508,19 @@ def _customer_schedule_fallback_history_amount(schedule, history_action_type='de
 
 
 def _customer_delivery_payment_payload(schedule):
-    usages = list(schedule.prepayment_usages.all().order_by('id'))
-    usage_total = sum(_money_int(usage.amount) for usage in usages)
-    direct_amount = _money_int(schedule.prepayment_amount)
-    prepayment_id = schedule.prepayment_id or (usages[0].prepayment_id if usages else None)
-    prepayment_amount = usage_total or direct_amount
-    uses_prepayment = bool(
-        schedule.use_prepayment
-        or prepayment_id
-        or prepayment_amount > 0
-        or usages
-    )
-
-    if not uses_prepayment:
-        return {
-            'paymentSource': 'normal',
-            'paymentSourceLabel': '일반 납품',
-            'prepaymentId': None,
-            'prepaymentAmount': 0,
-            'prepaymentUsages': [],
-            'paymentEvidence': (
-                f'Schedule #{schedule.id}: 선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.'
-            ),
-        }
-
-    evidence_parts = []
-    if schedule.use_prepayment:
-        evidence_parts.append('Schedule.use_prepayment=True')
-    if prepayment_id:
-        evidence_parts.append(f'Schedule.prepayment_id={prepayment_id}')
-    if direct_amount > 0:
-        evidence_parts.append(f'Schedule.prepayment_amount={direct_amount:,}원')
-    if usage_total > 0:
-        evidence_parts.append(f'PrepaymentUsage 합계={usage_total:,}원')
-
+    payload = delivery_payment_payload(schedule)
     return {
-        'paymentSource': 'prepayment',
-        'paymentSourceLabel': '선결제 차감 납품',
-        'prepaymentId': prepayment_id,
-        'prepaymentAmount': prepayment_amount,
+        'paymentSource': payload['paymentSource'],
+        'paymentSourceLabel': payload['paymentSourceLabel'],
+        'paymentType': payload['paymentType'],
+        'paymentTypeLabel': payload['paymentTypeLabel'],
+        'prepaymentId': payload['prepaymentId'],
+        'prepaymentAmount': payload['prepaymentAmount'],
         'prepaymentUsages': [
             _schedules_prepayment_usage_payload(usage)
-            for usage in usages
+            for usage in payload['usages']
         ],
-        'paymentEvidence': f"Schedule #{schedule.id}: " + ', '.join(evidence_parts),
+        'paymentEvidence': payload['paymentEvidence'],
     }
 
 
@@ -3807,7 +3782,7 @@ def _customer_operational_records_payload(followup, scope_users, actor):
     asset_ids = list(_customer_assets_queryset(followup, scope_users).values_list('id', flat=True)[:200])
     service_cases = list(
         ServiceCase.objects.filter(
-            Q(followup=followup) | Q(asset_id__in=asset_ids),
+            Q(followup__in=shared_followups) | Q(asset_id__in=asset_ids),
             Q(created_by__in=scope_users) | Q(asset__created_by__in=scope_users) | Q(assigned_to__in=scope_users),
         ).select_related(
             'asset', 'followup', 'created_by', 'assigned_to'
@@ -3815,7 +3790,7 @@ def _customer_operational_records_payload(followup, scope_users, actor):
     )
     service_histories = list(
         History.objects.filter(
-            followup=followup,
+            followup__in=shared_followups,
             user__in=scope_users,
             action_type='service',
             parent_history__isnull=True,
@@ -3824,7 +3799,7 @@ def _customer_operational_records_payload(followup, scope_users, actor):
     service_history_schedule_ids = {history.schedule_id for history in service_histories if history.schedule_id}
     service_schedules = list(
         Schedule.objects.filter(
-            followup=followup,
+            followup__in=shared_followups,
             user__in=scope_users,
             activity_type='service',
         ).exclude(
@@ -4689,6 +4664,7 @@ def customer_detail_summary_api(request, followup_id):
 
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
     today = timezone.localdate()
+    shared_followups = _customer_shared_followups_queryset(followup)
 
     priority_order = Case(
         When(priority='urgent', then=Value(0)),
@@ -4721,7 +4697,7 @@ def customer_detail_summary_api(request, followup_id):
         }, status=404)
 
     notes_qs = History.objects.filter(
-        followup=followup,
+        followup__in=shared_followups,
         user__in=scope_users,
         parent_history__isnull=True,
     ).exclude(action_type='memo').select_related(
@@ -4745,7 +4721,7 @@ def customer_detail_summary_api(request, followup_id):
     overdue_actions = _histories_excluding_stale_quote_submission(list(overdue_actions_qs))
     upcoming_actions = _histories_excluding_stale_quote_submission(list(upcoming_actions_qs))
     upcoming_schedules = Schedule.objects.filter(
-        followup=followup,
+        followup__in=shared_followups,
         user__in=scope_users,
         status='scheduled',
         visit_date__gte=today,
@@ -4755,7 +4731,7 @@ def customer_detail_summary_api(request, followup_id):
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
     ).order_by('visit_date', 'visit_time')
     recent_schedules = Schedule.objects.filter(
-        followup=followup,
+        followup__in=shared_followups,
         user__in=scope_users,
     ).select_related(
         'user', 'followup', 'followup__company', 'followup__department'
@@ -4787,6 +4763,8 @@ def customer_detail_summary_api(request, followup_id):
         },
         'links': {
             'customers': '/customers/',
+            'accountDetail': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
+            'accountDeliveryRecordsXlsx': reverse('reporting:account_delivery_records_xlsx_export_api', args=[followup.department_id]) if followup.department_id else reverse('reporting:customer_delivery_records_xlsx_export_api', args=[followup.id]),
             'djangoDetail': reverse('reporting:followup_detail', args=[followup.id]),
             'djangoEdit': reverse('reporting:followup_edit', args=[followup.id]),
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
@@ -4818,6 +4796,27 @@ def customer_detail_summary_api(request, followup_id):
             for schedule in list(recent_schedules[:8])
         ],
     })
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def account_detail_summary_api(request, department_id):
+    """React CRM department/lab account detail API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    representative = account_representative_followup(department, scope_users)
+    if representative is None:
+        return JsonResponse({
+            'success': False,
+            'error': '접근 가능한 부서/연구실 계정이 없습니다.',
+        }, status=403)
+    return customer_detail_summary_api(request, representative.id)
 
 
 @never_cache
@@ -4935,6 +4934,19 @@ def customer_delivery_records_xlsx_export_api(request, followup_id):
     response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
     wb.save(response)
     return response
+
+
+@never_cache
+@login_required
+@require_http_methods(["GET"])
+def account_delivery_records_xlsx_export_api(request, department_id):
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    representative = account_representative_followup(department, scope_users)
+    if representative is None:
+        return HttpResponseForbidden('접근 가능한 부서/연구실 계정이 없습니다.')
+    return customer_delivery_records_xlsx_export_api(request, representative.id)
 
 
 @never_cache
@@ -7574,7 +7586,8 @@ def _schedules_restore_prepayments(schedule):
     schedule.use_prepayment = False
     schedule.prepayment = None
     schedule.prepayment_amount = Decimal('0')
-    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'updated_at'])
+    schedule.delivery_payment_type = Schedule.DELIVERY_PAYMENT_TYPE_NORMAL
+    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'delivery_payment_type', 'updated_at'])
     return restored_total
 
 
@@ -7681,7 +7694,8 @@ def _schedules_apply_prepayments(schedule, actor, raw_items, enforce_delivery_to
     schedule.use_prepayment = total_used > 0
     schedule.prepayment = first_prepayment
     schedule.prepayment_amount = total_used
-    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'updated_at'])
+    schedule.delivery_payment_type = Schedule.DELIVERY_PAYMENT_TYPE_PREPAYMENT if total_used > 0 else Schedule.DELIVERY_PAYMENT_TYPE_NORMAL
+    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'delivery_payment_type', 'updated_at'])
     return total_used
 
 
@@ -9310,6 +9324,7 @@ def schedules_update_api(request, schedule_id):
                     _schedules_apply_prepayments(schedule, request.user, payload.get('prepayments'))
                 else:
                     _schedules_restore_prepayments(schedule)
+            sync_schedule_delivery_payment_type(schedule)
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -9393,6 +9408,7 @@ def schedules_delivery_items_update_api(request, schedule_id):
                     )
                 else:
                     _schedules_restore_prepayments(schedule)
+            sync_schedule_delivery_payment_type(schedule)
             completed_quote_schedule_ids = _schedules_mark_source_quote_schedules_completed(
                 schedule,
                 request.user,
@@ -13438,8 +13454,8 @@ def _ai_workspace_question_delivery_payment_split(deliveries, limit_per_bucket=2
 
     return {
         'classificationRule': (
-            '선결제 사용 납품은 Schedule.use_prepayment, Schedule.prepayment, '
-            'Schedule.prepayment_amount, PrepaymentUsage 중 하나가 구조화 데이터로 확인될 때만 분류한다. '
+            '선결제 사용 납품은 Schedule.delivery_payment_type, Schedule.use_prepayment, Schedule.prepayment, '
+            'Schedule.prepayment_amount, PrepaymentUsage 중 하나가 공통 계정 원장 구조화 데이터로 확인될 때만 분류한다. '
             '납품/일정/메일 메모의 선결제 언급만으로는 선결제 납품으로 분류하지 않는다.'
         ),
         'nonPrepaymentLabelRule': (
@@ -14453,7 +14469,8 @@ def _ai_workspace_question_fallback(question, context):
             return {
                 'summary': (
                     f"{scope_label} 기준으로 구조화된 납품 기록을 찾지 못했습니다. "
-                    '선결제/비선결제 구분은 Schedule 선결제 필드와 PrepaymentUsage가 있는 납품에서만 확인할 수 있습니다.'
+                    '선결제/비선결제 구분은 공통 계정 원장의 Schedule.delivery_payment_type, '
+                    'Schedule 선결제 필드, PrepaymentUsage가 있는 납품에서만 확인할 수 있습니다.'
                 ),
                 'bullets': [
                     '선결제 사용 납품: 0건',
@@ -14480,8 +14497,8 @@ def _ai_workspace_question_fallback(question, context):
 
         summary_text = (
             'CRM 구조화 데이터 기준으로만 분리했습니다. 선결제 납품은 '
-            '`Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, '
-            '`PrepaymentUsage` 중 하나가 확인된 납품만 넣었습니다. 메모에 "선결제"라는 말이 있어도 '
+            '`Schedule.delivery_payment_type`, `Schedule.use_prepayment`, `Schedule.prepayment`, '
+            '`Schedule.prepayment_amount`, `PrepaymentUsage` 중 하나가 공통 계정 원장에서 확인된 납품만 넣었습니다. 메모에 "선결제"라는 말이 있어도 '
             '실제 선결제 사용 내역이 없으면 선결제 납품으로 분류하지 않았습니다.\n\n'
             f"1) 선결제 사용 납품 ({delivery_payment_split.get('prepaymentCount') or 0}건)\n"
             + '\n'.join(prepayment_lines)
@@ -15129,7 +15146,7 @@ def _ai_workspace_question_response_guidance(question):
             'instruction': (
                 '선결제/일반결제/선결제 없이 납품 분리 질문이다. '
                 'crmContext.deliveryPaymentSplit의 prepaymentDeliveries와 withoutPrepaymentDeliveries만 기준으로 답한다. '
-                '메모에 선결제 표현이 있어도 PrepaymentUsage 또는 Schedule 선결제 필드가 없으면 선결제 납품으로 분류하지 않는다. '
+                '메모에 선결제 표현이 있어도 Schedule.delivery_payment_type 또는 PrepaymentUsage 또는 Schedule 선결제 필드가 없으면 선결제 납품으로 분류하지 않는다. '
                 '별도 결제수단 필드가 없으므로 일반결제 확정이라고 쓰지 말고 "선결제 사용 기록 없음"으로 표현한다.'
             ),
         }
@@ -15253,7 +15270,7 @@ def _ai_workspace_generate_department_question_answer(
                 'crmContext.productFacts는 제품 코드별 제품 마스터 설명/규격/단위다. 제품 코드의 품목 성격은 productFacts와 CRM 품목 메모를 우선 근거로 삼는다.',
                 '제품 코드는 식별자다. productFacts.label/description/specification 또는 CRM 메모에 없는 품목 유형을 코드 앞에 새로 붙이지 않는다.',
                 '예를 들어 productFacts에 튜브 근거가 없으면 "튜브(P4345N00)"처럼 쓰지 말고 productFacts.label 또는 "P4345N00 품목"처럼 쓴다.',
-                'crmContext.deliveryPaymentSplit은 납품별 선결제 사용 여부를 구조화 데이터로 분리한 표다. 선결제 납품은 Schedule.use_prepayment, Schedule.prepayment, Schedule.prepayment_amount, PrepaymentUsage 중 하나가 확인될 때만 prepaymentDeliveries에 들어간다.',
+                'crmContext.deliveryPaymentSplit은 납품별 선결제 사용 여부를 공통 계정 원장 데이터로 분리한 표다. 선결제 납품은 Schedule.delivery_payment_type, Schedule.use_prepayment, Schedule.prepayment, Schedule.prepayment_amount, PrepaymentUsage 중 하나가 확인될 때만 prepaymentDeliveries에 들어간다.',
                 '선결제/일반결제/그냥 결제/선결제 없이 납품 구분 질문에서는 crmContext.deliveryPaymentSplit을 우선 근거로 사용하고, recentNotes/recentEmails/recentQuestionLogs/납품 notes의 선결제 언급만으로 분류하지 않는다.',
                 'withoutPrepaymentDeliveries는 별도 결제수단 확정이 아니라 구조화 선결제 사용 기록이 없는 납품이다. CRM에 일반결제 필드가 없으면 "일반결제 확정"이 아니라 "선결제 사용 기록 없음"이라고 표현한다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
@@ -17396,6 +17413,7 @@ def schedule_create_view(request):
                     messages.warning(request, str(exc))
                 except PermissionError as exc:
                     messages.error(request, str(exc))
+                sync_schedule_delivery_payment_type(schedule)
             
             messages.success(request, '일정이 성공적으로 생성되었습니다.')
             
@@ -17660,6 +17678,7 @@ def schedule_edit_view(request, pk):
                     messages.warning(request, str(exc))
                 except PermissionError as exc:
                     messages.error(request, str(exc))
+                sync_schedule_delivery_payment_type(updated_schedule)
 
             
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
@@ -33496,12 +33515,20 @@ def _reports_latest_date(current_value, candidate_value):
 
 
 def _reports_customer_row_base(followup):
+    account_id = followup.department_id or followup.id
+    account_href = f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/'
+    account_label = followup.department.name if followup.department else (followup.customer_name or followup.manager or '고객명 미정')
+    contact_label = followup.customer_name or followup.manager or '담당자 미정'
     return {
-        'id': followup.id,
-        'customer': followup.customer_name or followup.manager or '고객명 미정',
+        'id': account_id,
+        'accountId': followup.department_id,
+        'representativeCustomerId': followup.id,
+        'customer': account_label,
         'company': followup.company.name if followup.company else '',
         'department': followup.department.name if followup.department else '',
-        'manager': followup.manager or '',
+        'manager': contact_label,
+        'contactCount': 1,
+        'contactPreview': [contact_label],
         'owner': _user_display_name(followup.user),
         'status': followup.status,
         'statusLabel': followup.get_status_display(),
@@ -33530,7 +33557,8 @@ def _reports_customer_row_base(followup):
         'lastPrepaymentDate': None,
         'lastActivityDate': None,
         'recentDeliveryItems': [],
-        'href': f'/customers/{followup.id}/',
+        'href': account_href,
+        'customerHref': f'/customers/{followup.id}/',
         'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
 
@@ -33578,10 +33606,19 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         ).order_by('company__name', 'department__name', 'customer_name', 'id')
     )
     followup_ids = [followup.id for followup in followups]
-    rows_by_id = {
-        followup.id: _reports_customer_row_base(followup)
-        for followup in followups
-    }
+    account_key_by_followup_id = {}
+    rows_by_key = {}
+    for followup in followups:
+        account_key = f'department:{followup.department_id}' if followup.department_id else f'followup:{followup.id}'
+        account_key_by_followup_id[followup.id] = account_key
+        contact_label = followup.customer_name or followup.manager or '담당자 미정'
+        if account_key not in rows_by_key:
+            rows_by_key[account_key] = _reports_customer_row_base(followup)
+            continue
+        row = rows_by_key[account_key]
+        row['contactCount'] += 1
+        if contact_label and contact_label not in row['contactPreview'] and len(row['contactPreview']) < 4:
+            row['contactPreview'].append(contact_label)
 
     if not followup_ids:
         return {
@@ -33628,7 +33665,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         ).order_by('-visit_date', '-visit_time', '-id')
     )
     for schedule in delivery_schedules:
-        row = rows_by_id.get(schedule.followup_id)
+        row = rows_by_key.get(account_key_by_followup_id.get(schedule.followup_id))
         if not row:
             continue
         record = _customer_delivery_record_payload(schedule)
@@ -33665,7 +33702,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         ).prefetch_related('items__product').order_by('-quote_date', '-created_at', '-id')
     )
     for quote in quote_records:
-        row = rows_by_id.get(quote.followup_id)
+        row = rows_by_key.get(account_key_by_followup_id.get(quote.followup_id))
         if not row:
             continue
         if quote.schedule_id:
@@ -33693,7 +33730,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         ).order_by('-visit_date', '-visit_time', '-id')
     )
     for schedule in quote_schedules:
-        row = rows_by_id.get(schedule.followup_id)
+        row = rows_by_key.get(account_key_by_followup_id.get(schedule.followup_id))
         if not row:
             continue
         record = _customer_quote_schedule_record_payload(schedule)
@@ -33713,7 +33750,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         ).select_related('followup', 'asset', 'created_by', 'assigned_to').distinct().order_by('-received_date', '-created_at')
     )
     for case in service_cases:
-        row = rows_by_id.get(case.followup_id)
+        row = rows_by_key.get(account_key_by_followup_id.get(case.followup_id))
         if not row:
             continue
         row['serviceCount'] += 1
@@ -33734,7 +33771,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
     )
     service_history_schedule_ids = set()
     for history in service_histories:
-        row = rows_by_id.get(history.followup_id)
+        row = rows_by_key.get(account_key_by_followup_id.get(history.followup_id))
         if not row:
             continue
         if history.schedule_id:
@@ -33758,7 +33795,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         ).select_related('followup', 'user').order_by('-visit_date', '-visit_time', '-id')
     )
     for schedule in service_schedules:
-        row = rows_by_id.get(schedule.followup_id)
+        row = rows_by_key.get(account_key_by_followup_id.get(schedule.followup_id))
         if not row:
             continue
         row['serviceCount'] += 1
@@ -33774,7 +33811,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         ).select_related('customer', 'created_by').order_by('-payment_date', '-created_at')
     )
     for prepayment in prepayments:
-        row = rows_by_id.get(prepayment.customer_id)
+        row = rows_by_key.get(account_key_by_followup_id.get(prepayment.customer_id))
         if not row:
             continue
         amount = _money_int(prepayment.amount)
@@ -33786,7 +33823,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         row['lastPrepaymentDate'] = _reports_latest_date(row['lastPrepaymentDate'], prepayment.payment_date)
 
     rows = sorted(
-        rows_by_id.values(),
+        rows_by_key.values(),
         key=lambda row: (
             row['lastActivityDate'] or row['lastDeliveryDate'] or row['lastQuoteDate'] or row['lastPrepaymentDate'] or '',
             row['company'],

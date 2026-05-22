@@ -206,6 +206,7 @@ import {
   loadDashboardData,
   loadBusinessCardsData,
   loadDocumentTemplatesData,
+  loadAccountDetailData,
   loadCustomerAssetDirectoryData,
   loadCustomerDetailData,
   loadCustomersData,
@@ -1687,6 +1688,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
   if (pathname.startsWith('/reports/')) return 'analytics';
   if (pathname.startsWith('/analytics/')) return 'analytics';
+  if (pathname.startsWith('/accounts/')) return 'customers';
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/assets/')) return 'assets';
   if (pathname.startsWith('/notes/')) return 'notes';
@@ -1720,6 +1722,15 @@ function getTaskDetailId(): number | null {
 
 function getCustomerDetailId(): number | null {
   const match = window.location.pathname.match(/^\/customers\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getAccountDetailId(): number | null {
+  const match = window.location.pathname.match(/^\/accounts\/(\d+)\/?$/);
   if (!match) {
     return null;
   }
@@ -2822,7 +2833,7 @@ function CustomerDeliveryRecords({ records }: { records: CustomerDeliveryRecord[
           <div className="customer-record-main">
             <div className="customer-record-title-line">
               <span className={`customer-delivery-source ${record.paymentSource}`}>
-                {record.paymentSourceLabel || '일반 납품'}
+                {record.paymentTypeLabel || record.paymentSourceLabel || '일반 납품'}
               </span>
               <strong>{record.date ? formatDateLabel(record.date) : '납품일 없음'}</strong>
               <span>{record.statusLabel}</span>
@@ -3603,8 +3614,8 @@ function CustomerDetailPage({
   const customerProfileFields = [
     { label: '업체/학교', value: customerDetail.company },
     { label: '부서/연구실', value: customerDetail.department },
-    { label: '고객명', value: customerDetail.customer },
-    { label: '담당자', value: customerDetail.owner },
+    { label: '대표 담당자', value: customerDetail.customer },
+    { label: '영업 담당자', value: customerDetail.owner },
     { label: '책임자', value: customerDetail.manager },
     { label: '전화번호', value: customerDetail.phone },
     { label: '이메일', value: customerDetail.email },
@@ -3627,12 +3638,15 @@ function CustomerDetailPage({
 
       <div className="dashboard-summary-band">
         <div>
-          <span className="eyebrow">Customer detail</span>
-          <h2>{customerDetail.company || customerDetail.customer}</h2>
-          <p>{[customerDetail.customer, customerDetail.department, customerDetail.owner].filter(Boolean).join(' · ')}</p>
+          <span className="eyebrow">Department account</span>
+          <h2>{[customerDetail.company, customerDetail.department].filter(Boolean).join(' · ') || customerDetail.customer}</h2>
+          <p>{[customerDetail.customer, customerDetail.owner, data.scope.label].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/customers/">목록</a>
+          {data.links.accountDetail ? (
+            <a className="route-secondary-action" href={data.links.accountDetail}>계정 링크</a>
+          ) : null}
           {data.edit.canEdit ? (
             <button className="route-secondary-action" onClick={() => setEditOpen((open) => !open)} type="button">
               수정
@@ -3666,7 +3680,7 @@ function CustomerDetailPage({
         <div className="dashboard-panel-heading">
           <div>
             <span className="eyebrow">Customer profile</span>
-            <h2>고객 기본정보</h2>
+            <h2>부서/연구실 계정 정보</h2>
           </div>
           <Building2 size={18} />
         </div>
@@ -3711,10 +3725,10 @@ function CustomerDetailPage({
             <div className="customer-record-section-heading">
               <div>
                 <h3>납품 기록</h3>
-                <span>같은 부서 기준 · 선결제 차감 여부 표시</span>
+                <span>부서/연구실 계정 기준 · 명시 결제구분 표시</span>
               </div>
-              {data.links.deliveryRecordsXlsx ? (
-                <a className="route-secondary-action" href={data.links.deliveryRecordsXlsx}>
+              {(data.links.accountDeliveryRecordsXlsx || data.links.deliveryRecordsXlsx) ? (
+                <a className="route-secondary-action" href={data.links.accountDeliveryRecordsXlsx || data.links.deliveryRecordsXlsx}>
                   <Download size={15} />
                   납품 엑셀
                 </a>
@@ -5879,7 +5893,7 @@ function ReportsPage({
     row.prepaymentCount > 0
   )).length;
   const metricCards = [
-    { label: '고객', value: `${formatNumber(metrics.totalCustomers)}명`, detail: `기록 보유 ${formatNumber(customersWithRecords)}명`, icon: Users, tone: 'blue' as const },
+    { label: '계정', value: `${formatNumber(metrics.totalCustomers)}개`, detail: `기록 보유 ${formatNumber(customersWithRecords)}개`, icon: Users, tone: 'blue' as const },
     { label: '납품', value: `${formatNumber(metrics.deliveryCount)}건`, detail: formatWon(metrics.deliveryAmount), icon: CalendarDays, tone: 'green' as const },
     { label: '견적', value: `${formatNumber(metrics.quoteCount)}건`, detail: formatWon(metrics.quoteAmount), icon: FileText, tone: 'teal' as const },
     { label: '선결제 차감', value: `${formatNumber(metrics.prepaymentDeliveryCount)}건`, detail: formatWon(metrics.prepaymentUsedAmount), icon: CircleDollarSign, tone: metrics.prepaymentDeliveryCount > 0 ? 'amber' as const : 'blue' as const },
@@ -5907,7 +5921,7 @@ function ReportsPage({
       <div className="dashboard-summary-band">
         <div>
           <span className="eyebrow">Reports</span>
-          <h2>고객별 납품/견적 현황</h2>
+          <h2>부서/연구실 계정별 납품/견적 현황</h2>
           <p>{data.scope.label || '현재 범위'} · {dateRangeLabel} · 선결제 잔액은 현재 기준</p>
         </div>
         <div className="reports-actions">
@@ -5943,8 +5957,8 @@ function ReportsPage({
         <div className="reports-signal-strip">
           <div>
             <Users size={16} />
-            <span>표시 고객</span>
-            <strong>{formatNumber(metrics.totalCustomers)}명</strong>
+            <span>표시 계정</span>
+            <strong>{formatNumber(metrics.totalCustomers)}개</strong>
           </div>
           <div className={metrics.prepaymentDeliveryCount > 0 ? 'stable' : ''}>
             <CircleDollarSign size={16} />
@@ -5981,7 +5995,7 @@ function ReportsPage({
         <div className="dashboard-panel-heading">
           <div>
             <span className="eyebrow">Operations</span>
-            <h2>고객별 운영 현황표</h2>
+            <h2>계정별 운영 현황표</h2>
           </div>
           {loading ? <Loader2 className="spin-icon" size={18} /> : <FileSpreadsheet size={18} />}
         </div>
@@ -5989,7 +6003,7 @@ function ReportsPage({
           <table className="customers-table reports-operations-table">
             <thead>
               <tr>
-                <th>고객</th>
+                <th>계정</th>
                 <th>담당/상태</th>
                 <th>납품</th>
                 <th>선결제 차감</th>
@@ -6009,7 +6023,7 @@ function ReportsPage({
                       <strong>{customer.customer || customer.company}</strong>
                       <span>{[customer.company, customer.department].filter(Boolean).join(' · ') || '업체/부서 미지정'}</span>
                     </a>
-                    {customer.manager ? <small>책임자 {customer.manager}</small> : null}
+                    {customer.contactPreview?.length ? <small>담당자 {customer.contactPreview.join(', ')}{(customer.contactCount || 0) > customer.contactPreview.length ? ` 외 ${(customer.contactCount || 0) - customer.contactPreview.length}명` : ''}</small> : null}
                   </td>
                   <td className="reports-stack-cell">
                     <strong>{customer.owner}</strong>
@@ -19495,6 +19509,7 @@ function DetailPanel({
 export function App() {
   const currentView = getCurrentView();
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
+  const accountDetailId = currentView === 'customers' ? getAccountDetailId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
   const taskDetailId = currentView === 'tasks' ? getTaskDetailId() : null;
@@ -19526,7 +19541,7 @@ export function App() {
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
-  const [customerDetailLoading, setCustomerDetailLoading] = useState(Boolean(customerDetailId));
+  const [customerDetailLoading, setCustomerDetailLoading] = useState(Boolean(customerDetailId || accountDetailId));
   const [customerQuery, setCustomerQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
   const [customerOwner, setCustomerOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
   const [customerPriority, setCustomerPriority] = useState(() => new URLSearchParams(window.location.search).get('priority') || '');
@@ -19544,7 +19559,7 @@ export function App() {
     const value = Number(new URLSearchParams(window.location.search).get('asset') || '0');
     return Number.isFinite(value) && value > 0 ? value : null;
   });
-  const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && shouldOpenCreatePanel());
+  const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && !accountDetailId && shouldOpenCreatePanel());
   const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
   const [customerCreating, setCustomerCreating] = useState(false);
   const [customerCreateError, setCustomerCreateError] = useState('');
@@ -19751,7 +19766,7 @@ export function App() {
   }, [currentView, reportsDateFrom, reportsDateTo, reportsUserId]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId) {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId) {
       return;
     }
     let alive = true;
@@ -19771,7 +19786,7 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, customerDetailId, customerOwner, customerPriority, customerQuery, customerStage]);
+  }, [accountDetailId, currentView, customerDetailId, customerOwner, customerPriority, customerQuery, customerStage]);
 
   useEffect(() => {
     if (currentView !== 'assets') {
@@ -19821,14 +19836,17 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || !customerDetailId) {
+    if (currentView !== 'customers' || (!customerDetailId && !accountDetailId)) {
       setCustomerDetailData(null);
       setCustomerDetailLoading(false);
       return;
     }
     let alive = true;
     setCustomerDetailLoading(true);
-    loadCustomerDetailData(customerDetailId).then((data) => {
+    const detailRequest = accountDetailId
+      ? loadAccountDetailData(accountDetailId)
+      : loadCustomerDetailData(customerDetailId as number);
+    detailRequest.then((data) => {
       if (!alive) {
         return;
       }
@@ -19838,10 +19856,10 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, customerDetailId]);
+  }, [accountDetailId, currentView, customerDetailId]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId || !customersData?.create.canCreate) {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId || !customersData?.create.canCreate) {
       return;
     }
     const firstCompanyId = customersData.create.companies[0]?.id;
@@ -19859,7 +19877,7 @@ export function App() {
         priority: previous.priority || firstPriority,
       };
     });
-  }, [currentView, customerDetailId, customersData]);
+  }, [accountDetailId, currentView, customerDetailId, customersData]);
 
   useEffect(() => {
     if (currentView !== 'notes' || noteDetailId) {
@@ -20443,10 +20461,12 @@ export function App() {
     return data;
   };
   const refreshCustomerDetailData = async () => {
-    if (!customerDetailId) {
+    if (!customerDetailId && !accountDetailId) {
       return null;
     }
-    const data = await loadCustomerDetailData(customerDetailId);
+    const data = accountDetailId
+      ? await loadAccountDetailData(accountDetailId)
+      : await loadCustomerDetailData(customerDetailId as number);
     setCustomerDetailData(data);
     return data;
   };
@@ -21583,7 +21603,7 @@ export function App() {
           owner={customerOwner}
           priority={customerPriority}
           query={customerQuery}
-          selectedCustomerId={customerDetailId}
+          selectedCustomerId={customerDetailId || accountDetailId}
           stage={customerStage}
           onCompanyCreateNameChange={handleCustomerCompanyCreateNameChange}
           onCompanyCreateSubmit={handleCreateCustomerCompany}

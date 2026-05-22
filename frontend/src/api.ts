@@ -163,10 +163,14 @@ export type ReportsCustomerRecentDelivery = {
 
 export type ReportsCustomerOperationRow = {
   id: number;
+  accountId?: number | null;
+  representativeCustomerId?: number;
   customer: string;
   company: string;
   department: string;
   manager: string;
+  contactCount?: number;
+  contactPreview?: string[];
   owner: string;
   status: string;
   statusLabel: string;
@@ -196,6 +200,7 @@ export type ReportsCustomerOperationRow = {
   lastActivityDate: string | null;
   recentDeliveryItems: ReportsCustomerRecentDelivery[];
   href: string;
+  customerHref?: string;
   djangoHref: string;
 };
 
@@ -662,6 +667,7 @@ export type CustomerItem = {
     createHistoryHref: string;
   } | null;
   href: string;
+  accountHref?: string;
   companyHref: string;
   createScheduleHref: string;
 };
@@ -1063,6 +1069,8 @@ export type CustomerDeliveryRecord = {
   djangoHref: string;
   paymentSource: 'prepayment' | 'normal' | string;
   paymentSourceLabel: string;
+  paymentType: 'prepayment_deduction' | 'normal' | string;
+  paymentTypeLabel: string;
   prepaymentId: number | null;
   prepaymentAmount: number;
   prepaymentUsages: SchedulePrepaymentUsage[];
@@ -1148,6 +1156,8 @@ export type CustomerDetailData = {
     createSchedule: string;
     createNote: string;
     deliveryRecordsXlsx: string;
+    accountDetail: string;
+    accountDeliveryRecordsXlsx: string;
   };
   prepaymentSummary: CustomerPrepaymentSummary;
   operationalRecords: CustomerOperationalRecords;
@@ -4464,6 +4474,8 @@ const emptyCustomerDetailData: CustomerDetailData = {
     createSchedule: '/schedules/?create=1',
     createNote: '/notes/?create=1',
     deliveryRecordsXlsx: '',
+    accountDetail: '',
+    accountDeliveryRecordsXlsx: '',
   },
   prepaymentSummary: {
     metrics: {
@@ -5698,7 +5710,7 @@ function normalizeNoteLinks<T extends NoteItem>(item: T): T {
 }
 
 function normalizeCustomerLinks<T extends CustomerItem | DashboardCustomerItem>(item: T): T {
-  const normalized = normalizeHrefFields(item, ['href', 'companyHref', 'createScheduleHref']) as T & {
+  const normalized = normalizeHrefFields(item, ['href', 'accountHref', 'companyHref', 'createScheduleHref']) as T & {
     upcomingSchedule?: CustomerItem['upcomingSchedule'];
   };
   if (normalized.upcomingSchedule) {
@@ -6746,9 +6758,9 @@ export async function createDepartment(
   return data;
 }
 
-export async function loadCustomerDetailData(customerId: number): Promise<CustomerDetailData> {
+async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): Promise<CustomerDetailData> {
   try {
-    const response = await fetch(`/reporting/api/customers/${customerId}/`, {
+    const response = await fetch(apiUrl, {
       credentials: 'include',
       headers: {
         Accept: 'application/json',
@@ -6757,12 +6769,12 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
     redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
-      throw new Error(`Customer detail API unavailable: ${response.status}`);
+      throw new Error(`${errorPrefix} API unavailable: ${response.status}`);
     }
     const payload = (await response.json()) as Partial<CustomerDetailData>;
     redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Customer detail API unavailable: ${response.status}`);
+      throw new Error(payload.error || payload.message || `${errorPrefix} API unavailable: ${response.status}`);
     }
     return {
       ...emptyCustomerDetailData,
@@ -6778,7 +6790,7 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
       links: normalizeHrefFields({
         ...emptyCustomerDetailData.links,
         ...(payload.links ?? {}),
-      }, ['customers', 'djangoDetail', 'djangoEdit', 'createSchedule', 'createNote', 'deliveryRecordsXlsx']),
+      }, ['customers', 'djangoDetail', 'djangoEdit', 'createSchedule', 'createNote', 'deliveryRecordsXlsx', 'accountDetail', 'accountDeliveryRecordsXlsx']),
       prepaymentSummary: {
         ...emptyCustomerDetailData.prepaymentSummary,
         ...(payload.prepaymentSummary ?? {}),
@@ -6837,9 +6849,17 @@ export async function loadCustomerDetailData(customerId: number): Promise<Custom
     return {
       ...emptyCustomerDetailData,
       generatedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Customer detail API unavailable',
+      error: error instanceof Error ? error.message : `${errorPrefix} API unavailable`,
     };
   }
+}
+
+export async function loadCustomerDetailData(customerId: number): Promise<CustomerDetailData> {
+  return loadCustomerDetailFromUrl(`/reporting/api/customers/${customerId}/`, 'Customer detail');
+}
+
+export async function loadAccountDetailData(departmentId: number): Promise<CustomerDetailData> {
+  return loadCustomerDetailFromUrl(`/reporting/api/accounts/${departmentId}/`, 'Account detail');
 }
 
 export async function runAiDepartmentAnalysis(runHref: string): Promise<AiDepartmentRunResponse> {

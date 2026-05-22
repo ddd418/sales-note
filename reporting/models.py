@@ -566,6 +566,13 @@ class Schedule(models.Model):
         ('service', '서비스'),
     ]
 
+    DELIVERY_PAYMENT_TYPE_NORMAL = 'normal'
+    DELIVERY_PAYMENT_TYPE_PREPAYMENT = 'prepayment_deduction'
+    DELIVERY_PAYMENT_TYPE_CHOICES = [
+        (DELIVERY_PAYMENT_TYPE_NORMAL, '일반 납품'),
+        (DELIVERY_PAYMENT_TYPE_PREPAYMENT, '선결제 차감 납품'),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='schedules', verbose_name="관련 팔로우업")
@@ -588,6 +595,13 @@ class Schedule(models.Model):
     use_prepayment = models.BooleanField(default=False, verbose_name="선결제 사용", help_text="선결제 잔액에서 차감하는 경우 체크")
     prepayment = models.ForeignKey('Prepayment', on_delete=models.SET_NULL, null=True, blank=True, related_name='used_schedules', verbose_name="사용한 선결제")
     prepayment_amount = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="선결제 사용 금액", help_text="선결제에서 차감된 금액")
+    delivery_payment_type = models.CharField(
+        max_length=32,
+        choices=DELIVERY_PAYMENT_TYPE_CHOICES,
+        default=DELIVERY_PAYMENT_TYPE_NORMAL,
+        verbose_name="납품 결제 구분",
+        help_text="납품 일정의 결제 구분입니다. 선결제 차감은 구조화된 선결제 사용 내역으로만 확정합니다.",
+    )
 
     # 부가세 모드
     VAT_MODE_CHOICES = [

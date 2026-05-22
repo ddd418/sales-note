@@ -1,5 +1,50 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Department account ledger foundation plan
+
+**Background**:
+
+- User wants the CRM customer basis corrected from one `FollowUp` contact to the real business unit: `Department` / lab account.
+- Delivery, quote, prepayment, service, and asset records should be shared by same department/lab.
+- Delivery payment classification should be explicit and reusable rather than inferred ad hoc in each screen.
+- Customer detail, reports, exports, and AI answers must share the same structured account ledger basis so AI does not guess from notes.
+
+**DB change required**: Yes.
+
+- Add `Schedule.delivery_payment_type` as an explicit delivery payment classification field.
+- Backfill existing delivery schedules:
+  - `prepayment_deduction` when `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, or `PrepaymentUsage` indicates structured prepayment usage.
+  - `normal` otherwise.
+- Keep existing `use_prepayment`, `prepayment`, `prepayment_amount`, and `PrepaymentUsage` as the financial evidence/ledger data.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a small account ledger helper module for department account scope and delivery payment classification.
+  - Make customer detail history/schedule/operational sections use same-department account scope.
+  - Add `/reporting/api/accounts/<department_id>/` for React account detail.
+  - Add `/reporting/api/accounts/<department_id>/delivery-records.xlsx` for account delivery export.
+  - Keep `/reporting/api/customers/<followup_id>/` and existing customer export URLs working as compatibility entry points.
+  - Align reports and AI delivery split with the shared classification helper.
+- Frontend:
+  - Treat `/accounts/<department_id>/` as the account detail view.
+  - Keep `/customers/<id>/` working, but label the page as department/lab account context.
+  - Show explicit payment type labels/evidence in delivery records.
+  - Add account links from customer detail and reports where the backend provides them.
+- Documentation:
+  - Update README to reflect the current Django/React/Railway CRM architecture.
+  - Update AGENT_REPORT after validation.
+
+**Validation plan**:
+
+- `python manage.py makemigrations --check --dry-run` before/after as appropriate.
+- `python manage.py check`
+- Focused Django tests for customer/account detail, reports, delivery export, and AI delivery split.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Browser/local smoke on `/customers/<id>/`, `/accounts/<department_id>/`, `/reports/` if a local server is available.
+- Commit/push/deploy affected services after validation.
+
 ## 2026-05-21 Customer detail department-shared records plan
 
 **Background**:

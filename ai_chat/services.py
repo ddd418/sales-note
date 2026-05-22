@@ -295,17 +295,21 @@ def _schedule_prepayment_payload(schedule):
     """Return structured prepayment evidence for a delivery schedule."""
     empty_without_prepayment = {
         'payment_source': 'without_prepayment',
-        'paymentSource': 'without_prepayment',
+        'paymentSource': 'normal',
         'payment_source_label': '선결제 사용 기록 없음',
         'paymentSourceLabel': '선결제 사용 기록 없음',
+        'payment_type': 'normal',
+        'paymentType': 'normal',
+        'payment_type_label': '일반 납품',
+        'paymentTypeLabel': '일반 납품',
         'prepayment_id': None,
         'prepaymentId': None,
         'prepayment_amount': 0,
         'prepaymentAmount': 0,
         'prepayment_usages': [],
         'prepaymentUsages': [],
-        'payment_evidence': '연결된 납품 일정의 선결제 사용 필드 또는 PrepaymentUsage가 없습니다.',
-        'paymentEvidence': '연결된 납품 일정의 선결제 사용 필드 또는 PrepaymentUsage가 없습니다.',
+        'payment_evidence': '연결된 납품 일정의 Schedule.delivery_payment_type, 선결제 사용 필드, PrepaymentUsage가 없습니다.',
+        'paymentEvidence': '연결된 납품 일정의 Schedule.delivery_payment_type, 선결제 사용 필드, PrepaymentUsage가 없습니다.',
     }
     if not schedule:
         payload = dict(empty_without_prepayment)
@@ -313,9 +317,12 @@ def _schedule_prepayment_payload(schedule):
         payload['paymentEvidence'] = payload['payment_evidence']
         return payload
 
+    from reporting.account_ledger import delivery_payment_payload
+
+    ledger_payload = delivery_payment_payload(schedule)
     usage_rows = []
     try:
-        usages = schedule.prepayment_usages.all()
+        usages = ledger_payload.get('usages') or schedule.prepayment_usages.all()
     except Exception:
         usages = []
 
@@ -339,50 +346,29 @@ def _schedule_prepayment_payload(schedule):
             'usedAt': usage.used_at.strftime('%Y-%m-%d') if getattr(usage, 'used_at', None) else '',
         })
 
-    usage_total = sum(row['amount'] for row in usage_rows)
-    direct_amount = _money_to_int(getattr(schedule, 'prepayment_amount', 0))
-    prepayment_id = getattr(schedule, 'prepayment_id', None)
-    if not prepayment_id and usage_rows:
-        prepayment_id = usage_rows[0]['prepayment_id']
-    prepayment_amount = usage_total or direct_amount
-    uses_prepayment = bool(
-        getattr(schedule, 'use_prepayment', False)
-        or prepayment_id
-        or prepayment_amount > 0
-    )
-
-    if not uses_prepayment:
+    if ledger_payload.get('paymentSource') != 'prepayment':
         payload = dict(empty_without_prepayment)
-        payload['payment_evidence'] = (
-            f"Schedule #{schedule.id}: use_prepayment=False, prepayment_id 없음, "
-            "prepayment_amount=0, PrepaymentUsage 없음"
-        )
+        payload['payment_evidence'] = ledger_payload.get('paymentEvidence') or payload['payment_evidence']
         payload['paymentEvidence'] = payload['payment_evidence']
         return payload
-
-    evidence_parts = []
-    if getattr(schedule, 'use_prepayment', False):
-        evidence_parts.append('Schedule.use_prepayment=True')
-    if prepayment_id:
-        evidence_parts.append(f'Schedule.prepayment_id={prepayment_id}')
-    if direct_amount > 0:
-        evidence_parts.append(f'Schedule.prepayment_amount={direct_amount:,}원')
-    if usage_total > 0:
-        evidence_parts.append(f'PrepaymentUsage 합계={usage_total:,}원')
 
     return {
         'payment_source': 'prepayment',
         'paymentSource': 'prepayment',
-        'payment_source_label': '선결제 사용 납품',
-        'paymentSourceLabel': '선결제 사용 납품',
-        'prepayment_id': prepayment_id,
-        'prepaymentId': prepayment_id,
-        'prepayment_amount': prepayment_amount,
-        'prepaymentAmount': prepayment_amount,
+        'payment_source_label': ledger_payload.get('paymentSourceLabel') or '선결제 차감 납품',
+        'paymentSourceLabel': ledger_payload.get('paymentSourceLabel') or '선결제 차감 납품',
+        'payment_type': ledger_payload.get('paymentType') or 'prepayment_deduction',
+        'paymentType': ledger_payload.get('paymentType') or 'prepayment_deduction',
+        'payment_type_label': ledger_payload.get('paymentTypeLabel') or '선결제 차감 납품',
+        'paymentTypeLabel': ledger_payload.get('paymentTypeLabel') or '선결제 차감 납품',
+        'prepayment_id': ledger_payload.get('prepaymentId'),
+        'prepaymentId': ledger_payload.get('prepaymentId'),
+        'prepayment_amount': ledger_payload.get('prepaymentAmount') or 0,
+        'prepaymentAmount': ledger_payload.get('prepaymentAmount') or 0,
         'prepayment_usages': usage_rows,
         'prepaymentUsages': usage_rows,
-        'payment_evidence': f"Schedule #{schedule.id}: " + ', '.join(evidence_parts),
-        'paymentEvidence': f"Schedule #{schedule.id}: " + ', '.join(evidence_parts),
+        'payment_evidence': ledger_payload.get('paymentEvidence') or '',
+        'paymentEvidence': ledger_payload.get('paymentEvidence') or '',
     }
 
 

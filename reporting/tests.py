@@ -511,6 +511,66 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(operations['metrics']['prepaymentDeliveryCount'], 1)
         self.assertEqual(operations['metrics']['normalDeliveryCount'], 1)
 
+    def test_reports_api_groups_customer_operations_by_department_account(self):
+        today = timezone.localdate()
+        sibling = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='이담당',
+            pipeline_stage='contact',
+        )
+        first_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=first_schedule,
+            item_name='첫 담당자 납품',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            total_price=1000,
+        )
+        second_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=sibling,
+            visit_date=today,
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=second_schedule,
+            item_name='같은 부서 납품',
+            quantity=1,
+            unit='EA',
+            unit_price=2000,
+            total_price=2000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        operations = response.json()['customerOperations']
+        row = next(item for item in operations['rows'] if item['id'] == self.department.id)
+        self.assertEqual(row['href'], f'/accounts/{self.department.id}/')
+        self.assertEqual(row['customer'], '연구실 A')
+        self.assertEqual(row['contactCount'], 2)
+        self.assertIn('김고객', row['contactPreview'])
+        self.assertIn('이담당', row['contactPreview'])
+        self.assertEqual(row['deliveryCount'], 2)
+        self.assertEqual(row['normalDeliveryCount'], 2)
+        self.assertEqual(operations['metrics']['totalCustomers'], 1)
+
     def test_reports_api_manager_can_filter_company_salesperson(self):
         History.objects.create(
             user=self.user,
@@ -3128,6 +3188,14 @@ class CustomersSummaryApiTests(TestCase):
         payer_names = {record['payerName'] for record in records['prepaymentRecords']}
         self.assertIn('운영입금자', payer_names)
         self.assertIn('같은부서입금자', payer_names)
+
+        account_response = self.client.get(reverse('reporting:account_detail_summary_api', args=[target.department_id]))
+        self.assertEqual(account_response.status_code, 200)
+        account_payload = account_response.json()
+        self.assertEqual(account_payload['links']['accountDetail'], f'/accounts/{target.department_id}/')
+        self.assertEqual(account_payload['operationalRecords']['metrics']['deliveryRecords'], 3)
+        self.assertEqual(account_payload['operationalRecords']['metrics']['quoteRecords'], 2)
+        self.assertEqual(account_payload['operationalRecords']['metrics']['prepaymentRecords'], 2)
 
     def test_customer_delivery_records_xlsx_export_downloads_department_shared_deliveries(self):
         from datetime import time, timedelta
