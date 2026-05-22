@@ -25171,6 +25171,24 @@ cd frontend && node --check server.mjs
 git diff --check
 → OK, CRLF normalization warnings only
 
+git commit -m "feat: add service records menu"
+→ eb43209 feat: add service records menu
+
+git push origin main
+→ main pushed to GitHub
+
+Railway automatic deployment
+→ sales-note-frontend edf01fb8-cc37-4bd7-92d3-07caef1aadab SUCCESS
+→ web 6d548643-d4d2-4245-8970-810cfb41a9a7 SUCCESS
+
+Production smoke
+→ /services/ returned 200
+→ /schedules/calendar/ returned 200
+→ Anonymous /reporting/api/services/ remains login-protected with 401
+→ Anonymous /reporting/api/schedules/ remains login-protected with 401
+→ Anonymous /reporting/api/schedules/calendar/ remains login-protected with 401
+→ Chrome visual smoke redirected to /reporting/login/?next=%2Fservices%2F because the browser session was not authenticated
+
 Local smoke
 → /services/ frontend route returned 200
 → /reporting/api/services/ returns 401 when anonymous
@@ -25185,7 +25203,12 @@ Local smoke
 
 ### 7. Production Deployment Status
 
-- Pending commit/push/Railway deployment.
+- Runtime commit: `eb43209 feat: add service records menu`
+- GitHub: `main` pushed.
+- Railway `sales-note-frontend`: `edf01fb8-cc37-4bd7-92d3-07caef1aadab` SUCCESS.
+- Railway `web`: `6d548643-d4d2-4245-8970-810cfb41a9a7` SUCCESS.
+- Production route/API smoke passed for public shell routes and anonymous authentication protection.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 8. Recommended Next Task
 
