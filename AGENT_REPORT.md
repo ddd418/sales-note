@@ -54,7 +54,10 @@ python manage.py diffsettings | findstr SESSION
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시 후 운영 smoke를 확인합니다.
+- `97a617d fix: extend crm session lifetime` push 완료.
+- 운영 `/reporting/login/` 200 응답과 로그인 폼 렌더링 확인.
+- 운영 `/reporting/api/reports/customer-operations.xlsx` 미인증 요청은 로그인으로 302 redirect 확인.
+- Railway CLI OAuth 토큰이 만료되어 deployment ID와 최신 로그는 CLI로 확인하지 못했습니다.
 
 ### 수동 서버 테스트 절차
 
