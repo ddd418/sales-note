@@ -67,6 +67,31 @@ cd frontend; npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: answer delivery payment splits from ledger"
+→ b9839ac
+
+git push
+→ main pushed
+
+railway deployment list --service web --limit 5
+→ 45c53062-fc48-4971-b65d-b31c67308015 SUCCESS, 2026-05-22 19:51:20 +09:00
+
+railway deployment list --service sales-note-frontend --limit 5
+→ 2b39b6a5-1c80-4e26-bd29-89cd27c445b4 SUCCESS, 2026-05-22 19:51:20 +09:00
+
+railway logs --service web --deployment 45c53062-fc48-4971-b65d-b31c67308015 --tail 120
+→ No migrations to apply, gunicorn booted successfully
+
+railway logs --service sales-note-frontend --deployment 2b39b6a5-1c80-4e26-bd29-89cd27c445b4 --tail 120
+→ Container started
+
+Production smoke
+→ /ai-workspace/ returned 200
+→ Production JS bundle contains `CRM 원장 답변`
+→ Production JS bundle contains `ledger`
+→ /reporting/api/ai-workspace/ through the frontend proxy returned 401 for anonymous access
+→ /reporting/login/ through the frontend proxy returned 200 and rendered a password form
 ```
 
 ### 알려진 제한
@@ -81,7 +106,11 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전: 로컬 검증 완료. 코드 커밋/푸시 후 Railway 배포 상태와 운영 스모크 결과를 이 항목에 갱신합니다.
+- Runtime commit: `b9839ac feat: answer delivery payment splits from ledger`
+- GitHub: `main` pushed.
+- Railway web deployment: `45c53062-fc48-4971-b65d-b31c67308015` SUCCESS.
+- Railway frontend deployment: `2b39b6a5-1c80-4e26-bd29-89cd27c445b4` SUCCESS.
+- 운영 스모크: 프론트 AI Workspace 200, 운영 번들 `CRM 원장 답변`/`ledger` 포함, 비로그인 AI API 401, 프론트 경유 로그인 200 확인.
 
 ### 운영 수동 확인 절차
 
