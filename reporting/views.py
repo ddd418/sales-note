@@ -2966,6 +2966,122 @@ def _customers_followup_payload(followup, today):
     }
 
 
+def _customers_priority_rank(priority):
+    order = {
+        'urgent': 0,
+        'followup': 1,
+        'scheduled': 2,
+        'long_term': 3,
+    }
+    return order.get(priority, 9)
+
+
+def _customers_stage_rank(stage):
+    order = {
+        'negotiation': 0,
+        'quote': 1,
+        'contact': 2,
+        'potential': 3,
+        'won': 4,
+        'lost': 5,
+    }
+    return order.get(stage, 9)
+
+
+def _customers_account_payloads(followups, today, limit=60):
+    """FollowUp 담당자 목록을 부서/연구실 계정 단위로 묶는다."""
+    rows_by_key = {}
+    for followup in followups:
+        payload = _customers_followup_payload(followup, today)
+        account_key = f'department:{followup.department_id}' if followup.department_id else f'followup:{followup.id}'
+        contact_name = payload['customer']
+        if account_key not in rows_by_key:
+            account_href = payload.get('accountHref') or payload.get('href') or ''
+            rows_by_key[account_key] = {
+                **payload,
+                'id': followup.department_id or followup.id,
+                'accountId': followup.department_id,
+                'accountType': 'department' if followup.department_id else 'followup',
+                'representativeCustomerId': followup.id,
+                'customer': followup.department.name if followup.department else payload['customer'],
+                'manager': payload['customer'],
+                'contactCount': 1,
+                'contactPreview': [contact_name] if contact_name else [],
+                'ownerNames': [payload['owner']] if payload['owner'] else [],
+                'href': account_href,
+                'customerHref': payload.get('href') or '',
+                'accountHref': account_href,
+            }
+            continue
+
+        row = rows_by_key[account_key]
+        row['activityCount'] += payload['activityCount']
+        row['scheduleCount'] += payload['scheduleCount']
+        row['upcomingScheduleCount'] += payload['upcomingScheduleCount']
+        row['overdueActionCount'] += payload['overdueActionCount']
+        row['overdue'] = bool(row['overdue'] or payload['overdue'])
+        row['contactCount'] += 1
+        if contact_name and contact_name not in row['contactPreview'] and len(row['contactPreview']) < 5:
+            row['contactPreview'].append(contact_name)
+        if payload['owner'] and payload['owner'] not in row['ownerNames']:
+            row['ownerNames'].append(payload['owner'])
+        if payload.get('lastActivityAt') and (
+            not row.get('lastActivityAt') or payload['lastActivityAt'] > row['lastActivityAt']
+        ):
+            row['lastActivityAt'] = payload['lastActivityAt']
+            row['lastActivityLabel'] = payload['lastActivityLabel']
+            row['lastActivitySummary'] = payload['lastActivitySummary']
+        if payload.get('nextActionDate'):
+            current_next_action_date = row.get('nextActionDate')
+            should_replace_action = not row.get('nextActionDate')
+            if payload['overdue'] and not row.get('overdue'):
+                should_replace_action = True
+            elif current_next_action_date and payload['nextActionDate'] < current_next_action_date:
+                should_replace_action = True
+            if should_replace_action:
+                row['nextAction'] = payload['nextAction']
+                row['nextActionDate'] = payload['nextActionDate']
+        if payload.get('upcomingSchedule'):
+            current_schedule = row.get('upcomingSchedule')
+            candidate_schedule = payload['upcomingSchedule']
+            current_key = (
+                current_schedule.get('date') or '',
+                current_schedule.get('time') or '',
+            ) if current_schedule else None
+            candidate_key = (
+                candidate_schedule.get('date') or '',
+                candidate_schedule.get('time') or '',
+            )
+            if not current_key or candidate_key < current_key:
+                row['upcomingSchedule'] = candidate_schedule
+        if _customers_priority_rank(payload['priority']) < _customers_priority_rank(row['priority']):
+            row['priority'] = payload['priority']
+            row['priorityLabel'] = payload['priorityLabel']
+        if _customers_stage_rank(payload['pipelineStage']) < _customers_stage_rank(row['pipelineStage']):
+            row['pipelineStage'] = payload['pipelineStage']
+            row['pipelineLabel'] = payload['pipelineLabel']
+        row['score'] = max(row['score'], payload['score'])
+
+    rows = []
+    for row in rows_by_key.values():
+        owner_names = row.pop('ownerNames', [])
+        if owner_names:
+            row['owner'] = owner_names[0] if len(owner_names) == 1 else f'{owner_names[0]} 외 {len(owner_names) - 1}명'
+        row['contactSummary'] = ', '.join(row.get('contactPreview') or [])
+        rows.append(row)
+
+    rows.sort(
+        key=lambda row: (
+            row.get('lastActivityAt') or '',
+            row.get('overdueActionCount') or 0,
+            row.get('score') or 0,
+            row.get('id') or 0,
+        ),
+        reverse=True,
+    )
+    return rows[:limit]
+
+
 def _customer_account_contact_payload(followup):
     phone = followup.phone_number or ''
     email = followup.email or ''
@@ -3154,6 +3270,7 @@ def customers_summary_api(request):
     )
 
     customers = list(followups[:60])
+    accounts = _customers_account_payloads(list(followups[:200]), today, limit=60)
 
     overdue_followup_histories = _histories_excluding_stale_quote_submission(list(
         History.objects.filter(
@@ -3184,6 +3301,7 @@ def customers_summary_api(request):
             'priority_rank', '-ai_score', '-updated_at'
         )[:10]
     )
+    priority_accounts = _customers_account_payloads(priority_customers, today, limit=10)
 
     owner_options = [
         {
@@ -3202,6 +3320,14 @@ def customers_summary_api(request):
         scope_label = f'{user_profile.company.name} 팀'
 
     filtered_count = followups.count()
+    filtered_account_count = (
+        followups.filter(department_id__isnull=False).values('department_id').distinct().count()
+        + followups.filter(department_id__isnull=True).count()
+    )
+    total_account_count = (
+        base_followups.filter(department_id__isnull=False).values('department_id').distinct().count()
+        + base_followups.filter(department_id__isnull=True).count()
+    )
     active_count = base_followups.filter(status='active').count()
     urgent_count = base_followups.filter(priority='urgent').count()
     followup_count = base_followups.filter(priority='followup').count()
@@ -3282,6 +3408,8 @@ def customers_summary_api(request):
         'metrics': {
             'totalCustomers': base_followups.count(),
             'filteredCustomers': filtered_count,
+            'totalAccounts': total_account_count,
+            'filteredAccounts': filtered_account_count,
             'activeCustomers': active_count,
             'urgentCustomers': urgent_count,
             'followupCustomers': followup_count,
@@ -3315,10 +3443,12 @@ def customers_summary_api(request):
             _customers_followup_payload(followup, today)
             for followup in customers
         ],
+        'accounts': accounts,
         'priorityCustomers': [
             _customers_followup_payload(followup, today)
             for followup in priority_customers
         ],
+        'priorityAccounts': priority_accounts,
     })
 
 

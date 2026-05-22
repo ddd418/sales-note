@@ -2664,6 +2664,61 @@ class CustomersSummaryApiTests(TestCase):
         department_option = next(option for option in payload['create']['departments'] if option['id'] == own.department_id)
         self.assertIn('내고객 책임', department_option['searchText'])
 
+    def test_customers_summary_api_returns_department_account_rows(self):
+        from datetime import time, timedelta
+        from reporting.models import FollowUp, Schedule
+
+        target = self._create_customer(self.user, '계정고객')
+        sibling = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='계정고객 추가담당',
+            manager='계정고객 추가책임',
+            company=target.company,
+            department=target.department,
+            priority='scheduled',
+            pipeline_stage='contact',
+        )
+        Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=sibling,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(11, 0),
+            activity_type='customer_meeting',
+            status='scheduled',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        customer_ids = {item['id'] for item in payload['customers']}
+        self.assertIn(target.id, customer_ids)
+        self.assertIn(sibling.id, customer_ids)
+        self.assertEqual(payload['metrics']['totalCustomers'], 2)
+        self.assertEqual(payload['metrics']['totalAccounts'], 1)
+        self.assertEqual(payload['metrics']['filteredAccounts'], 1)
+        self.assertEqual(len(payload['accounts']), 1)
+        account = payload['accounts'][0]
+        self.assertEqual(account['id'], target.department_id)
+        self.assertEqual(account['accountId'], target.department_id)
+        self.assertEqual(account['accountType'], 'department')
+        self.assertIn(account['representativeCustomerId'], {target.id, sibling.id})
+        self.assertEqual(account['customer'], target.department.name)
+        self.assertEqual(account['href'], f'/accounts/{target.department_id}/')
+        self.assertIn(account['customerHref'], {
+            reverse('reporting:followup_detail', args=[target.id]),
+            reverse('reporting:followup_detail', args=[sibling.id]),
+        })
+        self.assertEqual(account['contactCount'], 2)
+        self.assertIn('계정고객 담당자', account['contactPreview'])
+        self.assertIn('계정고객 추가담당', account['contactPreview'])
+        self.assertEqual(account['activityCount'], 1)
+        self.assertEqual(account['scheduleCount'], 1)
+        self.assertEqual(account['upcomingScheduleCount'], 1)
+
     def test_department_autocomplete_finds_department_by_pi_manager_name(self):
         target = self._create_customer(self.user, 'PI검색고객')
         target.manager = '김PI교수'

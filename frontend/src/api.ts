@@ -674,6 +674,9 @@ export type MailboxActionResponse = {
 
 export type CustomerItem = {
   id: number;
+  accountId?: number | null;
+  accountType?: 'department' | 'followup' | string;
+  representativeCustomerId?: number;
   customer: string;
   company: string;
   companyId: number | null;
@@ -694,6 +697,8 @@ export type CustomerItem = {
   email: string;
   address: string;
   contactSummary: string;
+  contactCount?: number;
+  contactPreview?: string[];
   notes: string;
   notesFull: string;
   lastActivityAt: string | null;
@@ -721,6 +726,7 @@ export type CustomerItem = {
   } | null;
   href: string;
   accountHref?: string;
+  customerHref?: string;
   companyHref: string;
   createScheduleHref: string;
 };
@@ -751,6 +757,8 @@ export type CustomersData = {
   metrics: {
     totalCustomers: number;
     filteredCustomers: number;
+    totalAccounts: number;
+    filteredAccounts: number;
     activeCustomers: number;
     urgentCustomers: number;
     followupCustomers: number;
@@ -778,7 +786,9 @@ export type CustomersData = {
     departments: Array<{ id: number; name: string; companyId: number; companyName: string; searchText?: string }>;
   };
   customers: CustomerItem[];
+  accounts: CustomerItem[];
   priorityCustomers: CustomerItem[];
+  priorityAccounts: CustomerItem[];
 };
 
 export type CustomerCreatePayload = {
@@ -4479,6 +4489,8 @@ const emptyCustomersData: CustomersData = {
   metrics: {
     totalCustomers: 0,
     filteredCustomers: 0,
+    totalAccounts: 0,
+    filteredAccounts: 0,
     activeCustomers: 0,
     urgentCustomers: 0,
     followupCustomers: 0,
@@ -4506,7 +4518,9 @@ const emptyCustomersData: CustomersData = {
     departments: [],
   },
   customers: [],
+  accounts: [],
   priorityCustomers: [],
+  priorityAccounts: [],
 };
 
 const emptyCustomerAiDepartment: CustomerAiDepartment = {
@@ -5831,7 +5845,7 @@ function normalizeNoteLinks<T extends NoteItem>(item: T): T {
 }
 
 function normalizeCustomerLinks<T extends CustomerItem | DashboardCustomerItem>(item: T): T {
-  const normalized = normalizeHrefFields(item, ['href', 'accountHref', 'companyHref', 'createScheduleHref']) as T & {
+  const normalized = normalizeHrefFields(item, ['href', 'accountHref', 'customerHref', 'companyHref', 'createScheduleHref']) as T & {
     upcomingSchedule?: CustomerItem['upcomingSchedule'];
   };
   if (normalized.upcomingSchedule) {
@@ -6589,7 +6603,9 @@ export async function loadCustomersData(params: {
         ...(payload.links ?? {}),
       }, ['createCustomer', 'customers', 'customerReport', 'createNote']),
       customers: (payload.customers ?? emptyCustomersData.customers).map(normalizeCustomerLinks),
+      accounts: (payload.accounts ?? emptyCustomersData.accounts).map(normalizeCustomerLinks),
       priorityCustomers: (payload.priorityCustomers ?? emptyCustomersData.priorityCustomers).map(normalizeCustomerLinks),
+      priorityAccounts: (payload.priorityAccounts ?? emptyCustomersData.priorityAccounts).map(normalizeCustomerLinks),
     };
   } catch (error) {
     return {

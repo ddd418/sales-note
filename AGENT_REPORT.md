@@ -1,5 +1,86 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Customer List Account-First View
+
+### 요약
+
+- `/reporting/api/customers/`에 부서/연구실 계정 기준 `accounts`, `priorityAccounts` payload를 추가했습니다.
+- 기존 담당자 기준 `customers`, `priorityCustomers` payload는 호환용으로 유지했습니다.
+- `/customers/` React 화면은 계정 payload가 있으면 계정 목록/우선 계정을 먼저 보여주도록 변경했습니다.
+- 같은 부서/연구실의 담당자 수와 담당자 미리보기를 계정 행에 표시합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 고객 목록도 담당자 1명 기준이 아니라 부서/연구실 계정 기준으로 보이기 시작합니다.
+- 같은 부서의 여러 담당자가 한 계정 행으로 묶이고, 클릭 시 `/accounts/<department_id>/`로 이동합니다.
+- 활동/일정/지연 후속 수는 같은 계정 담당자들의 값을 합산합니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 고객 생성/검색/필터 API는 유지했습니다.
+- 기존 `customers` payload를 제거하지 않았습니다.
+- 고객 상세, 계정 상세, Django `/reporting/*` route는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_uses_salesman_own_scope reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_returns_department_account_rows reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_defaults_to_latest_updated_first reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_filters_search_owner_and_priority reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_manager_sees_same_company_only reporting.tests.CustomersSummaryApiTests.test_customers_summary_api_includes_activity_and_schedule_snapshot --verbosity=1
+→ Ran 6 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-COIaDpJ4.js / dist/assets/index-Cms_6TpV.css generated
+→ Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 계정 행은 현재 검색 결과 상위 FollowUp들을 그룹화합니다. 매우 큰 결과에서 완전한 계정 페이지네이션은 아직 별도 작업이 필요합니다.
+- 담당자 생성 자체는 아직 `FollowUp` 생성 흐름을 유지합니다.
+
+### 권장 다음 작업
+
+- `/customers/`에서 계정 행을 펼쳐 같은 부서 담당자 목록을 바로 보는 UI를 추가합니다.
+- 장기적으로 `/accounts/` 독립 목록 route를 추가합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시 후 Railway 상태와 운영 bundle smoke를 확인합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/customers/`에 접속합니다.
+2. 같은 부서/연구실 담당자가 여러 명인 곳이 한 계정 행으로 묶이는지 확인합니다.
+3. 계정 행의 `담당자 N명`과 담당자 미리보기가 맞는지 확인합니다.
+4. 계정 행 클릭 시 `/accounts/<department_id>/` 상세로 이동하는지 확인합니다.
+5. 검색/담당자/우선순위/파이프라인 필터가 기존처럼 동작하는지 확인합니다.
+
 ## 2026-05-22 — Session Persistence
 
 ### 요약

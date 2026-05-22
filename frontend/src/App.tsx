@@ -2654,16 +2654,20 @@ function CustomerStatusBadge({ customer }: { customer: CustomerItem }) {
 
 function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
   if (customers.length === 0) {
-    return <DashboardEmpty label="우선 고객이 없습니다" />;
+    return <DashboardEmpty label="우선 계정이 없습니다" />;
   }
 
   return (
     <div className="customers-priority-list">
       {customers.map((customer) => (
-        <a className={`customers-priority-row ${customer.overdue ? 'overdue' : ''}`} href={`/customers/${customer.id}/`} key={customer.id}>
+        <a className={`customers-priority-row ${customer.overdue ? 'overdue' : ''}`} href={customer.href} key={`${customer.accountType || 'customer'}-${customer.id}`}>
           <div>
             <strong>{customer.company || customer.customer}</strong>
-            <span>{[customer.customer, customer.owner].filter(Boolean).join(' · ')}</span>
+            <span>{[
+              customer.department || customer.customer,
+              customer.contactCount ? `담당자 ${formatNumber(customer.contactCount)}명` : '',
+              customer.owner,
+            ].filter(Boolean).join(' · ')}</span>
             {customer.nextAction ? <small>{customer.nextAction}</small> : null}
             {customer.upcomingSchedule ? (
               <small>
@@ -2686,7 +2690,7 @@ function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
 
 function CustomersTable({ customers }: { customers: CustomerItem[] }) {
   if (customers.length === 0) {
-    return <DashboardEmpty label="조건에 맞는 고객이 없습니다" />;
+    return <DashboardEmpty label="조건에 맞는 계정이 없습니다" />;
   }
 
   return (
@@ -2694,21 +2698,24 @@ function CustomersTable({ customers }: { customers: CustomerItem[] }) {
       <table className="customers-table">
         <thead>
           <tr>
-            <th>고객</th>
+            <th>계정</th>
             <th>상태</th>
             <th>후속</th>
             <th>예정 일정</th>
             <th>활동</th>
-            <th>담당자</th>
+            <th>영업/담당자</th>
           </tr>
         </thead>
         <tbody>
           {customers.map((customer) => (
-            <tr key={customer.id}>
+            <tr key={`${customer.accountType || 'customer'}-${customer.id}`}>
               <td>
-                <a className="customer-name-link" href={`/customers/${customer.id}/`}>
+                <a className="customer-name-link" href={customer.href}>
                   <strong>{customer.company || customer.customer}</strong>
-                  <span>{[customer.customer, customer.department].filter(Boolean).join(' · ')}</span>
+                  <span>{[
+                    customer.department || customer.customer,
+                    customer.contactCount ? `담당자 ${formatNumber(customer.contactCount)}명` : '',
+                  ].filter(Boolean).join(' · ')}</span>
                   {customer.contactSummary ? <small className="customer-contact-line">{customer.contactSummary}</small> : null}
                   {!customer.contactSummary && customer.notes ? <small className="customer-contact-line">{customer.notes}</small> : null}
                 </a>
@@ -4599,9 +4606,13 @@ function CustomersPage({
     return null;
   }
 
+  const accountRows = data.accounts.length > 0 ? data.accounts : data.customers;
+  const priorityRows = data.priorityAccounts.length > 0 ? data.priorityAccounts : data.priorityCustomers;
+  const totalAccountCount = data.metrics.totalAccounts || data.metrics.totalCustomers;
+  const filteredAccountCount = data.metrics.filteredAccounts || data.metrics.filteredCustomers;
   const metrics = [
-    { label: '전체 고객', value: `${formatNumber(data.metrics.totalCustomers)}건`, detail: data.scope.label, icon: Users, tone: 'blue' as const },
-    { label: '검색 결과', value: `${formatNumber(data.metrics.filteredCustomers)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
+    { label: '계정', value: `${formatNumber(totalAccountCount)}개`, detail: data.scope.label, icon: Users, tone: 'blue' as const },
+    { label: '검색 결과', value: `${formatNumber(filteredAccountCount)}개`, detail: '부서/연구실 계정', icon: Search, tone: 'teal' as const },
     { label: '예정 일정 고객', value: `${formatNumber(data.metrics.scheduledCustomers)}건`, detail: '미래 일정 보유', icon: CalendarDays, tone: 'green' as const },
     { label: '지연 후속', value: `${formatNumber(data.metrics.overdueCustomers)}건`, detail: '다음 액션 경과', icon: AlertTriangle, tone: 'red' as const },
   ];
@@ -4630,8 +4641,8 @@ function CustomersPage({
       <div className="dashboard-summary-band">
         <div>
           <span className="eyebrow">Customers</span>
-          <h2>{data.scope.label || '고객 관리'}</h2>
-          <p>검색, 담당자, 우선순위 기준으로 고객과 후속조치를 확인합니다.</p>
+          <h2>{data.scope.label || '계정 관리'}</h2>
+          <p>부서/연구실 계정 기준으로 담당자, 일정, 활동, 후속조치를 확인합니다.</p>
         </div>
         <button
           className={canCreateCustomers ? 'route-primary-action' : 'route-secondary-action'}
@@ -4823,7 +4834,7 @@ function CustomersPage({
           <Search size={17} />
           <input
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="고객, 회사, 연구실, 연락처 검색"
+            placeholder="계정, 담당자, 회사, 연구실, 연락처 검색"
             value={query}
           />
         </label>
@@ -4852,22 +4863,22 @@ function CustomersPage({
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Customer list</span>
-              <h2>고객 목록</h2>
+              <h2>계정 목록</h2>
             </div>
             {loading ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
           </div>
-          <CustomersTable customers={data.customers} />
+          <CustomersTable customers={accountRows} />
         </section>
 
         <aside className="dashboard-panel customers-side-panel">
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Priority</span>
-              <h2>우선 고객</h2>
+              <h2>우선 계정</h2>
             </div>
             <Bell size={18} />
           </div>
-          <CustomersPriorityList customers={data.priorityCustomers} />
+          <CustomersPriorityList customers={priorityRows} />
           <div className="customers-side-actions">
             <a href="/assets/">장비 디렉터리</a>
             <a href="/pipeline/">파이프라인</a>

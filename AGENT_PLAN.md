@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Customer list account-first plan
+
+**Background**:
+
+- User wants customer 기준을 담당자가 아니라 부서/연구실 계정으로 정리.
+- Detail/reports already moved toward department-account ledger, but `/customers/` list still primarily renders individual `FollowUp` rows.
+- The next safe step is to add account-grouped rows while preserving existing customer payload for compatibility.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add account-grouped `accounts` and `priorityAccounts` payloads to `/reporting/api/customers/`.
+  - Group same-department `FollowUp` contacts into one account row.
+  - Sum activity/schedule/overdue counts and expose contact count/preview.
+  - Keep existing `customers` and `priorityCustomers` payloads unchanged for compatibility.
+- Frontend:
+  - Add account fields to customer API types.
+  - Render `/customers/` main table and priority panel using account rows when available.
+  - Make row links open `/accounts/<department_id>/` for department accounts.
+- Tests/docs:
+  - Add API regression for same-department account grouping.
+  - Run focused Django tests and React build.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused customer API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Session persistence plan
 
 **Background**:
