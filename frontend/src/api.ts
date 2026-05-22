@@ -301,6 +301,15 @@ export type ReportsDataQualityContact = {
   recordSummary: string;
   href: string;
   accountHref: string;
+  candidateType?: string;
+  candidateKey?: string;
+  decisionUrl?: string;
+  reviewStatus?: string;
+  reviewStatusLabel?: string;
+  decisionReason?: string;
+  decisionUpdatedAt?: string | null;
+  decisionUpdatedBy?: string;
+  sourceFollowupId?: number | null;
 };
 
 export type ReportsDataQualityDepartment = {
@@ -319,6 +328,16 @@ export type ReportsDataQualityDepartment = {
 };
 
 export type ReportsDuplicateAccountGroup = {
+  candidateType?: string;
+  candidateKey?: string;
+  decisionUrl?: string;
+  reviewStatus?: string;
+  reviewStatusLabel?: string;
+  decisionReason?: string;
+  decisionUpdatedAt?: string | null;
+  decisionUpdatedBy?: string;
+  sourceDepartmentId?: number | null;
+  targetDepartmentId?: number | null;
   companyName: string;
   normalizedDepartmentName: string;
   departmentNames: string[];
@@ -334,6 +353,16 @@ export type ReportsDuplicateAccountGroup = {
 };
 
 export type ReportsDuplicateContactGroup = {
+  candidateType?: string;
+  candidateKey?: string;
+  decisionUrl?: string;
+  reviewStatus?: string;
+  reviewStatusLabel?: string;
+  decisionReason?: string;
+  decisionUpdatedAt?: string | null;
+  decisionUpdatedBy?: string;
+  sourceFollowupId?: number | null;
+  targetFollowupId?: number | null;
   companyName: string;
   departmentName: string;
   identity: string;
@@ -346,6 +375,25 @@ export type ReportsDuplicateContactGroup = {
   contacts: ReportsDataQualityContact[];
 };
 
+export type ReportsDataQualityHistoryItem = {
+  id: string;
+  kind: 'audit' | 'decision' | string;
+  title: string;
+  statusLabel: string;
+  detail: string;
+  actorName: string;
+  createdAt: string | null;
+  candidateKey?: string;
+  candidateType?: string;
+  decision?: string;
+  decisionUrl?: string;
+  reason?: string;
+  sourceDepartmentId?: number | null;
+  targetDepartmentId?: number | null;
+  sourceFollowupId?: number | null;
+  targetFollowupId?: number | null;
+};
+
 export type ReportsDataQuality = {
   metrics: {
     duplicateAccountGroups: number;
@@ -353,12 +401,15 @@ export type ReportsDataQuality = {
     contactsWithoutDepartment: number;
     contactsWithoutCompany: number;
     cleanupCandidateCount: number;
+    heldCandidateCount?: number;
+    dismissedCandidateCount?: number;
   };
   normalizationRule: string;
   duplicateAccounts: ReportsDuplicateAccountGroup[];
   duplicateContacts: ReportsDuplicateContactGroup[];
   contactsWithoutDepartment: ReportsDataQualityContact[];
   contactsWithoutCompany: ReportsDataQualityContact[];
+  history: ReportsDataQualityHistoryItem[];
 };
 
 export type AccountCleanupAffectedRecord = {
@@ -456,6 +507,38 @@ export type AccountCleanupSearchResult = {
   searchText: string;
   href: string;
   previewHref: string;
+};
+
+export type AccountCleanupDecisionPayload = {
+  candidateType: string;
+  candidateKey: string;
+  decision: 'hold' | 'dismissed' | 'active' | 'restore' | string;
+  label?: string;
+  reason?: string;
+  sourceDepartmentId?: number | null;
+  targetDepartmentId?: number | null;
+  sourceFollowupId?: number | null;
+  targetFollowupId?: number | null;
+  decisionUrl?: string;
+};
+
+export type AccountCleanupDecisionResponse = {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  candidateKey?: string;
+  candidateType?: string;
+  decision?: string;
+  reviewStatusLabel?: string;
+  restored?: boolean;
+};
+
+export type DataQualityContactAssignResponse = {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  auditLogId?: number;
+  contact?: ReportsDataQualityContact;
 };
 
 export type ReportsData = {
@@ -4829,6 +4912,7 @@ const emptyReportsData: ReportsData = {
     duplicateContacts: [],
     contactsWithoutDepartment: [],
     contactsWithoutCompany: [],
+    history: [],
   },
   pipelineSummary: [],
   links: {
@@ -6665,6 +6749,7 @@ export async function loadReportsData(params: {
         duplicateAccounts: (payload.dataQuality?.duplicateAccounts ?? emptyReportsData.dataQuality.duplicateAccounts).map((group) => ({
           ...group,
           cleanupPreviewHref: normalizeCoreCrmHref(group.cleanupPreviewHref),
+          decisionUrl: normalizeCoreCrmHref(group.decisionUrl ?? ''),
           departments: (group.departments ?? []).map((department) => ({
             ...department,
             accountHref: normalizeCoreCrmHref(department.accountHref),
@@ -6675,14 +6760,19 @@ export async function loadReportsData(params: {
         })),
         duplicateContacts: (payload.dataQuality?.duplicateContacts ?? emptyReportsData.dataQuality.duplicateContacts).map((group) => ({
           ...group,
+          decisionUrl: normalizeCoreCrmHref(group.decisionUrl ?? ''),
           contacts: (group.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
         })),
         contactsWithoutDepartment: (
           payload.dataQuality?.contactsWithoutDepartment ?? emptyReportsData.dataQuality.contactsWithoutDepartment
-        ).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
+        ).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref', 'decisionUrl'])),
         contactsWithoutCompany: (
           payload.dataQuality?.contactsWithoutCompany ?? emptyReportsData.dataQuality.contactsWithoutCompany
-        ).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
+        ).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref', 'decisionUrl'])),
+        history: (payload.dataQuality?.history ?? emptyReportsData.dataQuality.history).map((item) => ({
+          ...item,
+          decisionUrl: normalizeCoreCrmHref(item.decisionUrl ?? ''),
+        })),
       },
       pipelineSummary: payload.pipelineSummary ?? emptyReportsData.pipelineSummary,
     };
@@ -6837,6 +6927,64 @@ export async function searchAccountCleanupTargets(
   } catch {
     return emptyAccountCleanupSearchResult.results;
   }
+}
+
+export async function saveAccountCleanupDecision(
+  payload: AccountCleanupDecisionPayload,
+): Promise<AccountCleanupDecisionResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(payload.decisionUrl || '/reporting/api/accounts/cleanup-decision/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Cleanup decision API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AccountCleanupDecisionResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Cleanup decision failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function assignDataQualityContactAccount(
+  followupId: number,
+  departmentId: number,
+): Promise<DataQualityContactAssignResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(`/reporting/api/data-quality/contacts/${followupId}/assign-account/`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ departmentId }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Data quality assign API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as DataQualityContactAssignResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Data quality assign failed: ${response.status}`);
+  }
+  return {
+    ...data,
+    contact: data.contact ? normalizeHrefFields(data.contact, ['href', 'accountHref']) : undefined,
+  };
 }
 
 export async function loadProfileData(): Promise<ProfileData> {

@@ -1,5 +1,55 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Data quality cleanup tools plan
+
+**Background**:
+
+- User requested task `3-5. 데이터 품질/정리 도구`.
+- Existing `/reports/` already exposes read-only duplicate account/contact and unassigned contact candidates.
+- Existing `AccountCleanupAuditLog` stores merge execution history, but there is no persistent operator decision for “보류/제외”.
+- Current cleanup normalization only removes whitespace/some punctuation/case, so institution aliases, lab notation, and bracket notation need stronger matching.
+
+**DB change required**: Yes.
+
+- Add `AccountCleanupDecision` to persist manual candidate decisions:
+  - candidate type/key
+  - decision `hold` or `dismissed`
+  - optional source/target Department and FollowUp references
+  - reason, creator/updater, timestamps
+- Extend `AccountCleanupAuditLog` action choices with a contact account assignment action for unassigned-data quick fixes.
+
+**Implementation scope**:
+
+- Backend:
+  - Improve cleanup normalization with Unicode normalization, bracket removal, institution alias mapping, and lab notation folding.
+  - Add deterministic candidate keys to duplicate account/contact and unassigned company/department candidates.
+  - Add a decision API to hold, dismiss, or restore cleanup candidates.
+  - Filter dismissed candidates out of `/reports/` while keeping held candidates visible with review status.
+  - Add recent cleanup history payload combining merge/assignment audit logs and candidate decisions.
+  - Add a quick account assignment API for contacts that are missing or placeholder company/department data.
+- Frontend:
+  - Add hold/dismiss controls to `/reports/` data cleanup candidate cards.
+  - Add a quick-fix panel for department/company-unassigned contacts using account autocomplete.
+  - Add a recent cleanup history panel with restore actions for held/dismissed decisions.
+  - Keep `/reporting/*` and existing cleanup preview routes intact.
+- Tests:
+  - Extend reports data-quality tests for alias/bracket/lab normalization, candidate keys, decisions, and history.
+  - Add focused tests for decision hold/dismiss/restore and quick account assignment audit logging.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py`
+- `python manage.py makemigrations reporting --name account_cleanup_decisions`
+- Focused Django tests for `ReactReportsProfileBusinessCardApiTests`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Browser/local `/reports/` smoke when feasible
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Account detail management v1 plan
 
 **Background**:

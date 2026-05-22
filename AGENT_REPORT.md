@@ -1,5 +1,110 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Data Quality Cleanup Tools
+
+### 요약
+
+- `/reports/` 데이터 정리 후보에 보류/제외/복구 판단을 저장하는 흐름을 추가했습니다.
+- 후보 정규화를 공백/특수문자 제거 수준에서 확장해 괄호 표기, 대학/병원/기관 약칭, Lab/연구실 표기 차이를 더 잘 잡도록 했습니다.
+- 부서/업체 미지정 또는 placeholder 담당자를 실제 계정에 빠르게 연결하는 API와 React 패널을 추가했습니다.
+- 병합/빠른 연결 감사 로그와 후보 판단 이력을 `/reports/` 데이터 정리 섹션에서 함께 볼 수 있게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/admin.py`
+- `reporting/migrations/0112_account_cleanup_decisions.py`
+- `reporting/models.py`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 유사 계정/중복 담당자 후보를 운영자가 `보류` 또는 `제외` 처리할 수 있고, 제외된 후보는 기본 후보 목록에서 빠집니다.
+- 보류 후보는 계속 보이되 상태가 표시되어 재검토가 가능합니다.
+- `업체 미지정`, `부서 미지정` 같은 placeholder 계정이 다시 생겨도 `/reports/`에서 대상 계정을 검색해 바로 연결할 수 있습니다.
+- 빠른 연결은 `AccountCleanupAuditLog`에 남고, 후보 판단은 `AccountCleanupDecision`에 남아 정리 작업 이력이 추적됩니다.
+
+### 기존 기능 보존
+
+- 기존 `reporting` app, `/reporting/*`, `/reports/`, 계정 정리 미리보기, 병합 dry-run/execute API는 유지했습니다.
+- 기존 계정/담당자 접근 권한과 Manager 읽기 전용 정책을 유지했습니다.
+- 실제 병합 실행은 기존 승인/확인문구/API 흐름만 사용하며, 이번 UI에는 병합 실행 버튼을 추가하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py
+→ OK
+
+python manage.py makemigrations reporting --name account_cleanup_decisions
+→ reporting/migrations/0112_account_cleanup_decisions.py 생성
+
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py reporting\migrations\0112_account_cleanup_decisions.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_decision_api_holds_dismisses_and_restores_candidate reporting.tests.ReactReportsProfileBusinessCardApiTests.test_data_quality_quick_assign_placeholder_contact_updates_account_and_audit_log --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 19 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK, dist/assets/index-CLCBVcAr.js / dist/assets/index-DjsCYW2i.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local browser smoke
+→ http://127.0.0.1:4173/reports/ redirected to /reporting/login/?next=/reports/ as an unauthenticated protected route
+→ Browser console error logs: none
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 약칭 매핑은 운영에서 자주 나오는 대학/병원/기관명 중심의 보수적 규칙입니다. 실제 데이터에서 추가 약칭이 보이면 규칙을 더 보강해야 합니다.
+- 빠른 수정은 기존 Department 계정에 담당자를 연결하는 범위입니다. 새 업체/부서 생성은 기존 고객/계정 관리 흐름을 사용합니다.
+
+### 권장 다음 작업
+
+- 운영 데이터에서 자주 반복되는 기관 약칭/연구실 별칭을 수집해 정규화 사전을 보강합니다.
+- 제외/보류된 후보만 따로 보는 전용 데이터 정리 콘솔을 `/data-quality/`로 분리하는 작업이 다음 단계로 적절합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 커밋/푸시와 Railway 배포 후 이 섹션을 갱신합니다.
+
+### 운영 수동 확인 절차
+
+1. [리포트](https://sales-note-frontend-production.up.railway.app/reports/)에 접속합니다.
+2. `Data cleanup` 섹션에서 계정명 유사/담당자 중복 후보에 `보류`, `제외` 버튼이 보이는지 확인합니다.
+3. 후보 하나를 `보류` 처리한 뒤 새로고침해도 `보류` 상태로 남는지 확인합니다.
+4. 후보 하나를 `제외` 처리한 뒤 기본 후보 목록에서 사라지고 최근 정리 이력에 남는지 확인합니다.
+5. 최근 정리 이력에서 `복구`를 눌러 후보가 다시 목록에 나타나는지 확인합니다.
+6. `부서 미지정` 또는 `업체 미지정` 담당자가 있으면 빠른 수정 패널에서 대상 계정을 검색하고 `계정 연결`을 실행합니다.
+7. 연결 후 담당자 상세와 계정 상세에서 업체/부서가 실제 계정으로 바뀌었는지 확인합니다.
+8. 비로그인 상태에서 `/reporting/api/reports/`가 `401 login_required`로 보호되는지 확인합니다.
+
 ## 2026-05-22 — Account Detail Management v1
 
 ### 요약

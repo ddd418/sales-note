@@ -106,9 +106,11 @@ class AccountCleanupAuditLog(models.Model):
 
     ACTION_DEPARTMENT_MERGE = 'department_merge'
     ACTION_CONTACT_MERGE = 'contact_merge'
+    ACTION_CONTACT_ACCOUNT_ASSIGN = 'contact_account_assign'
     ACTION_CHOICES = [
         (ACTION_DEPARTMENT_MERGE, '부서/연구실 계정 병합'),
         (ACTION_CONTACT_MERGE, '담당자 병합'),
+        (ACTION_CONTACT_ACCOUNT_ASSIGN, '미지정 담당자 계정 지정'),
     ]
 
     MODE_DRY_RUN = 'dry_run'
@@ -178,6 +180,97 @@ class AccountCleanupAuditLog(models.Model):
             models.Index(fields=['action_type', 'mode', '-created_at'], name='acct_cleanup_action_idx'),
             models.Index(fields=['source_department', 'target_department'], name='acct_cleanup_dept_idx'),
             models.Index(fields=['source_followup', 'target_followup'], name='acct_cleanup_contact_idx'),
+        ]
+
+
+class AccountCleanupDecision(models.Model):
+    """사용자가 정리 후보를 보류하거나 제외한 판단 기록."""
+
+    CANDIDATE_DUPLICATE_ACCOUNT = 'duplicate_account'
+    CANDIDATE_DUPLICATE_CONTACT = 'duplicate_contact'
+    CANDIDATE_UNASSIGNED_DEPARTMENT = 'unassigned_department'
+    CANDIDATE_UNASSIGNED_COMPANY = 'unassigned_company'
+    CANDIDATE_TYPE_CHOICES = [
+        (CANDIDATE_DUPLICATE_ACCOUNT, '계정명 유사 후보'),
+        (CANDIDATE_DUPLICATE_CONTACT, '담당자 중복 후보'),
+        (CANDIDATE_UNASSIGNED_DEPARTMENT, '부서 미지정 담당자'),
+        (CANDIDATE_UNASSIGNED_COMPANY, '업체 미지정 담당자'),
+    ]
+
+    DECISION_HOLD = 'hold'
+    DECISION_DISMISSED = 'dismissed'
+    DECISION_CHOICES = [
+        (DECISION_HOLD, '보류'),
+        (DECISION_DISMISSED, '제외'),
+    ]
+
+    candidate_key = models.CharField(max_length=255, unique=True, verbose_name="후보 키")
+    candidate_type = models.CharField(max_length=40, choices=CANDIDATE_TYPE_CHOICES, verbose_name="후보 유형")
+    decision = models.CharField(max_length=20, choices=DECISION_CHOICES, verbose_name="판단")
+    label = models.CharField(max_length=255, blank=True, verbose_name="후보 표시명")
+    reason = models.TextField(blank=True, verbose_name="사유")
+    source_department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="원본 부서/연구실",
+    )
+    target_department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="대상 부서/연구실",
+    )
+    source_followup = models.ForeignKey(
+        'FollowUp',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="원본 담당자",
+    )
+    target_followup = models.ForeignKey(
+        'FollowUp',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="대상 담당자",
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_account_cleanup_decisions',
+        verbose_name="생성자",
+    )
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='updated_account_cleanup_decisions',
+        verbose_name="수정자",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일시")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+
+    def __str__(self):
+        return f"{self.get_candidate_type_display()} {self.get_decision_display()} #{self.id}"
+
+    class Meta:
+        verbose_name = "계정 정리 후보 판단"
+        verbose_name_plural = "계정 정리 후보 판단"
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['candidate_type', 'decision', '-updated_at'], name='acct_cleanup_decision_idx'),
+            models.Index(fields=['source_department', 'target_department'], name='acct_cleanup_dec_dept_idx'),
+            models.Index(fields=['source_followup', 'target_followup'], name='acct_cleanup_dec_contact_idx'),
         ]
 
 

@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -31,6 +31,7 @@ import logging
 import json
 import re
 import html
+import unicodedata
 from datetime import date, timedelta
 
 # 로거 설정
@@ -37089,9 +37090,204 @@ def _reports_operations_comparison(current_metrics, previous_metrics, previous_f
     }
 
 
+_REPORTS_CLEANUP_BRACKET_RE = re.compile(r'[\(\[\{（【〈《].*?[\)\]\}）】〉》]')
+_REPORTS_CLEANUP_ALIAS_RULES = [
+    (re.compile(r'\bseoul\s*national\s*(?:univ|university)\b|\bsnu\b|서울\s*대(?:학교)?', re.IGNORECASE), '서울대학교'),
+    (re.compile(r'\b서울\s*대\s*병원\b|\bsnuh\b', re.IGNORECASE), '서울대학교병원'),
+    (re.compile(r'\byonsei\s*(?:univ|university)?\b|연세\s*대(?:학교)?|세브란스', re.IGNORECASE), '연세대학교'),
+    (re.compile(r'\bkorea\s*(?:univ|university)?\b|고려\s*대(?:학교)?|고대', re.IGNORECASE), '고려대학교'),
+    (re.compile(r'\bkaist\b|카이스트|한국\s*과학\s*기술원', re.IGNORECASE), '한국과학기술원'),
+    (re.compile(r'\bpostech\b|포항\s*공대|포항\s*공과\s*대(?:학교)?', re.IGNORECASE), '포항공과대학교'),
+    (re.compile(r'\bkist\b|한국\s*과학\s*기술\s*연구원', re.IGNORECASE), '한국과학기술연구원'),
+    (re.compile(r'성균관\s*대(?:학교)?|성대', re.IGNORECASE), '성균관대학교'),
+    (re.compile(r'한양\s*대(?:학교)?', re.IGNORECASE), '한양대학교'),
+    (re.compile(r'중앙\s*대(?:학교)?', re.IGNORECASE), '중앙대학교'),
+    (re.compile(r'경희\s*대(?:학교)?', re.IGNORECASE), '경희대학교'),
+    (re.compile(r'부산\s*대(?:학교)?', re.IGNORECASE), '부산대학교'),
+    (re.compile(r'전남\s*대(?:학교)?', re.IGNORECASE), '전남대학교'),
+    (re.compile(r'전북\s*대(?:학교)?', re.IGNORECASE), '전북대학교'),
+    (re.compile(r'충남\s*대(?:학교)?', re.IGNORECASE), '충남대학교'),
+    (re.compile(r'충북\s*대(?:학교)?', re.IGNORECASE), '충북대학교'),
+    (re.compile(r'가톨릭\s*대(?:학교)?', re.IGNORECASE), '가톨릭대학교'),
+]
+_REPORTS_CLEANUP_LAB_SUFFIX_RE = re.compile(
+    r'(?:연구\s*실|실험\s*실|랩|lab(?:oratory)?|labo)\s*$',
+    re.IGNORECASE,
+)
+_REPORTS_CLEANUP_LAB_WORD_RE = re.compile(
+    r'(?:연구\s*실|실험\s*실|랩|lab(?:oratory)?|labo)',
+    re.IGNORECASE,
+)
+_REPORTS_UNASSIGNED_COMPANY_KEYS = {
+    '', '미지정', '업체미지정', '회사미지정', '고객사미지정', '무소속', 'unknown', 'none',
+}
+_REPORTS_UNASSIGNED_DEPARTMENT_KEYS = {
+    '', '미지정', '부서미지정', '연구실미지정', '계정미지정', '미정', 'unknown', 'none',
+}
+
+
+def _reports_cleanup_compact_key(value):
+    return re.sub(r'[\s\-_./,()（）\[\]{}<>:;·ㆍ]+', '', str(value or '').strip().lower())
+
+
 def _reports_cleanup_key(value):
-    compact = re.sub(r'[\s\-_./,()（）\[\]{}]+', '', str(value or '').strip().lower())
-    return compact
+    text = html.unescape(str(value or ''))
+    text = unicodedata.normalize('NFKC', text).strip().lower()
+    text = _REPORTS_CLEANUP_BRACKET_RE.sub(' ', text)
+    text = re.sub(r'[\"\'`“”‘’「」『』]', ' ', text)
+    for pattern, replacement in _REPORTS_CLEANUP_ALIAS_RULES:
+        text = pattern.sub(replacement, text)
+    text = _REPORTS_CLEANUP_LAB_WORD_RE.sub('연구실', text)
+    text = _REPORTS_CLEANUP_LAB_SUFFIX_RE.sub('', text)
+    text = re.sub(r'\b(?:co|corp|corporation|inc|ltd)\b', ' ', text, flags=re.IGNORECASE)
+    return _reports_cleanup_compact_key(text)
+
+
+def _reports_is_unassigned_company(company):
+    return company is None or _reports_cleanup_compact_key(company.name) in _REPORTS_UNASSIGNED_COMPANY_KEYS
+
+
+def _reports_is_unassigned_department(department):
+    return department is None or _reports_cleanup_compact_key(department.name) in _REPORTS_UNASSIGNED_DEPARTMENT_KEYS
+
+
+def _reports_cleanup_candidate_key(candidate_type, *ids):
+    stable_ids = [str(item) for item in ids if item not in (None, '')]
+    return f'{candidate_type}:{"-".join(stable_ids)}'
+
+
+def _reports_cleanup_candidate_base(candidate_type, candidate_key, **refs):
+    return {
+        'candidateType': candidate_type,
+        'candidateKey': candidate_key,
+        'decisionUrl': reverse('reporting:account_cleanup_decision_api'),
+        'reviewStatus': 'new',
+        'reviewStatusLabel': '신규',
+        'decisionReason': '',
+        'decisionUpdatedAt': None,
+        'decisionUpdatedBy': '',
+        **refs,
+    }
+
+
+def _reports_cleanup_decision_payload(decision):
+    return {
+        'reviewStatus': decision.decision,
+        'reviewStatusLabel': decision.get_decision_display(),
+        'decisionReason': decision.reason or '',
+        'decisionUpdatedAt': decision.updated_at.isoformat() if decision.updated_at else None,
+        'decisionUpdatedBy': _user_display_name(decision.updated_by or decision.created_by) if (decision.updated_by or decision.created_by) else '',
+    }
+
+
+def _reports_cleanup_visible_candidates(candidates, decisions):
+    visible = []
+    held_count = 0
+    dismissed_count = 0
+    for candidate in candidates:
+        decision = decisions.get(candidate.get('candidateKey'))
+        if decision and decision.decision == AccountCleanupDecision.DECISION_DISMISSED:
+            dismissed_count += 1
+            continue
+        if decision:
+            candidate = {**candidate, **_reports_cleanup_decision_payload(decision)}
+            if decision.decision == AccountCleanupDecision.DECISION_HOLD:
+                held_count += 1
+        visible.append(candidate)
+    return visible, held_count, dismissed_count
+
+
+def _reports_cleanup_department_label(department):
+    if not department:
+        return ''
+    return ' · '.join([item for item in [department.company.name if department.company else '', department.name] if item])
+
+
+def _reports_cleanup_contact_label(followup):
+    if not followup:
+        return ''
+    account = ' · '.join([
+        item for item in [
+            followup.company.name if followup.company else '',
+            followup.department.name if followup.department else '',
+        ] if item
+    ])
+    name = followup.customer_name or followup.manager or f'담당자 #{followup.id}'
+    return f'{account} · {name}' if account else name
+
+
+def _reports_cleanup_history_payload(filter_users, limit=10):
+    audit_logs = list(
+        AccountCleanupAuditLog.objects.filter(
+            Q(created_by__in=filter_users) | Q(created_by__isnull=True)
+        ).select_related(
+            'created_by',
+            'source_department__company',
+            'target_department__company',
+            'source_followup__company',
+            'source_followup__department',
+            'target_followup__company',
+            'target_followup__department',
+        )[:limit]
+    )
+    decisions = list(
+        AccountCleanupDecision.objects.filter(
+            Q(created_by__in=filter_users) | Q(updated_by__in=filter_users)
+        ).select_related(
+            'created_by',
+            'updated_by',
+            'source_department__company',
+            'target_department__company',
+            'source_followup__company',
+            'source_followup__department',
+            'target_followup__company',
+            'target_followup__department',
+        )[:limit]
+    )
+
+    items = []
+    for log in audit_logs:
+        source_label = _reports_cleanup_department_label(log.source_department) or _reports_cleanup_contact_label(log.source_followup)
+        target_label = _reports_cleanup_department_label(log.target_department) or _reports_cleanup_contact_label(log.target_followup)
+        detail = ' → '.join([item for item in [source_label, target_label] if item])
+        items.append({
+            'id': f'audit-{log.id}',
+            'kind': 'audit',
+            'title': log.get_action_type_display(),
+            'statusLabel': log.get_mode_display(),
+            'detail': detail,
+            'actorName': _user_display_name(log.created_by) if log.created_by else '',
+            'createdAt': log.created_at.isoformat() if log.created_at else None,
+            'auditLogId': log.id,
+            'actionType': log.action_type,
+            'mode': log.mode,
+        })
+
+    for decision in decisions:
+        source_label = _reports_cleanup_department_label(decision.source_department) or _reports_cleanup_contact_label(decision.source_followup)
+        target_label = _reports_cleanup_department_label(decision.target_department) or _reports_cleanup_contact_label(decision.target_followup)
+        detail = decision.label or ' → '.join([item for item in [source_label, target_label] if item])
+        items.append({
+            'id': f'decision-{decision.id}',
+            'kind': 'decision',
+            'title': decision.get_candidate_type_display(),
+            'statusLabel': decision.get_decision_display(),
+            'detail': detail,
+            'actorName': _user_display_name(decision.updated_by or decision.created_by) if (decision.updated_by or decision.created_by) else '',
+            'createdAt': decision.updated_at.isoformat() if decision.updated_at else None,
+            'candidateKey': decision.candidate_key,
+            'candidateType': decision.candidate_type,
+            'decision': decision.decision,
+            'decisionUrl': reverse('reporting:account_cleanup_decision_api'),
+            'reason': decision.reason or '',
+            'sourceDepartmentId': decision.source_department_id,
+            'targetDepartmentId': decision.target_department_id,
+            'sourceFollowupId': decision.source_followup_id,
+            'targetFollowupId': decision.target_followup_id,
+        })
+
+    items.sort(key=lambda item: item.get('createdAt') or '', reverse=True)
+    return items[:limit]
 
 
 def _reports_cleanup_contact_payload(followup):
@@ -37189,7 +37385,9 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
     for followup in followups:
         company_name = followup.company.name if followup.company else ''
         department_name = followup.department.name if followup.department else ''
-        if followup.company_id and followup.department_id:
+        company_unassigned = _reports_is_unassigned_company(followup.company)
+        department_unassigned = _reports_is_unassigned_department(followup.department)
+        if followup.company_id and followup.department_id and not company_unassigned and not department_unassigned:
             account_key = (
                 _reports_cleanup_key(company_name),
                 _reports_cleanup_key(department_name),
@@ -37197,9 +37395,9 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
             if account_key[0] and account_key[1]:
                 account_name_groups.setdefault(account_key, []).append(followup)
 
-        if followup.department_id:
+        if followup.department_id and not department_unassigned:
             contact_scope = f'department:{followup.department_id}'
-        elif followup.company_id:
+        elif followup.company_id and not company_unassigned:
             contact_scope = f'company:{followup.company_id}'
         else:
             contact_scope = 'unassigned'
@@ -37209,9 +37407,9 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
         if identity:
             duplicate_contact_groups.setdefault((contact_scope, identity), []).append(followup)
 
-        if not followup.department_id:
+        if department_unassigned:
             contacts_without_department.append(followup)
-        if not followup.company_id:
+        if company_unassigned:
             contacts_without_company.append(followup)
 
     duplicate_accounts = []
@@ -37231,6 +37429,12 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
         source_department_id = department_ids[0] if department_ids else None
         target_department_id = _reports_cleanup_peer_target_id(source_department_id, department_ids)
         duplicate_accounts.append({
+            **_reports_cleanup_candidate_base(
+                AccountCleanupDecision.CANDIDATE_DUPLICATE_ACCOUNT,
+                _reports_cleanup_candidate_key(AccountCleanupDecision.CANDIDATE_DUPLICATE_ACCOUNT, *department_ids),
+                sourceDepartmentId=source_department_id,
+                targetDepartmentId=target_department_id,
+            ),
             'companyName': first.company.name if first.company else '',
             'normalizedDepartmentName': _reports_cleanup_key(first.department.name if first.department else ''),
             'departmentNames': department_names,
@@ -37252,13 +37456,20 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
             continue
         first = grouped_followups[0]
         contact_payloads = [_reports_cleanup_contact_payload(item) for item in grouped_followups]
+        contact_ids = sorted(item.id for item in grouped_followups)
         duplicate_contacts.append({
+            **_reports_cleanup_candidate_base(
+                AccountCleanupDecision.CANDIDATE_DUPLICATE_CONTACT,
+                _reports_cleanup_candidate_key(AccountCleanupDecision.CANDIDATE_DUPLICATE_CONTACT, *contact_ids),
+                sourceFollowupId=contact_ids[0] if contact_ids else None,
+                targetFollowupId=contact_ids[1] if len(contact_ids) > 1 else None,
+            ),
             'companyName': first.company.name if first.company else '',
             'departmentName': first.department.name if first.department else '',
             'identity': (first.email or first.customer_name or first.manager or '담당자 미정'),
             'contactCount': len(grouped_followups),
             'recordCount': sum(item['recordCount'] for item in contact_payloads),
-            'contactIds': [item.id for item in grouped_followups],
+            'contactIds': contact_ids,
             'riskLevel': 'review',
             'riskLabel': '검토 필요',
             'suggestedAction': '같은 계정 범위에서 이메일 또는 이름 키가 같습니다. 실제 동일 담당자인지 확인 후 기록 이관/병합을 검토하세요.',
@@ -37279,32 +37490,348 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
         )
     )
     contacts_without_company.sort(key=lambda item: (item.customer_name or item.manager or '', item.id))
+    unassigned_department_candidates = [
+        {
+            **_reports_cleanup_contact_payload(item),
+            **_reports_cleanup_candidate_base(
+                AccountCleanupDecision.CANDIDATE_UNASSIGNED_DEPARTMENT,
+                _reports_cleanup_candidate_key(AccountCleanupDecision.CANDIDATE_UNASSIGNED_DEPARTMENT, item.id),
+                sourceFollowupId=item.id,
+            ),
+        }
+        for item in contacts_without_department
+    ]
+    unassigned_company_candidates = [
+        {
+            **_reports_cleanup_contact_payload(item),
+            **_reports_cleanup_candidate_base(
+                AccountCleanupDecision.CANDIDATE_UNASSIGNED_COMPANY,
+                _reports_cleanup_candidate_key(AccountCleanupDecision.CANDIDATE_UNASSIGNED_COMPANY, item.id),
+                sourceFollowupId=item.id,
+            ),
+        }
+        for item in contacts_without_company
+    ]
+
+    candidate_keys = [
+        item['candidateKey']
+        for item in (
+            duplicate_accounts
+            + duplicate_contacts
+            + unassigned_department_candidates
+            + unassigned_company_candidates
+        )
+        if item.get('candidateKey')
+    ]
+    decisions = {
+        item.candidate_key: item
+        for item in AccountCleanupDecision.objects.filter(candidate_key__in=candidate_keys).select_related(
+            'created_by', 'updated_by',
+        )
+    }
+    duplicate_accounts, held_accounts, dismissed_accounts = _reports_cleanup_visible_candidates(
+        duplicate_accounts,
+        decisions,
+    )
+    duplicate_contacts, held_contacts, dismissed_contacts = _reports_cleanup_visible_candidates(
+        duplicate_contacts,
+        decisions,
+    )
+    unassigned_department_candidates, held_departments, dismissed_departments = _reports_cleanup_visible_candidates(
+        unassigned_department_candidates,
+        decisions,
+    )
+    unassigned_company_candidates, held_companies, dismissed_companies = _reports_cleanup_visible_candidates(
+        unassigned_company_candidates,
+        decisions,
+    )
+
+    held_candidate_count = held_accounts + held_contacts + held_departments + held_companies
+    dismissed_candidate_count = dismissed_accounts + dismissed_contacts + dismissed_departments + dismissed_companies
     cleanup_candidate_count = (
         len(duplicate_accounts)
         + len(duplicate_contacts)
-        + len(contacts_without_department)
-        + len(contacts_without_company)
+        + len(unassigned_department_candidates)
+        + len(unassigned_company_candidates)
     )
     return {
         'metrics': {
             'duplicateAccountGroups': len(duplicate_accounts),
             'duplicateContactGroups': len(duplicate_contacts),
-            'contactsWithoutDepartment': len(contacts_without_department),
-            'contactsWithoutCompany': len(contacts_without_company),
+            'contactsWithoutDepartment': len(unassigned_department_candidates),
+            'contactsWithoutCompany': len(unassigned_company_candidates),
             'cleanupCandidateCount': cleanup_candidate_count,
+            'heldCandidateCount': held_candidate_count,
+            'dismissedCandidateCount': dismissed_candidate_count,
         },
-        'normalizationRule': '업체/부서/담당자명은 공백, 일부 특수문자, 대소문자를 제거한 값으로 후보를 찾습니다.',
+        'normalizationRule': '업체/부서/담당자명은 괄호 표기, 대학/병원/기관 약칭, 연구실/Lab 표기 차이를 정규화한 값으로 후보를 찾습니다.',
         'duplicateAccounts': duplicate_accounts[:limit],
         'duplicateContacts': duplicate_contacts[:limit],
-        'contactsWithoutDepartment': [
-            _reports_cleanup_contact_payload(item)
-            for item in contacts_without_department[:limit]
-        ],
-        'contactsWithoutCompany': [
-            _reports_cleanup_contact_payload(item)
-            for item in contacts_without_company[:limit]
-        ],
+        'contactsWithoutDepartment': unassigned_department_candidates[:limit],
+        'contactsWithoutCompany': unassigned_company_candidates[:limit],
+        'history': _reports_cleanup_history_payload(filter_users, limit=10),
     }
+
+
+def _account_cleanup_payload_ref(payload, key):
+    value = payload.get(key)
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _account_cleanup_payload_label(payload, source_department, target_department, source_followup, target_followup):
+    label = _account_cleanup_payload_text(payload, 'label', 'candidateLabel')
+    if label:
+        return label[:255]
+    source_label = _reports_cleanup_department_label(source_department) or _reports_cleanup_contact_label(source_followup)
+    target_label = _reports_cleanup_department_label(target_department) or _reports_cleanup_contact_label(target_followup)
+    return ' → '.join([item for item in [source_label, target_label] if item])[:255]
+
+
+def _account_cleanup_accessible_department(department_id, scope_users):
+    if not department_id:
+        return None, None
+    try:
+        department = Department.objects.select_related('company').get(id=department_id)
+    except Department.DoesNotExist:
+        return None, JsonResponse({'success': False, 'error': 'department_not_found'}, status=404)
+    if account_representative_followup(department, scope_users) is None:
+        return None, JsonResponse({'success': False, 'error': 'department_forbidden'}, status=403)
+    return department, None
+
+
+def _account_cleanup_accessible_followup(followup_id, scope_users):
+    if not followup_id:
+        return None, None
+    try:
+        followup = FollowUp.objects.select_related('user', 'company', 'department').get(id=followup_id)
+    except FollowUp.DoesNotExist:
+        return None, JsonResponse({'success': False, 'error': 'followup_not_found'}, status=404)
+    if not FollowUp.objects.filter(pk=followup.id, user__in=scope_users).exists():
+        return None, JsonResponse({'success': False, 'error': 'followup_forbidden'}, status=403)
+    return followup, None
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["POST"])
+def account_cleanup_decision_api(request):
+    """Hold, dismiss, or restore a data-quality cleanup candidate."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error_response = _account_cleanup_request_payload(request)
+    if error_response:
+        return error_response
+
+    candidate_type = _account_cleanup_payload_text(payload, 'candidateType', 'candidate_type')
+    candidate_key = _account_cleanup_payload_text(payload, 'candidateKey', 'candidate_key')
+    decision_value = _account_cleanup_payload_text(payload, 'decision', 'reviewStatus', 'status').lower()
+    if candidate_type not in {value for value, _label in AccountCleanupDecision.CANDIDATE_TYPE_CHOICES}:
+        return JsonResponse({'success': False, 'error': 'invalid_candidate_type'}, status=400)
+    if not candidate_key or not candidate_key.startswith(f'{candidate_type}:'):
+        return JsonResponse({'success': False, 'error': 'invalid_candidate_key'}, status=400)
+
+    restore_values = {'active', 'new', 'restore', 'reset', 'clear'}
+    valid_decisions = {value for value, _label in AccountCleanupDecision.DECISION_CHOICES}
+    if decision_value not in valid_decisions and decision_value not in restore_values:
+        return JsonResponse({'success': False, 'error': 'invalid_decision'}, status=400)
+
+    user_profile = get_user_profile(request.user)
+    scope_users = _account_cleanup_scope_users(request, user_profile)
+    source_department, error_response = _account_cleanup_accessible_department(
+        _account_cleanup_payload_ref(payload, 'sourceDepartmentId') or _account_cleanup_payload_ref(payload, 'source_department_id'),
+        scope_users,
+    )
+    if error_response:
+        return error_response
+    target_department, error_response = _account_cleanup_accessible_department(
+        _account_cleanup_payload_ref(payload, 'targetDepartmentId') or _account_cleanup_payload_ref(payload, 'target_department_id'),
+        scope_users,
+    )
+    if error_response:
+        return error_response
+    source_followup, error_response = _account_cleanup_accessible_followup(
+        _account_cleanup_payload_ref(payload, 'sourceFollowupId') or _account_cleanup_payload_ref(payload, 'source_followup_id'),
+        scope_users,
+    )
+    if error_response:
+        return error_response
+    target_followup, error_response = _account_cleanup_accessible_followup(
+        _account_cleanup_payload_ref(payload, 'targetFollowupId') or _account_cleanup_payload_ref(payload, 'target_followup_id'),
+        scope_users,
+    )
+    if error_response:
+        return error_response
+
+    if decision_value in restore_values:
+        existing_decision = AccountCleanupDecision.objects.filter(candidate_key=candidate_key).select_related(
+            'source_department',
+            'target_department',
+            'source_followup',
+            'target_followup',
+        ).first()
+        if existing_decision and not any([source_department, target_department, source_followup, target_followup]):
+            source_department, error_response = _account_cleanup_accessible_department(
+                existing_decision.source_department_id,
+                scope_users,
+            )
+            if error_response:
+                return error_response
+            target_department, error_response = _account_cleanup_accessible_department(
+                existing_decision.target_department_id,
+                scope_users,
+            )
+            if error_response:
+                return error_response
+            source_followup, error_response = _account_cleanup_accessible_followup(
+                existing_decision.source_followup_id,
+                scope_users,
+            )
+            if error_response:
+                return error_response
+            target_followup, error_response = _account_cleanup_accessible_followup(
+                existing_decision.target_followup_id,
+                scope_users,
+            )
+            if error_response:
+                return error_response
+        deleted_count, _ = AccountCleanupDecision.objects.filter(candidate_key=candidate_key).delete()
+        return JsonResponse({
+            'success': True,
+            'message': '정리 후보 판단을 복구했습니다.',
+            'restored': True,
+            'deletedCount': deleted_count,
+            'candidateKey': candidate_key,
+        })
+
+    if not any([source_department, target_department, source_followup, target_followup]):
+        return JsonResponse({'success': False, 'error': 'candidate_refs_required'}, status=400)
+
+    label = _account_cleanup_payload_label(payload, source_department, target_department, source_followup, target_followup)
+    reason = _account_cleanup_payload_text(payload, 'reason', 'memo')
+    decision, created = AccountCleanupDecision.objects.get_or_create(
+        candidate_key=candidate_key,
+        defaults={
+            'candidate_type': candidate_type,
+            'decision': decision_value,
+            'label': label,
+            'reason': reason,
+            'source_department': source_department,
+            'target_department': target_department,
+            'source_followup': source_followup,
+            'target_followup': target_followup,
+            'created_by': request.user,
+            'updated_by': request.user,
+        },
+    )
+    if not created:
+        decision.candidate_type = candidate_type
+        decision.decision = decision_value
+        decision.label = label
+        decision.reason = reason
+        decision.source_department = source_department
+        decision.target_department = target_department
+        decision.source_followup = source_followup
+        decision.target_followup = target_followup
+        decision.updated_by = request.user
+        decision.save(update_fields=[
+            'candidate_type',
+            'decision',
+            'label',
+            'reason',
+            'source_department',
+            'target_department',
+            'source_followup',
+            'target_followup',
+            'updated_by',
+            'updated_at',
+        ])
+    return JsonResponse({
+        'success': True,
+        'message': f'정리 후보를 {decision.get_decision_display()} 처리했습니다.',
+        'candidateKey': decision.candidate_key,
+        'candidateType': decision.candidate_type,
+        'decision': decision.decision,
+        'reviewStatusLabel': decision.get_decision_display(),
+    })
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["POST"])
+def data_quality_contact_assign_account_api(request, followup_id):
+    """Assign an unassigned or placeholder contact to a concrete Department account."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error_response = _account_cleanup_request_payload(request)
+    if error_response:
+        return error_response
+    target_department_id = _account_cleanup_payload_ref(payload, 'departmentId') or _account_cleanup_payload_ref(payload, 'department_id')
+    if not target_department_id:
+        return JsonResponse({'success': False, 'error': 'department_required'}, status=400)
+
+    followup = get_object_or_404(
+        FollowUp.objects.select_related('user', 'company', 'department'),
+        pk=followup_id,
+    )
+    if not can_access_followup(request.user, followup):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    if not can_modify_user_data(request.user, followup.user):
+        return JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'}, status=403)
+
+    target_department = get_object_or_404(Department.objects.select_related('company'), pk=target_department_id)
+    user_profile = get_user_profile(request.user)
+    edit_config = _customers_edit_config(request, user_profile, followup, True)
+    allowed_department_ids = {item['id'] for item in edit_config['departments']}
+    if target_department.id not in allowed_department_ids:
+        return JsonResponse({'success': False, 'error': '접근 권한이 없는 부서/연구실입니다.'}, status=403)
+
+    before_snapshot = {
+        'contact': _account_cleanup_followup_ref(followup),
+        'wasCompanyUnassigned': _reports_is_unassigned_company(followup.company),
+        'wasDepartmentUnassigned': _reports_is_unassigned_department(followup.department),
+    }
+    with transaction.atomic():
+        audit_log = AccountCleanupAuditLog.objects.create(
+            created_by=request.user,
+            action_type=AccountCleanupAuditLog.ACTION_CONTACT_ACCOUNT_ASSIGN,
+            mode=AccountCleanupAuditLog.MODE_EXECUTE,
+            source_department=followup.department,
+            target_department=target_department,
+            source_followup=followup,
+            before_snapshot=before_snapshot,
+            result={'status': 'started'},
+        )
+        followup.company = target_department.company
+        followup.department = target_department
+        followup.save(update_fields=['company', 'department', 'updated_at'])
+        followup.refresh_from_db()
+        AccountCleanupDecision.objects.filter(candidate_key__in=[
+            _reports_cleanup_candidate_key(AccountCleanupDecision.CANDIDATE_UNASSIGNED_COMPANY, followup.id),
+            _reports_cleanup_candidate_key(AccountCleanupDecision.CANDIDATE_UNASSIGNED_DEPARTMENT, followup.id),
+        ]).delete()
+        audit_log.after_snapshot = {'contact': _account_cleanup_followup_ref(followup)}
+        audit_log.result = {
+            'status': 'completed',
+            'targetDepartmentId': target_department.id,
+            'targetCompanyId': target_department.company_id,
+        }
+        audit_log.save(update_fields=['after_snapshot', 'result', 'updated_at'])
+
+    return JsonResponse({
+        'success': True,
+        'message': '담당자를 계정에 연결했습니다.',
+        'auditLogId': audit_log.id,
+        'contact': _reports_cleanup_contact_payload(followup),
+    })
 
 
 @ensure_csrf_cookie

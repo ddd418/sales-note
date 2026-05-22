@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     AccountCleanupAuditLog,
+    AccountCleanupDecision,
     AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
     CalibrationRecord, CustomerAsset,
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
@@ -92,6 +93,27 @@ class AccountCleanupAuditLogAdmin(admin.ModelAdmin):
         'updated_at',
     )
     date_hierarchy = 'created_at'
+    list_per_page = 20
+
+
+@admin.register(AccountCleanupDecision)
+class AccountCleanupDecisionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'candidate_type', 'decision', 'label', 'created_by', 'updated_by', 'updated_at')
+    list_filter = ('candidate_type', 'decision', 'updated_at')
+    search_fields = (
+        'candidate_key',
+        'label',
+        'reason',
+        'created_by__username',
+        'updated_by__username',
+        'source_department__name',
+        'target_department__name',
+        'source_followup__customer_name',
+        'target_followup__customer_name',
+    )
+    readonly_fields = ('candidate_key', 'created_by', 'updated_by', 'created_at', 'updated_at')
+    autocomplete_fields = ['source_department', 'target_department', 'source_followup', 'target_followup']
+    date_hierarchy = 'updated_at'
     list_per_page = 20
 
 # CustomerCategory 모델 관리자 설정

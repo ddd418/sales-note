@@ -152,6 +152,7 @@ import {
   AccountCleanupPreviewData,
   AccountCleanupMergeReadiness,
   AccountCleanupSearchResult,
+  AccountCleanupDecisionPayload,
   BusinessCardItem,
   BusinessCardPayload,
   BusinessCardsData,
@@ -160,6 +161,7 @@ import {
   ProfilePasswordPayload,
   ProfileUpdatePayload,
   ReportsData,
+  ReportsDataQualityContact,
   NavigationItem,
   TaskDetailData,
   TaskFormPayload,
@@ -177,6 +179,7 @@ import {
   PersonalScheduleDetailData,
   PersonalSchedulePayload,
   addNoteReply,
+  assignDataQualityContactAccount,
   assignManagerTask,
   askAIWorkspaceDepartmentQuestion,
   bulkDeleteProducts,
@@ -260,6 +263,7 @@ import {
   runMailboxAction,
   runMailboxSync,
   saveAccountContact,
+  saveAccountCleanupDecision,
   saveCustomerAsset,
   saveCustomerCalibration,
   saveCustomerServiceCase,
@@ -7289,6 +7293,14 @@ function ReportsPage({
   onUserChange: (value: string) => void;
 }) {
   const [expandedAccountId, setExpandedAccountId] = useState<number | null>(null);
+  const [cleanupActionLoadingKey, setCleanupActionLoadingKey] = useState('');
+  const [cleanupActionMessage, setCleanupActionMessage] = useState('');
+  const [quickFixContactId, setQuickFixContactId] = useState('');
+  const [quickFixQuery, setQuickFixQuery] = useState('');
+  const [quickFixResults, setQuickFixResults] = useState<AccountCleanupSearchResult[]>([]);
+  const [quickFixTarget, setQuickFixTarget] = useState<AccountCleanupSearchResult | null>(null);
+  const [quickFixLoading, setQuickFixLoading] = useState(false);
+  const [quickFixSubmitting, setQuickFixSubmitting] = useState(false);
 
   if (loading && !data) {
     return (
@@ -7331,6 +7343,123 @@ function ReportsPage({
     { label: '업체 미지정', value: `${formatNumber(cleanupMetrics.contactsWithoutCompany)}명` },
   ];
   const hasCleanupCandidates = cleanupMetrics.cleanupCandidateCount > 0;
+  const unassignedContacts: ReportsDataQualityContact[] = [
+    ...dataQuality.contactsWithoutDepartment,
+    ...dataQuality.contactsWithoutCompany.filter((contact) => (
+      !dataQuality.contactsWithoutDepartment.some((item) => item.id === contact.id)
+    )),
+  ];
+  const selectedQuickFixContact = unassignedContacts.find((contact) => String(contact.id) === quickFixContactId) ?? unassignedContacts[0] ?? null;
+  const buildCleanupDecisionPayload = (
+    candidate: Partial<AccountCleanupDecisionPayload>,
+    decision: AccountCleanupDecisionPayload['decision'],
+    label: string,
+  ): AccountCleanupDecisionPayload | null => {
+    if (!candidate.candidateType || !candidate.candidateKey) {
+      return null;
+    }
+    return {
+      candidateType: candidate.candidateType,
+      candidateKey: candidate.candidateKey,
+      decision,
+      label,
+      decisionUrl: candidate.decisionUrl,
+      sourceDepartmentId: candidate.sourceDepartmentId ?? null,
+      targetDepartmentId: candidate.targetDepartmentId ?? null,
+      sourceFollowupId: candidate.sourceFollowupId ?? null,
+      targetFollowupId: candidate.targetFollowupId ?? null,
+    };
+  };
+  const handleCleanupDecision = async (
+    candidate: Partial<AccountCleanupDecisionPayload>,
+    decision: AccountCleanupDecisionPayload['decision'],
+    label: string,
+  ) => {
+    const payload = buildCleanupDecisionPayload(candidate, decision, label);
+    if (!payload) {
+      setCleanupActionMessage('후보 키가 없어 처리할 수 없습니다.');
+      return;
+    }
+    setCleanupActionLoadingKey(`${payload.candidateKey}:${decision}`);
+    setCleanupActionMessage('');
+    try {
+      const result = await saveAccountCleanupDecision(payload);
+      setCleanupActionMessage(result.message || '정리 후보 판단을 저장했습니다.');
+      onRefresh();
+    } catch (error) {
+      setCleanupActionMessage(error instanceof Error ? error.message : '정리 후보 판단 저장에 실패했습니다.');
+    } finally {
+      setCleanupActionLoadingKey('');
+    }
+  };
+  const handleQuickFixSearch = async () => {
+    if (!quickFixQuery.trim()) {
+      setQuickFixResults([]);
+      setQuickFixTarget(null);
+      return;
+    }
+    setQuickFixLoading(true);
+    setCleanupActionMessage('');
+    try {
+      const results = await searchAccountCleanupTargets(quickFixQuery.trim());
+      setQuickFixResults(results);
+      setQuickFixTarget(results[0] ?? null);
+    } finally {
+      setQuickFixLoading(false);
+    }
+  };
+  const handleQuickFixAssign = async () => {
+    const contact = selectedQuickFixContact;
+    if (!contact || !quickFixTarget) {
+      setCleanupActionMessage('담당자와 대상 계정을 선택해주세요.');
+      return;
+    }
+    setQuickFixSubmitting(true);
+    setCleanupActionMessage('');
+    try {
+      const result = await assignDataQualityContactAccount(contact.id, quickFixTarget.id);
+      setCleanupActionMessage(result.message || '담당자를 계정에 연결했습니다.');
+      setQuickFixContactId('');
+      setQuickFixQuery('');
+      setQuickFixResults([]);
+      setQuickFixTarget(null);
+      onRefresh();
+    } catch (error) {
+      setCleanupActionMessage(error instanceof Error ? error.message : '계정 연결에 실패했습니다.');
+    } finally {
+      setQuickFixSubmitting(false);
+    }
+  };
+  const renderCleanupDecisionActions = (
+    candidate: Partial<AccountCleanupDecisionPayload> & { reviewStatus?: string; reviewStatusLabel?: string },
+    label: string,
+  ) => {
+    if (!candidate.candidateType || !candidate.candidateKey) {
+      return null;
+    }
+    const loadingPrefix = `${candidate.candidateKey}:`;
+    return (
+      <div className="reports-quality-decision-actions">
+        {candidate.reviewStatusLabel ? <span>{candidate.reviewStatusLabel}</span> : null}
+        <button
+          className="reports-quality-decision-button"
+          disabled={cleanupActionLoadingKey.startsWith(loadingPrefix)}
+          onClick={() => handleCleanupDecision(candidate, candidate.reviewStatus === 'hold' ? 'active' : 'hold', label)}
+          type="button"
+        >
+          {candidate.reviewStatus === 'hold' ? '다시 검토' : '보류'}
+        </button>
+        <button
+          className="reports-quality-decision-button danger"
+          disabled={cleanupActionLoadingKey.startsWith(loadingPrefix)}
+          onClick={() => handleCleanupDecision(candidate, 'dismissed', label)}
+          type="button"
+        >
+          제외
+        </button>
+      </div>
+    );
+  };
   const selectedCompanyId = companyId || (data.filters.companyId ? String(data.filters.companyId) : '');
   const selectedDepartmentId = departmentId || (data.filters.departmentId ? String(data.filters.departmentId) : '');
   const selectedDeliveryFilter = deliveryFilter || data.filters.deliveryFilter || 'any';
@@ -7550,9 +7679,78 @@ function ReportsPage({
             </span>
           ))}
         </div>
+        {cleanupActionMessage ? (
+          <div className="reports-quality-action-message">{cleanupActionMessage}</div>
+        ) : null}
         {hasCleanupCandidates ? (
           <>
             <p className="reports-quality-rule">{dataQuality.normalizationRule || '중복/누락 후보를 읽기 전용으로 표시합니다.'}</p>
+            {unassignedContacts.length > 0 ? (
+              <div className="reports-quality-quickfix">
+                <div>
+                  <strong>미지정 담당자 빠른 수정</strong>
+                  <span>{formatNumber(unassignedContacts.length)}명 대기</span>
+                </div>
+                <label>
+                  <span>담당자</span>
+                  <select
+                    value={quickFixContactId || (selectedQuickFixContact ? String(selectedQuickFixContact.id) : '')}
+                    onChange={(event) => setQuickFixContactId(event.target.value)}
+                  >
+                    {unassignedContacts.map((contact) => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.name} · {contact.companyName || '업체 미지정'} · {contact.departmentName || '부서 미지정'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>대상 계정</span>
+                  <div className="reports-quality-search-row">
+                    <input
+                      type="search"
+                      value={quickFixQuery}
+                      onChange={(event) => setQuickFixQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          handleQuickFixSearch();
+                        }
+                      }}
+                      placeholder="업체, 부서, 담당자 검색"
+                    />
+                    <button disabled={quickFixLoading} onClick={handleQuickFixSearch} type="button">
+                      {quickFixLoading ? <Loader2 className="spin-icon" size={14} /> : <Search size={14} />}
+                      검색
+                    </button>
+                  </div>
+                </label>
+                {quickFixResults.length > 0 ? (
+                  <div className="reports-quality-target-results">
+                    {quickFixResults.slice(0, 5).map((result) => (
+                      <button
+                        className={quickFixTarget?.id === result.id ? 'selected' : ''}
+                        key={result.id}
+                        onClick={() => setQuickFixTarget(result)}
+                        type="button"
+                      >
+                        <strong>{result.companyName} · {result.departmentName}</strong>
+                        <span>{result.meta || result.contactPreview.join(', ')}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <button
+                  className="route-secondary-action"
+                  disabled={!selectedQuickFixContact || !quickFixTarget || quickFixSubmitting}
+                  onClick={handleQuickFixAssign}
+                  type="button"
+                >
+                  {quickFixSubmitting ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
+                  계정 연결
+                </button>
+              </div>
+            ) : null}
             <div className="reports-quality-grid">
               <section>
                 <h3>계정명 유사 후보</h3>
@@ -7572,6 +7770,7 @@ function ReportsPage({
                             </a>
                           </div>
                         ) : null}
+                        {renderCleanupDecisionActions(group, `${group.companyName || '업체 미지정'} · ${group.departmentNames.join(', ')}`)}
                         <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
                         <small>{group.suggestedAction}</small>
                         {group.departments.length > 0 ? (
@@ -7610,6 +7809,7 @@ function ReportsPage({
                           <strong>{group.identity}</strong>
                           <span>{group.riskLabel || '검토 필요'}</span>
                         </div>
+                        {renderCleanupDecisionActions(group, `${group.identity} · ${group.companyName || ''} ${group.departmentName || ''}`)}
                         <span>{[group.companyName, group.departmentName].filter(Boolean).join(' · ') || '계정 미지정'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
                         <small>{group.suggestedAction}</small>
                         <div className="reports-quality-detail-list">
@@ -7634,6 +7834,7 @@ function ReportsPage({
                     {dataQuality.contactsWithoutDepartment.map((contact) => (
                       <article key={contact.id}>
                         <a href={contact.href}><strong>{contact.name}</strong></a>
+                        {renderCleanupDecisionActions(contact, `${contact.name} · 부서 미지정`)}
                         <span>{contact.companyName || '업체 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
                         <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
                       </article>
@@ -7650,6 +7851,7 @@ function ReportsPage({
                     {dataQuality.contactsWithoutCompany.map((contact) => (
                       <article key={contact.id}>
                         <a href={contact.href}><strong>{contact.name}</strong></a>
+                        {renderCleanupDecisionActions(contact, `${contact.name} · 업체 미지정`)}
                         <span>{contact.departmentName || '부서 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
                         <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
                       </article>
@@ -7660,6 +7862,32 @@ function ReportsPage({
                 )}
               </section>
             </div>
+            {dataQuality.history.length > 0 ? (
+              <section className="reports-quality-history">
+                <h3>최근 정리 이력</h3>
+                <div>
+                  {dataQuality.history.map((item) => (
+                    <article key={item.id}>
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>{item.statusLabel}</span>
+                      </div>
+                      <small>{[item.detail, item.actorName, item.createdAt ? formatDateTimeLabel(item.createdAt) : ''].filter(Boolean).join(' · ')}</small>
+                      {item.kind === 'decision' && item.candidateType && item.candidateKey ? (
+                        <button
+                          className="reports-quality-decision-button"
+                          disabled={cleanupActionLoadingKey.startsWith(`${item.candidateKey}:`)}
+                          onClick={() => handleCleanupDecision(item, 'active', item.detail || item.title)}
+                          type="button"
+                        >
+                          복구
+                        </button>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </>
         ) : (
           <div className="reports-quality-empty-state">

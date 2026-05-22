@@ -12,6 +12,7 @@ from django.template.loader import get_template
 from django.utils import timezone
 from reporting.models import (
     AccountCleanupAuditLog,
+    AccountCleanupDecision,
     Company,
     Department,
     DepartmentMemo,
@@ -594,6 +595,11 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
             name='연구실A',
             created_by=self.user,
         )
+        bracket_lab_department = Department.objects.create(
+            company=self.customer_company,
+            name='연구실 A (Lab)',
+            created_by=self.user,
+        )
         FollowUp.objects.create(
             user=self.user,
             user_company=self.company,
@@ -601,6 +607,14 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
             department=compact_department,
             customer_name='유사계정 담당자',
             email='similar@example.com',
+        )
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=bracket_lab_department,
+            customer_name='괄호표기 담당자',
+            email='bracket-lab@example.com',
         )
         FollowUp.objects.create(
             user=self.user,
@@ -630,13 +644,21 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         contact_text = json.dumps(data_quality['duplicateContacts'], ensure_ascii=False)
         self.assertIn('연구실 A', account_text)
         self.assertIn('연구실A', account_text)
+        self.assertIn('연구실 A (Lab)', account_text)
         self.assertIn('dup@example.com', contact_text)
         duplicate_account = next(
             group for group in data_quality['duplicateAccounts']
-            if '연구실 A' in group['departmentNames'] and '연구실A' in group['departmentNames']
+            if (
+                '연구실 A' in group['departmentNames']
+                and '연구실A' in group['departmentNames']
+                and '연구실 A (Lab)' in group['departmentNames']
+            )
         )
         self.assertEqual(duplicate_account['riskLabel'], '검토 필요')
         self.assertIn('suggestedAction', duplicate_account)
+        self.assertEqual(duplicate_account['reviewStatus'], 'new')
+        self.assertIn('candidateKey', duplicate_account)
+        self.assertEqual(duplicate_account['candidateType'], 'duplicate_account')
         self.assertGreaterEqual(duplicate_account['recordCount'], 0)
         self.assertTrue(duplicate_account['departments'])
         self.assertTrue(all('accountHref' in department for department in duplicate_account['departments']))
@@ -660,6 +682,8 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
             if group['identity'] == 'dup@example.com'
         )
         self.assertEqual(duplicate_contact['riskLabel'], '검토 필요')
+        self.assertEqual(duplicate_contact['candidateType'], 'duplicate_contact')
+        self.assertIn('candidateKey', duplicate_contact)
         self.assertIn('suggestedAction', duplicate_contact)
         self.assertGreaterEqual(duplicate_contact['recordCount'], 0)
         self.assertTrue(duplicate_contact['contactIds'])
@@ -671,6 +695,115 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertGreaterEqual(operations_row['cleanupCandidateCount'], 1)
         self.assertIn('duplicate_account', operations_row['cleanupTypes'])
         self.assertTrue(operations_row['cleanupPreviewHref'])
+
+    def test_account_cleanup_decision_api_holds_dismisses_and_restores_candidate(self):
+        compact_department = Department.objects.create(
+            company=self.customer_company,
+            name='연구실A',
+            created_by=self.user,
+        )
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=compact_department,
+            customer_name='유사계정 담당자',
+            email='decision-similar@example.com',
+        )
+        self.client.force_login(self.user)
+        candidate = self.client.get(reverse('reporting:reports_summary_api')).json()['dataQuality']['duplicateAccounts'][0]
+
+        hold_response = self.client.post(
+            reverse('reporting:account_cleanup_decision_api'),
+            data=json.dumps({
+                'candidateType': candidate['candidateType'],
+                'candidateKey': candidate['candidateKey'],
+                'decision': 'hold',
+                'label': '보류 테스트',
+                'sourceDepartmentId': candidate['sourceDepartmentId'],
+                'targetDepartmentId': candidate['targetDepartmentId'],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(hold_response.status_code, 200)
+        decision = AccountCleanupDecision.objects.get(candidate_key=candidate['candidateKey'])
+        self.assertEqual(decision.decision, AccountCleanupDecision.DECISION_HOLD)
+        held_quality = self.client.get(reverse('reporting:reports_summary_api')).json()['dataQuality']
+        held_candidate = next(item for item in held_quality['duplicateAccounts'] if item['candidateKey'] == candidate['candidateKey'])
+        self.assertEqual(held_candidate['reviewStatus'], 'hold')
+        self.assertGreaterEqual(held_quality['metrics']['heldCandidateCount'], 1)
+        self.assertTrue(any(item['kind'] == 'decision' for item in held_quality['history']))
+
+        dismiss_response = self.client.post(
+            reverse('reporting:account_cleanup_decision_api'),
+            data=json.dumps({
+                'candidateType': candidate['candidateType'],
+                'candidateKey': candidate['candidateKey'],
+                'decision': 'dismissed',
+                'sourceDepartmentId': candidate['sourceDepartmentId'],
+                'targetDepartmentId': candidate['targetDepartmentId'],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(dismiss_response.status_code, 200)
+        dismissed_quality = self.client.get(reverse('reporting:reports_summary_api')).json()['dataQuality']
+        self.assertFalse(any(item['candidateKey'] == candidate['candidateKey'] for item in dismissed_quality['duplicateAccounts']))
+        self.assertGreaterEqual(dismissed_quality['metrics']['dismissedCandidateCount'], 1)
+
+        restore_response = self.client.post(
+            reverse('reporting:account_cleanup_decision_api'),
+            data=json.dumps({
+                'candidateType': candidate['candidateType'],
+                'candidateKey': candidate['candidateKey'],
+                'decision': 'active',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(restore_response.status_code, 200)
+        self.assertFalse(AccountCleanupDecision.objects.filter(candidate_key=candidate['candidateKey']).exists())
+        restored_quality = self.client.get(reverse('reporting:reports_summary_api')).json()['dataQuality']
+        self.assertTrue(any(item['candidateKey'] == candidate['candidateKey'] for item in restored_quality['duplicateAccounts']))
+
+    def test_data_quality_quick_assign_placeholder_contact_updates_account_and_audit_log(self):
+        placeholder_company = Company.objects.create(name='업체 미지정', created_by=self.user)
+        placeholder_department = Department.objects.create(
+            company=placeholder_company,
+            name='부서 미지정',
+            created_by=self.user,
+        )
+        placeholder_contact = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=placeholder_company,
+            department=placeholder_department,
+            customer_name='미지정 담당자',
+            email='unassigned@example.com',
+        )
+        self.client.force_login(self.user)
+
+        quality = self.client.get(reverse('reporting:reports_summary_api')).json()['dataQuality']
+        self.assertTrue(any(item['id'] == placeholder_contact.id for item in quality['contactsWithoutDepartment']))
+        self.assertTrue(any(item['id'] == placeholder_contact.id for item in quality['contactsWithoutCompany']))
+
+        assign_response = self.client.post(
+            reverse('reporting:data_quality_contact_assign_account_api', args=[placeholder_contact.id]),
+            data=json.dumps({'departmentId': self.department.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(assign_response.status_code, 200)
+        placeholder_contact.refresh_from_db()
+        self.assertEqual(placeholder_contact.company_id, self.customer_company.id)
+        self.assertEqual(placeholder_contact.department_id, self.department.id)
+        audit_log = AccountCleanupAuditLog.objects.get(action_type=AccountCleanupAuditLog.ACTION_CONTACT_ACCOUNT_ASSIGN)
+        self.assertEqual(audit_log.target_department_id, self.department.id)
+        self.assertEqual(audit_log.source_followup_id, placeholder_contact.id)
+        refreshed_quality = self.client.get(reverse('reporting:reports_summary_api')).json()['dataQuality']
+        self.assertFalse(any(item['id'] == placeholder_contact.id for item in refreshed_quality['contactsWithoutDepartment']))
+        self.assertFalse(any(item['id'] == placeholder_contact.id for item in refreshed_quality['contactsWithoutCompany']))
 
     def test_reports_api_filters_account_rows_and_prepayment_balance(self):
         today = timezone.localdate()
