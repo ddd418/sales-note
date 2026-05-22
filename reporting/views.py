@@ -5017,6 +5017,290 @@ def account_detail_summary_api(request, department_id):
     return customer_detail_summary_api(request, representative.id)
 
 
+def _account_cleanup_metric_line(key, label, count, detail='', amount=0):
+    return {
+        'key': key,
+        'label': label,
+        'count': int(count or 0),
+        'amount': _money_int(amount),
+        'detail': detail,
+    }
+
+
+def _account_cleanup_preview_account_payload(department, scope_users):
+    followups = list(
+        FollowUp.objects.filter(
+            department=department,
+            user__in=scope_users,
+        ).select_related(
+            'user', 'company', 'department',
+        ).annotate(
+            dq_schedule_count=Count('schedules', distinct=True),
+            dq_history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True),
+            dq_quote_count=Count('quotes', distinct=True),
+            dq_prepayment_count=Count('prepayments', distinct=True),
+        ).order_by('customer_name', 'id')
+    )
+    followup_ids = [followup.id for followup in followups]
+
+    schedules = Schedule.objects.filter(followup_id__in=followup_ids, user__in=scope_users)
+    schedule_stats = schedules.aggregate(
+        total=Count('id'),
+        delivery_count=Count('id', filter=Q(activity_type='delivery')),
+        quote_schedule_count=Count('id', filter=Q(activity_type='quote')),
+        service_schedule_count=Count('id', filter=Q(activity_type='service')),
+        cancelled_count=Count('id', filter=Q(status='cancelled')),
+    )
+    delivery_item_count = DeliveryItem.objects.filter(
+        Q(schedule__followup_id__in=followup_ids, schedule__user__in=scope_users)
+        | Q(history__followup_id__in=followup_ids, history__user__in=scope_users)
+    ).distinct().count()
+
+    histories = History.objects.filter(
+        followup_id__in=followup_ids,
+        user__in=scope_users,
+        parent_history__isnull=True,
+    )
+    history_stats = histories.aggregate(
+        total=Count('id'),
+        delivery_count=Count('id', filter=Q(action_type='delivery')),
+        service_count=Count('id', filter=Q(action_type='service')),
+    )
+
+    quote_stats = Quote.objects.filter(
+        followup_id__in=followup_ids,
+        user__in=scope_users,
+    ).aggregate(
+        total=Count('id'),
+        total_amount=Sum('total_amount'),
+    )
+
+    prepayment_qs = Prepayment.objects.filter(
+        customer_id__in=followup_ids,
+        created_by__in=scope_users,
+    )
+    prepayment_stats = prepayment_qs.aggregate(
+        total=Count('id'),
+        total_amount=Sum('amount'),
+        total_balance=Sum('balance'),
+        active_count=Count('id', filter=Q(status='active')),
+    )
+    usage_stats = PrepaymentUsage.objects.filter(
+        prepayment__customer_id__in=followup_ids,
+        prepayment__created_by__in=scope_users,
+    ).aggregate(
+        total=Count('id'),
+        total_amount=Sum('amount'),
+    )
+
+    assets = CustomerAsset.objects.filter(
+        department=department,
+        created_by__in=scope_users,
+    )
+    asset_ids = list(assets.values_list('id', flat=True))
+    asset_stats = assets.aggregate(
+        total=Count('id'),
+        active_count=Count('id', filter=Q(status='active')),
+    )
+    service_case_stats = ServiceCase.objects.filter(
+        asset_id__in=asset_ids,
+    ).aggregate(
+        total=Count('id'),
+        open_count=Count('id', filter=~Q(status__in=['completed', 'cancelled'])),
+    )
+    calibration_stats = CalibrationRecord.objects.filter(
+        asset_id__in=asset_ids,
+    ).aggregate(
+        total=Count('id'),
+        due_count=Count('id', filter=Q(next_due_date__lte=timezone.localdate() + timedelta(days=30))),
+    )
+
+    affected_records = [
+        _account_cleanup_metric_line(
+            'contacts',
+            '담당자',
+            len(followups),
+            '계정에 속한 FollowUp 담당자',
+        ),
+        _account_cleanup_metric_line(
+            'schedules',
+            '일정/납품',
+            schedule_stats['total'],
+            (
+                f"납품 {int(schedule_stats['delivery_count'] or 0)}"
+                f" · 견적 일정 {int(schedule_stats['quote_schedule_count'] or 0)}"
+                f" · 서비스 일정 {int(schedule_stats['service_schedule_count'] or 0)}"
+                f" · 취소 {int(schedule_stats['cancelled_count'] or 0)}"
+            ),
+        ),
+        _account_cleanup_metric_line(
+            'deliveryItems',
+            '납품 품목',
+            delivery_item_count,
+            '일정/영업노트에 연결된 납품 품목',
+        ),
+        _account_cleanup_metric_line(
+            'histories',
+            '영업노트',
+            history_stats['total'],
+            (
+                f"납품 노트 {int(history_stats['delivery_count'] or 0)}"
+                f" · 서비스 노트 {int(history_stats['service_count'] or 0)}"
+            ),
+        ),
+        _account_cleanup_metric_line(
+            'quotes',
+            '견적',
+            quote_stats['total'],
+            '견적 총액',
+            quote_stats['total_amount'],
+        ),
+        _account_cleanup_metric_line(
+            'prepayments',
+            '선결제',
+            prepayment_stats['total'],
+            (
+                f"잔액 {_money_int(prepayment_stats['total_balance']):,}원"
+                f" · 활성 {int(prepayment_stats['active_count'] or 0)}건"
+            ),
+            prepayment_stats['total_amount'],
+        ),
+        _account_cleanup_metric_line(
+            'prepaymentUsages',
+            '선결제 차감',
+            usage_stats['total'],
+            '구조화된 선결제 사용 기록',
+            usage_stats['total_amount'],
+        ),
+        _account_cleanup_metric_line(
+            'assets',
+            '장비',
+            asset_stats['total'],
+            f"사용중 {int(asset_stats['active_count'] or 0)}대",
+        ),
+        _account_cleanup_metric_line(
+            'serviceCases',
+            'A/S 케이스',
+            service_case_stats['total'],
+            f"진행 {int(service_case_stats['open_count'] or 0)}건",
+        ),
+        _account_cleanup_metric_line(
+            'calibrations',
+            '교정 이력',
+            calibration_stats['total'],
+            f"30일 내 예정/지연 {int(calibration_stats['due_count'] or 0)}건",
+        ),
+    ]
+    record_count = sum(
+        item['count']
+        for item in affected_records
+        if item['key'] not in ['contacts']
+    )
+
+    return {
+        'id': department.id,
+        'name': department.name,
+        'companyId': department.company_id,
+        'companyName': department.company.name if department.company else '',
+        'href': f'/accounts/{department.id}/',
+        'djangoHref': reverse('reporting:department_edit', args=[department.id]) if department.id else '',
+        'metrics': {
+            'contactCount': len(followups),
+            'recordCount': record_count,
+            'scheduleCount': int(schedule_stats['total'] or 0),
+            'deliveryCount': int(schedule_stats['delivery_count'] or 0),
+            'quoteCount': int(quote_stats['total'] or 0),
+            'quoteAmount': _money_int(quote_stats['total_amount']),
+            'historyCount': int(history_stats['total'] or 0),
+            'prepaymentCount': int(prepayment_stats['total'] or 0),
+            'prepaymentAmount': _money_int(prepayment_stats['total_amount']),
+            'prepaymentBalance': _money_int(prepayment_stats['total_balance']),
+            'prepaymentUsageCount': int(usage_stats['total'] or 0),
+            'prepaymentUsedAmount': _money_int(usage_stats['total_amount']),
+            'assetCount': int(asset_stats['total'] or 0),
+            'serviceCaseCount': int(service_case_stats['total'] or 0),
+            'calibrationCount': int(calibration_stats['total'] or 0),
+        },
+        'affectedRecords': affected_records,
+        'contacts': [_reports_cleanup_contact_payload(followup) for followup in followups[:12]],
+    }
+
+
+def _account_cleanup_combined_metrics(source_payload, target_payload):
+    combined = {}
+    for key, value in source_payload.get('metrics', {}).items():
+        if isinstance(value, int):
+            combined[key] = value + int(target_payload.get('metrics', {}).get(key, 0) or 0)
+    return combined
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def account_cleanup_preview_api(request, department_id):
+    """Read-only impact preview before department/lab account cleanup."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    representative = account_representative_followup(department, scope_users)
+    if representative is None:
+        return JsonResponse({
+            'success': False,
+            'error': '접근 가능한 부서/연구실 계정이 없습니다.',
+        }, status=403)
+
+    source_payload = _account_cleanup_preview_account_payload(department, scope_users)
+    target_payload = None
+    warnings = [
+        '읽기 전용 미리보기입니다. 이 화면에서는 담당자, 납품, 견적, 선결제, 장비, 서비스 기록을 변경하지 않습니다.',
+    ]
+    target_id = (request.GET.get('target') or request.GET.get('target_department_id') or '').strip()
+    if target_id:
+        try:
+            target_department_id = int(target_id)
+        except (TypeError, ValueError):
+            return JsonResponse({'success': False, 'error': '대상 계정 ID가 올바르지 않습니다.'}, status=400)
+        target_department = get_object_or_404(Department.objects.select_related('company'), pk=target_department_id)
+        target_representative = account_representative_followup(target_department, scope_users)
+        if target_representative is None:
+            return JsonResponse({
+                'success': False,
+                'error': '대상 부서/연구실 계정에 접근할 수 없습니다.',
+            }, status=403)
+        target_payload = _account_cleanup_preview_account_payload(target_department, scope_users)
+        if target_department.id == department.id:
+            warnings.append('소스와 대상 계정이 같습니다. 실제 병합 대상은 서로 다른 계정이어야 합니다.')
+        if target_department.company_id != department.company_id:
+            warnings.append('소스와 대상 계정의 업체/학교가 다릅니다. 실제 병합 전 업체 기준을 반드시 확인해야 합니다.')
+
+    combined_metrics = (
+        _account_cleanup_combined_metrics(source_payload, target_payload)
+        if target_payload else source_payload.get('metrics', {})
+    )
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'mode': 'compare' if target_payload else 'source',
+        'sourceAccount': source_payload,
+        'targetAccount': target_payload,
+        'combined': {
+            'metrics': combined_metrics,
+            'description': '소스와 대상 계정을 단순 합산한 읽기 전용 영향 범위입니다.' if target_payload else '현재 계정 단독 영향 범위입니다.',
+        },
+        'warnings': warnings,
+        'links': {
+            'sourceAccount': f'/accounts/{department.id}/',
+            'reports': '/reports/',
+        },
+    })
+
+
 @never_cache
 @login_required
 @require_http_methods(["GET"])

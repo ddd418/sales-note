@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account cleanup impact preview plan
+
+**Background**:
+
+- User confirmed the account prepayment route deployment and asked to proceed.
+- The next safe data-cleanup step is not a destructive merge, but a read-only preview of what would be affected before any department/lab account merge or record transfer.
+- Operators need to see contacts, schedules/deliveries, quotes, prepayments, assets, service cases, and calibration records that belong to one account scope.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `/reporting/api/accounts/<department_id>/cleanup-preview/`.
+  - Return read-only account impact metrics for the source department/lab account.
+  - Optionally compare against `?target=<department_id>` to preview combined scope and warnings.
+  - Keep permission checks aligned with existing account detail access.
+- Frontend:
+  - Add `/accounts/<department_id>/cleanup-preview/` React route.
+  - Add a compact impact preview page with affected tables and contacts.
+  - Add an account detail action link to the preview.
+  - Keep the page read-only; no merge/write buttons.
+- Tests/docs:
+  - Add focused API tests for source preview, target comparison, auth, and inaccessible target blocking.
+  - Run Django checks, migration dry-run, focused tests, React typecheck/build, and diff checks.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Focused account cleanup preview API tests.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Account prepayment route plan
 
 **Background**:

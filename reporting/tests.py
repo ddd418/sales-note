@@ -634,6 +634,158 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertTrue(duplicate_contact['contactIds'])
         self.assertTrue(all('recordSummary' in contact for contact in duplicate_contact['contacts']))
 
+    def test_account_cleanup_preview_api_returns_source_and_target_impact(self):
+        today = timezone.localdate()
+        target_department = Department.objects.create(
+            company=self.customer_company,
+            name='연구실 A-2',
+            created_by=self.user,
+        )
+        target_followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=target_department,
+            customer_name='대상 담당자',
+            email='target@example.com',
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='영향 납품',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            total_price=1000,
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(11, 0),
+            activity_type='quote',
+            status='completed',
+        )
+        Quote.objects.create(
+            quote_number='CLEAN-PREVIEW-1',
+            schedule=quote_schedule,
+            followup=self.followup,
+            user=self.user,
+            valid_until=today + timedelta(days=30),
+            subtotal=1000,
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            action_type='customer_meeting',
+            content='정리 영향 노트',
+        )
+        prepayment = Prepayment.objects.create(
+            customer=self.followup,
+            company=self.customer_company,
+            amount=5000,
+            balance=3000,
+            payment_date=today,
+            created_by=self.user,
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=delivery_schedule,
+            product_name='차감 품목',
+            quantity=1,
+            amount=2000,
+            remaining_balance=3000,
+        )
+        asset = CustomerAsset.objects.create(
+            company=self.customer_company,
+            department=self.department,
+            primary_followup=self.followup,
+            asset_name='영향 장비',
+            created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            asset=asset,
+            followup=self.followup,
+            case_type='service',
+            status='received',
+            received_date=today,
+            created_by=self.user,
+        )
+        CalibrationRecord.objects.create(
+            asset=asset,
+            followup=self.followup,
+            calibration_date=today,
+            next_due_date=today + timedelta(days=7),
+            created_by=self.user,
+        )
+        Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target_followup,
+            visit_date=today,
+            visit_time=time(12, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:account_cleanup_preview_api', args=[self.department.id]),
+            {'target': target_department.id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['mode'], 'compare')
+        self.assertEqual(payload['sourceAccount']['id'], self.department.id)
+        self.assertEqual(payload['targetAccount']['id'], target_department.id)
+        self.assertEqual(payload['sourceAccount']['metrics']['contactCount'], 1)
+        self.assertEqual(payload['sourceAccount']['metrics']['deliveryCount'], 1)
+        self.assertEqual(payload['sourceAccount']['metrics']['quoteCount'], 1)
+        self.assertEqual(payload['sourceAccount']['metrics']['prepaymentBalance'], 3000)
+        self.assertEqual(payload['sourceAccount']['metrics']['prepaymentUsedAmount'], 2000)
+        self.assertEqual(payload['sourceAccount']['metrics']['assetCount'], 1)
+        self.assertEqual(payload['sourceAccount']['metrics']['serviceCaseCount'], 1)
+        self.assertEqual(payload['sourceAccount']['metrics']['calibrationCount'], 1)
+        self.assertEqual(payload['combined']['metrics']['contactCount'], 2)
+        self.assertEqual(payload['combined']['metrics']['deliveryCount'], 2)
+        self.assertIn('읽기 전용', ' '.join(payload['warnings']))
+
+    def test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target(self):
+        other_department = Department.objects.create(
+            company=self.customer_company,
+            name='다른 담당 계정',
+            created_by=self.other,
+        )
+        FollowUp.objects.create(
+            user=self.other,
+            user_company=self.company,
+            company=self.customer_company,
+            department=other_department,
+            customer_name='다른 담당자',
+        )
+
+        unauthenticated = self.client.get(reverse('reporting:account_cleanup_preview_api', args=[self.department.id]))
+        self.assertEqual(unauthenticated.status_code, 401)
+
+        self.client.force_login(self.user)
+        blocked = self.client.get(
+            reverse('reporting:account_cleanup_preview_api', args=[self.department.id]),
+            {'target': other_department.id},
+        )
+        self.assertEqual(blocked.status_code, 403)
+
     def test_reports_api_manager_can_filter_company_salesperson(self):
         History.objects.create(
             user=self.user,

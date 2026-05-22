@@ -144,6 +144,7 @@ import {
   AIWorkspaceFollowupTarget,
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
+  AccountCleanupPreviewData,
   BusinessCardItem,
   BusinessCardPayload,
   BusinessCardsData,
@@ -204,6 +205,7 @@ import {
   downloadScheduleDocument,
   generateWeeklyReportAiDraft,
   loadDashboardData,
+  loadAccountCleanupPreviewData,
   loadBusinessCardsData,
   loadDocumentTemplatesData,
   loadAccountDetailData,
@@ -1737,6 +1739,19 @@ function getAccountDetailId(): number | null {
   }
   const id = Number(match[1]);
   return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getAccountCleanupPreviewId(): number | null {
+  const match = window.location.pathname.match(/^\/accounts\/(\d+)\/cleanup-preview\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getAccountCleanupTargetParam(): string {
+  return new URLSearchParams(window.location.search).get('target') || '';
 }
 
 function getNoteDetailId(): number | null {
@@ -3712,6 +3727,9 @@ function CustomerDetailPage({
           <a className="route-secondary-action" href="/customers/">목록</a>
           {data.links.accountDetail ? (
             <a className="route-secondary-action" href={data.links.accountDetail}>계정 링크</a>
+          ) : null}
+          {account.type === 'department' && account.id ? (
+            <a className="route-secondary-action" href={`/accounts/${account.id}/cleanup-preview/`}>정리 영향</a>
           ) : null}
           {data.edit.canEdit ? (
             <button className="route-secondary-action" onClick={() => setEditOpen((open) => !open)} type="button">
@@ -5977,6 +5995,195 @@ function CustomerAssetsPage({
         />
       </div>
     </section>
+  );
+}
+
+function AccountCleanupPreviewPage({
+  data,
+  loading,
+  targetDepartmentId,
+  onTargetDepartmentChange,
+}: {
+  data: AccountCleanupPreviewData | null;
+  loading: boolean;
+  targetDepartmentId: string;
+  onTargetDepartmentChange: (value: string) => void;
+}) {
+  const [targetInput, setTargetInput] = useState(targetDepartmentId);
+
+  useEffect(() => {
+    setTargetInput(targetDepartmentId);
+  }, [targetDepartmentId]);
+
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>계정 정리 영향 범위를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const source = data.sourceAccount;
+  const target = data.targetAccount;
+  const combined = data.combined.metrics;
+  const accountTitle = (account: typeof source | null) => (
+    account ? [account.companyName, account.name].filter(Boolean).join(' · ') || '계정명 없음' : '계정 없음'
+  );
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onTargetDepartmentChange(targetInput.trim());
+  };
+  const combinedCards = [
+    { label: '담당자', value: `${formatNumber(combined.contactCount)}명`, detail: 'FollowUp 담당자' },
+    { label: '운영 기록', value: `${formatNumber(combined.recordCount)}건`, detail: '담당자 제외 영향 기록' },
+    { label: '납품/일정', value: `${formatNumber(combined.scheduleCount)}건`, detail: `납품 ${formatNumber(combined.deliveryCount)}건` },
+    { label: '견적', value: `${formatNumber(combined.quoteCount)}건`, detail: formatWon(combined.quoteAmount) },
+    { label: '선결제 잔액', value: formatWon(combined.prepaymentBalance), detail: `${formatNumber(combined.prepaymentCount)}건` },
+    { label: '장비/A/S', value: `${formatNumber(combined.assetCount)}대`, detail: `A/S ${formatNumber(combined.serviceCaseCount)}건` },
+  ];
+
+  return (
+    <section className="customers-page account-cleanup-preview-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>계정 정리 영향 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Cleanup preview</span>
+          <h2>계정 정리 영향 미리보기</h2>
+          <p>{accountTitle(source)} · 읽기 전용 검수 화면</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href={source.href || data.links.sourceAccount}>계정 상세</a>
+          <a className="route-secondary-action" href={data.links.reports || '/reports/'}>리포트</a>
+        </div>
+      </div>
+
+      <section className="dashboard-panel account-cleanup-control-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Compare</span>
+            <h2>대상 계정 비교</h2>
+          </div>
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <ArrowRightLeft size={18} />}
+        </div>
+        <form className="account-cleanup-target-form" onSubmit={handleSubmit}>
+          <label>
+            <span>비교 대상 부서 ID</span>
+            <input
+              inputMode="numeric"
+              onChange={(event) => setTargetInput(event.target.value)}
+              placeholder="예: 12"
+              value={targetInput}
+            />
+          </label>
+          <button className="route-primary-action" type="submit">비교</button>
+          {targetDepartmentId ? (
+            <button className="route-secondary-action" onClick={() => onTargetDepartmentChange('')} type="button">비교 해제</button>
+          ) : null}
+        </form>
+        <p className="account-cleanup-note">이 화면은 실제 병합/이관을 실행하지 않고, 영향을 받는 기록 수와 범위만 확인합니다.</p>
+      </section>
+
+      {data.warnings.length > 0 ? (
+        <div className="account-cleanup-warning-list">
+          {data.warnings.map((warning) => (
+            <span key={warning}><AlertTriangle size={15} />{warning}</span>
+          ))}
+        </div>
+      ) : null}
+
+      <section className="dashboard-metric-grid customers-metric-grid reports-metric-grid" aria-label="계정 정리 영향 합산 지표">
+        {combinedCards.map((card) => (
+          <article className="dashboard-metric-card" key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            <small>{card.detail}</small>
+          </article>
+        ))}
+      </section>
+
+      <div className="account-cleanup-preview-grid">
+        <section className="dashboard-panel account-cleanup-account-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Source</span>
+              <h2>{accountTitle(source)}</h2>
+            </div>
+            <Users size={18} />
+          </div>
+          <AccountCleanupImpactTable account={source} />
+        </section>
+
+        {target ? (
+          <section className="dashboard-panel account-cleanup-account-panel">
+            <div className="dashboard-panel-heading">
+              <div>
+                <span className="eyebrow">Target</span>
+                <h2>{accountTitle(target)}</h2>
+              </div>
+              <ArrowRightLeft size={18} />
+            </div>
+            <AccountCleanupImpactTable account={target} />
+          </section>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function AccountCleanupImpactTable({ account }: { account: AccountCleanupPreviewData['sourceAccount'] }) {
+  return (
+    <>
+      <div className="account-cleanup-contact-strip">
+        <strong>담당자 {formatNumber(account.metrics.contactCount)}명</strong>
+        <span>영향 기록 {formatNumber(account.metrics.recordCount)}건</span>
+        <a href={account.href}>계정 상세</a>
+      </div>
+      <div className="customers-table-wrap account-cleanup-table-wrap">
+        <table className="customers-table account-cleanup-table">
+          <thead>
+            <tr>
+              <th>구분</th>
+              <th>건수</th>
+              <th>금액</th>
+              <th>상세</th>
+            </tr>
+          </thead>
+          <tbody>
+            {account.affectedRecords.map((record) => (
+              <tr key={record.key}>
+                <td><strong>{record.label}</strong></td>
+                <td>{formatNumber(record.count)}</td>
+                <td>{record.amount ? formatWon(record.amount) : '-'}</td>
+                <td>{record.detail || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="account-cleanup-contact-list">
+        {account.contacts.length > 0 ? account.contacts.map((contact) => (
+          <a href={contact.href} key={contact.id}>
+            <strong>{contact.name}</strong>
+            <span>{contact.recordSummary}</span>
+          </a>
+        )) : <DashboardEmpty label="표시할 담당자가 없습니다" />}
+      </div>
+    </>
   );
 }
 
@@ -19781,6 +19988,7 @@ export function App() {
   const currentView = getCurrentView();
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const accountDetailId = currentView === 'customers' ? getAccountDetailId() : null;
+  const accountCleanupPreviewId = currentView === 'customers' ? getAccountCleanupPreviewId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
   const taskDetailId = currentView === 'tasks' ? getTaskDetailId() : null;
@@ -19814,6 +20022,9 @@ export function App() {
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
   const [customerDetailLoading, setCustomerDetailLoading] = useState(Boolean(customerDetailId || accountDetailId));
+  const [accountCleanupPreviewData, setAccountCleanupPreviewData] = useState<AccountCleanupPreviewData | null>(null);
+  const [accountCleanupPreviewLoading, setAccountCleanupPreviewLoading] = useState(Boolean(accountCleanupPreviewId));
+  const [accountCleanupTarget, setAccountCleanupTarget] = useState(getAccountCleanupTargetParam);
   const [customerQuery, setCustomerQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
   const [customerOwner, setCustomerOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
   const [customerPriority, setCustomerPriority] = useState(() => new URLSearchParams(window.location.search).get('priority') || '');
@@ -19831,7 +20042,7 @@ export function App() {
     const value = Number(new URLSearchParams(window.location.search).get('asset') || '0');
     return Number.isFinite(value) && value > 0 ? value : null;
   });
-  const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && !accountDetailId && shouldOpenCreatePanel());
+  const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && !accountDetailId && !accountCleanupPreviewId && shouldOpenCreatePanel());
   const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
   const [customerCreating, setCustomerCreating] = useState(false);
   const [customerCreateError, setCustomerCreateError] = useState('');
@@ -20038,7 +20249,7 @@ export function App() {
   }, [currentView, reportsDateFrom, reportsDateTo, reportsUserId]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId || accountDetailId) {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId) {
       return;
     }
     let alive = true;
@@ -20058,7 +20269,7 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [accountDetailId, currentView, customerDetailId, customerOwner, customerPriority, customerQuery, customerStage]);
+  }, [accountCleanupPreviewId, accountDetailId, currentView, customerDetailId, customerOwner, customerPriority, customerQuery, customerStage]);
 
   useEffect(() => {
     if (currentView !== 'assets') {
@@ -20108,7 +20319,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || (!customerDetailId && !accountDetailId)) {
+    if (currentView !== 'customers' || accountCleanupPreviewId || (!customerDetailId && !accountDetailId)) {
       setCustomerDetailData(null);
       setCustomerDetailLoading(false);
       return;
@@ -20128,10 +20339,30 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [accountDetailId, currentView, customerDetailId]);
+  }, [accountCleanupPreviewId, accountDetailId, currentView, customerDetailId]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId || accountDetailId || !customersData?.create.canCreate) {
+    if (currentView !== 'customers' || !accountCleanupPreviewId) {
+      setAccountCleanupPreviewData(null);
+      setAccountCleanupPreviewLoading(false);
+      return;
+    }
+    let alive = true;
+    setAccountCleanupPreviewLoading(true);
+    loadAccountCleanupPreviewData(accountCleanupPreviewId, accountCleanupTarget).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setAccountCleanupPreviewData(data);
+      setAccountCleanupPreviewLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [accountCleanupPreviewId, accountCleanupTarget, currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId || !customersData?.create.canCreate) {
       return;
     }
     const firstCompanyId = customersData.create.companies[0]?.id;
@@ -20149,7 +20380,7 @@ export function App() {
         priority: previous.priority || firstPriority,
       };
     });
-  }, [accountDetailId, currentView, customerDetailId, customersData]);
+  }, [accountCleanupPreviewId, accountDetailId, currentView, customerDetailId, customersData]);
 
   useEffect(() => {
     if (currentView !== 'notes' || noteDetailId) {
@@ -20744,6 +20975,18 @@ export function App() {
       : await loadCustomerDetailData(customerDetailId as number);
     setCustomerDetailData(data);
     return data;
+  };
+  const updateAccountCleanupTarget = (value: string) => {
+    const nextValue = value.trim();
+    const params = new URLSearchParams(window.location.search);
+    if (nextValue) {
+      params.set('target', nextValue);
+    } else {
+      params.delete('target');
+    }
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    setAccountCleanupTarget(nextValue);
   };
   const handleCustomerCreateOpenChange = (open: boolean) => {
     setCustomerCreateOpen(open);
@@ -21857,6 +22100,20 @@ export function App() {
   }
 
   if (currentView === 'customers') {
+    if (accountCleanupPreviewId) {
+      return (
+        <AppShell activeView={currentView}>
+          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+          <AccountCleanupPreviewPage
+            data={accountCleanupPreviewData}
+            loading={accountCleanupPreviewLoading}
+            targetDepartmentId={accountCleanupTarget}
+            onTargetDepartmentChange={updateAccountCleanupTarget}
+          />
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

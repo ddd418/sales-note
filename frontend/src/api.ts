@@ -303,6 +303,62 @@ export type ReportsDataQuality = {
   contactsWithoutCompany: ReportsDataQualityContact[];
 };
 
+export type AccountCleanupAffectedRecord = {
+  key: string;
+  label: string;
+  count: number;
+  amount: number;
+  detail: string;
+};
+
+export type AccountCleanupPreviewAccount = {
+  id: number | null;
+  name: string;
+  companyId: number | null;
+  companyName: string;
+  href: string;
+  djangoHref: string;
+  metrics: {
+    contactCount: number;
+    recordCount: number;
+    scheduleCount: number;
+    deliveryCount: number;
+    quoteCount: number;
+    quoteAmount: number;
+    historyCount: number;
+    prepaymentCount: number;
+    prepaymentAmount: number;
+    prepaymentBalance: number;
+    prepaymentUsageCount: number;
+    prepaymentUsedAmount: number;
+    assetCount: number;
+    serviceCaseCount: number;
+    calibrationCount: number;
+  };
+  affectedRecords: AccountCleanupAffectedRecord[];
+  contacts: ReportsDataQualityContact[];
+};
+
+export type AccountCleanupPreviewData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  mode: 'source' | 'compare' | string;
+  sourceAccount: AccountCleanupPreviewAccount;
+  targetAccount: AccountCleanupPreviewAccount | null;
+  combined: {
+    metrics: AccountCleanupPreviewAccount['metrics'];
+    description: string;
+  };
+  warnings: string[];
+  links: {
+    sourceAccount: string;
+    reports: string;
+  };
+};
+
 export type ReportsData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -4270,6 +4326,52 @@ const emptyDashboardData: DashboardData = {
   teamActivity: [],
 };
 
+const emptyAccountCleanupPreviewAccount: AccountCleanupPreviewAccount = {
+  id: null,
+  name: '',
+  companyId: null,
+  companyName: '',
+  href: '',
+  djangoHref: '',
+  metrics: {
+    contactCount: 0,
+    recordCount: 0,
+    scheduleCount: 0,
+    deliveryCount: 0,
+    quoteCount: 0,
+    quoteAmount: 0,
+    historyCount: 0,
+    prepaymentCount: 0,
+    prepaymentAmount: 0,
+    prepaymentBalance: 0,
+    prepaymentUsageCount: 0,
+    prepaymentUsedAmount: 0,
+    assetCount: 0,
+    serviceCaseCount: 0,
+    calibrationCount: 0,
+  },
+  affectedRecords: [],
+  contacts: [],
+};
+
+const emptyAccountCleanupPreviewData: AccountCleanupPreviewData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  mode: 'source',
+  sourceAccount: emptyAccountCleanupPreviewAccount,
+  targetAccount: null,
+  combined: {
+    metrics: emptyAccountCleanupPreviewAccount.metrics,
+    description: '',
+  },
+  warnings: [],
+  links: {
+    sourceAccount: '',
+    reports: '/reports/',
+  },
+};
+
 const emptyReportsData: ReportsData = {
   success: false,
   source: 'unavailable',
@@ -6069,6 +6171,86 @@ export async function loadReportsData(params: {
       ...emptyReportsData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Reports API unavailable',
+    };
+  }
+}
+
+function normalizeAccountCleanupPreviewAccount(
+  account?: Partial<AccountCleanupPreviewAccount> | null,
+): AccountCleanupPreviewAccount | null {
+  if (!account) {
+    return null;
+  }
+  return {
+    ...emptyAccountCleanupPreviewAccount,
+    ...account,
+    href: normalizeCoreCrmHref(account.href ?? emptyAccountCleanupPreviewAccount.href),
+    djangoHref: normalizeCoreCrmHref(account.djangoHref ?? emptyAccountCleanupPreviewAccount.djangoHref),
+    metrics: {
+      ...emptyAccountCleanupPreviewAccount.metrics,
+      ...(account.metrics ?? {}),
+    },
+    affectedRecords: account.affectedRecords ?? emptyAccountCleanupPreviewAccount.affectedRecords,
+    contacts: (account.contacts ?? emptyAccountCleanupPreviewAccount.contacts).map((contact) => (
+      normalizeHrefFields(contact, ['href', 'accountHref'])
+    )),
+  };
+}
+
+export async function loadAccountCleanupPreviewData(
+  departmentId: number,
+  targetDepartmentId?: string,
+): Promise<AccountCleanupPreviewData> {
+  const query = new URLSearchParams();
+  if (targetDepartmentId) {
+    query.set('target', targetDepartmentId);
+  }
+
+  try {
+    const response = await fetch(`/reporting/api/accounts/${departmentId}/cleanup-preview/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Account cleanup preview API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<AccountCleanupPreviewData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Account cleanup preview API unavailable: ${response.status}`);
+    }
+    const sourceAccount = normalizeAccountCleanupPreviewAccount(payload.sourceAccount) ?? emptyAccountCleanupPreviewAccount;
+    const targetAccount = normalizeAccountCleanupPreviewAccount(payload.targetAccount);
+    return {
+      ...emptyAccountCleanupPreviewData,
+      ...payload,
+      sourceAccount,
+      targetAccount,
+      combined: {
+        ...emptyAccountCleanupPreviewData.combined,
+        ...(payload.combined ?? {}),
+        metrics: {
+          ...emptyAccountCleanupPreviewData.combined.metrics,
+          ...(payload.combined?.metrics ?? {}),
+        },
+      },
+      warnings: payload.warnings ?? emptyAccountCleanupPreviewData.warnings,
+      links: {
+        ...emptyAccountCleanupPreviewData.links,
+        ...(payload.links ?? {}),
+        sourceAccount: normalizeCoreCrmHref(payload.links?.sourceAccount ?? sourceAccount.href),
+        reports: normalizeCoreCrmHref(payload.links?.reports ?? emptyAccountCleanupPreviewData.links.reports),
+      },
+    };
+  } catch (error) {
+    return {
+      ...emptyAccountCleanupPreviewData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Account cleanup preview API unavailable',
     };
   }
 }

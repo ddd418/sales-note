@@ -1,5 +1,97 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Cleanup Impact Preview
+
+### 요약
+
+- 실제 계정 병합/이관을 만들기 전에 읽기 전용 영향 범위 미리보기를 추가했습니다.
+- `/reporting/api/accounts/<department_id>/cleanup-preview/` API를 추가했습니다.
+- React `/accounts/<department_id>/cleanup-preview/` 화면을 추가했습니다.
+- 계정 상세 상단에 `정리 영향` 링크를 추가했습니다.
+- 선택 계정의 담당자, 일정/납품, 납품 품목, 영업노트, 견적, 선결제, 선결제 차감, 장비, A/S, 교정 이력을 한눈에 확인할 수 있습니다.
+- `?target=<department_id>` 비교로 소스/대상 계정의 단순 합산 영향 범위와 경고를 볼 수 있습니다.
+- 실제 데이터 수정, 병합, 삭제 버튼은 추가하지 않았습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 부서/연구실 계정을 정리하기 전에 어떤 기록이 같이 움직일지 먼저 검수할 수 있습니다.
+- 선결제와 선결제 차감 내역을 별도 항목으로 보여 메모 추정 없이 구조화 기록 기준으로 확인할 수 있습니다.
+- 접근 권한이 없는 대상 계정은 비교할 수 없게 막았습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- `/accounts/<id>/`, `/customers/<id>/`, `/reports/`, 기존 선결제/납품/견적 기능은 유지했습니다.
+- 새 화면은 읽기 전용이며 `/reporting/*` 인증/권한 정책을 유지합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_returns_source_and_target_impact reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target --verbosity=1
+→ Ran 2 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DyMilIGV.js / dist/assets/index-svmweNpr.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local preview /accounts/1/cleanup-preview/
+→ HTTP 200, React bundle index-DyMilIGV.js served
+→ Browser smoke confirmed #root exists at /accounts/1/cleanup-preview/
+```
+
+### 알려진 제한
+
+- 이번 작업은 영향 범위 확인까지만 합니다. 실제 병합/이관 실행 기능은 아직 없습니다.
+- 비교 대상은 현재 부서 ID를 직접 입력하는 방식입니다. 추후 중복 후보에서 대상 선택 UI를 더 편하게 만들 수 있습니다.
+
+### 권장 다음 작업
+
+- `/reports/` 데이터 정리 후보에서 바로 `정리 영향 미리보기`로 이동하는 링크를 추가합니다.
+- 이후 안전장치가 충분히 쌓이면 담당자 병합/기록 이관 실행 API를 단계적으로 추가합니다.
+
+### 운영 배포 상태
+
+- 배포 대상 변경입니다. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 확인합니다.
+
+### 수동 운영 확인 절차
+
+1. [운영 계정 상세](https://sales-note-frontend-production.up.railway.app/accounts/1/) 또는 실제 계정 상세에 접속합니다.
+2. 상단 `정리 영향` 버튼을 누릅니다.
+3. `/accounts/<department_id>/cleanup-preview/`에서 담당자, 납품/일정, 견적, 선결제, 장비, A/S, 교정 건수가 보이는지 확인합니다.
+4. `비교 대상 부서 ID`에 같은 회사의 다른 부서 ID를 넣고 비교했을 때 소스/대상 2개 패널이 보이는지 확인합니다.
+5. 화면에 병합/삭제/이관 실행 버튼이 없는지 확인합니다.
+
 ## 2026-05-22 — Account Prepayment Route
 
 ### 요약
