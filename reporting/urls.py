@@ -310,6 +310,7 @@ urlpatterns = [
     # 선결제 API
     path('api/prepayments/', views.prepayment_api_list, name='prepayment_api_list'),
     path('api/prepayments/create/', views.prepayment_create_api, name='prepayment_create_api'),
+    path('api/prepayments/account/<int:department_id>/', views.prepayment_account_api, name='prepayment_account_api'),
     path('api/prepayments/customer/<int:customer_id>/', views.prepayment_customer_api, name='prepayment_customer_api'),
     path('api/prepayments/<int:pk>/', views.prepayment_detail_api, name='prepayment_detail_api'),
     path('api/prepayments/<int:pk>/update/', views.prepayment_update_api, name='prepayment_update_api'),

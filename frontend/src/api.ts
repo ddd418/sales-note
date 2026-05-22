@@ -894,6 +894,7 @@ export type CustomerPrepaymentSummary = {
   links: {
     prepayments: string;
     createPrepayment: string;
+    accountPrepayments: string;
     customerPrepayments: string;
     djangoCustomerPrepayments: string;
   };
@@ -2399,10 +2400,12 @@ export type PrepaymentCustomerData = {
   };
   links: {
     prepayments: string;
+    reactAccount: string;
     reactCustomer: string;
     djangoList: string;
     djangoCustomer: string;
     djangoExcel: string;
+    accountDetail: string;
     customerDetail: string;
     djangoCustomerDetail: string;
   };
@@ -4656,6 +4659,7 @@ const emptyCustomerDetailData: CustomerDetailData = {
     links: {
       prepayments: '/prepayments/',
       createPrepayment: '/prepayments/new/',
+      accountPrepayments: '',
       customerPrepayments: '',
       djangoCustomerPrepayments: '',
     },
@@ -5343,10 +5347,12 @@ const emptyPrepaymentCustomerData: PrepaymentCustomerData = {
   },
   links: {
     prepayments: '/prepayments/',
+    reactAccount: '',
     reactCustomer: '',
     djangoList: '/reporting/prepayment/',
     djangoCustomer: '',
     djangoExcel: '',
+    accountDetail: '',
     customerDetail: '',
     djangoCustomerDetail: '',
   },
@@ -8047,8 +8053,9 @@ export async function loadPrepaymentCreateData(): Promise<PrepaymentCreateData> 
   }
 }
 
-export async function loadPrepaymentCustomerData(
-  customerId: number,
+async function loadPrepaymentCustomerContext(
+  apiPath: string,
+  unavailableLabel: string,
   targetUserId?: string,
 ): Promise<PrepaymentCustomerData> {
   const query = new URLSearchParams();
@@ -8057,7 +8064,7 @@ export async function loadPrepaymentCustomerData(
   }
 
   try {
-    const response = await fetch(`/reporting/api/prepayments/customer/${customerId}/${query.toString() ? `?${query.toString()}` : ''}`, {
+    const response = await fetch(`${apiPath}${query.toString() ? `?${query.toString()}` : ''}`, {
       credentials: 'include',
       headers: {
         Accept: 'application/json',
@@ -8066,12 +8073,12 @@ export async function loadPrepaymentCustomerData(
     redirectIfLoginRequired(response);
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
-      throw new Error(`Prepayment customer API unavailable: ${response.status}`);
+      throw new Error(`${unavailableLabel}: ${response.status}`);
     }
     const payload = (await response.json()) as Partial<PrepaymentCustomerData>;
     redirectIfLoginRequired(response, payload);
     if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Prepayment customer API unavailable: ${response.status}`);
+      throw new Error(payload.error || payload.message || `${unavailableLabel}: ${response.status}`);
     }
     return {
       ...emptyPrepaymentCustomerData,
@@ -8104,9 +8111,31 @@ export async function loadPrepaymentCustomerData(
     return {
       ...emptyPrepaymentCustomerData,
       generatedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Prepayment customer API unavailable',
+      error: error instanceof Error ? error.message : unavailableLabel,
     };
   }
+}
+
+export async function loadPrepaymentCustomerData(
+  customerId: number,
+  targetUserId?: string,
+): Promise<PrepaymentCustomerData> {
+  return loadPrepaymentCustomerContext(
+    `/reporting/api/prepayments/customer/${customerId}/`,
+    'Prepayment customer API unavailable',
+    targetUserId,
+  );
+}
+
+export async function loadPrepaymentAccountData(
+  departmentId: number,
+  targetUserId?: string,
+): Promise<PrepaymentCustomerData> {
+  return loadPrepaymentCustomerContext(
+    `/reporting/api/prepayments/account/${departmentId}/`,
+    'Prepayment account API unavailable',
+    targetUserId,
+  );
 }
 
 export async function loadPrepaymentDetailData(prepaymentId: number): Promise<PrepaymentDetailData> {

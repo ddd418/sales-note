@@ -3595,6 +3595,10 @@ def _customer_shared_followups_queryset(followup):
 
 def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
     shared_followups = _customer_shared_followups_queryset(followup)
+    account_prepayments_href = (
+        f'/prepayments/account/{followup.department_id}/'
+        if followup.department_id else f'/prepayments/customer/{followup.id}/'
+    )
     base_prepayments = Prepayment.objects.filter(
         customer__in=shared_followups,
         created_by__in=scope_users,
@@ -3634,6 +3638,7 @@ def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
         'links': {
             'prepayments': '/prepayments/',
             'createPrepayment': '/prepayments/new/',
+            'accountPrepayments': account_prepayments_href,
             'customerPrepayments': f'/prepayments/customer/{followup.id}/',
             'djangoCustomerPrepayments': reverse('reporting:prepayment_customer', args=[followup.id]),
         },
@@ -27309,7 +27314,10 @@ def _prepayment_item_payload(prepayment, actor):
         'transferHref': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if owner_id_matches else '',
         'customerHref': f'/customers/{customer.id}/' if customer else '',
         'djangoCustomerHref': reverse('reporting:followup_detail', args=[customer.id]) if customer else '',
-        'customerPrepaymentHref': f'/prepayments/customer/{customer.id}/' if customer else '',
+        'customerPrepaymentHref': (
+            f'/prepayments/account/{department.id}/'
+            if department else f'/prepayments/customer/{customer.id}/' if customer else ''
+        ),
         'djangoCustomerPrepaymentHref': reverse('reporting:prepayment_customer', args=[customer.id]) if customer else '',
     }
 
@@ -27614,6 +27622,9 @@ def _prepayment_customer_context_payload(request, customer):
             for user in get_accessible_users(request.user, request).order_by('first_name', 'username')
         ]
 
+    react_account = f'/prepayments/account/{department.id}/' if department else ''
+    account_detail = f'/accounts/{department.id}/' if department else ''
+
     return {
         'success': True,
         'source': 'django',
@@ -27661,10 +27672,12 @@ def _prepayment_customer_context_payload(request, customer):
         },
         'links': {
             'prepayments': '/prepayments/',
+            'reactAccount': react_account,
             'reactCustomer': f'/prepayments/customer/{customer.id}/',
             'djangoList': reverse('reporting:prepayment_list'),
             'djangoCustomer': reverse('reporting:prepayment_customer', args=[customer.id]),
             'djangoExcel': reverse('reporting:prepayment_customer_excel', args=[customer.id]),
+            'accountDetail': account_detail,
             'customerDetail': f'/customers/{customer.id}/',
             'djangoCustomerDetail': reverse('reporting:followup_detail', args=[customer.id]),
         },
@@ -27673,6 +27686,25 @@ def _prepayment_customer_context_payload(request, customer):
             for prepayment in rows
         ],
     }
+
+
+def _prepayment_account_representative_for_request(request, department):
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    representative = account_representative_followup(department, scope_users)
+    if representative is not None:
+        return representative
+
+    own_prepayment_customer_ids = Prepayment.objects.filter(
+        customer__department=department,
+        created_by__in=scope_users,
+    ).values('customer_id')
+    return (
+        FollowUp.objects.filter(pk__in=own_prepayment_customer_ids)
+        .select_related('company', 'department', 'user')
+        .order_by('-updated_at', '-created_at', '-id')
+        .first()
+    )
 
 
 def _prepayment_request_data(request):
@@ -27963,6 +27995,26 @@ def prepayment_customer_api(request, customer_id):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
 
     return JsonResponse(_prepayment_customer_context_payload(request, customer))
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def prepayment_account_api(request, department_id):
+    """React 부서/연구실 계정 선결제 화면용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    representative = _prepayment_account_representative_for_request(request, department)
+    if representative is None:
+        return JsonResponse({
+            'success': False,
+            'error': '접근 가능한 부서/연구실 계정 선결제가 없습니다.',
+        }, status=403)
+
+    return JsonResponse(_prepayment_customer_context_payload(request, representative))
 
 
 @ensure_csrf_cookie

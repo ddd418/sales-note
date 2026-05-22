@@ -1,5 +1,95 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Prepayment Route
+
+### 요약
+
+- 선결제 화면 흐름을 담당자 기준 URL에서 부서/연구실 계정 기준 URL로 확장했습니다.
+- `/reporting/api/prepayments/account/<department_id>/` API를 추가했습니다.
+- React `/prepayments/account/<department_id>/` 라우트가 계정 선결제 화면을 로드하도록 추가했습니다.
+- 고객/계정 상세의 선결제 버튼을 부서 계정이면 `계정 선결제`로 보이게 했습니다.
+- 선결제 목록/상세의 계정별 링크도 부서가 있으면 `/prepayments/account/<department_id>/`로 연결되게 했습니다.
+- 기존 `/prepayments/customer/<followup_id>/`와 Django 고객별 선결제 route는 호환용으로 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 같은 부서/연구실이면 선결제도 공유된다는 업무 기준이 URL, API, 화면 버튼까지 일관되게 반영됩니다.
+- 운영자는 고객 상세에서 바로 계정 단위 선결제 내역으로 이동할 수 있습니다.
+- AI나 메모 추정이 아니라 기존 구조화 선결제/차감 데이터만 계정 선결제 화면에 표시됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 고객별 선결제 API, Django 선결제 상세/엑셀 route, `/reporting/*` 인증 보호는 유지했습니다.
+- 담당자 ID 기반 React route도 계속 동작합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_scoped_prepayment_summary reporting.tests.PrepaymentCustomerApiTests --verbosity=1
+→ Ran 7 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DhI1Tf5U.js / dist/assets/index-1SaLH-zN.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local preview /prepayments/account/1/
+→ HTTP 200, React bundle index-DhI1Tf5U.js served
+→ Browser smoke confirmed #root exists at /prepayments/account/1/
+```
+
+### 알려진 제한
+
+- Django legacy 화면 URL은 아직 `/reporting/prepayment/customer/<followup_id>/` 이름을 유지합니다.
+- 이번 작업은 계정 선결제 조회 흐름 보강이며, 부서 병합/이관 UI는 아직 추가하지 않았습니다.
+
+### 권장 다음 작업
+
+- 계정 기준 병합/이관 전 영향 범위 미리보기 API를 추가합니다.
+- 이후 선결제 등록/차감 화면에서도 계정 기준 선택 보조 UI를 강화합니다.
+
+### 운영 배포 상태
+
+- 배포 대상 변경입니다. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 확인합니다.
+
+### 수동 운영 확인 절차
+
+1. [운영 고객/계정 상세](https://sales-note-frontend-production.up.railway.app/customers/471/) 또는 `/accounts/<id>/`에 접속합니다.
+2. 선결제 영역의 버튼이 부서 계정이면 `계정 선결제`로 보이는지 확인합니다.
+3. 버튼 클릭 시 `/prepayments/account/<department_id>/` 화면으로 이동하는지 확인합니다.
+4. 계정 선결제 화면에서 같은 부서/연구실 담당자의 선결제 기록이 함께 보이는지 확인합니다.
+5. 기존 `/prepayments/customer/<followup_id>/` 링크도 계속 열리는지 확인합니다.
+
 ## 2026-05-22 — Account Detail Shared Ledger Clarity
 
 ### 요약

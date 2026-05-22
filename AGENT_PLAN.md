@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account prepayment route plan
+
+**Background**:
+
+- User confirmed the latest account-detail deployment and asked to proceed.
+- Account detail now clearly works as a department/lab shared ledger, but the prepayment detail link still routes through `/prepayments/customer/<followup_id>/`.
+- The existing backend customer prepayment payload already aggregates by department when a department exists, but the React URL should also be account-based so operators do not think 선결제 is 담당자-only.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a department/lab account prepayment API at `/reporting/api/prepayments/account/<department_id>/`.
+  - Keep existing customer prepayment API and Django customer prepayment route working as compatibility routes.
+  - Add account prepayment links to customer/account detail and prepayment payloads.
+- Frontend:
+  - Add `/prepayments/account/<department_id>/` routing.
+  - Load the same prepayment customer page with account-scoped API data.
+  - Update account detail action labels/links from 고객별 선결제 to 계정 선결제 where applicable.
+- Tests/docs:
+  - Extend focused prepayment/customer-detail API regression tests.
+  - Run Django checks, migration dry-run, focused tests, React typecheck/build, and diff checks.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Focused customer/prepayment account API tests.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Account detail shared-ledger plan
 
 **Background**:

@@ -216,6 +216,7 @@ import {
   loadNoteDetailData,
   loadNavigationData,
   loadNotesData,
+  loadPrepaymentAccountData,
   loadPrepaymentCreateData,
   loadPrepaymentCustomerData,
   loadPrepaymentDetailData,
@@ -1826,6 +1827,15 @@ function getPrepaymentDetailId(): number | null {
 
 function getPrepaymentCustomerId(): number | null {
   const match = window.location.pathname.match(/^\/prepayments\/customer\/(\d+)\/?$/);
+  if (!match) {
+    return null;
+  }
+  const id = Number(match[1]);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getPrepaymentAccountId(): number | null {
+  const match = window.location.pathname.match(/^\/prepayments\/account\/(\d+)\/?$/);
   if (!match) {
     return null;
   }
@@ -3620,6 +3630,10 @@ function CustomerDetailPage({
       ? '같은 업체/부서/연구실 담당자의 납품, 견적, 선결제, 장비, 서비스 기록을 함께 집계합니다.'
       : '부서/연구실 연결이 없어 이 담당자에게 연결된 기록만 집계합니다.'
   );
+  const prepaymentScopeHref = prepaymentSummary.links.accountPrepayments
+    || prepaymentSummary.links.customerPrepayments
+    || prepaymentSummary.links.djangoCustomerPrepayments;
+  const prepaymentScopeLabel = account.type === 'department' ? '계정 선결제' : '고객별 선결제';
   const accountContactPreview = accountContacts
     .map((contact) => contact.name)
     .filter(Boolean)
@@ -4556,8 +4570,8 @@ function CustomerDetailPage({
               <DashboardEmpty label="이 고객의 선결제가 없습니다" />
             )}
             <div className="customer-prepayment-actions">
-              <a className="route-secondary-action" href={prepaymentSummary.links.customerPrepayments || prepaymentSummary.links.djangoCustomerPrepayments}>
-                고객별 선결제
+              <a className="route-secondary-action" href={prepaymentScopeHref}>
+                {prepaymentScopeLabel}
                 <MoveUpRight size={15} />
               </a>
               <a className="route-secondary-action" href={prepaymentSummary.links.prepayments}>
@@ -12079,7 +12093,7 @@ function PrepaymentsTable({ data }: { data: PrepaymentsData }) {
                   <a className="customer-row-action" href={`/prepayments/${prepayment.id}/`}>상세</a>
                   {prepayment.canManage ? <a className="customer-row-action" href={`/prepayments/${prepayment.id}/edit/`}>수정</a> : null}
                   {prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref ? (
-                    <a className="customer-row-action" href={prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref}>고객별</a>
+                    <a className="customer-row-action" href={prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref}>계정별</a>
                   ) : null}
                   <a className="customer-row-action" href={prepayment.href}>Django</a>
                 </div>
@@ -12243,7 +12257,7 @@ function PrepaymentCustomerPage({
     return (
       <section className="dashboard-loading">
         <Loader2 className="spin-icon" size={24} />
-        <span>고객별 선결제 데이터를 불러오는 중입니다</span>
+        <span>계정 선결제 데이터를 불러오는 중입니다</span>
       </section>
     );
   }
@@ -12252,6 +12266,7 @@ function PrepaymentCustomerPage({
     return null;
   }
 
+  const isAccountScope = data.scope.mode === 'department';
   const metrics = [
     { label: '총 선결제', value: formatWon(data.metrics.totalAmount), detail: `${formatNumber(data.metrics.totalCount)}건`, icon: CircleDollarSign, tone: 'blue' as const },
     { label: '남은 잔액', value: formatWon(data.metrics.totalBalance), detail: `${data.scope.targetUserName || '담당'} 기준`, icon: CheckCircle2, tone: 'green' as const },
@@ -12265,7 +12280,7 @@ function PrepaymentCustomerPage({
         <div className="dashboard-api-alert">
           <AlertTriangle size={18} />
           <div>
-            <strong>고객별 선결제 API에 연결되지 않았습니다</strong>
+            <strong>계정 선결제 API에 연결되지 않았습니다</strong>
             <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
           </div>
           <a href="/reporting/login/">로그인</a>
@@ -12274,16 +12289,17 @@ function PrepaymentCustomerPage({
 
       <div className="dashboard-summary-band">
         <div>
-          <span className="eyebrow">Customer prepayments</span>
-          <h2>{data.scope.name || data.customer.customerName || '고객별 선결제'}</h2>
+          <span className="eyebrow">{isAccountScope ? 'Account prepayments' : 'Customer prepayments'}</span>
+          <h2>{data.scope.name || data.customer.customerName || (isAccountScope ? '계정 선결제' : '고객별 선결제')}</h2>
           <p>
             {[
-              data.scope.mode === 'department' ? '부서 전체 고객 기준' : '고객 기준',
+              isAccountScope ? '부서/연구실 계정 기준' : '고객 기준',
               data.scope.targetUserName ? `${data.scope.targetUserName} 등록분` : '',
             ].filter(Boolean).join(' · ')}
           </p>
         </div>
         <div className="schedules-summary-actions">
+          {data.links.accountDetail ? <a className="route-secondary-action" href={data.links.accountDetail}>계정 상세</a> : null}
           <a className="route-secondary-action" href={data.links.prepayments}>선결제 목록</a>
           <a className="route-secondary-action" href={data.links.djangoCustomer}>Django 고객별</a>
           <a className="route-secondary-action" href={data.links.djangoExcel}>엑셀</a>
@@ -12307,7 +12323,7 @@ function PrepaymentCustomerPage({
         <section className="dashboard-panel prepayments-main-panel">
           <div className="dashboard-panel-heading">
             <div>
-              <span className="eyebrow">Department scope</span>
+              <span className="eyebrow">{isAccountScope ? 'Account scope' : 'Customer scope'}</span>
               <h2>선결제 내역</h2>
             </div>
             {loading ? <Loader2 className="spin-icon" size={18} /> : <CircleDollarSign size={18} />}
@@ -12388,7 +12404,7 @@ function PrepaymentCustomerPage({
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Customers</span>
-              <h2>{data.scope.mode === 'department' ? '부서 고객' : '기준 고객'}</h2>
+              <h2>{isAccountScope ? '계정 담당자' : '기준 고객'}</h2>
             </div>
             <Users size={18} />
           </div>
@@ -12401,7 +12417,7 @@ function PrepaymentCustomerPage({
             ))}
           </div>
           <div className="customers-side-actions">
-            <a href={data.links.customerDetail || data.links.djangoCustomerDetail}>고객 상세</a>
+            <a href={data.links.accountDetail || data.links.customerDetail || data.links.djangoCustomerDetail}>{isAccountScope ? '계정 상세' : '고객 상세'}</a>
             <a href={data.links.djangoCustomerDetail}>Django 고객 상세</a>
             <a href={data.links.djangoCustomer}>Django 고객별 선결제</a>
           </div>
@@ -13150,7 +13166,7 @@ function PrepaymentDetailPage({
           )}
           <div className="customers-side-actions">
             <a href={prepayment.customerHref || prepayment.djangoCustomerHref}>고객 상세</a>
-            <a href={prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref}>고객별 선결제</a>
+            <a href={prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref}>계정별 선결제</a>
             {prepayment.djangoCustomerPrepaymentHref ? <a href={prepayment.djangoCustomerPrepaymentHref}>Django 고객별</a> : null}
             {data.links.djangoTransfer ? <a href={data.links.djangoTransfer}>Django 이관</a> : null}
             {data.links.djangoDelete ? <a href={data.links.djangoDelete}>Django 삭제/취소</a> : null}
@@ -19774,6 +19790,7 @@ export function App() {
   const mailboxDetailRoute = Boolean(mailboxThreadId || mailboxScheduledId);
   const initialMailboxBox = currentView === 'mail' && mailboxScheduledId ? 'scheduled' : currentView === 'mail' ? getMailboxTypeParam() : 'inbox';
   const prepaymentCustomerId = currentView === 'prepayments' ? getPrepaymentCustomerId() : null;
+  const prepaymentAccountId = currentView === 'prepayments' ? getPrepaymentAccountId() : null;
   const prepaymentDetailId = currentView === 'prepayments' ? getPrepaymentDetailId() : null;
   const prepaymentCreateRoute = currentView === 'prepayments' && isPrepaymentCreateRoute();
   const prepaymentEditRoute = currentView === 'prepayments' && isPrepaymentEditRoute();
@@ -19869,9 +19886,9 @@ export function App() {
   );
   const [scheduleRange, setScheduleRange] = useState(() => new URLSearchParams(window.location.search).get('range') || '');
   const [prepaymentsData, setPrepaymentsData] = useState<PrepaymentsData | null>(null);
-  const [prepaymentsLoading, setPrepaymentsLoading] = useState(currentView === 'prepayments' && !prepaymentCustomerId && !prepaymentDetailId && !prepaymentCreateRoute);
+  const [prepaymentsLoading, setPrepaymentsLoading] = useState(currentView === 'prepayments' && !prepaymentAccountId && !prepaymentCustomerId && !prepaymentDetailId && !prepaymentCreateRoute);
   const [prepaymentCustomerData, setPrepaymentCustomerData] = useState<PrepaymentCustomerData | null>(null);
-  const [prepaymentCustomerLoading, setPrepaymentCustomerLoading] = useState(Boolean(prepaymentCustomerId));
+  const [prepaymentCustomerLoading, setPrepaymentCustomerLoading] = useState(Boolean(prepaymentAccountId || prepaymentCustomerId));
   const [prepaymentCustomerUser, setPrepaymentCustomerUser] = useState('');
   const [prepaymentCreateData, setPrepaymentCreateData] = useState<PrepaymentCreateData | null>(null);
   const [prepaymentCreateLoading, setPrepaymentCreateLoading] = useState(prepaymentCreateRoute);
@@ -20292,7 +20309,7 @@ export function App() {
   }, [currentView, scheduleDetailId]);
 
   useEffect(() => {
-    if (currentView !== 'prepayments' || prepaymentCustomerId || prepaymentDetailId || prepaymentCreateRoute) {
+    if (currentView !== 'prepayments' || prepaymentAccountId || prepaymentCustomerId || prepaymentDetailId || prepaymentCreateRoute) {
       return;
     }
     let alive = true;
@@ -20312,17 +20329,20 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, prepaymentCreateRoute, prepaymentCustomerId, prepaymentDataFilter, prepaymentDetailId, prepaymentFilterUser, prepaymentQuery, prepaymentStatus]);
+  }, [currentView, prepaymentAccountId, prepaymentCreateRoute, prepaymentCustomerId, prepaymentDataFilter, prepaymentDetailId, prepaymentFilterUser, prepaymentQuery, prepaymentStatus]);
 
   useEffect(() => {
-    if (currentView !== 'prepayments' || !prepaymentCustomerId) {
+    if (currentView !== 'prepayments' || (!prepaymentAccountId && !prepaymentCustomerId)) {
       setPrepaymentCustomerData(null);
       setPrepaymentCustomerLoading(false);
       return;
     }
     let alive = true;
     setPrepaymentCustomerLoading(true);
-    loadPrepaymentCustomerData(prepaymentCustomerId, prepaymentCustomerUser).then((data) => {
+    const detailRequest = prepaymentAccountId
+      ? loadPrepaymentAccountData(prepaymentAccountId, prepaymentCustomerUser)
+      : loadPrepaymentCustomerData(prepaymentCustomerId as number, prepaymentCustomerUser);
+    detailRequest.then((data) => {
       if (!alive) {
         return;
       }
@@ -20335,7 +20355,7 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, prepaymentCustomerId, prepaymentCustomerUser]);
+  }, [currentView, prepaymentAccountId, prepaymentCustomerId, prepaymentCustomerUser]);
 
   useEffect(() => {
     if (currentView !== 'prepayments' || !prepaymentCreateRoute) {
@@ -22239,7 +22259,7 @@ export function App() {
       );
     }
 
-    if (prepaymentCustomerId) {
+    if (prepaymentAccountId || prepaymentCustomerId) {
       return (
         <AppShell activeView={currentView}>
           <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

@@ -3149,6 +3149,7 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(summary['metrics']['activeCount'], 1)
         self.assertEqual(summary['metrics']['depletedCount'], 1)
         self.assertEqual(summary['links']['prepayments'], '/prepayments/')
+        self.assertEqual(summary['links']['accountPrepayments'], f'/prepayments/account/{target.department_id}/')
         self.assertEqual(summary['links']['customerPrepayments'], f'/prepayments/customer/{target.id}/')
         self.assertTrue(summary['links']['djangoCustomerPrepayments'].endswith(f'/prepayment/customer/{target.id}/'))
         prepayment_ids = {item['id'] for item in summary['recentPrepayments']}
@@ -5776,9 +5777,46 @@ class PrepaymentCustomerApiTests(TestCase):
         self.assertEqual(payload['metrics']['activeCount'], 1)
         self.assertEqual(payload['metrics']['depletedCount'], 1)
         self.assertEqual([item['customerId'] for item in payload['prepayments']], [first.id, second.id])
+        self.assertEqual(payload['links']['reactAccount'], f'/prepayments/account/{department.id}/')
         self.assertEqual(payload['links']['reactCustomer'], f'/prepayments/customer/{first.id}/')
+        self.assertEqual(payload['links']['accountDetail'], f'/accounts/{department.id}/')
         self.assertEqual(payload['links']['djangoExcel'], reverse('reporting:prepayment_customer_excel', args=[first.id]))
-        self.assertEqual(payload['prepayments'][0]['customerPrepaymentHref'], f'/prepayments/customer/{first.id}/')
+        self.assertEqual(payload['prepayments'][0]['customerPrepaymentHref'], f'/prepayments/account/{department.id}/')
+
+    def test_account_prepayment_api_returns_department_scope_and_metrics(self):
+        _company, department, first, second = self._create_department_customers()
+        self._create_prepayment(self.user, first, amount=110000, balance=90000, status='active', payer='계정 첫 입금')
+        self._create_prepayment(self.user, second, amount=220000, balance=20000, status='active', payer='계정 둘째 입금')
+        self._create_prepayment(self.coworker, first, amount=500000, balance=500000, payer='동료 입금')
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:prepayment_account_api', args=[department.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['scope']['mode'], 'department')
+        self.assertEqual(payload['customer']['departmentId'], department.id)
+        self.assertEqual(payload['scope']['targetUserId'], self.user.id)
+        self.assertEqual(payload['metrics']['totalAmount'], 330000)
+        self.assertEqual(payload['metrics']['totalBalance'], 110000)
+        self.assertEqual(payload['metrics']['totalUsed'], 220000)
+        self.assertEqual([item['customerId'] for item in payload['prepayments']], [first.id, second.id])
+        self.assertEqual(payload['links']['reactAccount'], f'/prepayments/account/{department.id}/')
+        self.assertEqual(payload['links']['accountDetail'], f'/accounts/{department.id}/')
+
+    def test_account_prepayment_api_allows_salesman_with_own_prepayment_and_blocks_unrelated(self):
+        _company, department, first, _second = self._create_department_customers(owner=self.coworker)
+        self._create_prepayment(self.user, first, amount=90000, balance=50000, payer='계정 접근 허용 입금')
+
+        self.client.force_login(self.user)
+        allowed = self.client.get(reverse('reporting:prepayment_account_api', args=[department.id]))
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json()['metrics']['totalAmount'], 90000)
+
+        self.client.force_login(self.other_user)
+        blocked = self.client.get(reverse('reporting:prepayment_account_api', args=[department.id]))
+        self.assertEqual(blocked.status_code, 403)
 
     def test_customer_prepayment_api_uses_selected_accessible_user_for_manager(self):
         _company, _department, first, _second = self._create_department_customers()
