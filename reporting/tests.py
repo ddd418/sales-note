@@ -4601,6 +4601,140 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn('assetSummary', payload)
         self.assertIn('recentNotes', payload)
 
+    def test_account_detail_summary_api_includes_management_fields_and_contact_roles(self):
+        from reporting.models import FollowUp
+
+        target = self._create_customer(self.user, '계정관리필드', priority='urgent')
+        target.department.address = '공용 계정 주소'
+        target.department.notes = '공용 계정 메모'
+        target.department.save(update_fields=['address', 'notes'])
+        target.contact_role = FollowUp.CONTACT_ROLE_PI
+        target.save(update_fields=['contact_role'])
+        sibling = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='계정관리필드 세금담당',
+            manager='세금 책임',
+            company=target.company,
+            department=target.department,
+            contact_role=FollowUp.CONTACT_ROLE_TAX_INVOICE,
+            is_active=False,
+            priority='scheduled',
+            pipeline_stage='contact',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:account_detail_summary_api', args=[target.department_id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        account = payload['account']
+        self.assertEqual(account['address'], '공용 계정 주소')
+        self.assertEqual(account['notes'], '공용 계정 메모')
+        self.assertEqual(account['piContactName'], target.customer_name)
+        self.assertEqual(account['contactCount'], 2)
+        self.assertEqual(account['activeContactCount'], 1)
+        self.assertEqual(account['inactiveContactCount'], 1)
+        self.assertTrue(account['management']['canManage'])
+        self.assertEqual(account['management']['accountSubmitUrl'], reverse('reporting:account_update_api', args=[target.department_id]))
+        self.assertEqual(account['management']['contactCreateUrl'], reverse('reporting:account_contact_create_api', args=[target.department_id]))
+        role_values = {option['value'] for option in account['management']['contactRoles']}
+        self.assertEqual(role_values, {'pi', 'practitioner', 'purchasing', 'tax_invoice'})
+        contacts = {contact['id']: contact for contact in account['contacts']}
+        self.assertEqual(contacts[target.id]['contactRoleLabel'], 'PI')
+        self.assertTrue(contacts[target.id]['isActive'])
+        self.assertEqual(contacts[sibling.id]['contactRoleLabel'], '세금계산서 담당자')
+        self.assertFalse(contacts[sibling.id]['isActive'])
+        self.assertTrue(contacts[sibling.id]['updateUrl'].endswith(f'/contacts/{sibling.id}/update/'))
+
+    def test_account_update_api_updates_department_info_and_contact_company(self):
+        from reporting.models import Company, Department, FollowUp
+
+        target = self._create_customer(self.user, '계정정보수정', priority='scheduled')
+        next_company = Company.objects.create(name='계정정보수정 새회사', created_by=self.user)
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:account_update_api', args=[target.department_id]), {
+            'company': str(next_company.id),
+            'department_name': '계정정보수정 새연구실',
+            'address': '새 계정 주소',
+            'notes': '새 계정 메모',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        department = Department.objects.get(id=target.department_id)
+        self.assertEqual(department.company, next_company)
+        self.assertEqual(department.name, '계정정보수정 새연구실')
+        self.assertEqual(department.address, '새 계정 주소')
+        self.assertEqual(department.notes, '새 계정 메모')
+        self.assertEqual(FollowUp.objects.get(id=target.id).company, next_company)
+
+    def test_account_contact_api_creates_moves_and_inactivates_contact(self):
+        from reporting.models import Department, FollowUp
+
+        target = self._create_customer(self.user, '담당자관리', priority='urgent')
+        other_department = Department.objects.create(
+            company=target.company,
+            name='담당자관리 이동연구실',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        create_response = self.client.post(reverse('reporting:account_contact_create_api', args=[target.department_id]), {
+            'customer_name': '구매 담당자',
+            'contact_role': FollowUp.CONTACT_ROLE_PURCHASING,
+            'department': str(target.department_id),
+            'priority': 'scheduled',
+            'status': 'active',
+            'pipeline_stage': 'contact',
+            'phone_number': '010-2222-3333',
+            'email': 'buyer@example.com',
+            'is_active': 'true',
+        })
+
+        self.assertEqual(create_response.status_code, 200)
+        created = FollowUp.objects.get(id=create_response.json()['followup_id'])
+        self.assertEqual(created.department, target.department)
+        self.assertEqual(created.contact_role, FollowUp.CONTACT_ROLE_PURCHASING)
+        self.assertTrue(created.is_active)
+
+        update_response = self.client.post(reverse('reporting:account_contact_update_api', args=[target.department_id, created.id]), {
+            'customer_name': '세금 담당자',
+            'contact_role': FollowUp.CONTACT_ROLE_TAX_INVOICE,
+            'department': str(other_department.id),
+            'priority': 'followup',
+            'status': 'paused',
+            'pipeline_stage': 'quote',
+            'phone_number': '010-4444-5555',
+            'email': 'tax@example.com',
+            'is_active': 'false',
+            'notes': '이동 및 비활성화',
+        })
+
+        self.assertEqual(update_response.status_code, 200)
+        moved = FollowUp.objects.get(id=created.id)
+        self.assertEqual(moved.customer_name, '세금 담당자')
+        self.assertEqual(moved.department, other_department)
+        self.assertEqual(moved.company, other_department.company)
+        self.assertEqual(moved.contact_role, FollowUp.CONTACT_ROLE_TAX_INVOICE)
+        self.assertFalse(moved.is_active)
+        self.assertEqual(moved.status, 'paused')
+        self.assertEqual(moved.pipeline_stage, 'quote')
+
+    def test_account_management_api_blocks_manager(self):
+        target = self._create_customer(self.user, '계정관리권한차단', priority='scheduled')
+        self.client.force_login(self.manager)
+
+        response = self.client.post(reverse('reporting:account_update_api', args=[target.department_id]), {
+            'company': str(target.company_id),
+            'department_name': target.department.name,
+        })
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()['success'])
+
     def test_customer_update_api_updates_customer_for_owner(self):
         from reporting.models import Company, Department, FollowUp
 

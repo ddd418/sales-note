@@ -48,7 +48,7 @@ def account_representative_followup(department, scope_users):
         account_followups_for_department(department)
         .filter(user__in=scope_users)
         .select_related('user', 'company', 'department')
-        .order_by('-updated_at', '-created_at', '-id')
+        .order_by('-is_active', '-updated_at', '-created_at', '-id')
         .first()
     )
 

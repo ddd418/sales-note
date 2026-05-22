@@ -3083,7 +3083,88 @@ def _customers_account_payloads(followups, today, limit=60):
     return rows[:limit]
 
 
-def _customer_account_contact_payload(followup):
+def _account_contact_role_options():
+    return [
+        {'value': value, 'label': label}
+        for value, label in FollowUp.CONTACT_ROLE_CHOICES
+    ]
+
+
+def _parse_form_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on', '활성', 'active'}
+
+
+def _can_manage_department_account(request_user, department):
+    user_profile = get_user_profile(request_user)
+    if user_profile.is_admin():
+        return True
+    if user_profile.is_manager():
+        return False
+    return FollowUp.objects.filter(department=department, user=request_user).exists() or department.created_by_id == request_user.id
+
+
+def _account_management_config(request, user_profile, department, can_manage):
+    if user_profile.is_admin():
+        companies_qs = Company.objects.all()
+    elif user_profile.company:
+        company_users = User.objects.filter(userprofile__company=user_profile.company)
+        companies_qs = Company.objects.filter(
+            Q(created_by__in=company_users) | Q(id=department.company_id)
+        )
+    else:
+        companies_qs = Company.objects.filter(
+            Q(created_by=request.user) | Q(id=department.company_id)
+        )
+
+    companies_qs = companies_qs.distinct().order_by('name')
+    departments_qs = Department.objects.filter(
+        Q(company__in=companies_qs) | Q(id=department.id)
+    ).select_related('company').distinct().order_by('company__name', 'name')
+    departments = list(departments_qs)
+    department_search_map = _customers_department_search_text_map(
+        departments,
+        get_same_company_users(request.user),
+    )
+    return {
+        'canManage': bool(can_manage),
+        'message': '' if can_manage else '계정 관리 권한이 없습니다.',
+        'accountSubmitUrl': reverse('reporting:account_update_api', args=[department.id]),
+        'contactCreateUrl': reverse('reporting:account_contact_create_api', args=[department.id]),
+        'contactRoles': _account_contact_role_options(),
+        'priorities': [
+            {'value': value, 'label': label}
+            for value, label in FollowUp.PRIORITY_CHOICES
+        ],
+        'statuses': [
+            {'value': value, 'label': label}
+            for value, label in FollowUp.STATUS_CHOICES
+        ],
+        'stages': [
+            {'value': value, 'label': label}
+            for value, label in FollowUp.PIPELINE_STAGE_CHOICES
+        ],
+        'companies': [
+            {'id': company.id, 'name': company.name}
+            for company in companies_qs
+        ],
+        'departments': [
+            {
+                'id': department_option.id,
+                'name': department_option.name,
+                'companyId': department_option.company_id,
+                'companyName': department_option.company.name,
+                'searchText': department_search_map.get(department_option.id, ''),
+            }
+            for department_option in departments
+        ],
+    }
+
+
+def _customer_account_contact_payload(followup, can_manage=False):
     phone = followup.phone_number or ''
     email = followup.email or ''
     contact_name = followup.customer_name or followup.manager or '담당자 미정'
@@ -3091,6 +3172,9 @@ def _customer_account_contact_payload(followup):
         'id': followup.id,
         'name': contact_name,
         'manager': followup.manager or '',
+        'contactRole': followup.contact_role,
+        'contactRoleLabel': followup.get_contact_role_display(),
+        'isActive': bool(followup.is_active),
         'email': email,
         'phone': phone,
         'contactSummary': ' · '.join([item for item in [phone, email] if item]),
@@ -3104,22 +3188,60 @@ def _customer_account_contact_payload(followup):
         'pipelineLabel': followup.get_pipeline_stage_display(),
         'address': followup.address or '',
         'notes': (followup.notes or '').strip()[:140],
+        'notesFull': followup.notes or '',
+        'canManage': bool(can_manage),
+        'manageMessage': '' if can_manage else '이 담당자 수정 권한이 없습니다.',
+        'updateUrl': reverse('reporting:account_contact_update_api', args=[followup.department_id, followup.id]) if followup.department_id else '',
         'href': f'/customers/{followup.id}/',
         'djangoHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
 
 
-def _customer_account_payload(followup, shared_followups, scope_users):
+def _customer_account_payload(followup, shared_followups, scope_users, request=None, user_profile=None):
     contacts = list(
         shared_followups.filter(user__in=scope_users).select_related(
             'user', 'company', 'department',
-        ).order_by('customer_name', 'manager', 'id')
+        )
+    )
+    role_order = {
+        FollowUp.CONTACT_ROLE_PI: 0,
+        FollowUp.CONTACT_ROLE_PRACTITIONER: 1,
+        FollowUp.CONTACT_ROLE_PURCHASING: 2,
+        FollowUp.CONTACT_ROLE_TAX_INVOICE: 3,
+    }
+    contacts.sort(
+        key=lambda contact: (
+            not bool(contact.is_active),
+            role_order.get(contact.contact_role, 9),
+            contact.customer_name or contact.manager or '',
+            contact.id,
+        )
     )
     account_id = followup.department_id or followup.id
     account_name = followup.department.name if followup.department else (
         followup.customer_name or followup.manager or '계정명 미정'
     )
     is_department_account = bool(followup.department_id)
+    department = followup.department if is_department_account else None
+    active_contacts = [contact for contact in contacts if contact.is_active]
+    inactive_contacts = [contact for contact in contacts if not contact.is_active]
+    pi_contact = next((contact for contact in contacts if contact.contact_role == FollowUp.CONTACT_ROLE_PI and contact.is_active), None)
+    can_manage_account = bool(request and department and _can_manage_department_account(request.user, department))
+    management = (
+        _account_management_config(request, user_profile or get_user_profile(request.user), department, can_manage_account)
+        if request and department else {
+            'canManage': False,
+            'message': '부서/연구실 계정이 없어 계정 관리를 사용할 수 없습니다.',
+            'accountSubmitUrl': '',
+            'contactCreateUrl': '',
+            'contactRoles': _account_contact_role_options(),
+            'priorities': [],
+            'statuses': [],
+            'stages': [],
+            'companies': [],
+            'departments': [],
+        }
+    )
     return {
         'id': account_id,
         'type': 'department' if is_department_account else 'followup',
@@ -3128,16 +3250,29 @@ def _customer_account_payload(followup, shared_followups, scope_users):
         'companyName': followup.company.name if followup.company else '',
         'departmentId': followup.department_id,
         'departmentName': followup.department.name if followup.department else '',
+        'address': (department.address if department else '') or followup.address or '',
+        'notes': (department.notes if department else '') or followup.notes or '',
         'representativeCustomerId': followup.id,
         'representativeName': followup.customer_name or followup.manager or '대표 담당자 미정',
         'contactCount': len(contacts),
+        'activeContactCount': len(active_contacts),
+        'inactiveContactCount': len(inactive_contacts),
+        'piContactId': pi_contact.id if pi_contact else None,
+        'piContactName': (pi_contact.customer_name or pi_contact.manager) if pi_contact else '',
         'ledgerScopeLabel': '부서/연구실 계정 공유 원장' if is_department_account else '담당자 단일 원장',
         'ledgerScopeDescription': (
             '같은 업체/부서/연구실 담당자의 납품, 견적, 선결제, 장비, 서비스 기록을 함께 집계합니다.'
             if is_department_account else
             '부서/연구실 연결이 없어 이 담당자에게 연결된 기록만 집계합니다.'
         ),
-        'contacts': [_customer_account_contact_payload(contact) for contact in contacts],
+        'management': management,
+        'contacts': [
+            _customer_account_contact_payload(
+                contact,
+                can_manage=bool(request and can_modify_user_data(request.user, contact.user)),
+            )
+            for contact in contacts
+        ],
         'href': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
         'djangoRepresentativeHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
@@ -5138,7 +5273,7 @@ def customer_detail_summary_api(request, followup_id):
             'selectedUserId': selected_user.id if selected_user else None,
         },
         'customer': _customers_followup_payload(detail_followup, today),
-        'account': _customer_account_payload(followup, shared_followups, scope_users),
+        'account': _customer_account_payload(followup, shared_followups, scope_users, request, user_profile),
         'metrics': {
             'recentNotes': notes_qs.count(),
             'upcomingSchedules': upcoming_schedules.count(),
@@ -5201,6 +5336,168 @@ def account_detail_summary_api(request, department_id):
             'error': '접근 가능한 부서/연구실 계정이 없습니다.',
         }, status=403)
     return customer_detail_summary_api(request, representative.id)
+
+
+@never_cache
+@require_POST
+def account_update_api(request, department_id):
+    """React account detail account-level company/department/address/memo update API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    representative = account_representative_followup(department, scope_users)
+    if representative is None:
+        return JsonResponse({'success': False, 'error': '접근 가능한 부서/연구실 계정이 없습니다.'}, status=403)
+    if not can_access_followup(request.user, representative):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+    if not _can_manage_department_account(request.user, department):
+        return JsonResponse({'success': False, 'error': '계정 관리 권한이 없습니다.'}, status=403)
+
+    company_id = request.POST.get('company', '').strip()
+    department_name = request.POST.get('department_name', '').strip()
+    if not company_id:
+        return JsonResponse({'success': False, 'error': '업체/학교를 선택해주세요.'}, status=400)
+    if not department_name:
+        return JsonResponse({'success': False, 'error': '부서/연구실명을 입력해주세요.'}, status=400)
+
+    try:
+        company = Company.objects.get(id=company_id)
+    except Company.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '선택한 업체가 존재하지 않습니다.'}, status=400)
+
+    management = _account_management_config(request, user_profile, department, True)
+    allowed_company_ids = {company_option['id'] for company_option in management['companies']}
+    if company.id not in allowed_company_ids:
+        return JsonResponse({'success': False, 'error': '접근 권한이 없는 업체입니다.'}, status=403)
+    if Department.objects.filter(company=company, name=department_name).exclude(pk=department.id).exists():
+        return JsonResponse({'success': False, 'error': '같은 업체에 동일한 부서/연구실명이 이미 있습니다.'}, status=400)
+
+    with transaction.atomic():
+        department.company = company
+        department.name = department_name
+        department.address = request.POST.get('address', '').strip()
+        department.notes = request.POST.get('notes', '').strip()
+        department.save(update_fields=['company', 'name', 'address', 'notes', 'updated_at'])
+        FollowUp.objects.filter(department=department).exclude(company=company).update(company=company)
+
+    return JsonResponse({
+        'success': True,
+        'departmentId': department.id,
+        'href': f'/accounts/{department.id}/',
+        'message': '계정 정보를 저장했습니다.',
+    })
+
+
+@never_cache
+@require_POST
+def account_contact_save_api(request, department_id, followup_id=None):
+    """Create/update/move/deactivate a contact from the React account detail screen."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    representative = account_representative_followup(department, scope_users)
+    if representative is None:
+        return JsonResponse({'success': False, 'error': '접근 가능한 부서/연구실 계정이 없습니다.'}, status=403)
+    if not can_access_followup(request.user, representative):
+        return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
+
+    contact = None
+    is_create = followup_id is None
+    if is_create:
+        if not _can_manage_department_account(request.user, department):
+            return JsonResponse({'success': False, 'error': '담당자 추가 권한이 없습니다.'}, status=403)
+    else:
+        contact = get_object_or_404(
+            FollowUp.objects.select_related('user', 'company', 'department'),
+            pk=followup_id,
+            department=department,
+        )
+        if not can_modify_user_data(request.user, contact.user):
+            return JsonResponse({'success': False, 'error': '이 담당자 수정 권한이 없습니다.'}, status=403)
+
+    customer_name = request.POST.get('customer_name', '').strip()
+    if not customer_name:
+        return JsonResponse({'success': False, 'error': '담당자명을 입력해주세요.'}, status=400)
+
+    contact_role = request.POST.get('contact_role', '').strip() or FollowUp.CONTACT_ROLE_PRACTITIONER
+    if contact_role not in {value for value, _label in FollowUp.CONTACT_ROLE_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 담당자 역할을 선택해주세요.'}, status=400)
+
+    target_department_id = request.POST.get('department', '').strip() or str(department.id)
+    try:
+        target_department = Department.objects.select_related('company').get(id=target_department_id)
+    except Department.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '이동할 부서/연구실을 찾을 수 없습니다.'}, status=400)
+
+    management = _account_management_config(request, user_profile, department, True)
+    allowed_department_ids = {department_option['id'] for department_option in management['departments']}
+    if target_department.id not in allowed_department_ids:
+        return JsonResponse({'success': False, 'error': '접근 권한이 없는 부서/연구실입니다.'}, status=403)
+
+    priority = request.POST.get('priority', '').strip() or 'scheduled'
+    status = request.POST.get('status', '').strip() or 'active'
+    pipeline_stage = request.POST.get('pipeline_stage', '').strip() or 'potential'
+    if priority not in {value for value, _label in FollowUp.PRIORITY_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 우선순위를 선택해주세요.'}, status=400)
+    if status not in {value for value, _label in FollowUp.STATUS_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 상태를 선택해주세요.'}, status=400)
+    if pipeline_stage not in {value for value, _label in FollowUp.PIPELINE_STAGE_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 파이프라인 단계를 선택해주세요.'}, status=400)
+
+    is_active = _parse_form_bool(request.POST.get('is_active'), True)
+    duplicate_qs = FollowUp.objects.filter(
+        customer_name=customer_name,
+        company=target_department.company,
+        department=target_department,
+        user=request.user if is_create else contact.user,
+    )
+    if contact:
+        duplicate_qs = duplicate_qs.exclude(pk=contact.pk)
+    if duplicate_qs.exists():
+        return JsonResponse({'success': False, 'error': '같은 계정에 동일한 담당자가 이미 있습니다.'}, status=400)
+
+    with transaction.atomic():
+        if is_create:
+            contact = FollowUp(
+                user=request.user,
+                user_company=user_profile.company,
+                company=target_department.company,
+                department=target_department,
+            )
+        contact.customer_name = customer_name
+        contact.manager = request.POST.get('manager', '').strip()
+        contact.contact_role = contact_role
+        contact.phone_number = request.POST.get('phone_number', '').strip()
+        contact.email = request.POST.get('email', '').strip()
+        contact.address = request.POST.get('address', '').strip()
+        contact.notes = request.POST.get('notes', '').strip()
+        contact.priority = priority
+        contact.status = status
+        contact.pipeline_stage = pipeline_stage
+        contact.is_active = is_active
+        contact.company = target_department.company
+        contact.department = target_department
+        contact.save()
+
+    return JsonResponse({
+        'success': True,
+        'followup_id': contact.id,
+        'href': f'/customers/{contact.id}/',
+        'accountHref': f'/accounts/{target_department.id}/',
+        'message': '담당자를 저장했습니다.' if is_create else '담당자 정보를 저장했습니다.',
+        'contact': _customer_account_contact_payload(
+            contact,
+            can_manage=can_modify_user_data(request.user, contact.user),
+        ),
+    })
 
 
 def _account_cleanup_metric_line(key, label, count, detail='', amount=0):

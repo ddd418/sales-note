@@ -960,6 +960,39 @@ export type CustomerEditResponse = {
   href?: string;
 };
 
+export type AccountInfoUpdatePayload = {
+  companyId: number;
+  departmentName: string;
+  address?: string;
+  notes?: string;
+};
+
+export type AccountContactPayload = {
+  address?: string;
+  contactRole: string;
+  customerName: string;
+  departmentId: number;
+  email?: string;
+  isActive: boolean;
+  manager?: string;
+  notes?: string;
+  phoneNumber?: string;
+  pipelineStage: string;
+  priority: string;
+  status: string;
+};
+
+export type AccountMutationResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  departmentId?: number;
+  followup_id?: number;
+  href?: string;
+  accountHref?: string;
+  contact?: CustomerAccountContact;
+};
+
 export type CompanyCreateResponse = {
   success: boolean;
   error?: string;
@@ -1401,10 +1434,26 @@ export type CustomerOperationalRecords = {
   prepaymentRecords: PrepaymentListItem[];
 };
 
+export type CustomerAccountManagementConfig = {
+  canManage: boolean;
+  message: string;
+  accountSubmitUrl: string;
+  contactCreateUrl: string;
+  contactRoles: Array<{ value: string; label: string }>;
+  priorities: Array<{ value: string; label: string }>;
+  statuses: Array<{ value: string; label: string }>;
+  stages: Array<{ value: string; label: string }>;
+  companies: Array<{ id: number; name: string }>;
+  departments: Array<{ id: number; name: string; companyId: number; companyName: string; searchText?: string }>;
+};
+
 export type CustomerAccountContact = {
   id: number;
   name: string;
   manager: string;
+  contactRole: string;
+  contactRoleLabel: string;
+  isActive: boolean;
   email: string;
   phone: string;
   contactSummary: string;
@@ -1418,6 +1467,10 @@ export type CustomerAccountContact = {
   pipelineLabel: string;
   address: string;
   notes: string;
+  notesFull?: string;
+  canManage: boolean;
+  manageMessage: string;
+  updateUrl: string;
   href: string;
   djangoHref: string;
 };
@@ -1430,11 +1483,18 @@ export type CustomerAccountSummary = {
   companyName: string;
   departmentId: number | null;
   departmentName: string;
+  address: string;
+  notes: string;
   representativeCustomerId: number | null;
   representativeName: string;
   contactCount: number;
+  activeContactCount: number;
+  inactiveContactCount: number;
+  piContactId: number | null;
+  piContactName: string;
   ledgerScopeLabel: string;
   ledgerScopeDescription: string;
+  management: CustomerAccountManagementConfig;
   contacts: CustomerAccountContact[];
   href: string;
   djangoRepresentativeHref: string;
@@ -4866,11 +4926,29 @@ const emptyCustomerDetailData: CustomerDetailData = {
     companyName: '',
     departmentId: null,
     departmentName: '',
+    address: '',
+    notes: '',
     representativeCustomerId: null,
     representativeName: '',
     contactCount: 0,
+    activeContactCount: 0,
+    inactiveContactCount: 0,
+    piContactId: null,
+    piContactName: '',
     ledgerScopeLabel: '',
     ledgerScopeDescription: '',
+    management: {
+      canManage: false,
+      message: '',
+      accountSubmitUrl: '',
+      contactCreateUrl: '',
+      contactRoles: [],
+      priorities: [],
+      statuses: [],
+      stages: [],
+      companies: [],
+      departments: [],
+    },
     contacts: [],
     href: '',
     djangoRepresentativeHref: '',
@@ -7178,6 +7256,90 @@ export async function updateCustomer(
   return data;
 }
 
+export async function updateAccountInfo(
+  payload: AccountInfoUpdatePayload,
+  submitUrl: string,
+): Promise<AccountMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('company', String(payload.companyId));
+  body.set('department_name', payload.departmentName);
+  if (payload.address) body.set('address', payload.address);
+  if (payload.notes) body.set('notes', payload.notes);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Account update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AccountMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Account update failed: ${response.status}`);
+  }
+  return {
+    ...data,
+    href: normalizeCoreCrmHref(data.href || ''),
+  };
+}
+
+export async function saveAccountContact(
+  payload: AccountContactPayload,
+  submitUrl: string,
+): Promise<AccountMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('customer_name', payload.customerName);
+  body.set('contact_role', payload.contactRole);
+  body.set('department', String(payload.departmentId));
+  body.set('is_active', payload.isActive ? 'true' : 'false');
+  body.set('priority', payload.priority);
+  body.set('status', payload.status);
+  body.set('pipeline_stage', payload.pipelineStage);
+  if (payload.manager) body.set('manager', payload.manager);
+  if (payload.phoneNumber) body.set('phone_number', payload.phoneNumber);
+  if (payload.email) body.set('email', payload.email);
+  if (payload.address) body.set('address', payload.address);
+  if (payload.notes) body.set('notes', payload.notes);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Account contact API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AccountMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Account contact save failed: ${response.status}`);
+  }
+  return {
+    ...data,
+    href: normalizeCoreCrmHref(data.href || ''),
+    accountHref: normalizeCoreCrmHref(data.accountHref || ''),
+    contact: data.contact ? normalizeHrefFields(data.contact, ['href', 'djangoHref', 'updateUrl']) : undefined,
+  };
+}
+
 async function submitCustomerAssetForm(form: FormData, submitUrl: string): Promise<CustomerAssetMutationResponse> {
   const csrfToken = getCookie('csrftoken');
   const response = await fetch(submitUrl, {
@@ -7499,12 +7661,17 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
       account: {
         ...emptyCustomerDetailData.account,
         ...(payload.account ?? {}),
+        management: {
+          ...emptyCustomerDetailData.account.management,
+          ...(payload.account?.management ?? {}),
+        },
         href: normalizeCoreCrmHref(payload.account?.href ?? emptyCustomerDetailData.account.href),
         djangoRepresentativeHref: normalizeCoreCrmHref(
           payload.account?.djangoRepresentativeHref ?? emptyCustomerDetailData.account.djangoRepresentativeHref,
         ),
         contacts: (payload.account?.contacts ?? emptyCustomerDetailData.account.contacts).map((contact) => ({
           ...contact,
+          updateUrl: normalizeCoreCrmHref(contact.updateUrl),
           href: normalizeCoreCrmHref(contact.href),
           djangoHref: normalizeCoreCrmHref(contact.djangoHref),
         })),

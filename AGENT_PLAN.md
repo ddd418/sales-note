@@ -1,5 +1,52 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account detail management v1 plan
+
+**Background**:
+
+- User wants `/accounts/<id>/` to become the central department/lab account screen, not just a representative contact detail.
+- Business records already share delivery, quote, prepayment, asset, and service ledgers by Department.
+- The missing pieces are account-level address/memo management and explicit contact roles/actions under the account.
+
+**DB change required**: Yes.
+
+- Add account-level `Department.address` and `Department.notes`.
+- Add contact-level `FollowUp.contact_role` with roles:
+  - `pi`: PI
+  - `practitioner`: 실무자
+  - `purchasing`: 구매/행정 담당자
+  - `tax_invoice`: 세금계산서 담당자
+- Add `FollowUp.is_active` so contacts can be preserved but hidden/marked inactive operationally.
+
+**Implementation scope**:
+
+- Backend:
+  - Extend account detail payload with Department address/notes, PI contact, active/inactive contact counts, contact role labels, and account/contact management URLs.
+  - Add account info update API for company, department/lab name, address, memo.
+  - Add account contact create/update API for role, contact details, target department move, active/inactive status, priority, status, and pipeline.
+  - Preserve existing account ledger behavior; moving a contact changes its department and therefore moves linked record scope with the contact.
+  - Keep manager users read-only; sales users can manage their own account contacts; admins can manage all.
+- Frontend:
+  - Add account management forms to `/accounts/<id>/`.
+  - Use searchable company/department selectors so users do not need IDs.
+  - Show contact role badges and active/inactive state.
+  - Add contact create, edit/move, deactivate/reactivate actions from the account screen.
+- Tests/docs:
+  - Add focused tests for account payload role fields, account info update, contact create, contact move, and inactive toggle.
+  - Run backend focused tests, Django checks, migration dry-run, TypeScript/build, and deployment smoke.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\admin.py reporting\tests.py`
+- Focused `CustomersSummaryApiTests` account management tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 AI delivery payment ledger-only answer plan
 
 **Background**:

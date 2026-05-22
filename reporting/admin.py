@@ -48,7 +48,7 @@ class CompanyAdmin(admin.ModelAdmin):
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ('name', 'company', 'created_by', 'created_at')
-    search_fields = ('name', 'company__name')
+    search_fields = ('name', 'company__name', 'address', 'notes')
     list_filter = ('company', 'created_by', 'created_at')
     autocomplete_fields = ['company']
     date_hierarchy = 'created_at'
@@ -115,9 +115,9 @@ class UserProfileAdmin(admin.ModelAdmin):
 # FollowUp 모델 관리자 설정
 @admin.register(FollowUp)
 class FollowUpAdmin(admin.ModelAdmin):
-    list_display = ('customer_name', 'company', 'user', 'status', 'priority', 'created_at', 'updated_at')
-    list_filter = ('status', 'priority', 'user')
-    search_fields = ('customer_name', 'company', 'user__username')
+    list_display = ('customer_name', 'company', 'department', 'contact_role', 'is_active', 'user', 'status', 'priority', 'created_at', 'updated_at')
+    list_filter = ('contact_role', 'is_active', 'status', 'priority', 'user')
+    search_fields = ('customer_name', 'company__name', 'department__name', 'user__username')
     date_hierarchy = 'created_at'
     list_per_page = 20
 

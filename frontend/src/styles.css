@@ -4678,6 +4678,24 @@ h2 {
   gap: 14px;
 }
 
+.account-info-form,
+.account-contact-form {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.customer-account-heading-actions,
+.customer-account-contact-title,
+.customer-account-contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .customer-account-contact-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4693,6 +4711,12 @@ h2 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-soft);
+}
+
+.customer-account-contact-card.inactive {
+  border-style: dashed;
+  background: #f8fafc;
+  opacity: 0.78;
 }
 
 .customer-account-contact-card > div:first-child {
@@ -4743,6 +4767,30 @@ h2 {
   color: var(--text);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.customer-contact-role-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.customer-contact-role-badge.inactive {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.account-info-reference .searchable-select {
+  min-width: 0;
 }
 
 .customer-records-panel {

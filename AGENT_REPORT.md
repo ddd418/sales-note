@@ -1,5 +1,110 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Detail Management v1
+
+### 요약
+
+- `/accounts/<id>/` 계정 상세를 부서/연구실 계정 중심 관리 화면으로 확장했습니다.
+- `Department`에 계정 주소/메모를 추가하고, `FollowUp` 담당자에 역할과 활성 여부를 추가했습니다.
+- 계정 상세 API가 업체, 부서/연구실, PI, 담당자 역할, 활성/비활성 담당자 수, 계정 관리 URL을 함께 내려줍니다.
+- 계정 화면에서 계정 정보 수정, 담당자 추가, 담당자 수정/이동, 비활성화/활성화가 가능하도록 React UI와 API를 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/account_ledger.py`
+- `reporting/admin.py`
+- `reporting/migrations/0110_account_contact_management.py`
+- `reporting/models.py`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 계정 주소/메모가 담당자별 메모가 아니라 부서/연구실 계정 자체에 저장됩니다.
+- 담당자 역할을 `PI`, `실무자`, `구매/행정 담당자`, `세금계산서 담당자`로 구분합니다.
+- 비활성 담당자는 삭제하지 않고 보존하므로 기존 납품, 견적, 선결제, 장비, 서비스 기록 추적이 유지됩니다.
+- 담당자를 다른 부서/연구실 계정으로 이동하면 해당 담당자에 묶인 기록도 새 계정 원장 범위로 함께 이동합니다.
+- 계정/담당자 이동 대상은 검색 가능한 업체/부서 선택 UI를 사용하므로 ID를 직접 알 필요가 없습니다.
+
+### 기존 기능 보존
+
+- 기존 `/customers/<id>/` 담당자 상세 호환 API와 `/reporting/*` 라우트는 유지했습니다.
+- 납품, 견적, 선결제, 장비, 서비스 기록의 부서 기준 집계 로직은 유지했습니다.
+- Manager는 기존처럼 읽기 전용이며, Salesman은 본인 담당자/계정 범위만 수정하고 Admin은 전체 수정 가능합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py makemigrations reporting --name account_contact_management
+→ reporting/migrations/0110_account_contact_management.py 생성
+
+python -m py_compile reporting\models.py reporting\account_ledger.py reporting\views.py reporting\admin.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_account_detail_summary_api_includes_management_fields_and_contact_roles reporting.tests.CustomersSummaryApiTests.test_account_update_api_updates_department_info_and_contact_company reporting.tests.CustomersSummaryApiTests.test_account_contact_api_creates_moves_and_inactivates_contact reporting.tests.CustomersSummaryApiTests.test_account_management_api_blocks_manager --verbosity=1
+→ Ran 4 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 41 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-CYkmkGLK.js / dist/assets/index-VVtzLMDs.css generated
+→ Vite chunk-size warning only
+
+python manage.py migrate --plan
+→ Local DB still has prior 0108/0109 plus new 0110 planned; production had prior migrations applied in earlier deploys
+
+Local browser smoke
+→ http://127.0.0.1:4173/accounts/471/ rendered React shell and account-detail error state; API 502 expected because local Django was not running
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 단계는 계정 상세 v1입니다. 담당자 역할별 전용 필터/탭이나 일괄 이동은 아직 없습니다.
+- 계정 정보에서 업체를 바꾸면 해당 Department에 연결된 FollowUp의 업체도 같이 맞춥니다. 과거 견적/선결제 회사명까지 일괄 재작성하지는 않습니다.
+
+### 권장 다음 작업
+
+- 계정 담당자 역할별 필터와 “PI 없음”, “세금계산서 담당자 없음” 같은 운영 점검 배지를 추가합니다.
+- 계정 이동 전 영향 미리보기와 실제 담당자 이동 API를 더 강하게 연결해, 잘못 이동한 기록을 다시 찾기 쉽게 합니다.
+
+### 운영 배포 상태
+
+- 배포 전: 로컬 검증 완료. 코드 커밋/푸시 후 Railway 배포 상태와 운영 스모크 결과를 이 항목에 갱신합니다.
+
+### 운영 수동 확인 절차
+
+1. [계정 상세](https://sales-note-frontend-production.up.railway.app/accounts/471/)에 접속합니다.
+2. 상단 또는 계정 정보 영역에서 `계정 관리` 버튼이 보이는지 확인합니다.
+3. 계정 주소/메모를 수정하고 저장 후 새로고침해도 유지되는지 확인합니다.
+4. `담당자 추가`에서 역할을 `PI`, `실무자`, `구매/행정 담당자`, `세금계산서 담당자` 중 하나로 선택해 저장합니다.
+5. 담당자 카드에 역할 배지와 활성/비활성 상태가 표시되는지 확인합니다.
+6. 담당자 `수정/이동`에서 부서/연구실 이름으로 검색해 다른 계정으로 이동할 수 있는지 확인합니다.
+7. 담당자를 비활성화해도 기존 납품/견적/선결제 기록이 사라지지 않는지 확인합니다.
+
 ## 2026-05-22 — AI Delivery Payment Ledger-Only Answers
 
 ### 요약

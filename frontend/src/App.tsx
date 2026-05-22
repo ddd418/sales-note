@@ -63,6 +63,9 @@ import {
   CustomerAssetSummary,
   CustomerAssetItem,
   CustomerAssetPayload,
+  AccountContactPayload,
+  AccountInfoUpdatePayload,
+  CustomerAccountContact,
   CustomerCalibrationRecord,
   CustomerCalibrationPayload,
   CustomerDetailData,
@@ -256,6 +259,7 @@ import {
   runAiDepartmentAnalysis,
   runMailboxAction,
   runMailboxSync,
+  saveAccountContact,
   saveCustomerAsset,
   saveCustomerCalibration,
   saveCustomerServiceCase,
@@ -266,6 +270,7 @@ import {
   toggleAIWorkspaceMemory,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
+  updateAccountInfo,
   updateCustomer as updateCustomerRecord,
   updateNote as updateSalesNote,
   updatePrepayment as updateCustomerPrepayment,
@@ -534,6 +539,30 @@ type CustomerEditFormState = {
   priority: string;
   status: string;
 };
+
+type AccountInfoFormState = {
+  address: string;
+  companyId: string;
+  departmentName: string;
+  notes: string;
+};
+
+type AccountContactFormState = {
+  address: string;
+  contactRole: string;
+  customerName: string;
+  departmentId: string;
+  email: string;
+  isActive: boolean;
+  manager: string;
+  notes: string;
+  phoneNumber: string;
+  pipelineStage: string;
+  priority: string;
+  status: string;
+};
+
+type AccountContactEditorMode = '' | 'create' | 'edit';
 
 type CustomerAssetEditorMode = '' | 'asset' | 'service' | 'calibration';
 
@@ -1318,6 +1347,80 @@ const makeCustomerEditForm = (customer: CustomerItem | null): CustomerEditFormSt
   priority: customer?.priority || 'scheduled',
   status: customer?.status || 'active',
 });
+
+const makeAccountInfoForm = (data?: CustomerDetailData | null): AccountInfoFormState => ({
+  address: data?.account.address || '',
+  companyId: data?.account.companyId ? String(data.account.companyId) : '',
+  departmentName: data?.account.departmentName || data?.account.name || '',
+  notes: data?.account.notes || '',
+});
+
+const makeAccountContactForm = (
+  data?: CustomerDetailData | null,
+  contact?: CustomerAccountContact | null,
+): AccountContactFormState => {
+  const management = data?.account.management;
+  return {
+    address: contact?.address || '',
+    contactRole: contact?.contactRole || management?.contactRoles[0]?.value || 'practitioner',
+    customerName: contact?.name || '',
+    departmentId: String(data?.account.departmentId || ''),
+    email: contact?.email || '',
+    isActive: contact?.isActive ?? true,
+    manager: contact?.manager || '',
+    notes: contact?.notesFull || contact?.notes || '',
+    phoneNumber: contact?.phone || '',
+    pipelineStage: contact?.pipelineStage || management?.stages[0]?.value || 'potential',
+    priority: contact?.priority || management?.priorities[0]?.value || 'scheduled',
+    status: contact?.status || management?.statuses[0]?.value || 'active',
+  };
+};
+
+const accountInfoFormToPayload = (form: AccountInfoFormState): { payload: AccountInfoUpdatePayload | null; error: string } => {
+  const companyId = Number(form.companyId);
+  if (!companyId) {
+    return { payload: null, error: '업체/학교를 선택하세요.' };
+  }
+  if (!form.departmentName.trim()) {
+    return { payload: null, error: '부서/연구실명을 입력하세요.' };
+  }
+  return {
+    payload: {
+      address: form.address.trim() || undefined,
+      companyId,
+      departmentName: form.departmentName.trim(),
+      notes: form.notes.trim() || undefined,
+    },
+    error: '',
+  };
+};
+
+const accountContactFormToPayload = (form: AccountContactFormState): { payload: AccountContactPayload | null; error: string } => {
+  const departmentId = Number(form.departmentId);
+  if (!departmentId) {
+    return { payload: null, error: '부서/연구실을 선택하세요.' };
+  }
+  if (!form.customerName.trim()) {
+    return { payload: null, error: '담당자명을 입력하세요.' };
+  }
+  return {
+    payload: {
+      address: form.address.trim() || undefined,
+      contactRole: form.contactRole || 'practitioner',
+      customerName: form.customerName.trim(),
+      departmentId,
+      email: form.email.trim() || undefined,
+      isActive: form.isActive,
+      manager: form.manager.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      phoneNumber: form.phoneNumber.trim() || undefined,
+      pipelineStage: form.pipelineStage || 'potential',
+      priority: form.priority || 'scheduled',
+      status: form.status || 'active',
+    },
+    error: '',
+  };
+};
 
 const getOptionValue = (options: Array<{ value: string }>, fallback: string) => options[0]?.value || fallback;
 
@@ -3320,6 +3423,17 @@ function CustomerDetailPage({
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editMessage, setEditMessage] = useState('');
+  const [accountInfoOpen, setAccountInfoOpen] = useState(false);
+  const [accountInfoForm, setAccountInfoForm] = useState<AccountInfoFormState>(() => makeAccountInfoForm(data));
+  const [accountInfoSaving, setAccountInfoSaving] = useState(false);
+  const [accountInfoError, setAccountInfoError] = useState('');
+  const [accountInfoMessage, setAccountInfoMessage] = useState('');
+  const [accountContactEditor, setAccountContactEditor] = useState<AccountContactEditorMode>('');
+  const [accountContactForm, setAccountContactForm] = useState<AccountContactFormState>(() => makeAccountContactForm(data));
+  const [editingAccountContactId, setEditingAccountContactId] = useState<number | null>(null);
+  const [accountContactSaving, setAccountContactSaving] = useState(false);
+  const [accountContactError, setAccountContactError] = useState('');
+  const [accountContactMessage, setAccountContactMessage] = useState('');
   const [assetEditor, setAssetEditor] = useState<CustomerAssetEditorMode>('');
   const [assetForm, setAssetForm] = useState<CustomerAssetFormState>(() => makeCustomerAssetForm());
   const [serviceCaseForm, setServiceCaseForm] = useState<CustomerServiceCaseFormState>(() => makeCustomerServiceCaseForm());
@@ -3336,6 +3450,17 @@ function CustomerDetailPage({
     setEditError('');
     setEditMessage('');
     setEditOpen(false);
+    setAccountInfoOpen(false);
+    setAccountInfoForm(makeAccountInfoForm(data));
+    setAccountInfoSaving(false);
+    setAccountInfoError('');
+    setAccountInfoMessage('');
+    setAccountContactEditor('');
+    setAccountContactForm(makeAccountContactForm(data));
+    setEditingAccountContactId(null);
+    setAccountContactSaving(false);
+    setAccountContactError('');
+    setAccountContactMessage('');
     setAssetEditor('');
     setAssetForm(makeCustomerAssetForm(null, getOptionValue(data?.assetSummary.options.assetStatuses ?? [], 'active')));
     setServiceCaseForm(makeCustomerServiceCaseForm(data?.assetSummary));
@@ -3346,13 +3471,19 @@ function CustomerDetailPage({
     setAssetSaving(false);
     setAssetError('');
     setAssetMessage('');
-  }, [customer?.id]);
+  }, [customer?.id, data?.account.id]);
 
   const editConfig = data?.edit;
   const editCompanies = editConfig?.companies ?? [];
   const editDepartments = editForm.companyId
     ? (editConfig?.departments ?? []).filter((department) => String(department.companyId) === editForm.companyId)
     : editConfig?.departments ?? [];
+  const accountManagement = data?.account.management;
+  const accountInfoCompanies = accountManagement?.companies ?? [];
+  const accountInfoDepartments = accountInfoForm.companyId
+    ? (accountManagement?.departments ?? []).filter((department) => String(department.companyId) === accountInfoForm.companyId)
+    : accountManagement?.departments ?? [];
+  const contactTargetDepartments = accountManagement?.departments ?? [];
 
   const handleEditFieldChange = (field: keyof CustomerEditFormState, value: string) => {
     setEditForm((previous) => {
@@ -3421,6 +3552,141 @@ function CustomerDetailPage({
       setEditError(error instanceof Error ? error.message : '고객 정보 수정에 실패했습니다.');
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  const handleAccountInfoFieldChange = (field: keyof AccountInfoFormState, value: string) => {
+    setAccountInfoForm((previous) => {
+      return {
+        ...previous,
+        [field]: value,
+      };
+    });
+    setAccountInfoError('');
+    setAccountInfoMessage('');
+  };
+
+  const handleAccountInfoSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!accountManagement?.canManage || accountInfoSaving) {
+      setAccountInfoError(accountManagement?.message || '계정 관리 권한이 없습니다.');
+      return;
+    }
+    if (!accountManagement.accountSubmitUrl) {
+      setAccountInfoError('계정 저장 API가 준비되지 않았습니다.');
+      return;
+    }
+    const { payload, error } = accountInfoFormToPayload(accountInfoForm);
+    if (!payload || error) {
+      setAccountInfoError(error || '계정 정보를 확인하세요.');
+      return;
+    }
+
+    setAccountInfoSaving(true);
+    setAccountInfoError('');
+    setAccountInfoMessage('');
+    try {
+      const result = await updateAccountInfo(payload, accountManagement.accountSubmitUrl);
+      await onRefresh();
+      setAccountInfoMessage(result.message || '계정 정보를 저장했습니다.');
+      setAccountInfoOpen(false);
+    } catch (error) {
+      setAccountInfoError(error instanceof Error ? error.message : '계정 정보 저장에 실패했습니다.');
+    } finally {
+      setAccountInfoSaving(false);
+    }
+  };
+
+  const resetAccountContactFeedback = () => {
+    setAccountContactError('');
+    setAccountContactMessage('');
+  };
+
+  const handleAccountContactFieldChange = (field: keyof AccountContactFormState, value: string | boolean) => {
+    setAccountContactForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+    resetAccountContactFeedback();
+  };
+
+  const openAccountContactCreate = () => {
+    setEditingAccountContactId(null);
+    setAccountContactForm(makeAccountContactForm(data));
+    setAccountContactEditor('create');
+    resetAccountContactFeedback();
+  };
+
+  const openAccountContactEdit = (contact: CustomerAccountContact) => {
+    if (!contact.canManage) {
+      setAccountContactError(contact.manageMessage || '이 담당자 수정 권한이 없습니다.');
+      setAccountContactMessage('');
+      return;
+    }
+    setEditingAccountContactId(contact.id);
+    setAccountContactForm(makeAccountContactForm(data, contact));
+    setAccountContactEditor('edit');
+    resetAccountContactFeedback();
+  };
+
+  const handleAccountContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!accountManagement?.canManage || accountContactSaving) {
+      setAccountContactError(accountManagement?.message || '담당자 관리 권한이 없습니다.');
+      return;
+    }
+    const editingContact = data?.account.contacts.find((contact) => contact.id === editingAccountContactId) ?? null;
+    const submitUrl = editingContact ? editingContact.updateUrl : accountManagement.contactCreateUrl;
+    if (!submitUrl) {
+      setAccountContactError('담당자 저장 API가 준비되지 않았습니다.');
+      return;
+    }
+    const { payload, error } = accountContactFormToPayload(accountContactForm);
+    if (!payload || error) {
+      setAccountContactError(error || '담당자 정보를 확인하세요.');
+      return;
+    }
+
+    setAccountContactSaving(true);
+    resetAccountContactFeedback();
+    try {
+      const result = await saveAccountContact(payload, submitUrl);
+      await onRefresh();
+      setAccountContactMessage(result.message || '담당자 정보를 저장했습니다.');
+      setAccountContactEditor('');
+      setEditingAccountContactId(null);
+    } catch (error) {
+      setAccountContactError(error instanceof Error ? error.message : '담당자 저장에 실패했습니다.');
+    } finally {
+      setAccountContactSaving(false);
+    }
+  };
+
+  const toggleAccountContactActive = async (contact: CustomerAccountContact, isActive: boolean) => {
+    if (!contact.canManage || !contact.updateUrl || accountContactSaving) {
+      setAccountContactError(contact.manageMessage || '이 담당자 수정 권한이 없습니다.');
+      setAccountContactMessage('');
+      return;
+    }
+    const payload = accountContactFormToPayload({
+      ...makeAccountContactForm(data, contact),
+      isActive,
+    }).payload;
+    if (!payload) {
+      setAccountContactError('담당자 정보를 확인하세요.');
+      setAccountContactMessage('');
+      return;
+    }
+    setAccountContactSaving(true);
+    resetAccountContactFeedback();
+    try {
+      const result = await saveAccountContact(payload, contact.updateUrl);
+      await onRefresh();
+      setAccountContactMessage(result.message || (isActive ? '담당자를 활성화했습니다.' : '담당자를 비활성화했습니다.'));
+    } catch (error) {
+      setAccountContactError(error instanceof Error ? error.message : '담당자 상태 변경에 실패했습니다.');
+    } finally {
+      setAccountContactSaving(false);
     }
   };
 
@@ -3680,6 +3946,8 @@ function CustomerDetailPage({
     .filter(Boolean)
     .slice(0, 4)
     .join(', ');
+  const accountAddress = account.address || customerDetail.address || '';
+  const accountNotes = account.notes || customerDetail.notesFull || customerDetail.notes || '';
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
@@ -3720,15 +3988,17 @@ function CustomerDetailPage({
   const customerProfileFields = [
     { label: '업체/학교', value: account.companyName || customerDetail.company },
     { label: '부서/연구실', value: account.departmentName || customerDetail.department },
-    { label: '대표 담당자', value: customerDetail.customer },
+    { label: 'PI', value: account.piContactName || '-' },
+    { label: '대표 담당자', value: account.representativeName || customerDetail.customer },
     { label: '계정 담당자 수', value: account.contactCount ? `${formatNumber(account.contactCount)}명` : '' },
+    { label: '활성/비활성', value: `${formatNumber(account.activeContactCount || account.contactCount)}명 / ${formatNumber(account.inactiveContactCount)}명` },
     { label: '영업 담당자', value: customerDetail.owner },
     { label: '책임자', value: customerDetail.manager },
     { label: '전화번호', value: customerDetail.phone },
     { label: '이메일', value: customerDetail.email },
     { label: '파이프라인', value: customerDetail.pipelineLabel },
   ];
-  const customerDetailNotes = customerDetail.notesFull || customerDetail.notes;
+  const customerDetailNotes = accountNotes;
 
   return (
     <section className="customers-page customer-detail-page">
@@ -3756,6 +4026,18 @@ function CustomerDetailPage({
           ) : null}
           {account.type === 'department' && account.id ? (
             <a className="route-secondary-action" href={`/accounts/${account.id}/cleanup-preview/`}>정리 영향</a>
+          ) : null}
+          {accountManagement?.canManage ? (
+            <>
+              <button className="route-secondary-action" onClick={() => setAccountInfoOpen((open) => !open)} type="button">
+                <Pencil size={15} />
+                계정 관리
+              </button>
+              <button className="route-secondary-action" onClick={openAccountContactCreate} type="button">
+                <Plus size={15} />
+                담당자 추가
+              </button>
+            </>
           ) : null}
           {data.edit.canEdit ? (
             <button className="route-secondary-action" onClick={() => setEditOpen((open) => !open)} type="button">
@@ -3813,15 +4095,93 @@ function CustomerDetailPage({
           ))}
         </dl>
         <div className="customer-profile-text-grid">
-          <article className={`customer-profile-text ${customerDetail.address ? '' : 'empty'}`}>
-            <span>상세주소</span>
-            <p>{customerDetail.address || '등록된 주소 없음'}</p>
+          <article className={`customer-profile-text ${accountAddress ? '' : 'empty'}`}>
+            <span>계정 주소</span>
+            <p>{accountAddress || '등록된 주소 없음'}</p>
           </article>
           <article className={`customer-profile-text ${customerDetailNotes ? '' : 'empty'}`}>
-            <span>상세 내용</span>
+            <span>계정 메모</span>
             <p>{customerDetailNotes || '등록된 상세 내용 없음'}</p>
           </article>
         </div>
+        {accountManagement && !accountManagement.canManage && accountManagement.message ? (
+          <div className="dashboard-api-alert compact">
+            <AlertTriangle size={16} />
+            <span>{accountManagement.message}</span>
+          </div>
+        ) : null}
+        {accountInfoOpen || accountInfoError || accountInfoMessage ? (
+          <form className="notes-create-form account-info-form" onSubmit={handleAccountInfoSubmit}>
+            {accountInfoError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{accountInfoError}</span></div> : null}
+            {accountInfoMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{accountInfoMessage}</span></div> : null}
+            {accountInfoOpen ? (
+              <>
+                <div className="notes-create-grid">
+                  <div className="form-field">
+                    <span>업체/학교</span>
+                    <SearchableSelect
+                      ariaLabel="계정 업체/학교 선택"
+                      onChange={(nextValue) => handleAccountInfoFieldChange('companyId', nextValue)}
+                      options={accountInfoCompanies.map(makeCompanySelectOption)}
+                      placeholder="업체/학교 검색"
+                      value={accountInfoForm.companyId}
+                    />
+                  </div>
+                  <label>
+                    <span>부서/연구실명</span>
+                    <input
+                      onChange={(event) => handleAccountInfoFieldChange('departmentName', event.target.value)}
+                      required
+                      value={accountInfoForm.departmentName}
+                    />
+                  </label>
+                  <div className="form-field account-info-reference">
+                    <span>같은 업체 부서 참고</span>
+                    <SearchableSelect
+                      allowEmpty
+                      ariaLabel="부서/연구실 참고 선택"
+                      disabled={!accountInfoForm.companyId}
+                      emptyLabel="직접 입력 유지"
+                      onChange={(nextValue) => {
+                        const selected = accountInfoDepartments.find((department) => String(department.id) === nextValue);
+                        if (selected) {
+                          handleAccountInfoFieldChange('departmentName', selected.name);
+                        }
+                      }}
+                      options={accountInfoDepartments.map(makeDepartmentSelectOption)}
+                      placeholder={accountInfoForm.companyId ? '기존 부서 검색' : '업체를 먼저 선택'}
+                      value=""
+                    />
+                  </div>
+                  <label>
+                    <span>계정 주소</span>
+                    <input
+                      onChange={(event) => handleAccountInfoFieldChange('address', event.target.value)}
+                      value={accountInfoForm.address}
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span>계정 메모</span>
+                  <textarea
+                    onChange={(event) => handleAccountInfoFieldChange('notes', event.target.value)}
+                    rows={3}
+                    value={accountInfoForm.notes}
+                  />
+                </label>
+                <div className="notes-create-actions">
+                  <button className="route-secondary-action" onClick={() => setAccountInfoOpen(false)} type="button">
+                    취소
+                  </button>
+                  <button className="route-primary-action" disabled={accountInfoSaving} type="submit">
+                    {accountInfoSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                    저장
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </form>
+        ) : null}
       </section>
 
       <section className="dashboard-panel customer-account-panel">
@@ -3830,14 +4190,28 @@ function CustomerDetailPage({
             <span className="eyebrow">Account contacts</span>
             <h2>계정 담당자</h2>
           </div>
-          <Users size={18} />
+          <div className="customer-account-heading-actions">
+            {accountManagement?.canManage ? (
+              <button className="route-secondary-action" onClick={openAccountContactCreate} type="button">
+                <Plus size={15} />
+                담당자 추가
+              </button>
+            ) : null}
+            <Users size={18} />
+          </div>
         </div>
+        {accountContactError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{accountContactError}</span></div> : null}
+        {accountContactMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{accountContactMessage}</span></div> : null}
         {accountContacts.length > 0 ? (
           <div className="customer-account-contact-list">
             {accountContacts.map((contact) => (
-              <article className="customer-account-contact-card" key={contact.id}>
+              <article className={`customer-account-contact-card ${contact.isActive ? '' : 'inactive'}`} key={contact.id}>
                 <div>
-                  <strong>{contact.name}</strong>
+                  <div className="customer-account-contact-title">
+                    <strong>{contact.name}</strong>
+                    <span className="customer-contact-role-badge">{contact.contactRoleLabel || '실무자'}</span>
+                    {!contact.isActive ? <span className="customer-contact-role-badge inactive">비활성</span> : null}
+                  </div>
                   <span>{[contact.manager, contact.ownerName].filter(Boolean).join(' · ') || '담당자 정보 없음'}</span>
                 </div>
                 <dl>
@@ -3858,15 +4232,166 @@ function CustomerDetailPage({
                     <dd>{contact.notes || '상세 내용 없음'}</dd>
                   </div>
                 </dl>
-                <a className="customer-row-action" href={contact.href}>
-                  담당자 상세 <MoveUpRight size={13} />
-                </a>
+                <div className="customer-account-contact-actions">
+                  <a className="customer-row-action" href={contact.href}>
+                    상세 <MoveUpRight size={13} />
+                  </a>
+                  {contact.canManage ? (
+                    <>
+                      <button className="customer-row-action" onClick={() => openAccountContactEdit(contact)} type="button">
+                        수정/이동
+                      </button>
+                      <button
+                        className="customer-row-action"
+                        disabled={accountContactSaving}
+                        onClick={() => toggleAccountContactActive(contact, !contact.isActive)}
+                        type="button"
+                      >
+                        {contact.isActive ? '비활성화' : '활성화'}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </article>
             ))}
           </div>
         ) : (
           <DashboardEmpty label="이 계정에 표시할 담당자가 없습니다" />
         )}
+        {accountContactEditor ? (
+          <form className="notes-create-form account-contact-form" onSubmit={handleAccountContactSubmit}>
+            <div className="dashboard-panel-heading customer-asset-editor-heading">
+              <div>
+                <span className="eyebrow">{accountContactEditor === 'create' ? 'New contact' : 'Edit contact'}</span>
+                <h3>{accountContactEditor === 'create' ? '담당자 추가' : '담당자 수정/이동'}</h3>
+              </div>
+            </div>
+            <div className="notes-create-grid">
+              <label>
+                <span>담당자명</span>
+                <input
+                  onChange={(event) => handleAccountContactFieldChange('customerName', event.target.value)}
+                  required
+                  value={accountContactForm.customerName}
+                />
+              </label>
+              <label>
+                <span>역할</span>
+                <select
+                  onChange={(event) => handleAccountContactFieldChange('contactRole', event.target.value)}
+                  required
+                  value={accountContactForm.contactRole}
+                >
+                  {(accountManagement?.contactRoles ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="form-field">
+                <span>소속 계정</span>
+                <SearchableSelect
+                  ariaLabel="담당자 이동 대상 부서/연구실"
+                  onChange={(nextValue) => handleAccountContactFieldChange('departmentId', nextValue)}
+                  options={contactTargetDepartments.map(makeDepartmentSelectOption)}
+                  placeholder="부서/연구실 검색"
+                  value={accountContactForm.departmentId}
+                />
+              </div>
+              <label>
+                <span>활성 여부</span>
+                <select
+                  onChange={(event) => handleAccountContactFieldChange('isActive', event.target.value === 'true')}
+                  value={accountContactForm.isActive ? 'true' : 'false'}
+                >
+                  <option value="true">활성</option>
+                  <option value="false">비활성</option>
+                </select>
+              </label>
+              <label>
+                <span>PI/책임자</span>
+                <input
+                  onChange={(event) => handleAccountContactFieldChange('manager', event.target.value)}
+                  value={accountContactForm.manager}
+                />
+              </label>
+              <label>
+                <span>연락처</span>
+                <input
+                  onChange={(event) => handleAccountContactFieldChange('phoneNumber', event.target.value)}
+                  value={accountContactForm.phoneNumber}
+                />
+              </label>
+              <label>
+                <span>이메일</span>
+                <input
+                  onChange={(event) => handleAccountContactFieldChange('email', event.target.value)}
+                  type="email"
+                  value={accountContactForm.email}
+                />
+              </label>
+              <label>
+                <span>주소</span>
+                <input
+                  onChange={(event) => handleAccountContactFieldChange('address', event.target.value)}
+                  value={accountContactForm.address}
+                />
+              </label>
+              <label>
+                <span>우선순위</span>
+                <select
+                  onChange={(event) => handleAccountContactFieldChange('priority', event.target.value)}
+                  required
+                  value={accountContactForm.priority}
+                >
+                  {(accountManagement?.priorities ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>상태</span>
+                <select
+                  onChange={(event) => handleAccountContactFieldChange('status', event.target.value)}
+                  required
+                  value={accountContactForm.status}
+                >
+                  {(accountManagement?.statuses ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>파이프라인</span>
+                <select
+                  onChange={(event) => handleAccountContactFieldChange('pipelineStage', event.target.value)}
+                  required
+                  value={accountContactForm.pipelineStage}
+                >
+                  {(accountManagement?.stages ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>담당자 메모</span>
+              <textarea
+                onChange={(event) => handleAccountContactFieldChange('notes', event.target.value)}
+                rows={3}
+                value={accountContactForm.notes}
+              />
+            </label>
+            <div className="notes-create-actions">
+              <button className="route-secondary-action" onClick={() => setAccountContactEditor('')} type="button">
+                취소
+              </button>
+              <button className="route-primary-action" disabled={accountContactSaving} type="submit">
+                {accountContactSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+                저장
+              </button>
+            </div>
+          </form>
+        ) : null}
       </section>
 
       <section className="dashboard-panel customer-records-panel">

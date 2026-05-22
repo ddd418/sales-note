@@ -68,6 +68,8 @@ class Department(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='departments', verbose_name="업체/학교")
     name = models.CharField(max_length=100, verbose_name="부서/연구실명")
     category = models.ForeignKey('CustomerCategory', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="카테고리", help_text="부서 분류 카테고리")
+    address = models.TextField(blank=True, verbose_name="계정 주소")
+    notes = models.TextField(blank=True, verbose_name="계정 메모")
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="생성자")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
@@ -287,6 +289,17 @@ class FollowUp(models.Model):
         ('D', 'D (저관심 고객)'),
     ]
 
+    CONTACT_ROLE_PI = 'pi'
+    CONTACT_ROLE_PRACTITIONER = 'practitioner'
+    CONTACT_ROLE_PURCHASING = 'purchasing'
+    CONTACT_ROLE_TAX_INVOICE = 'tax_invoice'
+    CONTACT_ROLE_CHOICES = [
+        (CONTACT_ROLE_PI, 'PI'),
+        (CONTACT_ROLE_PRACTITIONER, '실무자'),
+        (CONTACT_ROLE_PURCHASING, '구매/행정 담당자'),
+        (CONTACT_ROLE_TAX_INVOICE, '세금계산서 담당자'),
+    ]
+
     PIPELINE_STAGE_CHOICES = [
         ('potential', '잠재'),
         ('contact', '접촉/미팅'),
@@ -302,10 +315,12 @@ class FollowUp(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='followup_companies', verbose_name="업체/학교명")
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='followup_departments', verbose_name="부서/연구실명")
     manager = models.CharField(max_length=100, blank=True, null=True, verbose_name="책임자")
+    contact_role = models.CharField(max_length=20, choices=CONTACT_ROLE_CHOICES, default=CONTACT_ROLE_PRACTITIONER, verbose_name="담당자 역할")
     phone_number = models.CharField(max_length=20, blank=True, null=True, verbose_name="핸드폰 번호")
     email = models.EmailField(blank=True, null=True, verbose_name="메일 주소")
     address = models.TextField(blank=True, null=True, verbose_name="상세주소")
     notes = models.TextField(blank=True, null=True, verbose_name="상세 내용")
+    is_active = models.BooleanField(default=True, verbose_name="활성 담당자")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', verbose_name="상태")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='scheduled', verbose_name="우선순위")
     pipeline_stage = models.CharField(
