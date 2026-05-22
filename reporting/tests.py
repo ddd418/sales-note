@@ -777,7 +777,34 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(payload['sourceAccount']['metrics']['calibrationCount'], 1)
         self.assertEqual(payload['combined']['metrics']['contactCount'], 2)
         self.assertEqual(payload['combined']['metrics']['deliveryCount'], 2)
+        self.assertFalse(payload['mergeReadiness']['canMerge'])
+        self.assertEqual(payload['mergeReadiness']['status'], 'blocked')
+        self.assertEqual(payload['mergeReadiness']['recommendedSurvivingAccount']['id'], target_department.id)
+        self.assertIn(
+            f'/reporting/api/accounts/{self.department.id}/cleanup-preview/?',
+            payload['links']['previewExportJson'],
+        )
+        checklist = {item['key']: item for item in payload['mergeReadiness']['items']}
+        self.assertEqual(checklist['same_company']['status'], 'pass')
+        self.assertEqual(checklist['prepayment_balance']['status'], 'review')
+        self.assertEqual(checklist['prepayment_balance']['amount'], 3000)
+        self.assertEqual(checklist['prepayment_usage']['status'], 'review')
+        self.assertEqual(checklist['prepayment_usage']['amount'], 2000)
+        self.assertEqual(checklist['linked_records']['status'], 'review')
+        self.assertEqual(checklist['export_ready']['status'], 'pass')
+        self.assertEqual(checklist['audit_log_required']['status'], 'blocked')
         self.assertIn('읽기 전용', ' '.join(payload['warnings']))
+
+        export_response = self.client.get(
+            reverse('reporting:account_cleanup_preview_api', args=[self.department.id]),
+            {'target': target_department.id, 'export': '1'},
+        )
+        self.assertEqual(export_response.status_code, 200)
+        self.assertIn('attachment;', export_response['Content-Disposition'])
+        self.assertIn('account-cleanup-preview', export_response['Content-Disposition'])
+        export_payload = json.loads(export_response.content.decode('utf-8'))
+        self.assertEqual(export_payload['mergeReadiness']['status'], 'blocked')
+        self.assertEqual(export_payload['targetAccount']['id'], target_department.id)
 
     def test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target(self):
         other_department = Department.objects.create(

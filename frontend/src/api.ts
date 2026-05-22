@@ -341,6 +341,31 @@ export type AccountCleanupPreviewAccount = {
   contacts: ReportsDataQualityContact[];
 };
 
+export type AccountCleanupChecklistItem = {
+  key: string;
+  label: string;
+  status: 'pass' | 'review' | 'blocked' | string;
+  severity: 'success' | 'warning' | 'danger' | 'info' | string;
+  detail: string;
+  count: number;
+  amount: number;
+};
+
+export type AccountCleanupMergeReadiness = {
+  status: 'ready' | 'review' | 'blocked' | string;
+  statusLabel: string;
+  canMerge: boolean;
+  summary: string;
+  counts: {
+    pass: number;
+    review: number;
+    blocked: number;
+  };
+  recommendedSurvivingAccount: AccountCleanupPreviewAccount | null;
+  exportHref: string;
+  items: AccountCleanupChecklistItem[];
+};
+
 export type AccountCleanupPreviewData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -354,10 +379,12 @@ export type AccountCleanupPreviewData = {
     metrics: AccountCleanupPreviewAccount['metrics'];
     description: string;
   };
+  mergeReadiness: AccountCleanupMergeReadiness;
   warnings: string[];
   links: {
     sourceAccount: string;
     reports: string;
+    previewExportJson: string;
   };
 };
 
@@ -4457,10 +4484,25 @@ const emptyAccountCleanupPreviewData: AccountCleanupPreviewData = {
     metrics: emptyAccountCleanupPreviewAccount.metrics,
     description: '',
   },
+  mergeReadiness: {
+    status: 'blocked',
+    statusLabel: '병합 실행 불가',
+    canMerge: false,
+    summary: '',
+    counts: {
+      pass: 0,
+      review: 0,
+      blocked: 0,
+    },
+    recommendedSurvivingAccount: null,
+    exportHref: '',
+    items: [],
+  },
   warnings: [],
   links: {
     sourceAccount: '',
     reports: '/reports/',
+    previewExportJson: '',
   },
 };
 
@@ -6380,12 +6422,26 @@ export async function loadAccountCleanupPreviewData(
           ...(payload.combined?.metrics ?? {}),
         },
       },
+      mergeReadiness: {
+        ...emptyAccountCleanupPreviewData.mergeReadiness,
+        ...(payload.mergeReadiness ?? {}),
+        counts: {
+          ...emptyAccountCleanupPreviewData.mergeReadiness.counts,
+          ...(payload.mergeReadiness?.counts ?? {}),
+        },
+        recommendedSurvivingAccount: (
+          normalizeAccountCleanupPreviewAccount(payload.mergeReadiness?.recommendedSurvivingAccount)
+        ),
+        exportHref: normalizeCoreCrmHref(payload.mergeReadiness?.exportHref ?? payload.links?.previewExportJson ?? ''),
+        items: payload.mergeReadiness?.items ?? emptyAccountCleanupPreviewData.mergeReadiness.items,
+      },
       warnings: payload.warnings ?? emptyAccountCleanupPreviewData.warnings,
       links: {
         ...emptyAccountCleanupPreviewData.links,
         ...(payload.links ?? {}),
         sourceAccount: normalizeCoreCrmHref(payload.links?.sourceAccount ?? sourceAccount.href),
         reports: normalizeCoreCrmHref(payload.links?.reports ?? emptyAccountCleanupPreviewData.links.reports),
+        previewExportJson: normalizeCoreCrmHref(payload.links?.previewExportJson ?? payload.mergeReadiness?.exportHref ?? ''),
       },
     };
   } catch (error) {

@@ -5417,6 +5417,214 @@ def _account_cleanup_combined_metrics(source_payload, target_payload):
     return combined
 
 
+def _account_cleanup_checklist_item(key, label, status, detail, severity='info', count=0, amount=0):
+    return {
+        'key': key,
+        'label': label,
+        'status': status,
+        'severity': severity,
+        'detail': detail,
+        'count': int(count or 0),
+        'amount': _money_int(amount),
+    }
+
+
+def _account_cleanup_preview_export_href(department_id, target_department_id=None):
+    from urllib.parse import urlencode
+
+    query = {'export': '1'}
+    if target_department_id:
+        query['target'] = target_department_id
+    return f"{reverse('reporting:account_cleanup_preview_api', args=[department_id])}?{urlencode(query)}"
+
+
+def _account_cleanup_merge_readiness(source_payload, target_payload, export_href):
+    source_metrics = source_payload.get('metrics', {})
+    target_metrics = target_payload.get('metrics', {}) if target_payload else {}
+    combined_metrics = (
+        _account_cleanup_combined_metrics(source_payload, target_payload)
+        if target_payload else source_metrics
+    )
+    has_target = bool(target_payload)
+    same_company = bool(
+        has_target
+        and source_payload.get('companyId')
+        and source_payload.get('companyId') == target_payload.get('companyId')
+    )
+    same_department_key = bool(
+        has_target
+        and _reports_cleanup_key(source_payload.get('name'))
+        and _reports_cleanup_key(source_payload.get('name')) == _reports_cleanup_key(target_payload.get('name'))
+    )
+    linked_record_count = sum(
+        int(combined_metrics.get(key, 0) or 0)
+        for key in [
+            'scheduleCount',
+            'historyCount',
+            'quoteCount',
+            'prepaymentCount',
+            'prepaymentUsageCount',
+            'assetCount',
+            'serviceCaseCount',
+            'calibrationCount',
+        ]
+    )
+    prepayment_balance = int(combined_metrics.get('prepaymentBalance', 0) or 0)
+    prepayment_usage_count = int(combined_metrics.get('prepaymentUsageCount', 0) or 0)
+    prepayment_used_amount = int(combined_metrics.get('prepaymentUsedAmount', 0) or 0)
+    source_name = ' · '.join([
+        value for value in [source_payload.get('companyName'), source_payload.get('name')]
+        if value
+    ]) or '소스 계정'
+    target_name = (
+        ' · '.join([
+            value for value in [target_payload.get('companyName'), target_payload.get('name')]
+            if value
+        ])
+        if target_payload else ''
+    ) or '대상 계정 미선택'
+
+    items = [
+        _account_cleanup_checklist_item(
+            'preview_ready',
+            '영향 미리보기 생성',
+            'pass',
+            '담당자, 납품/일정, 견적, 선결제, 장비, 서비스, 교정 건수를 읽기 전용으로 계산했습니다.',
+            'success',
+            linked_record_count,
+        ),
+        _account_cleanup_checklist_item(
+            'target_selected',
+            '대상 계정 선택',
+            'pass' if has_target else 'blocked',
+            f"소스 {source_name} / 대상 {target_name}" if has_target else '병합 전 대상 계정을 먼저 선택해야 합니다.',
+            'success' if has_target else 'danger',
+        ),
+        _account_cleanup_checklist_item(
+            'same_company',
+            '같은 업체/학교 확인',
+            'pass' if same_company else 'blocked',
+            (
+                f"소스와 대상 모두 {source_payload.get('companyName') or '업체명 없음'} 범위입니다."
+                if same_company else '소스와 대상의 업체/학교가 다르거나 대상이 없습니다. 병합하면 안 됩니다.'
+            ),
+            'success' if same_company else 'danger',
+        ),
+        _account_cleanup_checklist_item(
+            'department_identity',
+            '같은 부서/연구실 여부',
+            'pass' if same_department_key else 'review',
+            (
+                '공백/특수문자 제거 기준 부서명이 같습니다.'
+                if same_department_key else '부서/연구실명이 다릅니다. 실제 같은 계정인지 사람이 확인해야 합니다.'
+            ),
+            'success' if same_department_key else 'warning',
+        ),
+        _account_cleanup_checklist_item(
+            'contact_only_difference',
+            '담당자만 다른 건인지',
+            'review',
+            (
+                f"소스 담당자 {int(source_metrics.get('contactCount', 0) or 0)}명"
+                f" / 대상 담당자 {int(target_metrics.get('contactCount', 0) or 0)}명"
+                f" / 영향 기록 {int(combined_metrics.get('recordCount', 0) or 0)}건입니다. 담당자만 분리된 건인지 확인하세요."
+            ),
+            'warning',
+            combined_metrics.get('contactCount', 0),
+        ),
+        _account_cleanup_checklist_item(
+            'prepayment_balance',
+            '선결제 잔액 확인',
+            'review' if prepayment_balance > 0 else 'pass',
+            (
+                f"선결제 잔액 {prepayment_balance:,}원이 있습니다. 잔액이 어느 계정에 남아야 하는지 확인하세요."
+                if prepayment_balance > 0 else '현재 합산 기준 선결제 잔액이 없습니다.'
+            ),
+            'warning' if prepayment_balance > 0 else 'success',
+            combined_metrics.get('prepaymentCount', 0),
+            prepayment_balance,
+        ),
+        _account_cleanup_checklist_item(
+            'prepayment_usage',
+            '선결제 차감 납품 확인',
+            'review' if prepayment_usage_count > 0 or prepayment_used_amount > 0 else 'pass',
+            (
+                f"선결제 차감 {prepayment_usage_count}건 / 차감액 {prepayment_used_amount:,}원이 있습니다. 납품과 차감 내역이 같이 이동해야 합니다."
+                if prepayment_usage_count > 0 or prepayment_used_amount > 0 else '구조화된 선결제 차감 기록이 없습니다.'
+            ),
+            'warning' if prepayment_usage_count > 0 or prepayment_used_amount > 0 else 'success',
+            prepayment_usage_count,
+            prepayment_used_amount,
+        ),
+        _account_cleanup_checklist_item(
+            'linked_records',
+            '견적/납품/장비/서비스 연결 기록',
+            'review' if linked_record_count > 0 else 'pass',
+            (
+                f"견적 {int(combined_metrics.get('quoteCount', 0) or 0)}건"
+                f" · 납품/일정 {int(combined_metrics.get('scheduleCount', 0) or 0)}건"
+                f" · 장비 {int(combined_metrics.get('assetCount', 0) or 0)}대"
+                f" · 서비스 {int(combined_metrics.get('serviceCaseCount', 0) or 0)}건입니다."
+            ),
+            'warning' if linked_record_count > 0 else 'success',
+            linked_record_count,
+        ),
+        _account_cleanup_checklist_item(
+            'surviving_account_name',
+            '병합 후 남길 계정명',
+            'review',
+            (
+                f"현재 검토 기준은 대상 계정명 `{target_name}`을 남기는 흐름입니다. 실제 실행 전 남길 계정명을 확정해야 합니다."
+                if has_target else '대상 계정을 선택한 뒤 남길 계정명을 확정해야 합니다.'
+            ),
+            'warning',
+        ),
+        _account_cleanup_checklist_item(
+            'source_traceability',
+            '원본 기록 추적 가능성',
+            'pass',
+            '미리보기/내보내기 payload에 sourceAccount, targetAccount, 담당자 ID, 영향 record count가 포함됩니다.',
+            'success',
+        ),
+        _account_cleanup_checklist_item(
+            'export_ready',
+            '백업 또는 export 선행',
+            'pass' if export_href else 'blocked',
+            '현재 미리보기 JSON export를 내려받을 수 있습니다.' if export_href else '실행 전 백업 또는 export가 필요합니다.',
+            'success' if export_href else 'danger',
+        ),
+        _account_cleanup_checklist_item(
+            'audit_log_required',
+            'Audit log 준비',
+            'blocked',
+            '실제 병합 API를 만들기 전 누가, 언제, 어떤 source/target/record를 옮겼는지 남기는 audit log 모델 또는 로그 저장소가 필요합니다.',
+            'danger',
+        ),
+    ]
+    blocked_count = sum(1 for item in items if item['status'] == 'blocked')
+    review_count = sum(1 for item in items if item['status'] == 'review')
+    pass_count = sum(1 for item in items if item['status'] == 'pass')
+    return {
+        'status': 'blocked' if blocked_count else ('review' if review_count else 'ready'),
+        'statusLabel': (
+            '병합 실행 불가'
+            if blocked_count else ('수동 확인 필요' if review_count else '실행 전 검토 완료')
+        ),
+        'canMerge': False,
+        'summary': (
+            '현재 단계에서는 실제 병합/이관 실행 버튼을 제공하지 않습니다. Audit log와 실행 전 승인 흐름이 먼저 필요합니다.'
+        ),
+        'counts': {
+            'pass': pass_count,
+            'review': review_count,
+            'blocked': blocked_count,
+        },
+        'recommendedSurvivingAccount': target_payload if target_payload else source_payload,
+        'exportHref': export_href,
+        'items': items,
+    }
+
+
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
@@ -5573,8 +5781,11 @@ def account_cleanup_preview_api(request, department_id):
         _account_cleanup_combined_metrics(source_payload, target_payload)
         if target_payload else source_payload.get('metrics', {})
     )
+    target_department_id = target_payload.get('id') if target_payload else None
+    preview_export_href = _account_cleanup_preview_export_href(department.id, target_department_id)
+    merge_readiness = _account_cleanup_merge_readiness(source_payload, target_payload, preview_export_href)
 
-    return JsonResponse({
+    payload = {
         'success': True,
         'source': 'django',
         'generatedAt': timezone.now().isoformat(),
@@ -5585,12 +5796,22 @@ def account_cleanup_preview_api(request, department_id):
             'metrics': combined_metrics,
             'description': '소스와 대상 계정을 단순 합산한 읽기 전용 영향 범위입니다.' if target_payload else '현재 계정 단독 영향 범위입니다.',
         },
+        'mergeReadiness': merge_readiness,
         'warnings': warnings,
         'links': {
             'sourceAccount': f'/accounts/{department.id}/',
             'reports': '/reports/',
+            'previewExportJson': preview_export_href,
         },
-    })
+    }
+    if (request.GET.get('export') or '').lower() in ['1', 'true', 'yes']:
+        response = JsonResponse(payload, json_dumps_params={'ensure_ascii': False, 'indent': 2})
+        filename = f"account-cleanup-preview-{department.id}"
+        if target_department_id:
+            filename = f"{filename}-target-{target_department_id}"
+        response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
+        return response
+    return JsonResponse(payload)
 
 
 @never_cache

@@ -1,5 +1,94 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Cleanup Pre-Merge Checklist
+
+### 요약
+
+- 실제 계정 병합/이관 버튼을 만들기 전에 `/accounts/<id>/cleanup-preview/`에 병합 전 확인 체크리스트를 추가했습니다.
+- `/reporting/api/accounts/<department_id>/cleanup-preview/` 응답에 `mergeReadiness`를 추가했습니다.
+- 체크리스트는 같은 업체/부서 여부, 담당자만 다른지, 선결제 잔액, 선결제 차감 납품, 견적/납품/장비/서비스 연결 기록, 병합 후 남길 계정명, 원본 추적 가능성, export, audit log 준비 여부를 표시합니다.
+- 실제 병합은 계속 불가능하게 `canMerge=false`로 고정했습니다.
+- `?export=1`을 붙이면 현재 미리보기 payload를 JSON 파일로 내려받을 수 있게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 병합 전 위험 항목이 화면에서 명확히 보입니다.
+- 선결제 잔액과 선결제 차감 납품은 자동으로 `확인 필요` 상태가 됩니다.
+- Audit log가 아직 없으므로 실제 병합 실행은 차단 상태로 남습니다.
+- 미리보기 JSON export를 먼저 저장할 수 있어 향후 병합 승인/백업 절차의 기반이 생겼습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 기존 cleanup preview, 대상 계정 검색, `/reports/` 후보 바로가기는 유지했습니다.
+- 실제 데이터 수정, 병합, 삭제, 이관은 추가하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_returns_source_and_target_impact reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target --verbosity=1
+→ Ran 2 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-COWHRDW2.js / dist/assets/index-B-DaA3FW.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local preview /accounts/1/cleanup-preview/?target=2
+→ HTTP 200 from local preview server
+→ Built bundle contains `병합 전 확인 체크리스트`, `미리보기 JSON export`, and `account-cleanup-checklist`
+```
+
+### 알려진 제한
+
+- Audit log 모델/테이블은 아직 만들지 않았습니다. 그래서 체크리스트는 실제 병합 실행을 계속 차단합니다.
+- JSON export는 현재 preview payload 내보내기입니다. 별도의 전체 DB 백업 생성은 기존 backup API 흐름과 별도입니다.
+
+### 권장 다음 작업
+
+- 실제 병합 API를 만들기 전에 `AccountCleanupAuditLog` 같은 감사 로그 모델과 실행 전 승인/확인 저장 흐름을 설계합니다.
+
+### 운영 배포 상태
+
+- Pending commit/push/Railway deployment.
+
+### 수동 운영 확인 절차
+
+1. `/reports/`의 계정명 유사 후보에서 `정리 영향 미리보기`를 엽니다.
+2. `/accounts/<source>/cleanup-preview/?target=<target>` 화면에 `병합 전 확인 체크리스트`가 보이는지 확인합니다.
+3. 선결제 잔액/차감 납품/견적/납품/장비/서비스 건수가 체크리스트에 표시되는지 확인합니다.
+4. `Audit log 준비` 항목이 차단 상태로 보이고 실제 병합 버튼이 없는지 확인합니다.
+5. `미리보기 JSON export`를 눌러 JSON 파일이 다운로드되는지 확인합니다.
+
 ## 2026-05-22 — Reports Cleanup Candidate Preview Links
 
 ### 요약

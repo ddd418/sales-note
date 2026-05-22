@@ -147,6 +147,7 @@ import {
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
   AccountCleanupPreviewData,
+  AccountCleanupMergeReadiness,
   AccountCleanupSearchResult,
   BusinessCardItem,
   BusinessCardPayload,
@@ -6391,6 +6392,11 @@ function AccountCleanupPreviewPage({
         </div>
       ) : null}
 
+      <AccountCleanupChecklistPanel
+        readiness={data.mergeReadiness}
+        reportsHref={data.links.reports || '/reports/'}
+      />
+
       <section className="dashboard-metric-grid customers-metric-grid reports-metric-grid" aria-label="계정 정리 영향 합산 지표">
         {combinedCards.map((card) => (
           <article className="dashboard-metric-card" key={card.label}>
@@ -6425,6 +6431,70 @@ function AccountCleanupPreviewPage({
             <AccountCleanupImpactTable account={target} />
           </section>
         ) : null}
+      </div>
+    </section>
+  );
+}
+
+function AccountCleanupChecklistPanel({
+  readiness,
+  reportsHref,
+}: {
+  readiness: AccountCleanupMergeReadiness;
+  reportsHref: string;
+}) {
+  const statusClass = readiness.status === 'ready' ? 'ready' : readiness.status === 'review' ? 'review' : 'blocked';
+  const exportHref = readiness.exportHref || '';
+  return (
+    <section className={`dashboard-panel account-cleanup-checklist-panel ${statusClass}`}>
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Pre-merge checklist</span>
+          <h2>병합 전 확인 체크리스트</h2>
+        </div>
+        <ShieldCheck size={18} />
+      </div>
+      <div className="account-cleanup-readiness-summary">
+        <div>
+          <strong>{readiness.statusLabel || '병합 실행 불가'}</strong>
+          <span>{readiness.summary || '실제 병합/이관 버튼은 아직 제공하지 않습니다.'}</span>
+        </div>
+        <div className="account-cleanup-readiness-counts">
+          <span>통과 <strong>{formatNumber(readiness.counts.pass)}</strong></span>
+          <span>확인 <strong>{formatNumber(readiness.counts.review)}</strong></span>
+          <span>차단 <strong>{formatNumber(readiness.counts.blocked)}</strong></span>
+        </div>
+      </div>
+      <div className="account-cleanup-safety-actions">
+        {exportHref ? (
+          <a className="route-secondary-action" href={exportHref}>
+            <Download size={15} />
+            미리보기 JSON export
+          </a>
+        ) : null}
+        <a className="route-secondary-action" href={reportsHref}>
+          <FileSpreadsheet size={15} />
+          리포트로 돌아가기
+        </a>
+      </div>
+      <div className="account-cleanup-checklist-grid">
+        {readiness.items.map((item) => (
+          <article className={`account-cleanup-checklist-item ${item.status}`} key={item.key}>
+            <div>
+              {item.status === 'pass' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+              <strong>{item.label}</strong>
+              <span>{item.status === 'pass' ? '통과' : item.status === 'blocked' ? '차단' : '확인 필요'}</span>
+            </div>
+            <p>{item.detail}</p>
+            {(item.count || item.amount) ? (
+              <small>
+                {item.count ? `건수 ${formatNumber(item.count)}` : ''}
+                {item.count && item.amount ? ' · ' : ''}
+                {item.amount ? `금액 ${formatWon(item.amount)}` : ''}
+              </small>
+            ) : null}
+          </article>
+        ))}
       </div>
     </section>
   );

@@ -1,5 +1,42 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account cleanup pre-merge checklist plan
+
+**Background**:
+
+- User explicitly said a real merge/transfer execution button is dangerous before a checklist exists.
+- Cleanup preview already calculates contacts, schedules/deliveries, quotes, prepayments, prepayment usages, assets, service cases, and calibration counts.
+- Before any future merge, operators need a visible checklist covering account identity, contact-only differences, prepayment risk, linked records, surviving account name, traceability, audit log, and backup/export readiness.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Extend `/reporting/api/accounts/<department_id>/cleanup-preview/` with a read-only `mergeReadiness` checklist.
+  - Add statuses/details for same-company/account identity, contact-only review, prepayment balance, prepayment usage, linked records, surviving account naming, source traceability, preview readiness, export readiness, and audit-log requirement.
+  - Add `?export=1` support to download the same preview payload as JSON before any future merge.
+  - Keep `canMerge` false because there is still no execution API and no merge audit-log model.
+- Frontend:
+  - Render a pre-merge checklist panel on `/accounts/<id>/cleanup-preview/`.
+  - Show the JSON export link and make audit-log requirement explicit.
+  - Keep the page read-only; no merge button.
+- Tests/docs:
+  - Extend account cleanup preview tests for checklist statuses and export response headers.
+  - Run focused backend tests, React typecheck/build, Django checks, migration dry-run, and deployment smoke.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_returns_source_and_target_impact reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Reports cleanup candidate preview-link plan
 
 **Background**:
