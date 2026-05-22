@@ -313,6 +313,7 @@ urlpatterns = [
     path('prepayment/<int:pk>/transfer/', views.prepayment_transfer_view, name='prepayment_transfer'),
     path('prepayment/customer/<int:customer_id>/', views.prepayment_customer_view, name='prepayment_customer'),
     path('prepayment/customer/<int:customer_id>/excel/', views.prepayment_customer_excel, name='prepayment_customer_excel'),
+    path('prepayment/account/<int:department_id>/excel/', views.prepayment_account_excel, name='prepayment_account_excel'),
     path('prepayment/excel/', views.prepayment_list_excel, name='prepayment_list_excel'),
     
     # 선결제 API

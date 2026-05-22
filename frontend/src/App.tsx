@@ -411,6 +411,7 @@ type PrepaymentFormState = {
   amount: string;
   balance: string;
   customerId: string;
+  departmentId: string;
   memo: string;
   payerName: string;
   paymentDate: string;
@@ -882,6 +883,7 @@ const makeEmptyPrepaymentForm = (): PrepaymentFormState => ({
   amount: '',
   balance: '',
   customerId: '',
+  departmentId: '',
   memo: '',
   payerName: '',
   paymentDate: localDateInputValue(),
@@ -893,6 +895,7 @@ const makePrepaymentEditForm = (prepayment: PrepaymentDetailData['prepayment'] |
   amount: prepayment ? String(prepayment.amount) : '',
   balance: prepayment ? String(prepayment.balance) : '',
   customerId: prepayment?.customerId ? String(prepayment.customerId) : '',
+  departmentId: prepayment?.departmentId ? String(prepayment.departmentId) : '',
   memo: prepayment?.memo || '',
   payerName: prepayment?.payerName || '',
   paymentDate: prepayment?.paymentDate || localDateInputValue(),
@@ -13274,7 +13277,7 @@ function PrepaymentsPage({
         <div>
           <span className="eyebrow">Prepayments</span>
           <h2>{data.scope.label || '선결제 현황'}</h2>
-          <p>입금액, 사용액, 잔액을 고객 단위로 확인하고 납품 일정 차감 흐름과 연결합니다.</p>
+          <p>입금액, 사용액, 잔액을 계정 단위로 확인하고 납품 일정 차감 흐름과 연결합니다.</p>
         </div>
         <div className="schedules-summary-actions">
           {data.links.create ? (
@@ -13409,7 +13412,7 @@ function PrepaymentCustomerPage({
           {data.links.accountDetail ? <a className="route-secondary-action" href={data.links.accountDetail}>계정 상세</a> : null}
           <a className="route-secondary-action" href={data.links.prepayments}>선결제 목록</a>
           <a className="route-secondary-action" href={data.links.djangoCustomer}>Django 고객별</a>
-          <a className="route-secondary-action" href={data.links.djangoExcel}>엑셀</a>
+          <a className="route-secondary-action" href={data.links.accountExcel || data.links.djangoExcel}>엑셀</a>
         </div>
       </div>
 
@@ -13530,6 +13533,101 @@ function PrepaymentCustomerPage({
           </div>
         </aside>
       </div>
+
+      <div className="prepayment-drilldown-grid">
+        <section className="dashboard-panel prepayment-usage-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Balance drilldown</span>
+              <h2>계정 잔액</h2>
+            </div>
+            <CheckCircle2 size={18} />
+          </div>
+          {data.balanceRows.length === 0 ? (
+            <DashboardEmpty label="표시할 잔액이 없습니다" />
+          ) : (
+            <div className="prepayment-usage-list">
+              {data.balanceRows.map((row) => (
+                <article className="prepayment-usage-row" key={row.id}>
+                  <div>
+                    <strong>{row.payerName || row.customerName || '입금자 미지정'}</strong>
+                    <span>{[row.paymentDate ? formatDateLabel(row.paymentDate) : '', row.customerName, row.statusLabel].filter(Boolean).join(' · ')}</span>
+                    {row.memo ? <small>{row.memo}</small> : null}
+                  </div>
+                  <div className="prepayment-usage-amount">
+                    <strong>{formatWon(row.balance)}</strong>
+                    <span>원금 {formatWon(row.amount)} · 사용 {formatWon(row.usedAmount)}</span>
+                    <a href={`/prepayments/${row.id}/`}>상세</a>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="dashboard-panel prepayment-usage-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Delivery deductions</span>
+              <h2>납품 차감 내역</h2>
+            </div>
+            <ListChecks size={18} />
+          </div>
+          {data.deductionRows.length === 0 ? (
+            <DashboardEmpty label="납품 차감 내역이 없습니다" />
+          ) : (
+            <div className="prepayment-usage-list">
+              {data.deductionRows.map((usage) => (
+                <article className="prepayment-usage-row" key={usage.id}>
+                  <div>
+                    <strong>{usage.productName || '납품 차감'}</strong>
+                    <span>{[usage.usedAt ? formatDateTimeLabel(usage.usedAt) : '', usage.scheduleDate ? `납품 ${formatDateLabel(usage.scheduleDate)}` : '', usage.payerName].filter(Boolean).join(' · ')}</span>
+                    {usage.deliveryItems.length > 0 ? (
+                      <small>{usage.deliveryItems.map((item) => `${item.itemName} ${formatNumber(item.quantity)}${item.unit || ''}`).join(', ')}</small>
+                    ) : usage.memo ? <small>{usage.memo}</small> : null}
+                  </div>
+                  <div className="prepayment-usage-amount">
+                    <strong>-{formatWon(usage.amount)}</strong>
+                    <span>잔액 {formatWon(usage.remainingBalance)}</span>
+                    {usage.scheduleHref ? <a href={usage.scheduleHref}>일정</a> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="dashboard-panel prepayment-usage-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Ledger</span>
+              <h2>조정/이관/취소 기록</h2>
+            </div>
+            <Activity size={18} />
+          </div>
+          {data.ledgerEntries.length === 0 ? (
+            <DashboardEmpty label="원장 기록이 없습니다" />
+          ) : (
+            <div className="prepayment-usage-list">
+              {data.ledgerEntries.map((entry) => (
+                <article className="prepayment-usage-row" key={entry.id}>
+                  <div>
+                    <strong>{entry.entryTypeLabel}</strong>
+                    <span>{[entry.createdAt ? formatDateTimeLabel(entry.createdAt) : '', entry.actorName, entry.targetUserName ? `대상 ${entry.targetUserName}` : ''].filter(Boolean).join(' · ')}</span>
+                    {entry.memo ? <small>{entry.memo}</small> : null}
+                  </div>
+                  <div className="prepayment-usage-amount">
+                    <strong>{entry.amount < 0 ? '-' : ''}{formatWon(Math.abs(entry.amount))}</strong>
+                    <span>잔액 {formatWon(entry.balanceAfter)}</span>
+                    {entry.prepaymentHref ? <a href={entry.prepaymentHref}>선결제</a> : null}
+                    {entry.scheduleHref ? <a href={entry.scheduleHref}>일정</a> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </section>
   );
 }
@@ -13546,6 +13644,7 @@ function PrepaymentFormFields({
 }: {
   form: PrepaymentFormState;
   options: {
+    accounts: PrepaymentCreateData['create']['accounts'];
     customers: PrepaymentCreateData['create']['customers'];
     paymentMethods: PrepaymentCreateData['create']['paymentMethods'];
     statuses: PrepaymentCreateData['create']['statuses'];
@@ -13557,16 +13656,36 @@ function PrepaymentFormFields({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   secondaryActions?: React.ReactNode;
 }) {
+  const accountOptions = options.accounts.map((account) => ({
+    value: String(account.id),
+    label: account.label || joinOptionParts([account.companyName, account.departmentName || account.name]),
+    meta: `${formatNumber(account.customerCount)}명`,
+    searchText: [account.label, account.companyName, account.departmentName, account.name].filter(Boolean).join(' '),
+  }));
+  const filteredCustomers = form.departmentId
+    ? options.customers.filter((customer) => String(customer.departmentId ?? '') === form.departmentId)
+    : options.customers;
   return (
     <form className="notes-create-form prepayment-form" onSubmit={onSubmit}>
       <div className="notes-create-grid prepayment-form-grid">
         <div className="form-field">
-          <span>고객</span>
+          <span>계정</span>
           <SearchableSelect
-            ariaLabel="고객 선택"
+            ariaLabel="계정 선택"
+            onChange={(nextValue) => onChange('departmentId', nextValue)}
+            options={accountOptions}
+            placeholder="업체, 부서/연구실 검색"
+            value={form.departmentId}
+          />
+        </div>
+        <div className="form-field">
+          <span>담당자</span>
+          <SearchableSelect
+            ariaLabel="담당자 선택"
+            disabled={!form.departmentId}
             onChange={(nextValue) => onChange('customerId', nextValue)}
-            options={options.customers.map(makeCustomerSelectOption)}
-            placeholder="고객, 회사, 부서 검색"
+            options={filteredCustomers.map(makeCustomerSelectOption)}
+            placeholder={form.departmentId ? '담당자 검색' : '계정을 먼저 선택'}
             value={form.customerId}
           />
         </div>
@@ -13672,16 +13791,31 @@ function PrepaymentCreatePage({
   const [createdHref, setCreatedHref] = useState('');
 
   useEffect(() => {
-    if (!data?.create.customers.length || form.customerId) {
+    if (!data?.create.accounts.length || form.departmentId) {
       return;
     }
+    const firstAccount = data.create.accounts[0];
+    const firstCustomer = data.create.customers.find((customer) => customer.departmentId === firstAccount.id);
     setForm((previous) => ({
       ...previous,
-      customerId: String(data.create.customers[0].id),
+      departmentId: String(firstAccount.id),
+      customerId: firstCustomer ? String(firstCustomer.id) : '',
     }));
-  }, [data?.create.customers, form.customerId]);
+  }, [data?.create.accounts, data?.create.customers, form.departmentId]);
 
   const handleChange = (field: keyof PrepaymentFormState, value: string) => {
+    if (field === 'departmentId') {
+      const firstCustomer = data?.create.customers.find((customer) => String(customer.departmentId ?? '') === value);
+      setForm((previous) => ({
+        ...previous,
+        departmentId: value,
+        customerId: firstCustomer ? String(firstCustomer.id) : '',
+      }));
+      setError('');
+      setMessage('');
+      setCreatedHref('');
+      return;
+    }
     setForm((previous) => ({
       ...previous,
       [field]: value,
@@ -13701,9 +13835,14 @@ function PrepaymentCreatePage({
       setError(data.create.message || '등록 권한이 없습니다.');
       return;
     }
+    const departmentId = Number(form.departmentId);
     const customerId = Number(form.customerId);
+    if (!departmentId) {
+      setError('계정을 선택하세요.');
+      return;
+    }
     if (!customerId) {
-      setError('고객을 선택하세요.');
+      setError('담당자를 선택하세요.');
       return;
     }
     if (!form.amount || Number(form.amount) <= 0) {
@@ -13717,6 +13856,7 @@ function PrepaymentCreatePage({
 
     const payload: PrepaymentFormPayload = {
       amount: form.amount,
+      departmentId,
       customerId,
       memo: form.memo.trim() || undefined,
       payerName: form.payerName.trim() || undefined,
@@ -13734,6 +13874,7 @@ function PrepaymentCreatePage({
       setCreatedHref(created.href || (created.prepaymentId ? `/prepayments/${created.prepaymentId}/` : ''));
       setForm((previous) => ({
         ...makeEmptyPrepaymentForm(),
+        departmentId: previous.departmentId,
         customerId: previous.customerId,
       }));
     } catch (submitError) {
@@ -13757,6 +13898,7 @@ function PrepaymentCreatePage({
   }
 
   const formOptions = {
+    accounts: data.create.accounts,
     customers: data.create.customers,
     paymentMethods: data.create.paymentMethods,
     statuses: data.create.statuses,
@@ -13779,7 +13921,7 @@ function PrepaymentCreatePage({
         <div>
           <span className="eyebrow">New prepayment</span>
           <h2>선결제 등록</h2>
-          <p>고객별 입금액을 등록하고 납품 일정에서 차감할 수 있게 준비합니다.</p>
+          <p>계정을 먼저 선택하고 담당자는 보조 정보로 연결해 납품 차감 잔액을 관리합니다.</p>
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/prepayments/">목록</a>
@@ -13869,6 +14011,17 @@ function PrepaymentDetailPage({
   }, [prepayment?.id, transferUserIdsKey]);
 
   const handleChange = (field: keyof PrepaymentFormState, value: string) => {
+    if (field === 'departmentId') {
+      const firstCustomer = data?.edit.customers.find((customer) => String(customer.departmentId ?? '') === value);
+      setForm((previous) => ({
+        ...previous,
+        departmentId: value,
+        customerId: firstCustomer ? String(firstCustomer.id) : '',
+      }));
+      setError('');
+      setMessage('');
+      return;
+    }
     setForm((previous) => ({
       ...previous,
       [field]: value,
@@ -13886,11 +14039,16 @@ function PrepaymentDetailPage({
       setError(data.edit.message || '수정 권한이 없습니다.');
       return;
     }
+    const departmentId = Number(form.departmentId);
     const customerId = Number(form.customerId);
     const amount = Number(form.amount);
     const balance = Number(form.balance);
+    if (!departmentId) {
+      setError('계정을 선택하세요.');
+      return;
+    }
     if (!customerId) {
-      setError('고객을 선택하세요.');
+      setError('담당자를 선택하세요.');
       return;
     }
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -13909,6 +14067,7 @@ function PrepaymentDetailPage({
     const payload: PrepaymentFormPayload = {
       amount: form.amount,
       balance: form.balance,
+      departmentId,
       customerId,
       memo: form.memo.trim() || undefined,
       payerName: form.payerName.trim() || undefined,
@@ -14043,6 +14202,7 @@ function PrepaymentDetailPage({
     { label: '사용 내역', value: `${formatNumber(data.metrics.usageCount)}건`, detail: prepayment.statusLabel, icon: ListChecks, tone: 'teal' as const },
   ];
   const formOptions = {
+    accounts: data.edit.accounts,
     customers: data.edit.customers,
     paymentMethods: data.edit.paymentMethods,
     statuses: data.edit.statuses,

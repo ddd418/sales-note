@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -589,12 +589,11 @@ class ScheduleForm(forms.ModelForm):
         if self.instance.pk and self.instance.followup:
             # 수정 시: 같은 부서의 모든 고객 선결제 목록
             department = self.instance.followup.department
-            same_dept_followups = FollowUp.objects.filter(department=department).values_list('id', flat=True)
             self.fields['prepayment'].queryset = Prepayment.objects.filter(
-                customer_id__in=same_dept_followups,
+                Q(department=department) | Q(department__isnull=True, customer__department=department),
                 status='active',
                 balance__gt=0
-            ).order_by('payment_date')
+            ).select_related('customer').order_by('payment_date')
             # 선결제 옵션 라벨 설정 (고객명 포함)
             self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
         elif 'followup' in self.data:
@@ -604,12 +603,11 @@ class ScheduleForm(forms.ModelForm):
                 followup = FollowUp.objects.get(pk=followup_id)
                 # 생성 시: 같은 부서의 모든 고객 선결제 목록
                 department = followup.department
-                same_dept_followups = FollowUp.objects.filter(department=department).values_list('id', flat=True)
                 self.fields['prepayment'].queryset = Prepayment.objects.filter(
-                    customer_id__in=same_dept_followups,
+                    Q(department=department) | Q(department__isnull=True, customer__department=department),
                     status='active',
                     balance__gt=0
-                ).order_by('payment_date')
+                ).select_related('customer').order_by('payment_date')
                 # 선결제 옵션 라벨 설정 (고객명 포함)
                 self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
             except (ValueError, TypeError, FollowUp.DoesNotExist):
@@ -3735,8 +3733,9 @@ def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
         f'/prepayments/account/{followup.department_id}/'
         if followup.department_id else f'/prepayments/customer/{followup.id}/'
     )
+    account_filter = _prepayment_department_filter(followup.department) if followup.department_id else Q(customer=followup)
     base_prepayments = Prepayment.objects.filter(
-        customer__in=shared_followups,
+        account_filter,
         created_by__in=scope_users,
     )
     stats = base_prepayments.aggregate(
@@ -3751,6 +3750,8 @@ def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
     total_balance = _money_int(stats['total_balance'])
     recent_prepayments = list(
         base_prepayments.select_related(
+            'department',
+            'department__company',
             'company',
             'customer',
             'customer__company',
@@ -4151,11 +4152,12 @@ def _customer_operational_records_payload(followup, scope_users, actor):
         reverse=True,
     )[:50]
 
+    account_filter = _prepayment_department_filter(followup.department) if followup.department_id else Q(customer=followup)
     prepayments_qs = Prepayment.objects.filter(
-        customer__in=shared_followups,
+        account_filter,
         created_by__in=scope_users,
     ).select_related(
-        'company', 'customer', 'customer__company', 'customer__department', 'created_by'
+        'department', 'department__company', 'company', 'customer', 'customer__company', 'customer__department', 'created_by'
     ).annotate(
         usage_count=Count('usages', distinct=True),
     ).order_by('-payment_date', '-created_at', '-id')
@@ -5559,7 +5561,7 @@ def _account_cleanup_preview_account_payload(department, scope_users):
     )
 
     prepayment_qs = Prepayment.objects.filter(
-        customer_id__in=followup_ids,
+        _prepayment_department_filter(department),
         created_by__in=scope_users,
     )
     prepayment_stats = prepayment_qs.aggregate(
@@ -5569,7 +5571,10 @@ def _account_cleanup_preview_account_payload(department, scope_users):
         active_count=Count('id', filter=Q(status='active')),
     )
     usage_stats = PrepaymentUsage.objects.filter(
-        prepayment__customer_id__in=followup_ids,
+        Q(prepayment__department=department) | Q(
+            prepayment__department__isnull=True,
+            prepayment__customer_id__in=followup_ids,
+        ),
         prepayment__created_by__in=scope_users,
     ).aggregate(
         total=Count('id'),
@@ -6273,6 +6278,10 @@ def account_cleanup_department_merge_api(request, department_id):
         assets_updated = CustomerAsset.objects.filter(department=source_department).filter(
             Q(created_by__in=scope_users) | Q(created_by__isnull=True)
         ).update(department=target_department, company=target_department.company, updated_at=now)
+        prepayments_updated = Prepayment.objects.filter(
+            _prepayment_department_filter(source_department),
+            created_by__in=scope_users,
+        ).update(department=target_department, company=target_department.company)
         memos_moved = DepartmentMemo.objects.filter(department=source_department).update(department=target_department)
         source_label = f"Department #{source_department.id} {source_department.company.name} / {source_department.name}"
         target_label = f"Department #{target_department.id} {target_department.company.name} / {target_department.name}"
@@ -6288,6 +6297,7 @@ def account_cleanup_department_merge_api(request, department_id):
             'status': 'completed',
             'followupsUpdated': followups_updated,
             'assetsUpdated': assets_updated,
+            'prepaymentsUpdated': prepayments_updated,
             'departmentMemosMoved': memos_moved,
             'preservationMemosCreated': 2,
         }
@@ -6411,7 +6421,11 @@ def account_cleanup_contact_merge_api(request, followup_id):
         prepayments_updated = Prepayment.objects.filter(
             customer=source_followup,
             created_by__in=scope_users,
-        ).update(customer=target_followup)
+        ).update(
+            customer=target_followup,
+            department=target_followup.department,
+            company=target_followup.company,
+        )
         service_case_ids = list(ServiceCase.objects.filter(followup=source_followup).filter(
             Q(created_by__in=scope_users)
             | Q(assigned_to__in=scope_users)
@@ -9339,24 +9353,30 @@ def _schedules_prepayment_usage_payload(usage):
 
 
 def _schedules_allowed_prepayments_queryset(actor, followup):
+    same_company_users = get_same_company_users(actor)
     if followup.department_id:
-        same_department_followups = FollowUp.objects.filter(department=followup.department)
+        account_filter = Q(department=followup.department) | Q(
+            department__isnull=True,
+            customer__department=followup.department,
+        )
     else:
-        same_department_followups = FollowUp.objects.filter(id=followup.id)
+        account_filter = Q(customer=followup)
 
     return Prepayment.objects.filter(
-        customer_id__in=same_department_followups.values_list('id', flat=True),
-        customer__user__in=get_same_company_users(actor),
-    ).select_related('customer')
+        account_filter,
+    ).filter(
+        Q(created_by__in=same_company_users) | Q(customer__user__in=same_company_users),
+    ).select_related('department', 'customer', 'customer__department')
 
 
 def _schedules_prepayment_option_payload(prepayment, selected_amount=0):
     selected_amount = selected_amount or 0
     available_balance = (prepayment.balance or 0) + selected_amount
     customer = prepayment.customer
+    department = prepayment.department or (customer.department if customer and customer.department_id else None)
     payment_date = _date_or_none(prepayment.payment_date)
     payer_name = prepayment.payer_name or '미지정'
-    customer_name = customer.customer_name or str(customer)
+    customer_name = customer.customer_name or str(customer) if customer else ''
     return {
         'id': prepayment.id,
         'payment_date': payment_date,
@@ -9365,6 +9385,8 @@ def _schedules_prepayment_option_payload(prepayment, selected_amount=0):
         'payerName': payer_name,
         'customer_name': customer_name,
         'customerName': customer_name,
+        'department_name': department.name if department else '',
+        'departmentName': department.name if department else '',
         'amount': _money_int(prepayment.amount),
         'balance': _money_int(prepayment.balance),
         'available_balance': _money_int(available_balance),
@@ -9413,10 +9435,22 @@ def _schedules_restore_prepayments(schedule):
     for usage in usages:
         prepayment = usage.prepayment
         amount = usage.amount or Decimal('0')
+        balance_before = prepayment.balance or Decimal('0')
         prepayment.balance = (prepayment.balance or Decimal('0')) + amount
         if prepayment.status == 'depleted' and prepayment.balance > 0:
             prepayment.status = 'active'
         prepayment.save(update_fields=['balance', 'status'])
+        _prepayment_create_ledger(
+            prepayment,
+            PrepaymentLedgerEntry.ENTRY_RESTORE,
+            actor=getattr(schedule, 'user', None),
+            amount=amount,
+            balance_before=balance_before,
+            balance_after=prepayment.balance,
+            memo=f'일정 선결제 차감 복구: {schedule.visit_date}',
+            schedule=schedule,
+            usage=usage,
+        )
         restored_total += amount
 
     if usages:
@@ -9521,10 +9555,11 @@ def _schedules_apply_prepayments(schedule, actor, raw_items, enforce_delivery_to
             payer_name = prepayment.payer_name or '미지정'
             raise ValueError(f'{payer_name} 선결제 잔액이 부족합니다.')
 
+        balance_before = prepayment.balance
         prepayment.balance -= amount
         prepayment.status = 'depleted' if prepayment.balance <= 0 else 'active'
         prepayment.save(update_fields=['balance', 'status'])
-        PrepaymentUsage.objects.create(
+        usage = PrepaymentUsage.objects.create(
             prepayment=prepayment,
             schedule=schedule,
             schedule_item=first_item,
@@ -9533,6 +9568,17 @@ def _schedules_apply_prepayments(schedule, actor, raw_items, enforce_delivery_to
             amount=amount,
             remaining_balance=prepayment.balance,
             memo=f'React 일정 수정에서 차감: {schedule.visit_date}',
+        )
+        _prepayment_create_ledger(
+            prepayment,
+            PrepaymentLedgerEntry.ENTRY_DELIVERY_DEDUCTION,
+            actor=actor,
+            amount=amount,
+            balance_before=balance_before,
+            balance_after=prepayment.balance,
+            memo=f'납품 일정 차감: {schedule.visit_date}',
+            schedule=schedule,
+            usage=usage,
         )
         total_used += amount
         if first_prepayment is None:
@@ -19231,6 +19277,7 @@ def schedule_create_view(request):
                             # 선결제 잔액 확인
                             if prepayment.balance >= amount:
                                 # 선결제 잔액 차감
+                                balance_before = prepayment.balance
                                 prepayment.balance -= amount
                                 
                                 # 잔액이 0이 되면 상태를 'depleted'로 변경
@@ -19240,7 +19287,7 @@ def schedule_create_view(request):
                                 prepayment.save()
                                 
                                 # PrepaymentUsage 생성
-                                PrepaymentUsage.objects.create(
+                                usage = PrepaymentUsage.objects.create(
                                     prepayment=prepayment,
                                     schedule=schedule,
                                     product_name=f"{schedule.get_activity_type_display()}",
@@ -19248,6 +19295,17 @@ def schedule_create_view(request):
                                     amount=amount,
                                     remaining_balance=prepayment.balance,
                                     memo=f"{schedule.get_activity_type_display()} - {schedule.followup.customer_name}"
+                                )
+                                _prepayment_create_ledger(
+                                    prepayment,
+                                    PrepaymentLedgerEntry.ENTRY_DELIVERY_DEDUCTION,
+                                    actor=request.user,
+                                    amount=amount,
+                                    balance_before=balance_before,
+                                    balance_after=prepayment.balance,
+                                    memo=f"Django 일정 생성 차감: {schedule.visit_date}",
+                                    schedule=schedule,
+                                    usage=usage,
                                 )
                                 
                                 total_prepayment_used += amount
@@ -19397,10 +19455,22 @@ def schedule_edit_view(request, pk):
                 restored_amount = Decimal('0')
                 for usage in existing_usages:
                     prepayment = usage.prepayment
+                    balance_before = prepayment.balance
                     prepayment.balance += usage.amount
                     if prepayment.status == 'depleted' and prepayment.balance > 0:
                         prepayment.status = 'active'
                     prepayment.save()
+                    _prepayment_create_ledger(
+                        prepayment,
+                        PrepaymentLedgerEntry.ENTRY_RESTORE,
+                        actor=request.user,
+                        amount=usage.amount,
+                        balance_before=balance_before,
+                        balance_after=prepayment.balance,
+                        memo=f"Django 일정 수정 차감 복구: {updated_schedule.visit_date}",
+                        schedule=updated_schedule,
+                        usage=usage,
+                    )
                     restored_amount += usage.amount
                 
                 # 기존 사용 내역 삭제
@@ -19422,10 +19492,22 @@ def schedule_edit_view(request, pk):
                     if had_prepayment:
                         for usage in existing_usages:
                             prepayment = usage.prepayment
+                            balance_before = prepayment.balance
                             prepayment.balance += usage.amount
                             if prepayment.status == 'depleted' and prepayment.balance > 0:
                                 prepayment.status = 'active'
                             prepayment.save()
+                            _prepayment_create_ledger(
+                                prepayment,
+                                PrepaymentLedgerEntry.ENTRY_RESTORE,
+                                actor=request.user,
+                                amount=usage.amount,
+                                balance_before=balance_before,
+                                balance_after=prepayment.balance,
+                                memo=f"Django 일정 수정 차감 재적용 전 복구: {updated_schedule.visit_date}",
+                                schedule=updated_schedule,
+                                usage=usage,
+                            )
                         existing_usages.delete()
                     
                     # 새로운 선결제 적용
@@ -19447,6 +19529,7 @@ def schedule_edit_view(request, pk):
                             prepayment = Prepayment.objects.get(id=int(prepayment_id))
                             
                             if prepayment.balance >= amount:
+                                balance_before = prepayment.balance
                                 prepayment.balance -= amount
                                 
                                 if prepayment.balance <= 0:
@@ -19454,7 +19537,7 @@ def schedule_edit_view(request, pk):
                                 
                                 prepayment.save()
                                 
-                                PrepaymentUsage.objects.create(
+                                usage = PrepaymentUsage.objects.create(
                                     prepayment=prepayment,
                                     schedule=updated_schedule,
                                     product_name=f"{updated_schedule.get_activity_type_display()}",
@@ -19462,6 +19545,17 @@ def schedule_edit_view(request, pk):
                                     amount=amount,
                                     remaining_balance=prepayment.balance,
                                     memo=f"{updated_schedule.get_activity_type_display()} - {updated_schedule.followup.customer_name}"
+                                )
+                                _prepayment_create_ledger(
+                                    prepayment,
+                                    PrepaymentLedgerEntry.ENTRY_DELIVERY_DEDUCTION,
+                                    actor=request.user,
+                                    amount=amount,
+                                    balance_before=balance_before,
+                                    balance_after=prepayment.balance,
+                                    memo=f"Django 일정 수정 차감: {updated_schedule.visit_date}",
+                                    schedule=updated_schedule,
+                                    usage=usage,
                                 )
                                 
                                 total_prepayment_used += amount
@@ -19538,6 +19632,8 @@ def schedule_edit_view(request, pk):
                             
                             # 선결제 잔액 조정
                             prepayment = usage.prepayment
+                            balance_before = prepayment.balance
+                            usage_before = usage.amount
                             prepayment.balance -= usage_diff  # 증가분은 잔액에서 차감, 감소분은 잔액에 추가
                             
                             # 잔액이 음수가 되지 않도록
@@ -19560,6 +19656,17 @@ def schedule_edit_view(request, pk):
                             usage.amount = new_usage_amount
                             usage.remaining_balance = prepayment.balance
                             usage.save()
+                            _prepayment_create_ledger(
+                                prepayment,
+                                PrepaymentLedgerEntry.ENTRY_ADJUSTMENT,
+                                actor=request.user,
+                                amount=new_usage_amount - usage_before,
+                                balance_before=balance_before,
+                                balance_after=prepayment.balance,
+                                memo=f"Django 일정 품목 금액 변경에 따른 선결제 차감 조정: {updated_schedule.visit_date}",
+                                schedule=updated_schedule,
+                                usage=usage,
+                            )
                         
                         # Schedule의 선결제 금액도 업데이트
                         updated_schedule.prepayment_amount = sum(u.amount for u in usages)
@@ -19677,8 +19784,19 @@ def schedule_delete_view(request, pk):
                     # 잔액이 0원에서 복구되면 상태를 'active'로 변경
                     if old_balance == 0 and prepayment.balance > 0:
                         prepayment.status = 'active'
-                    
+
                     prepayment.save()
+                    _prepayment_create_ledger(
+                        prepayment,
+                        PrepaymentLedgerEntry.ENTRY_RESTORE,
+                        actor=request.user,
+                        amount=usage.amount,
+                        balance_before=old_balance,
+                        balance_after=prepayment.balance,
+                        memo=f"일정 삭제로 선결제 차감 복구: {schedule.visit_date}",
+                        schedule=schedule,
+                        usage=usage,
+                    )
                 
                 # 사용 내역 삭제
                 prepayment_usages.delete()
@@ -26681,7 +26799,7 @@ def customer_detail_report_view_simple(request, followup_id):
 
     # 선결제 통계 계산 - 해당 부서의 모든 고객에 등록된 선결제
     prepayments = Prepayment.objects.filter(
-        customer__department=department
+        _prepayment_department_filter(department)
     )
     
     prepayment_total = prepayments.aggregate(total=Sum('amount'))['total'] or 0
@@ -27880,7 +27998,7 @@ def prepayment_list_view(request):
     from django.contrib.auth.models import User
     
     user_profile = get_user_profile(request.user)
-    base_queryset = Prepayment.objects.select_related('customer', 'company', 'created_by')
+    base_queryset = Prepayment.objects.select_related('department', 'department__company', 'customer', 'company', 'created_by')
     
     # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
     data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
@@ -27932,6 +28050,8 @@ def prepayment_list_view(request):
     if search_query:
         base_queryset = base_queryset.filter(
             Q(customer__customer_name__icontains=search_query) |
+            Q(department__name__icontains=search_query) |
+            Q(department__company__name__icontains=search_query) |
             Q(payer_name__icontains=search_query) |
             Q(memo__icontains=search_query)
         )
@@ -27980,7 +28100,7 @@ def prepayment_list_view(request):
 @login_required
 def prepayment_create_view(request):
     """선결제 등록 뷰"""
-    from reporting.models import Prepayment, FollowUp
+    from reporting.models import Prepayment, FollowUp, Department
     from django import forms
     
     # Tailwind CSS 클래스
@@ -27989,15 +28109,20 @@ def prepayment_create_view(request):
     textarea_class = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
     
     class PrepaymentForm(forms.ModelForm):
+        department = forms.ModelChoiceField(
+            queryset=Department.objects.none(),
+            label='계정/부서',
+            widget=forms.Select(attrs={'class': select_class})
+        )
         customer = forms.ModelChoiceField(
-            queryset=FollowUp.objects.all(),
-            label='고객',
+            queryset=FollowUp.objects.none(),
+            label='담당자',
             widget=forms.Select(attrs={'class': select_class})
         )
         
         class Meta:
             model = Prepayment
-            fields = ['customer', 'amount', 'payment_date', 'payment_method', 'payer_name', 'memo']
+            fields = ['department', 'customer', 'amount', 'payment_date', 'payment_method', 'payer_name', 'memo']
             widgets = {
                 'amount': forms.NumberInput(attrs={'class': input_class, 'placeholder': '금액 입력'}),
                 'payment_date': forms.DateInput(attrs={'class': input_class, 'type': 'date'}),
@@ -28005,17 +28130,49 @@ def prepayment_create_view(request):
                 'payer_name': forms.TextInput(attrs={'class': input_class, 'placeholder': '입금자명 (선택)'}),
                 'memo': forms.Textarea(attrs={'class': textarea_class, 'rows': 3, 'placeholder': '메모 (선택)'}),
             }
+
+        def clean(self):
+            cleaned = super().clean()
+            department = cleaned.get('department')
+            customer = cleaned.get('customer')
+            if department and customer and customer.department_id != department.id:
+                raise forms.ValidationError('담당자는 선택한 계정에 속해야 합니다.')
+            return cleaned
+
+    def configure_form_querysets(form):
+        user_profile = get_user_profile(request.user)
+        if user_profile and user_profile.role != 'admin':
+            same_company_users = UserProfile.objects.filter(
+                company=user_profile.company
+            ).values_list('user_id', flat=True)
+            customer_queryset = FollowUp.objects.filter(user_id__in=same_company_users)
+        else:
+            customer_queryset = FollowUp.objects.all()
+        form.fields['customer'].queryset = customer_queryset.select_related('company', 'department')
+        form.fields['department'].queryset = Department.objects.filter(
+            id__in=customer_queryset.values_list('department_id', flat=True)
+        ).select_related('company')
     
     if request.method == 'POST':
         form = PrepaymentForm(request.POST)
+        configure_form_querysets(form)
         if form.is_valid():
             prepayment = form.save(commit=False)
             prepayment.balance = prepayment.amount  # 초기 잔액 = 입금액
-            prepayment.company = prepayment.customer.company
+            prepayment.company = prepayment.department.company
             prepayment.created_by = request.user
             prepayment.save()
+            _prepayment_create_ledger(
+                prepayment,
+                PrepaymentLedgerEntry.ENTRY_DEPOSIT,
+                actor=request.user,
+                amount=prepayment.amount,
+                balance_before=0,
+                balance_after=prepayment.balance,
+                memo='Django 선결제 등록',
+            )
             
-            messages.success(request, f'{prepayment.customer.customer_name}의 선결제 {prepayment.amount:,}원이 등록되었습니다.')
+            messages.success(request, f'{prepayment.department.name} 계정의 선결제 {prepayment.amount:,}원이 등록되었습니다.')
             return redirect('reporting:prepayment_detail', pk=prepayment.pk)
     else:
         # 한국 시간대의 오늘 날짜를 기본값으로 설정
@@ -28025,6 +28182,7 @@ def prepayment_create_view(request):
         today_korea = timezone.now().astimezone(korea_tz).date()
         
         form = PrepaymentForm(initial={'payment_date': today_korea})
+        configure_form_querysets(form)
     
     # 고객 목록 필터링 (회사별)
     user_profile = get_user_profile(request.user)
@@ -28034,7 +28192,14 @@ def prepayment_create_view(request):
         same_company_users = UserProfile.objects.filter(
             company=user_profile.company
         ).values_list('user_id', flat=True)
-        form.fields['customer'].queryset = FollowUp.objects.filter(user_id__in=same_company_users)
+        customer_queryset = FollowUp.objects.filter(user_id__in=same_company_users)
+        form.fields['customer'].queryset = customer_queryset.select_related('company', 'department')
+        form.fields['department'].queryset = Department.objects.filter(
+            id__in=customer_queryset.values_list('department_id', flat=True)
+        ).select_related('company')
+    else:
+        form.fields['customer'].queryset = FollowUp.objects.select_related('company', 'department')
+        form.fields['department'].queryset = Department.objects.select_related('company')
     
     context = {
         'page_title': '선결제 등록',
@@ -28049,7 +28214,10 @@ def prepayment_detail_view(request, pk):
     """선결제 상세 뷰"""
     from reporting.models import Prepayment, UserProfile
     
-    prepayment = get_object_or_404(Prepayment, pk=pk)
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related('department', 'department__company', 'customer', 'customer__department'),
+        pk=pk,
+    )
     
     # 권한 체크 - 같은 회사 사용자만 조회 가능
     user_profile = get_user_profile(request.user)
@@ -28091,7 +28259,7 @@ def prepayment_detail_view(request, pk):
         balance_percent = 0
     
     context = {
-        'page_title': f'선결제 상세 - {prepayment.customer.customer_name}',
+        'page_title': f'선결제 상세 - {(_prepayment_account_department(prepayment).name if _prepayment_account_department(prepayment) else prepayment.customer.customer_name)}',
         'prepayment': prepayment,
         'usages': usages,
         'total_used': total_used,
@@ -28106,10 +28274,13 @@ def prepayment_detail_view(request, pk):
 @login_required
 def prepayment_edit_view(request, pk):
     """선결제 수정 뷰"""
-    from reporting.models import Prepayment, FollowUp
+    from reporting.models import Prepayment, FollowUp, Department
     from django import forms
     
-    prepayment = get_object_or_404(Prepayment, pk=pk)
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related('department', 'customer', 'customer__department'),
+        pk=pk,
+    )
     
     # 권한 체크 - 본인 데이터만 수정 가능
     if prepayment.created_by != request.user:
@@ -28122,15 +28293,20 @@ def prepayment_edit_view(request, pk):
     textarea_class = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
     
     class PrepaymentEditForm(forms.ModelForm):
+        department = forms.ModelChoiceField(
+            queryset=Department.objects.none(),
+            label='계정/부서',
+            widget=forms.Select(attrs={'class': select_class})
+        )
         customer = forms.ModelChoiceField(
-            queryset=FollowUp.objects.all(),
-            label='고객',
+            queryset=FollowUp.objects.none(),
+            label='담당자',
             widget=forms.Select(attrs={'class': select_class})
         )
         
         class Meta:
             model = Prepayment
-            fields = ['customer', 'amount', 'balance', 'payment_date', 'payment_method', 'payer_name', 'status', 'memo']
+            fields = ['department', 'customer', 'amount', 'balance', 'payment_date', 'payment_method', 'payer_name', 'status', 'memo']
             widgets = {
                 'amount': forms.NumberInput(attrs={'class': input_class, 'placeholder': '금액 입력'}),
                 'balance': forms.NumberInput(attrs={'class': input_class, 'placeholder': '잔액'}),
@@ -28140,24 +28316,65 @@ def prepayment_edit_view(request, pk):
                 'status': forms.Select(attrs={'class': select_class}),
                 'memo': forms.Textarea(attrs={'class': textarea_class, 'rows': 3, 'placeholder': '메모 (선택)'}),
             }
+
+        def clean(self):
+            cleaned = super().clean()
+            department = cleaned.get('department')
+            customer = cleaned.get('customer')
+            if department and customer and customer.department_id != department.id:
+                raise forms.ValidationError('담당자는 선택한 계정에 속해야 합니다.')
+            return cleaned
+
+    def configure_edit_form_querysets(form):
+        user_profile = get_user_profile(request.user)
+        if user_profile and user_profile.company:
+            accessible_users = get_accessible_users(request.user, request)
+            customer_queryset = FollowUp.objects.filter(user__in=accessible_users)
+        else:
+            customer_queryset = FollowUp.objects.all()
+        form.fields['customer'].queryset = customer_queryset.select_related('company', 'department')
+        form.fields['department'].queryset = Department.objects.filter(
+            id__in=customer_queryset.values_list('department_id', flat=True)
+        ).select_related('company')
     
     if request.method == 'POST':
         form = PrepaymentEditForm(request.POST, instance=prepayment)
+        configure_edit_form_querysets(form)
         if form.is_valid():
+            before_balance = prepayment.balance
+            before_amount = prepayment.amount
             prepayment = form.save(commit=False)
-            prepayment.company = prepayment.customer.company
+            prepayment.company = prepayment.department.company
             prepayment.save()
+            if before_balance != prepayment.balance or before_amount != prepayment.amount:
+                _prepayment_create_ledger(
+                    prepayment,
+                    PrepaymentLedgerEntry.ENTRY_ADJUSTMENT,
+                    actor=request.user,
+                    amount=(prepayment.balance or 0) - (before_balance or 0),
+                    balance_before=before_balance,
+                    balance_after=prepayment.balance,
+                    memo='Django 선결제 수정',
+                )
             
             messages.success(request, '선결제 정보가 수정되었습니다.')
             return redirect('reporting:prepayment_detail', pk=prepayment.pk)
     else:
         form = PrepaymentEditForm(instance=prepayment)
+        configure_edit_form_querysets(form)
     
     # 고객 목록 필터링 (회사별)
     user_profile = get_user_profile(request.user)
     if user_profile and user_profile.company:
         accessible_users = get_accessible_users(request.user, request)
-        form.fields['customer'].queryset = FollowUp.objects.filter(user__in=accessible_users)
+        customer_queryset = FollowUp.objects.filter(user__in=accessible_users)
+        form.fields['customer'].queryset = customer_queryset.select_related('company', 'department')
+        form.fields['department'].queryset = Department.objects.filter(
+            id__in=customer_queryset.values_list('department_id', flat=True)
+        ).select_related('company')
+    else:
+        form.fields['customer'].queryset = FollowUp.objects.select_related('company', 'department')
+        form.fields['department'].queryset = Department.objects.select_related('company')
     
     context = {
         'page_title': '선결제 수정',
@@ -28175,7 +28392,10 @@ def prepayment_transfer_view(request, pk):
     from reporting.models import Prepayment, UserProfile
     from django.contrib.auth.models import User
 
-    prepayment = get_object_or_404(Prepayment, pk=pk)
+    prepayment = get_object_or_404(
+        Prepayment.objects.select_related('department', 'customer', 'customer__department'),
+        pk=pk,
+    )
 
     # 본인 선결제만 이관 가능
     if prepayment.created_by != request.user:
@@ -28218,6 +28438,16 @@ def prepayment_transfer_view(request, pk):
                 else:
                     prepayment.memo = transfer_note
                 prepayment.save()
+                _prepayment_create_ledger(
+                    prepayment,
+                    PrepaymentLedgerEntry.ENTRY_TRANSFER,
+                    actor=request.user,
+                    target_user=target_user,
+                    amount=0,
+                    balance_before=prepayment.balance,
+                    balance_after=prepayment.balance,
+                    memo=transfer_note,
+                )
 
                 messages.success(request, f'선결제가 {to_name}님께 이관되었습니다.')
                 return redirect('reporting:prepayment_detail', pk=pk)
@@ -28225,7 +28455,7 @@ def prepayment_transfer_view(request, pk):
     context = {
         'prepayment': prepayment,
         'colleagues': colleagues,
-        'page_title': f'선결제 이관 - {prepayment.customer.customer_name}',
+        'page_title': f'선결제 이관 - {(_prepayment_account_department(prepayment).name if _prepayment_account_department(prepayment) else prepayment.customer.customer_name)}',
     }
     return render(request, 'reporting/prepayment/transfer.html', context)
 
@@ -28253,6 +28483,15 @@ def prepayment_delete_view(request, pk):
             prepayment.cancelled_at = timezone.now()
             prepayment.cancel_reason = request.POST.get('cancel_reason', '사용자 요청으로 취소')
             prepayment.save()
+            _prepayment_create_ledger(
+                prepayment,
+                PrepaymentLedgerEntry.ENTRY_CANCELLATION,
+                actor=request.user,
+                amount=prepayment.balance,
+                balance_before=prepayment.balance,
+                balance_after=prepayment.balance,
+                memo=prepayment.cancel_reason,
+            )
             messages.success(request, f'{prepayment.customer.customer_name}의 선결제가 취소되었습니다.')
             return redirect('reporting:prepayment_detail', pk=pk)
         
@@ -28262,6 +28501,15 @@ def prepayment_delete_view(request, pk):
             return redirect('reporting:prepayment_detail', pk=pk)
         
         customer_name = prepayment.customer.customer_name
+        _prepayment_create_ledger(
+            prepayment,
+            PrepaymentLedgerEntry.ENTRY_DELETION,
+            actor=request.user,
+            amount=prepayment.balance,
+            balance_before=prepayment.balance,
+            balance_after=prepayment.balance,
+            memo='Django 선결제 삭제',
+        )
         prepayment.delete()
         messages.success(request, f'{customer_name}의 선결제가 삭제되었습니다.')
         return redirect('reporting:prepayment_list')
@@ -28297,7 +28545,7 @@ def prepayment_customer_view(request, customer_id):
         # 2. 해당 고객에게 선결제를 등록한 적이 있는 경우 접근 가능
         is_customer_owner = (customer.user == request.user)
         has_prepayment = Prepayment.objects.filter(
-            customer=customer,
+            _prepayment_department_filter(customer.department) if customer.department_id else Q(customer=customer),
             created_by=request.user
         ).exists()
         
@@ -28325,9 +28573,9 @@ def prepayment_customer_view(request, customer_id):
         
         # 부서 내 모든 고객의 선결제 조회
         prepayments = Prepayment.objects.filter(
-            customer__department=department,
+            _prepayment_department_filter(department),
             created_by=target_user
-        ).select_related('company', 'customer', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
+        ).select_related('department', 'company', 'customer', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
     else:
         # 부서 정보가 없는 경우 기존 고객 기준 조회
         department_followups = [customer]
@@ -28405,7 +28653,7 @@ def prepayment_customer_excel(request, customer_id):
         # Salesman인 경우
         is_customer_owner = (customer.user == request.user)
         has_prepayment = Prepayment.objects.filter(
-            customer=customer,
+            _prepayment_department_filter(customer.department) if customer.department_id else Q(customer=customer),
             created_by=request.user
         ).exists()
         
@@ -28429,9 +28677,9 @@ def prepayment_customer_excel(request, customer_id):
     # 부서 기준 조회: 동일 부서 내 모든 고객의 선결제 조회
     if department:
         prepayments = Prepayment.objects.filter(
-            customer__department=department,
+            _prepayment_department_filter(department),
             created_by=target_user
-        ).select_related('company', 'customer', 'created_by').prefetch_related(
+        ).select_related('department', 'company', 'customer', 'created_by').prefetch_related(
             'usages__schedule__delivery_items_set'
         ).order_by('payment_date', 'id')
     else:
@@ -28750,6 +28998,17 @@ def prepayment_customer_excel(request, customer_id):
 
 
 @login_required
+def prepayment_account_excel(request, department_id):
+    """계정별 선결제 엑셀 다운로드."""
+    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    representative = _prepayment_account_representative_for_request(request, department)
+    if representative is None:
+        messages.error(request, '접근 가능한 계정 선결제가 없습니다.')
+        return redirect('reporting:prepayment_list')
+    return prepayment_customer_excel(request, representative.id)
+
+
+@login_required
 def prepayment_list_excel(request):
     """전체 선결제 엑셀 다운로드"""
     from reporting.models import Prepayment
@@ -28772,7 +29031,7 @@ def prepayment_list_excel(request):
         )
     
     prepayments = prepayments.select_related(
-        'customer', 'company', 'created_by'
+        'department', 'department__company', 'customer', 'company', 'created_by'
     ).order_by('-payment_date', '-created_at')
     
     # 엑셀 생성
@@ -28796,7 +29055,7 @@ def prepayment_list_excel(request):
     right_alignment = Alignment(horizontal="right", vertical="center")
     
     # 제목
-    ws.merge_cells('A1:K1')
+    ws.merge_cells('A1:L1')
     title_cell = ws['A1']
     title_cell.value = f"선결제 전체 내역 ({datetime.now().strftime('%Y-%m-%d')})"
     title_cell.font = Font(bold=True, size=14)
@@ -28804,7 +29063,7 @@ def prepayment_list_excel(request):
     ws.row_dimensions[1].height = 30
     
     # 헤더
-    headers = ['No', '고객명', '결제일', '지불자', '결제방법', '선결제금액', '사용금액', '남은잔액', '상태', '등록자', '등록일']
+    headers = ['No', '계정', '담당자', '결제일', '지불자', '결제방법', '선결제금액', '사용금액', '남은잔액', '상태', '등록자', '등록일']
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=3, column=col_num)
         cell.value = header
@@ -28816,15 +29075,16 @@ def prepayment_list_excel(request):
     # 컬럼 너비 설정
     ws.column_dimensions['A'].width = 8
     ws.column_dimensions['B'].width = 20
-    ws.column_dimensions['C'].width = 12
+    ws.column_dimensions['C'].width = 16
     ws.column_dimensions['D'].width = 12
-    ws.column_dimensions['E'].width = 10
-    ws.column_dimensions['F'].width = 15
+    ws.column_dimensions['E'].width = 12
+    ws.column_dimensions['F'].width = 10
     ws.column_dimensions['G'].width = 15
     ws.column_dimensions['H'].width = 15
-    ws.column_dimensions['I'].width = 10
-    ws.column_dimensions['J'].width = 12
-    ws.column_dimensions['K'].width = 16
+    ws.column_dimensions['I'].width = 15
+    ws.column_dimensions['J'].width = 10
+    ws.column_dimensions['K'].width = 12
+    ws.column_dimensions['L'].width = 16
     
     # 데이터 행
     total_amount = 0
@@ -28840,8 +29100,13 @@ def prepayment_list_excel(request):
         total_balance += prepayment.balance
         
         # 데이터
+        department = _prepayment_account_department(prepayment)
         data = [
             idx,
+            ' · '.join([value for value in [
+                department.company.name if department and department.company else prepayment.company.name if prepayment.company else '',
+                department.name if department else '',
+            ] if value]) or '-',
             prepayment.customer.customer_name if prepayment.customer else '-',
             prepayment.payment_date.strftime('%Y-%m-%d'),
             prepayment.payer_name or '-',
@@ -28860,15 +29125,15 @@ def prepayment_list_excel(request):
             cell.border = border
             
             # 정렬
-            if col_num == 1 or col_num == 9:  # No, 상태
+            if col_num == 1 or col_num == 10:  # No, 상태
                 cell.alignment = center_alignment
-            elif col_num >= 6 and col_num <= 8:  # 금액
+            elif col_num >= 7 and col_num <= 9:  # 금액
                 cell.alignment = right_alignment
                 if isinstance(value, (int, float)):
                     cell.number_format = '#,##0'
             
             # 상태별 배경색
-            if col_num == 9:
+            if col_num == 10:
                 if prepayment.status == 'active':
                     cell.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
                 elif prepayment.status == 'depleted':
@@ -28877,7 +29142,7 @@ def prepayment_list_excel(request):
                     cell.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
             
             # 잔액에 따른 배경색
-            if col_num == 8:  # 남은잔액
+            if col_num == 9:  # 남은잔액
                 if prepayment.balance > 0:
                     cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
                 else:
@@ -28885,7 +29150,7 @@ def prepayment_list_excel(request):
     
     # 합계 행
     summary_row = len(prepayments) + 4
-    ws.merge_cells(f'A{summary_row}:E{summary_row}')
+    ws.merge_cells(f'A{summary_row}:F{summary_row}')
     summary_cell = ws.cell(row=summary_row, column=1)
     summary_cell.value = "합계"
     summary_cell.font = Font(bold=True, size=11)
@@ -28893,12 +29158,12 @@ def prepayment_list_excel(request):
     summary_cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
     summary_cell.border = border
     
-    for col in range(2, 6):
+    for col in range(2, 7):
         ws.cell(row=summary_row, column=col).border = border
         ws.cell(row=summary_row, column=col).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
     
     # 합계 금액
-    for col_num, value in [(6, total_amount), (7, total_used), (8, total_balance)]:
+    for col_num, value in [(7, total_amount), (8, total_used), (9, total_balance)]:
         cell = ws.cell(row=summary_row, column=col_num)
         cell.value = value
         cell.font = Font(bold=True, size=11)
@@ -28907,7 +29172,7 @@ def prepayment_list_excel(request):
         cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
         cell.border = border
     
-    for col in range(9, 12):
+    for col in range(10, 13):
         ws.cell(row=summary_row, column=col).border = border
         ws.cell(row=summary_row, column=col).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
     
@@ -28980,10 +29245,145 @@ def _prepayment_list_scope(request, user_profile):
     }
 
 
+def _prepayment_account_department(prepayment):
+    customer = getattr(prepayment, 'customer', None)
+    if getattr(prepayment, 'department_id', None):
+        return prepayment.department
+    if customer and customer.department_id:
+        return customer.department
+    return None
+
+
+def _prepayment_account_company(prepayment):
+    department = _prepayment_account_department(prepayment)
+    customer = getattr(prepayment, 'customer', None)
+    if getattr(prepayment, 'company_id', None):
+        return prepayment.company
+    if department and department.company_id:
+        return department.company
+    if customer and customer.company_id:
+        return customer.company
+    return None
+
+
+def _prepayment_department_filter(department):
+    return Q(department=department) | Q(
+        department__isnull=True,
+        customer__department=department,
+    )
+
+
+def _prepayment_create_ledger(
+    prepayment,
+    entry_type,
+    *,
+    actor=None,
+    amount=0,
+    balance_before=None,
+    balance_after=None,
+    memo='',
+    schedule=None,
+    usage=None,
+    target_user=None,
+    metadata=None,
+):
+    try:
+        PrepaymentLedgerEntry.objects.create(
+            prepayment=prepayment,
+            department=_prepayment_account_department(prepayment),
+            customer=prepayment.customer,
+            schedule=schedule,
+            usage=usage,
+            entry_type=entry_type,
+            amount=amount or 0,
+            balance_before=balance_before,
+            balance_after=balance_after,
+            actor=actor,
+            target_user=target_user,
+            memo=memo or '',
+            metadata=metadata or {},
+        )
+    except Exception:
+        logger.exception('Failed to write prepayment ledger entry for prepayment_id=%s', getattr(prepayment, 'id', None))
+
+
+def _prepayment_balance_row_payload(prepayment):
+    item = _prepayment_item_payload(prepayment, prepayment.created_by)
+    return {
+        **item,
+        'reactDetailHref': f'/prepayments/{prepayment.id}/',
+        'accountHref': item['customerPrepaymentHref'],
+    }
+
+
+def _prepayment_usage_drilldown_payload(usage):
+    prepayment = usage.prepayment
+    customer = prepayment.customer if prepayment and prepayment.customer_id else None
+    department = _prepayment_account_department(prepayment) if prepayment else None
+    schedule = usage.schedule
+    delivery_items = []
+    if schedule:
+        delivery_items = [
+            {
+                'id': item.id,
+                'itemName': item.item_name,
+                'quantity': item.quantity,
+                'unit': item.unit or '',
+                'unitPrice': _money_int(item.unit_price),
+                'totalPrice': _money_int(item.total_price),
+            }
+            for item in schedule.delivery_items_set.all().order_by('id')
+        ]
+
+    return {
+        'id': usage.id,
+        'prepaymentId': usage.prepayment_id,
+        'paymentDate': _date_or_none(prepayment.payment_date) if prepayment else None,
+        'payerName': prepayment.payer_name or '미지정' if prepayment else '미지정',
+        'customerId': customer.id if customer else None,
+        'customerName': customer.customer_name if customer else '',
+        'departmentId': department.id if department else None,
+        'departmentName': department.name if department else '',
+        'usedAt': _datetime_or_none(usage.used_at),
+        'productName': usage.product_name or '',
+        'quantity': int(usage.quantity or 0),
+        'amount': _money_int(usage.amount),
+        'remainingBalance': _money_int(usage.remaining_balance),
+        'memo': usage.memo or '',
+        'scheduleId': schedule.id if schedule else None,
+        'scheduleDate': _date_or_none(schedule.visit_date) if schedule else None,
+        'scheduleHref': f'/schedules/{schedule.id}/' if schedule else '',
+        'djangoScheduleHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+        'deliveryItems': delivery_items,
+    }
+
+
+def _prepayment_ledger_payload(entry):
+    prepayment = entry.prepayment
+    schedule = entry.schedule
+    return {
+        'id': entry.id,
+        'entryType': entry.entry_type,
+        'entryTypeLabel': entry.get_entry_type_display(),
+        'amount': _money_int(entry.amount),
+        'balanceBefore': _money_int(entry.balance_before),
+        'balanceAfter': _money_int(entry.balance_after),
+        'memo': entry.memo or '',
+        'createdAt': _datetime_or_none(entry.created_at),
+        'actorName': _user_display_name(entry.actor) if entry.actor_id else '',
+        'targetUserName': _user_display_name(entry.target_user) if entry.target_user_id else '',
+        'prepaymentId': entry.prepayment_id,
+        'prepaymentHref': f'/prepayments/{prepayment.id}/' if prepayment else '',
+        'scheduleId': entry.schedule_id,
+        'scheduleHref': f'/schedules/{schedule.id}/' if schedule else '',
+        'djangoScheduleHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
+    }
+
+
 def _prepayment_item_payload(prepayment, actor):
     customer = prepayment.customer
-    company = prepayment.company or (customer.company if customer else None)
-    department = customer.department if customer and customer.department_id else None
+    company = _prepayment_account_company(prepayment)
+    department = _prepayment_account_department(prepayment)
     owner = prepayment.created_by
     amount = _money_int(prepayment.amount)
     balance = _money_int(prepayment.balance)
@@ -29037,7 +29437,9 @@ def _prepayment_customer_payload(followup):
     return {
         'id': followup.id,
         'customerName': followup.customer_name or followup.manager or '고객명 미정',
+        'companyId': followup.company_id,
         'companyName': followup.company.name if followup.company else '',
+        'departmentId': followup.department_id,
         'departmentName': followup.department.name if followup.department else '',
         'ownerName': _user_display_name(followup.user),
         'label': ' · '.join([
@@ -29052,18 +29454,20 @@ def _prepayment_customer_payload(followup):
     }
 
 
-def _prepayment_customer_options(request, current_customer=None):
+def _prepayment_customer_queryset_for_request(request):
     user_profile = get_user_profile(request.user)
     if user_profile.is_admin():
-        customer_queryset = FollowUp.objects.all()
+        return FollowUp.objects.all()
     elif user_profile.company:
         same_company_user_ids = UserProfile.objects.filter(
             company=user_profile.company,
         ).values_list('user_id', flat=True)
-        customer_queryset = FollowUp.objects.filter(user_id__in=same_company_user_ids)
-    else:
-        customer_queryset = FollowUp.objects.filter(user=request.user)
+        return FollowUp.objects.filter(user_id__in=same_company_user_ids)
+    return FollowUp.objects.filter(user=request.user)
 
+
+def _prepayment_customer_options(request, current_customer=None):
+    customer_queryset = _prepayment_customer_queryset_for_request(request)
     customers = list(
         customer_queryset.select_related('company', 'department', 'user')
         .order_by('company__name', 'department__name', 'customer_name')[:1000]
@@ -29071,6 +29475,42 @@ def _prepayment_customer_options(request, current_customer=None):
     if current_customer and all(customer.id != current_customer.id for customer in customers):
         customers = [current_customer, *customers]
     return [_prepayment_customer_payload(customer) for customer in customers]
+
+
+def _prepayment_account_options(request, current_department=None):
+    customer_queryset = _prepayment_customer_queryset_for_request(request)
+    departments = list(
+        Department.objects.filter(
+            id__in=customer_queryset.exclude(department__isnull=True).values_list('department_id', flat=True)
+        ).select_related('company').order_by('company__name', 'name')[:1000]
+    )
+    if current_department and all(department.id != current_department.id for department in departments):
+        departments = [current_department, *departments]
+
+    customer_counts = {
+        row['department_id']: row['count']
+        for row in customer_queryset.exclude(department__isnull=True)
+        .values('department_id')
+        .annotate(count=Count('id'))
+    }
+
+    return [
+        {
+            'id': department.id,
+            'companyId': department.company_id,
+            'companyName': department.company.name if department.company else '',
+            'departmentName': department.name,
+            'name': department.name,
+            'label': ' · '.join([
+                value for value in [
+                    department.company.name if department.company else '',
+                    department.name,
+                ] if value
+            ]),
+            'customerCount': customer_counts.get(department.id, 0),
+        }
+        for department in departments
+    ]
 
 
 def _prepayment_can_view(user, prepayment):
@@ -29082,7 +29522,12 @@ def _prepayment_can_edit(user, prepayment):
 
 
 def _prepayment_form_options(request, prepayment=None):
+    current_department = _prepayment_account_department(prepayment) if prepayment else None
     return {
+        'accounts': _prepayment_account_options(
+            request,
+            current_department=current_department,
+        ),
         'customers': _prepayment_customer_options(
             request,
             current_customer=prepayment.customer if prepayment else None,
@@ -29161,6 +29606,10 @@ def _prepayment_detail_payload(request, prepayment):
             'schedule__delivery_items_set',
         ).order_by('-used_at')
     )
+    ledger_entries = list(
+        prepayment.ledger_entries.select_related('department', 'customer', 'schedule', 'actor', 'target_user')
+        .order_by('-created_at', '-id')[:80]
+    )
     amount = _money_int(prepayment.amount)
     balance = _money_int(prepayment.balance)
     total_used = max(amount - balance, 0)
@@ -29225,6 +29674,10 @@ def _prepayment_detail_payload(request, prepayment):
             _prepayment_usage_payload(usage)
             for usage in usages
         ],
+        'ledgerEntries': [
+            _prepayment_ledger_payload(entry)
+            for entry in ledger_entries
+        ],
     }
 
 
@@ -29264,8 +29717,11 @@ def _prepayment_customer_access_allowed(request, customer):
     if user_profile.is_admin() or user_profile.is_manager():
         return True
     is_customer_owner = customer.user_id == request.user.id
+    prepayment_filter = Q(customer=customer)
+    if customer.department_id:
+        prepayment_filter |= _prepayment_department_filter(customer.department)
     has_prepayment = Prepayment.objects.filter(
-        customer=customer,
+        prepayment_filter,
         created_by=request.user,
     ).exists()
     return bool(is_customer_owner or has_prepayment)
@@ -29284,7 +29740,7 @@ def _prepayment_customer_context_payload(request, customer):
             .order_by('customer_name', 'id')
         )
         prepayments = Prepayment.objects.filter(
-            customer__department=department,
+            _prepayment_department_filter(department),
             created_by=target_user,
         )
         scope_name = ' · '.join([value for value in [
@@ -29302,6 +29758,8 @@ def _prepayment_customer_context_payload(request, customer):
         scope_mode = 'customer'
 
     prepayments = prepayments.select_related(
+        'department',
+        'department__company',
         'company',
         'customer',
         'customer__company',
@@ -29322,6 +29780,30 @@ def _prepayment_customer_context_payload(request, customer):
     total_amount = _money_int(stats['total_amount'])
     total_balance = _money_int(stats['total_balance'])
     rows = list(prepayments)
+    prepayment_ids = [prepayment.id for prepayment in rows]
+
+    usage_rows = list(
+        PrepaymentUsage.objects.filter(prepayment_id__in=prepayment_ids)
+        .select_related(
+            'prepayment',
+            'prepayment__department',
+            'prepayment__customer',
+            'prepayment__customer__department',
+            'schedule',
+            'schedule__followup',
+        )
+        .prefetch_related('schedule__delivery_items_set')
+        .order_by('-used_at', '-id')[:120]
+    )
+    ledger_filter = Q(prepayment_id__in=prepayment_ids)
+    if department:
+        ledger_filter |= Q(department=department, actor=target_user)
+        ledger_filter |= Q(department=department, target_user=target_user)
+    ledger_rows = list(
+        PrepaymentLedgerEntry.objects.filter(ledger_filter)
+        .select_related('prepayment', 'department', 'customer', 'schedule', 'actor', 'target_user')
+        .order_by('-created_at', '-id')[:160]
+    )
 
     accessible_users = []
     if user_profile.can_view_all_users():
@@ -29377,6 +29859,8 @@ def _prepayment_customer_context_payload(request, customer):
             'activeCount': stats['active_count'] or 0,
             'depletedCount': stats['depleted_count'] or 0,
             'cancelledCount': stats['cancelled_count'] or 0,
+            'deductionCount': len(usage_rows),
+            'ledgerCount': len(ledger_rows),
         },
         'options': {
             'owners': accessible_users,
@@ -29388,6 +29872,7 @@ def _prepayment_customer_context_payload(request, customer):
             'djangoList': reverse('reporting:prepayment_list'),
             'djangoCustomer': reverse('reporting:prepayment_customer', args=[customer.id]),
             'djangoExcel': reverse('reporting:prepayment_customer_excel', args=[customer.id]),
+            'accountExcel': reverse('reporting:prepayment_account_excel', args=[department.id]) if department else '',
             'accountDetail': account_detail,
             'customerDetail': f'/customers/{customer.id}/',
             'djangoCustomerDetail': reverse('reporting:followup_detail', args=[customer.id]),
@@ -29395,6 +29880,18 @@ def _prepayment_customer_context_payload(request, customer):
         'prepayments': [
             _prepayment_item_payload(prepayment, request.user)
             for prepayment in rows
+        ],
+        'balanceRows': [
+            _prepayment_item_payload(prepayment, request.user)
+            for prepayment in rows
+        ],
+        'deductionRows': [
+            _prepayment_usage_drilldown_payload(usage)
+            for usage in usage_rows
+        ],
+        'ledgerEntries': [
+            _prepayment_ledger_payload(entry)
+            for entry in ledger_rows
         ],
     }
 
@@ -29407,7 +29904,7 @@ def _prepayment_account_representative_for_request(request, department):
         return representative
 
     own_prepayment_customer_ids = Prepayment.objects.filter(
-        customer__department=department,
+        _prepayment_department_filter(department),
         created_by__in=scope_users,
     ).values('customer_id')
     return (
@@ -29438,6 +29935,7 @@ def _prepayment_field(data, *names):
 
 def _prepayment_parse_form_data(request, *, existing=None):
     data = _prepayment_request_data(request)
+    department_id = _prepayment_field(data, 'department', 'department_id', 'departmentId', 'account', 'account_id', 'accountId')
     customer_id = _prepayment_field(data, 'customer', 'customer_id', 'customerId')
     amount = _parse_optional_decimal(_prepayment_field(data, 'amount'))
     payment_date = _parse_iso_date_or_none(_prepayment_field(data, 'payment_date', 'paymentDate'))
@@ -29445,21 +29943,55 @@ def _prepayment_parse_form_data(request, *, existing=None):
     payer_name = str(_prepayment_field(data, 'payer_name', 'payerName') or '').strip()[:100]
     memo = str(_prepayment_field(data, 'memo') or '').strip()
 
-    if not customer_id:
-        raise ValueError('고객을 선택해주세요.')
-    try:
-        customer = FollowUp.objects.select_related('company', 'department', 'user').get(id=customer_id)
-    except (FollowUp.DoesNotExist, ValueError):
-        raise ValueError('선택한 고객을 찾을 수 없습니다.')
+    current_customer = existing.customer if existing else None
+    current_department = _prepayment_account_department(existing) if existing else None
+    customer = None
+    department = None
+
+    if customer_id:
+        try:
+            customer = FollowUp.objects.select_related('company', 'department', 'user').get(id=customer_id)
+        except (FollowUp.DoesNotExist, ValueError):
+            raise ValueError('선택한 담당자를 찾을 수 없습니다.')
+        department = customer.department
+
+    if department_id:
+        try:
+            department = Department.objects.select_related('company').get(id=department_id)
+        except (Department.DoesNotExist, ValueError):
+            raise ValueError('선택한 계정을 찾을 수 없습니다.')
+
+    if not department:
+        raise ValueError('계정을 선택해주세요.')
 
     allowed_customer_ids = {
         option['id']
-        for option in _prepayment_customer_options(request, current_customer=existing.customer if existing else None)
+        for option in _prepayment_customer_options(request, current_customer=current_customer)
     }
+    allowed_department_ids = {
+        option['id']
+        for option in _prepayment_account_options(request, current_department=current_department)
+    }
+    if department.id not in allowed_department_ids:
+        raise PermissionError('접근 권한이 없는 계정입니다.')
+
+    if customer is None:
+        customer = (
+            _prepayment_customer_queryset_for_request(request)
+            .filter(department=department)
+            .select_related('company', 'department', 'user')
+            .order_by('-is_active', '-updated_at', '-created_at', '-id')
+            .first()
+        )
+        if customer is None:
+            raise ValueError('계정에 연결된 담당자를 찾을 수 없습니다.')
+
+    if customer.department_id != department.id:
+        raise ValueError('담당자는 선택한 계정에 속해야 합니다.')
     if customer.id not in allowed_customer_ids or not can_access_followup(request.user, customer):
-        raise PermissionError('접근 권한이 없는 고객입니다.')
-    if not customer.company_id:
-        raise ValueError('고객의 업체/학교 정보가 필요합니다.')
+        raise PermissionError('접근 권한이 없는 담당자입니다.')
+    if not department.company_id:
+        raise ValueError('계정의 업체/학교 정보가 필요합니다.')
     if amount is None or amount <= 0:
         raise ValueError('선결제 금액은 1원 이상으로 입력해주세요.')
     if not payment_date:
@@ -29468,7 +30000,9 @@ def _prepayment_parse_form_data(request, *, existing=None):
         raise ValueError('올바른 입금 방법을 선택해주세요.')
 
     cleaned = {
+        'department': department,
         'customer': customer,
+        'company': department.company,
         'amount': amount,
         'payment_date': payment_date,
         'payment_method': payment_method,
@@ -29499,6 +30033,8 @@ def _prepayment_summary_payload(request):
     valid_statuses = {value for value, _label in Prepayment.STATUS_CHOICES}
 
     base_queryset = Prepayment.objects.select_related(
+        'department',
+        'department__company',
         'customer',
         'customer__company',
         'customer__department',
@@ -29512,6 +30048,8 @@ def _prepayment_summary_payload(request):
             Q(customer__customer_name__icontains=search_query) |
             Q(customer__company__name__icontains=search_query) |
             Q(customer__department__name__icontains=search_query) |
+            Q(department__name__icontains=search_query) |
+            Q(department__company__name__icontains=search_query) |
             Q(company__name__icontains=search_query) |
             Q(payer_name__icontains=search_query) |
             Q(memo__icontains=search_query)
@@ -29667,8 +30205,9 @@ def prepayment_create_api(request):
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
     prepayment = Prepayment.objects.create(
+        department=cleaned['department'],
         customer=cleaned['customer'],
-        company=cleaned['customer'].company,
+        company=cleaned['company'],
         amount=cleaned['amount'],
         balance=cleaned['amount'],
         payment_date=cleaned['payment_date'],
@@ -29677,6 +30216,15 @@ def prepayment_create_api(request):
         memo=cleaned['memo'],
         status='active',
         created_by=request.user,
+    )
+    _prepayment_create_ledger(
+        prepayment,
+        PrepaymentLedgerEntry.ENTRY_DEPOSIT,
+        actor=request.user,
+        amount=prepayment.amount,
+        balance_before=0,
+        balance_after=prepayment.balance,
+        memo='선결제 등록',
     )
 
     return JsonResponse({
@@ -29739,6 +30287,8 @@ def prepayment_detail_api(request, pk):
 
     prepayment = get_object_or_404(
         Prepayment.objects.select_related(
+            'department',
+            'department__company',
             'customer',
             'customer__company',
             'customer__department',
@@ -29764,7 +30314,7 @@ def prepayment_update_api(request, pk):
         return auth_response
 
     prepayment = get_object_or_404(
-        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        Prepayment.objects.select_related('department', 'customer', 'customer__department', 'company', 'created_by'),
         pk=pk,
     )
     if not _prepayment_can_view(request.user, prepayment):
@@ -29779,8 +30329,15 @@ def prepayment_update_api(request, pk):
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
+    before_amount = prepayment.amount
+    before_balance = prepayment.balance
+    before_department_id = prepayment.department_id
+    before_customer_id = prepayment.customer_id
+    before_status = prepayment.status
+
+    prepayment.department = cleaned['department']
     prepayment.customer = cleaned['customer']
-    prepayment.company = cleaned['customer'].company
+    prepayment.company = cleaned['company']
     prepayment.amount = cleaned['amount']
     prepayment.balance = cleaned['balance']
     prepayment.payment_date = cleaned['payment_date']
@@ -29793,6 +30350,7 @@ def prepayment_update_api(request, pk):
         prepayment.cancel_reason = ''
     prepayment.save(update_fields=[
         'customer',
+        'department',
         'company',
         'amount',
         'balance',
@@ -29804,6 +30362,38 @@ def prepayment_update_api(request, pk):
         'cancelled_at',
         'cancel_reason',
     ])
+    if (
+        before_amount != prepayment.amount
+        or before_balance != prepayment.balance
+        or before_department_id != prepayment.department_id
+        or before_customer_id != prepayment.customer_id
+        or before_status != prepayment.status
+    ):
+        _prepayment_create_ledger(
+            prepayment,
+            PrepaymentLedgerEntry.ENTRY_ADJUSTMENT,
+            actor=request.user,
+            amount=(prepayment.balance or 0) - (before_balance or 0),
+            balance_before=before_balance,
+            balance_after=prepayment.balance,
+            memo='선결제 정보 수정',
+            metadata={
+                'before': {
+                    'amount': _money_int(before_amount),
+                    'balance': _money_int(before_balance),
+                    'departmentId': before_department_id,
+                    'customerId': before_customer_id,
+                    'status': before_status,
+                },
+                'after': {
+                    'amount': _money_int(prepayment.amount),
+                    'balance': _money_int(prepayment.balance),
+                    'departmentId': prepayment.department_id,
+                    'customerId': prepayment.customer_id,
+                    'status': prepayment.status,
+                },
+            },
+        )
 
     return JsonResponse({
         'success': True,
@@ -29824,7 +30414,7 @@ def prepayment_cancel_api(request, pk):
         return auth_response
 
     prepayment = get_object_or_404(
-        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        Prepayment.objects.select_related('department', 'customer', 'customer__department', 'company', 'created_by'),
         pk=pk,
     )
     if not _prepayment_can_view(request.user, prepayment):
@@ -29841,6 +30431,15 @@ def prepayment_cancel_api(request, pk):
     prepayment.cancelled_at = timezone.now()
     prepayment.cancel_reason = reason[:1000]
     prepayment.save(update_fields=['status', 'cancelled_at', 'cancel_reason'])
+    _prepayment_create_ledger(
+        prepayment,
+        PrepaymentLedgerEntry.ENTRY_CANCELLATION,
+        actor=request.user,
+        amount=prepayment.balance,
+        balance_before=prepayment.balance,
+        balance_after=prepayment.balance,
+        memo=reason[:1000],
+    )
 
     customer_name = prepayment.customer.customer_name if prepayment.customer else '고객'
     return JsonResponse({
@@ -29862,7 +30461,7 @@ def prepayment_delete_api(request, pk):
         return auth_response
 
     prepayment = get_object_or_404(
-        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        Prepayment.objects.select_related('department', 'customer', 'customer__department', 'company', 'created_by'),
         pk=pk,
     )
     if not _prepayment_can_view(request.user, prepayment):
@@ -29878,6 +30477,15 @@ def prepayment_delete_api(request, pk):
         }, status=400)
 
     customer_name = prepayment.customer.customer_name if prepayment.customer else '고객'
+    _prepayment_create_ledger(
+        prepayment,
+        PrepaymentLedgerEntry.ENTRY_DELETION,
+        actor=request.user,
+        amount=prepayment.balance,
+        balance_before=prepayment.balance,
+        balance_after=prepayment.balance,
+        memo='선결제 삭제',
+    )
     prepayment.delete()
     return JsonResponse({
         'success': True,
@@ -29896,7 +30504,7 @@ def prepayment_transfer_api(request, pk):
         return auth_response
 
     prepayment = get_object_or_404(
-        Prepayment.objects.select_related('customer', 'company', 'created_by'),
+        Prepayment.objects.select_related('department', 'customer', 'customer__department', 'company', 'created_by'),
         pk=pk,
     )
     if not _prepayment_can_view(request.user, prepayment):
@@ -29939,6 +30547,16 @@ def prepayment_transfer_api(request, pk):
     prepayment.created_by = target_user
     prepayment.memo = f"{prepayment.memo}\n{transfer_note}" if prepayment.memo else transfer_note
     prepayment.save(update_fields=['created_by', 'memo'])
+    _prepayment_create_ledger(
+        prepayment,
+        PrepaymentLedgerEntry.ENTRY_TRANSFER,
+        actor=request.user,
+        target_user=target_user,
+        amount=0,
+        balance_before=prepayment.balance,
+        balance_after=prepayment.balance,
+        memo=transfer_note,
+    )
 
     return JsonResponse({
         'success': True,

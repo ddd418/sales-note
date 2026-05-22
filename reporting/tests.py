@@ -26,6 +26,7 @@ from reporting.models import (
     CalibrationRecord,
     DeliveryItem,
     Prepayment,
+    PrepaymentLedgerEntry,
     PrepaymentUsage,
     Quote,
     Schedule,
@@ -6003,6 +6004,7 @@ class PrepaymentsSummaryApiTests(TestCase):
 
         customer = self._create_customer(owner, name)
         return Prepayment.objects.create(
+            department=customer.department,
             customer=customer,
             company=customer.company,
             amount=amount,
@@ -6116,6 +6118,7 @@ class PrepaymentDetailApiTests(TestCase):
 
         customer = self._create_customer(owner, name)
         return Prepayment.objects.create(
+            department=customer.department,
             customer=customer,
             company=customer.company,
             amount=amount,
@@ -6194,6 +6197,7 @@ class PrepaymentDetailApiTests(TestCase):
         self.client.force_login(self.user)
 
         response = self.client.post(reverse('reporting:prepayment_create_api'), {
+            'department': str(customer.department_id),
             'customer': str(customer.id),
             'amount': '250000',
             'payment_date': '2026-05-10',
@@ -6209,13 +6213,43 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(int(created.amount), 250000)
         self.assertEqual(int(created.balance), 250000)
         self.assertEqual(created.company, customer.company)
+        self.assertEqual(created.department, customer.department)
         self.assertEqual(payload['href'], f'/prepayments/{created.id}/')
+        self.assertTrue(
+            PrepaymentLedgerEntry.objects.filter(
+                prepayment=created,
+                department=customer.department,
+                entry_type=PrepaymentLedgerEntry.ENTRY_DEPOSIT,
+                amount=250000,
+            ).exists()
+        )
+
+    def test_prepayment_create_api_allows_account_first_without_contact_payload(self):
+        from reporting.models import Prepayment
+
+        customer = self._create_customer(self.user, '계정우선등록')
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:prepayment_create_api'), {
+            'department': str(customer.department_id),
+            'amount': '180000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'transfer',
+            'payer_name': '계정 입금자',
+        })
+
+        self.assertEqual(response.status_code, 201)
+        created = Prepayment.objects.get(id=response.json()['prepaymentId'])
+        self.assertEqual(created.department, customer.department)
+        self.assertEqual(created.customer, customer)
+        self.assertEqual(response.json()['prepayment']['departmentId'], customer.department_id)
 
     def test_prepayment_update_api_only_owner_and_validates_balance(self):
         prepayment = self._create_prepayment(self.user, amount=100000, balance=80000)
 
         self.client.force_login(self.coworker)
         denied = self.client.post(reverse('reporting:prepayment_update_api', args=[prepayment.id]), {
+            'department': str(prepayment.customer.department_id),
             'customer': str(prepayment.customer_id),
             'amount': '100000',
             'balance': '70000',
@@ -6227,6 +6261,7 @@ class PrepaymentDetailApiTests(TestCase):
 
         self.client.force_login(self.user)
         invalid = self.client.post(reverse('reporting:prepayment_update_api', args=[prepayment.id]), {
+            'department': str(prepayment.customer.department_id),
             'customer': str(prepayment.customer_id),
             'amount': '100000',
             'balance': '120000',
@@ -6237,6 +6272,7 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(invalid.status_code, 400)
 
         response = self.client.post(reverse('reporting:prepayment_update_api', args=[prepayment.id]), {
+            'department': str(prepayment.customer.department_id),
             'customer': str(prepayment.customer_id),
             'amount': '110000',
             'balance': '70000',
@@ -6252,6 +6288,14 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(int(prepayment.balance), 70000)
         self.assertEqual(prepayment.payment_method, 'card')
         self.assertEqual(prepayment.memo, 'React 수정')
+        self.assertTrue(
+            PrepaymentLedgerEntry.objects.filter(
+                prepayment=prepayment,
+                entry_type=PrepaymentLedgerEntry.ENTRY_ADJUSTMENT,
+                balance_before=80000,
+                balance_after=70000,
+            ).exists()
+        )
 
     def test_prepayment_cancel_api_only_owner_and_records_reason(self):
         prepayment = self._create_prepayment(self.user)
@@ -6275,6 +6319,13 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(prepayment.cancel_reason, 'React 취소')
         self.assertIsNotNone(prepayment.cancelled_at)
         self.assertEqual(payload['prepayment']['status'], 'cancelled')
+        self.assertTrue(
+            PrepaymentLedgerEntry.objects.filter(
+                prepayment=prepayment,
+                entry_type=PrepaymentLedgerEntry.ENTRY_CANCELLATION,
+                memo='React 취소',
+            ).exists()
+        )
 
     def test_prepayment_delete_api_blocks_used_records_and_deletes_unused(self):
         from reporting.models import Prepayment, PrepaymentUsage
@@ -6326,6 +6377,14 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(prepayment.created_by, self.coworker)
         self.assertIn('[이관]', prepayment.memo)
         self.assertIn('담당자 변경', prepayment.memo)
+        self.assertTrue(
+            PrepaymentLedgerEntry.objects.filter(
+                prepayment=prepayment,
+                entry_type=PrepaymentLedgerEntry.ENTRY_TRANSFER,
+                actor=self.user,
+                target_user=self.coworker,
+            ).exists()
+        )
 
         detail = self.client.get(reverse('reporting:prepayment_detail_api', args=[prepayment.id]))
         self.assertEqual(detail.status_code, 200)
@@ -6377,6 +6436,7 @@ class PrepaymentCustomerApiTests(TestCase):
         from reporting.models import Prepayment
 
         return Prepayment.objects.create(
+            department=customer.department,
             customer=customer,
             company=customer.company,
             amount=amount,
@@ -6419,10 +6479,53 @@ class PrepaymentCustomerApiTests(TestCase):
         self.assertEqual(payload['prepayments'][0]['customerPrepaymentHref'], f'/prepayments/account/{department.id}/')
 
     def test_account_prepayment_api_returns_department_scope_and_metrics(self):
+        from datetime import time
+        from reporting.models import DeliveryItem, PrepaymentLedgerEntry, PrepaymentUsage, Schedule
+
         _company, department, first, second = self._create_department_customers()
-        self._create_prepayment(self.user, first, amount=110000, balance=90000, status='active', payer='계정 첫 입금')
+        first_prepayment = self._create_prepayment(self.user, first, amount=110000, balance=90000, status='active', payer='계정 첫 입금')
         self._create_prepayment(self.user, second, amount=220000, balance=20000, status='active', payer='계정 둘째 입금')
         self._create_prepayment(self.coworker, first, amount=500000, balance=500000, payer='동료 입금')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            followup=first,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 30),
+            activity_type='delivery',
+            status='completed',
+            use_prepayment=True,
+            prepayment=first_prepayment,
+            prepayment_amount=20000,
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='계정 차감 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=20000,
+            total_price=20000,
+        )
+        usage = PrepaymentUsage.objects.create(
+            prepayment=first_prepayment,
+            schedule=schedule,
+            product_name='계정 차감 품목',
+            quantity=1,
+            amount=20000,
+            remaining_balance=90000,
+        )
+        PrepaymentLedgerEntry.objects.create(
+            prepayment=first_prepayment,
+            department=department,
+            customer=first,
+            schedule=schedule,
+            usage=usage,
+            entry_type=PrepaymentLedgerEntry.ENTRY_DELIVERY_DEDUCTION,
+            amount=20000,
+            balance_before=110000,
+            balance_after=90000,
+            actor=self.user,
+            memo='계정 차감 테스트',
+        )
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:prepayment_account_api', args=[department.id]))
@@ -6436,9 +6539,20 @@ class PrepaymentCustomerApiTests(TestCase):
         self.assertEqual(payload['metrics']['totalAmount'], 330000)
         self.assertEqual(payload['metrics']['totalBalance'], 110000)
         self.assertEqual(payload['metrics']['totalUsed'], 220000)
+        self.assertEqual(payload['metrics']['deductionCount'], 1)
+        self.assertGreaterEqual(payload['metrics']['ledgerCount'], 1)
         self.assertEqual([item['customerId'] for item in payload['prepayments']], [first.id, second.id])
+        self.assertEqual(payload['balanceRows'][0]['departmentId'], department.id)
+        self.assertEqual(payload['deductionRows'][0]['amount'], 20000)
+        self.assertEqual(payload['deductionRows'][0]['deliveryItems'][0]['itemName'], '계정 차감 품목')
+        self.assertEqual(payload['ledgerEntries'][0]['entryType'], PrepaymentLedgerEntry.ENTRY_DELIVERY_DEDUCTION)
         self.assertEqual(payload['links']['reactAccount'], f'/prepayments/account/{department.id}/')
         self.assertEqual(payload['links']['accountDetail'], f'/accounts/{department.id}/')
+        self.assertEqual(payload['links']['accountExcel'], reverse('reporting:prepayment_account_excel', args=[department.id]))
+
+        excel_response = self.client.get(reverse('reporting:prepayment_account_excel', args=[department.id]))
+        self.assertEqual(excel_response.status_code, 200)
+        self.assertIn('spreadsheetml.sheet', excel_response['Content-Type'])
 
     def test_account_prepayment_api_allows_salesman_with_own_prepayment_and_blocks_unrelated(self):
         _company, department, first, _second = self._create_department_customers(owner=self.coworker)

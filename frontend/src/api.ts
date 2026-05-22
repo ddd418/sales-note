@@ -2465,14 +2465,27 @@ export type PrepaymentUsageItem = {
 
 export type PrepaymentCustomerOption = {
   id: number;
+  companyId?: number | null;
   customerName: string;
+  departmentId?: number | null;
   companyName: string;
   departmentName: string;
   ownerName: string;
   label: string;
 };
 
+export type PrepaymentAccountOption = {
+  id: number;
+  companyId: number | null;
+  companyName: string;
+  departmentName: string;
+  name: string;
+  label: string;
+  customerCount: number;
+};
+
 export type PrepaymentFormOptions = {
+  accounts: PrepaymentAccountOption[];
   customers: PrepaymentCustomerOption[];
   paymentMethods: Array<{ value: string; label: string }>;
   statuses: Array<{ value: string; label: string }>;
@@ -2574,6 +2587,7 @@ export type PrepaymentDetailData = {
     djangoUrl: string;
   };
   usages: PrepaymentUsageItem[];
+  ledgerEntries: PrepaymentLedgerEntry[];
 };
 
 export type PrepaymentCreateData = {
@@ -2634,6 +2648,8 @@ export type PrepaymentCustomerData = {
     activeCount: number;
     depletedCount: number;
     cancelledCount: number;
+    deductionCount: number;
+    ledgerCount: number;
   };
   options: {
     owners: Array<{ id: number; name: string }>;
@@ -2645,22 +2661,55 @@ export type PrepaymentCustomerData = {
     djangoList: string;
     djangoCustomer: string;
     djangoExcel: string;
+    accountExcel: string;
     accountDetail: string;
     customerDetail: string;
     djangoCustomerDetail: string;
   };
   prepayments: PrepaymentListItem[];
+  balanceRows: PrepaymentListItem[];
+  deductionRows: PrepaymentDeductionRow[];
+  ledgerEntries: PrepaymentLedgerEntry[];
 };
 
 export type PrepaymentFormPayload = {
   amount: string;
   balance?: string;
+  departmentId: number;
   customerId: number;
   memo?: string;
   payerName?: string;
   paymentDate: string;
   paymentMethod: string;
   status?: string;
+};
+
+export type PrepaymentDeductionRow = PrepaymentUsageItem & {
+  prepaymentId: number;
+  paymentDate: string | null;
+  payerName: string;
+  customerId: number | null;
+  customerName: string;
+  departmentId: number | null;
+  departmentName: string;
+};
+
+export type PrepaymentLedgerEntry = {
+  id: number;
+  entryType: string;
+  entryTypeLabel: string;
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  memo: string;
+  createdAt: string | null;
+  actorName: string;
+  targetUserName: string;
+  prepaymentId: number | null;
+  prepaymentHref: string;
+  scheduleId: number | null;
+  scheduleHref: string;
+  djangoScheduleHref: string;
 };
 
 export type PrepaymentMutationResponse = {
@@ -5598,6 +5647,7 @@ const emptyPrepaymentsData: PrepaymentsData = {
 };
 
 const emptyPrepaymentFormOptions: PrepaymentFormOptions = {
+  accounts: [],
   customers: [],
   paymentMethods: [
     { value: 'transfer', label: '계좌이체' },
@@ -5657,6 +5707,7 @@ const emptyPrepaymentDetailData: PrepaymentDetailData = {
     ...emptyPrepaymentFormOptions,
   },
   usages: [],
+  ledgerEntries: [],
 };
 
 const emptyPrepaymentCreateData: PrepaymentCreateData = {
@@ -5708,6 +5759,8 @@ const emptyPrepaymentCustomerData: PrepaymentCustomerData = {
     activeCount: 0,
     depletedCount: 0,
     cancelledCount: 0,
+    deductionCount: 0,
+    ledgerCount: 0,
   },
   options: {
     owners: [],
@@ -5719,11 +5772,15 @@ const emptyPrepaymentCustomerData: PrepaymentCustomerData = {
     djangoList: '/reporting/prepayment/',
     djangoCustomer: '',
     djangoExcel: '',
+    accountExcel: '',
     accountDetail: '',
     customerDetail: '',
     djangoCustomerDetail: '',
   },
   prepayments: [],
+  balanceRows: [],
+  deductionRows: [],
+  ledgerEntries: [],
 };
 
 const emptyAIWorkspaceData: AIWorkspaceData = {
@@ -8708,6 +8765,7 @@ export async function loadPrepaymentCreateData(): Promise<PrepaymentCreateData> 
       create: {
         ...emptyPrepaymentCreateData.create,
         ...(payload.create ?? {}),
+        accounts: payload.create?.accounts ?? emptyPrepaymentCreateData.create.accounts,
         customers: payload.create?.customers ?? emptyPrepaymentCreateData.create.customers,
         paymentMethods: payload.create?.paymentMethods ?? emptyPrepaymentCreateData.create.paymentMethods,
         statuses: payload.create?.statuses ?? emptyPrepaymentCreateData.create.statuses,
@@ -8779,6 +8837,9 @@ async function loadPrepaymentCustomerContext(
       },
       departmentCustomers: payload.departmentCustomers ?? emptyPrepaymentCustomerData.departmentCustomers,
       prepayments: payload.prepayments ?? emptyPrepaymentCustomerData.prepayments,
+      balanceRows: payload.balanceRows ?? payload.prepayments ?? emptyPrepaymentCustomerData.balanceRows,
+      deductionRows: payload.deductionRows ?? emptyPrepaymentCustomerData.deductionRows,
+      ledgerEntries: payload.ledgerEntries ?? emptyPrepaymentCustomerData.ledgerEntries,
     };
   } catch (error) {
     return {
@@ -8852,12 +8913,14 @@ export async function loadPrepaymentDetailData(prepaymentId: number): Promise<Pr
       edit: {
         ...emptyPrepaymentDetailData.edit,
         ...(payload.edit ?? {}),
+        accounts: payload.edit?.accounts ?? emptyPrepaymentDetailData.edit.accounts,
         customers: payload.edit?.customers ?? emptyPrepaymentDetailData.edit.customers,
         paymentMethods: payload.edit?.paymentMethods ?? emptyPrepaymentDetailData.edit.paymentMethods,
         statuses: payload.edit?.statuses ?? emptyPrepaymentDetailData.edit.statuses,
       },
       prepayment: payload.prepayment ?? emptyPrepaymentDetailData.prepayment,
       usages: payload.usages ?? emptyPrepaymentDetailData.usages,
+      ledgerEntries: payload.ledgerEntries ?? emptyPrepaymentDetailData.ledgerEntries,
     };
   } catch (error) {
     return {
@@ -8870,6 +8933,7 @@ export async function loadPrepaymentDetailData(prepaymentId: number): Promise<Pr
 
 function prepaymentPayloadBody(payload: PrepaymentFormPayload): URLSearchParams {
   const body = new URLSearchParams();
+  body.set('department', String(payload.departmentId));
   body.set('customer', String(payload.customerId));
   body.set('amount', payload.amount);
   body.set('payment_date', payload.paymentDate);

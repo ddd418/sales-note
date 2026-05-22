@@ -249,16 +249,28 @@
             {% csrf_token %}
             
             <div class="row g-4">
-                <!-- 고객 선택 -->
+                <!-- 계정 선택 -->
+                <div class="col-12">
+                    <label for="id_department" class="form-label">
+                        계정/부서 <span class="required-mark">*</span>
+                    </label>
+                    {{ form.department }}
+                    {% if form.department.errors %}
+                        <div class="error-message">{{ form.department.errors.0 }}</div>
+                    {% endif %}
+                    <div class="help-text">선결제 잔액을 관리할 업체/부서 계정을 먼저 선택해주세요.</div>
+                </div>
+
+                <!-- 담당자 선택 -->
                 <div class="col-12">
                     <label for="id_customer" class="form-label">
-                        고객 <span class="required-mark">*</span>
+                        담당자 <span class="required-mark">*</span>
                     </label>
                     {{ form.customer }}
                     {% if form.customer.errors %}
                         <div class="error-message">{{ form.customer.errors.0 }}</div>
                     {% endif %}
-                    <div class="help-text">선결제를 받을 고객을 선택해주세요.</div>
+                    <div class="help-text">계정 안에서 참고할 담당자를 선택해주세요.</div>
                 </div>
 
                 <!-- 지불자명 -->
@@ -391,9 +403,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Select2 초기화
+    $('#id_department').select2({
+        theme: 'bootstrap-5',
+        placeholder: '계정을 선택하세요',
+        allowClear: true,
+        width: '100%',
+        language: {
+            noResults: function() {
+                return "검색 결과가 없습니다.";
+            },
+            searching: function() {
+                return "검색 중...";
+            }
+        }
+    });
+
     $('#id_customer').select2({
         theme: 'bootstrap-5',
-        placeholder: '고객을 선택하세요',
+        placeholder: '담당자를 선택하세요',
         allowClear: true,
         width: '100%',
         language: {

@@ -25957,3 +25957,126 @@ Local smoke
 4. Search by equipment name, company, department, or symptom.
 5. Filter by status, service type, priority, and owner.
 6. Click `장비` or `고객` from a service row and confirm it opens the expected record.
+
+## 2026-05-22 Account-based prepayment module completion
+
+### 1. Summary
+
+- Completed the prepayment workflow around account/department ownership instead of contact-first ownership.
+- Added a prepayment ledger model so deposits, delivery deductions, balance adjustments, transfers, cancellations, restores, and deletions are recorded per account.
+- Updated React prepayment registration/editing so the account is selected first and the 담당자 is selected as auxiliary contact data.
+- Added account-level balance, delivery deduction, and ledger drilldowns, plus account-level Excel download.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/services.py`
+- `reporting/models.py`
+- `reporting/admin.py`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/templates/reporting/prepayment/form.html`
+- `reporting/tests.py`
+- `reporting/migrations/0111_prepaymentledgerentry_prepayment_department_and_more.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- Prepayment records now have canonical `department` ownership while preserving the existing customer/contact field for compatibility.
+- The React create/edit forms guide users to choose the account first, then choose a contact from that account.
+- Account prepayment detail APIs now return balance rows, delivery deduction rows, and ledger entries for drilldown panels.
+- Delivery schedule prepayment application/restoration now writes ledger events.
+- Account/customer merge cleanup keeps prepayment account ownership aligned after contact or department consolidation.
+- AI prepayment context now reads account-level prepayment scope before falling back to contact-only scope.
+- Account prepayment Excel export is available through `/reporting/prepayment/account/<department_id>/excel/`.
+
+### 4. Existing Functionality Preserved
+
+- Existing `reporting` app and `/reporting/*` routes remain in place.
+- Legacy Django prepayment list/create/edit/detail/export screens are preserved and updated only for account compatibility.
+- Existing customer-level prepayment URLs continue to work as fallbacks.
+- Authentication and owner/sales manager access checks remain in force for APIs and Excel exports.
+- Existing prepayment rows are backfilled from their contact department, and existing usages are copied into ledger history.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py
+→ OK
+
+python manage.py makemigrations reporting
+→ Created reporting/migrations/0111_prepaymentledgerentry_prepayment_department_and_more.py
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\migrations\0111_prepaymentledgerentry_prepayment_department_and_more.py
+→ OK
+
+python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentCustomerApiTests --verbosity=1
+→ Ran 17 tests, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py ai_chat\services.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+python manage.py migrate
+→ Applied local migrations through reporting.0111
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Ran 41 tests, OK
+
+Local smoke
+→ Django dev server started on http://127.0.0.1:8000
+→ Vite dev server started on http://127.0.0.1:5174
+→ GET /prepayments/new/ returned the React shell
+→ GET /reporting/api/prepayments/create/ returned expected anonymous 401
+→ Browser smoke reached /reporting/login/?next=%2Fprepayments%2Fnew%2F with no console errors
+```
+
+### 6. Known Limitations
+
+- `Prepayment.customer` remains required for now to preserve legacy screens and existing downstream assumptions; account-first create can auto-select an accessible account contact when the payload omits a contact.
+- Authenticated visual verification of the new account drilldown panels still needs production user-session testing after deployment.
+- Ledger backfill recreates historical deposit/deduction/cancellation events from existing current records; it cannot reconstruct older intermediate edit history that was never previously stored.
+
+### 7. Production Deployment Status
+
+- Pending final commit, push, and Railway verification. A post-deployment update will be appended after Railway reports the deployed services.
+
+### 8. Recommended Next Task
+
+- Add account-level prepayment reconciliation filters: ledger type, date range, responsible owner, and exportable adjustment audit view.
+
+### 9. Manual Server Test Process
+
+1. Open `https://sales-note-frontend-production.up.railway.app/prepayments/new/` after deployment and login.
+2. Confirm `계정` is the first selector and `담당자` is disabled or empty until an account is selected.
+3. Select an account, confirm the 담당자 options are filtered to contacts in that account, then register a prepayment.
+4. Open `/prepayments/account/<department_id>/` and confirm total amount, used amount, balance, active/cancelled counts, deduction count, and ledger count.
+5. In the same account page, confirm `계정 잔액`, `납품 차감 내역`, and `조정/이관/취소 기록` panels load and their detail links open the expected prepayment or schedule.
+6. Use a completed delivery with prepayment deduction and confirm the deduction appears in account drilldown.
+7. Edit, transfer, and cancel a test prepayment and confirm each action adds a ledger row.
+8. Click the account prepayment Excel button and confirm the downloaded workbook is scoped to the selected account.
+9. Spot-check existing `/reporting/prepayment/`, `/reporting/prepayment/create/`, and customer-level prepayment links still work.

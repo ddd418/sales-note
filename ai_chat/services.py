@@ -1496,12 +1496,16 @@ def gather_prepayment_data(followups):
     팔로우업 목록(queryset)에 대한 선결제 데이터 수집.
     followups: FollowUp queryset (이미 권한 범위 내로 필터링됨)
     """
+    from django.db.models import Q
     from reporting.models import Prepayment
     from datetime import date, timedelta
 
+    followup_ids = list(followups.values_list('id', flat=True))
+    department_ids = list(followups.exclude(department__isnull=True).values_list('department_id', flat=True).distinct())
     prepayments = Prepayment.objects.filter(
-        customer__in=followups
-    ).select_related('customer').prefetch_related('usages').order_by('-payment_date')
+        Q(department_id__in=department_ids) |
+        Q(department__isnull=True, customer_id__in=followup_ids)
+    ).select_related('department', 'customer').prefetch_related('usages').order_by('-payment_date')
 
     result = []
     today = date.today()
@@ -2378,12 +2382,17 @@ def gather_followup_data(followup, user):
     } for s in upcoming]
 
     # 선결제 기록
+    from django.db.models import Q
     from reporting.models import Prepayment
     from datetime import date, timedelta
 
+    account_filter = (
+        Q(department=followup.department) |
+        Q(department__isnull=True, customer=followup)
+    ) if followup.department_id else Q(customer=followup)
     pp_qs = Prepayment.objects.filter(
-        customer=followup
-    ).prefetch_related('usages').order_by('-payment_date')
+        account_filter
+    ).select_related('department', 'customer').prefetch_related('usages').order_by('-payment_date')
 
     today = date.today()
     stale_threshold = today - timedelta(days=90)

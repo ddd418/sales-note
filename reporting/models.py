@@ -1897,6 +1897,15 @@ class Prepayment(models.Model):
         ('cancelled', '취소'),
     ]
     
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='prepayments',
+        verbose_name="계정/부서",
+        help_text="선결제를 소유하는 부서/연구실 계정입니다. 기존 담당자 연결은 호환용으로 유지합니다.",
+    )
     customer = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='prepayments', verbose_name="고객")
     company = models.ForeignKey(Company, on_delete=models.CASCADE, verbose_name="업체/학교")
     amount = models.DecimalField(max_digits=12, decimal_places=0, verbose_name="선결제 금액")
@@ -1912,7 +1921,12 @@ class Prepayment(models.Model):
     cancel_reason = models.TextField(blank=True, verbose_name="취소 사유")
     
     def __str__(self):
-        return f"{self.customer.customer_name} - {self.payment_date} ({self.balance:,}원)"
+        account_name = ''
+        if self.department_id:
+            account_name = self.department.name
+        elif self.customer_id:
+            account_name = self.customer.customer_name or str(self.customer)
+        return f"{account_name or '선결제'} - {self.payment_date} ({self.balance:,}원)"
     
     class Meta:
         verbose_name = "선결제"
@@ -1921,6 +1935,8 @@ class Prepayment(models.Model):
         indexes = [
             models.Index(fields=['created_by', 'payment_date'], name='prepay_user_date_idx'),
             models.Index(fields=['created_by', 'status'], name='prepay_user_status_idx'),
+            models.Index(fields=['department', 'created_by', 'payment_date'], name='prepay_dept_user_date_idx'),
+            models.Index(fields=['department', 'status'], name='prepay_dept_status_idx'),
         ]
 
 
@@ -1937,12 +1953,115 @@ class PrepaymentUsage(models.Model):
     memo = models.TextField(blank=True, verbose_name="메모")
     
     def __str__(self):
-        return f"{self.prepayment.customer.customer_name} - {self.product_name} ({self.amount:,}원)"
+        customer = self.prepayment.customer if self.prepayment_id and self.prepayment.customer_id else None
+        customer_name = customer.customer_name if customer else str(self.prepayment)
+        return f"{customer_name} - {self.product_name} ({self.amount:,}원)"
     
     class Meta:
         verbose_name = "선결제 사용 내역"
         verbose_name_plural = "선결제 사용 내역 목록"
         ordering = ['-used_at']
+
+
+class PrepaymentLedgerEntry(models.Model):
+    """계정 기준 선결제 원장 이벤트."""
+
+    ENTRY_DEPOSIT = 'deposit'
+    ENTRY_DELIVERY_DEDUCTION = 'delivery_deduction'
+    ENTRY_ADJUSTMENT = 'adjustment'
+    ENTRY_TRANSFER = 'transfer'
+    ENTRY_CANCELLATION = 'cancellation'
+    ENTRY_RESTORE = 'restore'
+    ENTRY_DELETION = 'deletion'
+    ENTRY_CHOICES = [
+        (ENTRY_DEPOSIT, '등록'),
+        (ENTRY_DELIVERY_DEDUCTION, '납품 차감'),
+        (ENTRY_ADJUSTMENT, '조정'),
+        (ENTRY_TRANSFER, '이관'),
+        (ENTRY_CANCELLATION, '취소'),
+        (ENTRY_RESTORE, '차감 복구'),
+        (ENTRY_DELETION, '삭제'),
+    ]
+
+    prepayment = models.ForeignKey(
+        Prepayment,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ledger_entries',
+        verbose_name="선결제",
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='prepayment_ledger_entries',
+        verbose_name="계정/부서",
+    )
+    customer = models.ForeignKey(
+        FollowUp,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='prepayment_ledger_entries',
+        verbose_name="담당자",
+    )
+    schedule = models.ForeignKey(
+        Schedule,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='prepayment_ledger_entries',
+        verbose_name="납품 일정",
+    )
+    usage = models.ForeignKey(
+        PrepaymentUsage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ledger_entries',
+        verbose_name="차감 내역",
+    )
+    entry_type = models.CharField(max_length=32, choices=ENTRY_CHOICES, verbose_name="이벤트 유형")
+    amount = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="금액")
+    balance_before = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name="이전 잔액")
+    balance_after = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name="이후 잔액")
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='prepayment_ledger_entries',
+        verbose_name="처리자",
+    )
+    target_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='received_prepayment_ledger_entries',
+        verbose_name="대상 담당자",
+    )
+    memo = models.TextField(blank=True, verbose_name="메모")
+    metadata = models.JSONField(default=dict, blank=True, verbose_name="추가 정보")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="기록일시")
+
+    def __str__(self):
+        label = self.get_entry_type_display()
+        account = self.department.name if self.department_id else '계정 미지정'
+        return f"{account} - {label} ({self.amount:,}원)"
+
+    class Meta:
+        verbose_name = "선결제 원장 이벤트"
+        verbose_name_plural = "선결제 원장 이벤트 목록"
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['prepayment', '-created_at'], name='prepay_log_prepay_created_idx'),
+            models.Index(fields=['department', '-created_at'], name='prepay_log_dept_created_idx'),
+            models.Index(fields=['actor', '-created_at'], name='prepay_log_actor_created_idx'),
+            models.Index(fields=['entry_type', '-created_at'], name='prepay_log_type_created_idx'),
+        ]
 
 
 # 개인 일정 (PersonalSchedule) 모델 - 팔로우업 없는 일반 일정

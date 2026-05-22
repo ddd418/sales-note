@@ -7956,3 +7956,48 @@ python pre_deployment_check.py
 - `cd frontend && npm run build`
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
+
+## 2026-05-22 Account-based prepayment module completion plan
+
+**Background**:
+
+- User requested task `3-2. 선결제 모듈 계정 기준 완성`.
+- Current `Prepayment` records are primarily linked to a contact-level `FollowUp`; account scope is derived indirectly through `FollowUp.department`.
+- Existing React routes already include `/prepayments/account/<department_id>/`, but create/edit still starts from a customer/contact selector.
+- Existing usage records (`PrepaymentUsage`) cover delivery deductions, while transfer/cancel/adjustment activity is only partially represented through memo/cancel fields.
+
+**DB change required**: Yes.
+
+- Add a canonical `Prepayment.department` foreign key to store the account/department directly while preserving existing `customer` compatibility.
+- Backfill existing rows from `Prepayment.customer.department`.
+- Add a `PrepaymentLedgerEntry` audit model for deposit, delivery deduction, adjustment, transfer, cancellation, restore, and deletion events.
+- Keep `Prepayment.customer` required for compatibility in this phase; React registration will select account first and then a contact as auxiliary information.
+
+**Implementation scope**:
+
+- Backend:
+  - Add account and ledger fields/models with migrations.
+  - Update prepayment payloads, filters, list/detail/account APIs, and schedule prepayment option queries to prefer the account field with contact fallback.
+  - Record ledger entries for create, update adjustment, delivery deduction, restore, cancel, transfer, and delete attempts where mutation code runs.
+  - Add account-level Excel route keyed by `department_id`; preserve existing customer Excel URL as a compatibility route.
+  - Return account balance rows, delivery deduction drilldown rows, and ledger rows in the account prepayment API.
+  - Keep authentication and same-company scoping unchanged.
+- Frontend:
+  - Change the React prepayment create/edit form to choose `계정` first and filter `담당자` options by account.
+  - Show account balance drilldown, delivery deduction drilldown, and ledger/event history on the account prepayment page.
+  - Link account Excel from `/prepayments/account/<department_id>/`.
+- Tests:
+  - Extend prepayment API tests for account-first create/update, department persistence, account API drilldown payloads, ledger recording, and account Excel export.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\admin.py reporting\tests.py`
+- `python manage.py makemigrations --check --dry-run` before migration generation when useful
+- `python manage.py makemigrations reporting`
+- `python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentCustomerApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`

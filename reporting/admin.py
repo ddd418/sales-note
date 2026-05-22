@@ -6,7 +6,7 @@ from .models import (
     AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
     CalibrationRecord, CustomerAsset,
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
-    Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage, ServiceCase,
+    Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, ServiceCase,
     Company, Department, DepartmentMemo, DocumentTemplate, EmailLog, ScheduledEmail, ScheduledEmailAttachment,
     BusinessCard, CustomerCategory
 )
@@ -454,20 +454,31 @@ class PrepaymentUsageInline(admin.TabularInline):
         return False
 
 
+class PrepaymentLedgerEntryInline(admin.TabularInline):
+    model = PrepaymentLedgerEntry
+    extra = 0
+    fields = ('created_at', 'entry_type', 'amount', 'balance_before', 'balance_after', 'actor', 'target_user', 'memo')
+    readonly_fields = ('created_at', 'entry_type', 'amount', 'balance_before', 'balance_after', 'actor', 'target_user', 'memo')
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 # Prepayment 모델 관리자 설정
 @admin.register(Prepayment)
 class PrepaymentAdmin(admin.ModelAdmin):
-    list_display = ('customer', 'payment_date', 'amount', 'balance', 'payment_method', 'status', 'created_by', 'created_at')
-    list_filter = ('status', 'payment_method', 'payment_date', 'created_by')
-    search_fields = ('customer__customer_name', 'company__name', 'payer_name', 'memo')
+    list_display = ('department', 'customer', 'payment_date', 'amount', 'balance', 'payment_method', 'status', 'created_by', 'created_at')
+    list_filter = ('status', 'payment_method', 'payment_date', 'created_by', 'department')
+    search_fields = ('department__name', 'customer__customer_name', 'company__name', 'payer_name', 'memo')
     date_hierarchy = 'payment_date'
-    autocomplete_fields = ['customer', 'company', 'created_by']
-    inlines = [PrepaymentUsageInline]
+    autocomplete_fields = ['department', 'customer', 'company', 'created_by']
+    inlines = [PrepaymentUsageInline, PrepaymentLedgerEntryInline]
     list_per_page = 20
     
     fieldsets = (
         ('기본 정보', {
-            'fields': ('customer', 'company', 'created_by')
+            'fields': ('department', 'customer', 'company', 'created_by')
         }),
         ('금액 정보', {
             'fields': ('amount', 'balance')
@@ -515,6 +526,23 @@ class PrepaymentUsageAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # 삭제 불가 (잔액 계산 무결성)
         return False
+
+
+@admin.register(PrepaymentLedgerEntry)
+class PrepaymentLedgerEntryAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'entry_type', 'department', 'customer', 'amount', 'balance_after', 'actor', 'target_user', 'prepayment', 'schedule')
+    list_filter = ('entry_type', 'created_at', 'department', 'actor')
+    search_fields = (
+        'department__name',
+        'department__company__name',
+        'customer__customer_name',
+        'prepayment__payer_name',
+        'memo',
+    )
+    date_hierarchy = 'created_at'
+    autocomplete_fields = ['prepayment', 'department', 'customer', 'schedule', 'usage', 'actor', 'target_user']
+    readonly_fields = ('created_at',)
+    list_per_page = 30
 
 
 # DocumentTemplate 모델 관리자 설정
