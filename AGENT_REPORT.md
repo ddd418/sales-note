@@ -9,13 +9,12 @@
 - 고객 상세, `/accounts/<department_id>/`, 리포트, 엑셀, AI 납품 결제 분리가 모두 공통 `reporting/account_ledger.py` helper를 보도록 정렬했습니다.
 - React에서 `/accounts/<id>/` 계정 상세 라우트를 열 수 있게 하고, `/reports/` 현황표를 부서/연구실 계정 단위 집계로 바꿨습니다.
 - 오래된 루트 `README.md`를 현재 Django/React/Railway CRM 기준으로 교체했습니다.
-- Railway 배포에서 DB migration이 누락되지 않도록 `Procfile` release 명령을 추가했습니다.
+- 운영 DB migration `reporting.0107_add_delivery_payment_type` 적용을 확인했고, web/frontend 서비스가 online 상태임을 확인했습니다.
 
 ### 변경된 파일
 
 - `AGENT_PLAN.md`
 - `AGENT_REPORT.md`
-- `Procfile`
 - `README.md`
 - `ai_chat/services.py`
 - `frontend/src/App.tsx`
@@ -96,6 +95,26 @@ git commit -m "chore: run migrations during railway release"
 git push origin main
 → main updated
 
+railway logs --service web --environment production --build 8e7baaef-4bda-4f75-891c-72084248295e --lines 200
+→ Procfile release command가 Railway build 단계에서 실행되어 postgres.railway.internal DNS 해석 실패 확인
+
+git commit -m "fix: remove railway build-time migration release"
+→ d8c3d98
+
+git push origin main
+→ main updated
+
+railway deployment list --service web --environment production --limit 1
+→ 8e1787a6-80b5-4b39-b2a9-816ca64dd049 SUCCESS
+
+railway status
+→ sales-note-frontend Online
+→ web Online
+
+railway logs --service web --environment production --lines 80
+→ Running migrations: No migrations to apply.
+→ gunicorn started
+
 Production smoke
 → / 200
 → latest JS bundle /assets/index-D12LceyQ.js contains "Department account", "accountDeliveryRecordsXlsx", "계정별 운영 현황표", "선결제 차감 납품", "표시 계정"
@@ -104,10 +123,8 @@ Production smoke
 
 ### 알려진 제한
 
-- Railway CLI OAuth token이 배포 중 만료되어 최종 deployment list/logs/SSH migration 결과를 CLI로 다시 조회하지 못했습니다.
-- 직접 SSH migration은 완료 확인을 못 했습니다. 대신 Nixpacks `Procfile` release command를 추가해 다음 Railway build/release에서 `python manage.py migrate --noinput`이 실행되도록 보완했습니다.
 - 운영에서 로그인 후 `/customers/471/`, `/customers/156/`, `/accounts/<department_id>/`, `/reports/`의 실제 데이터 화면을 수동 확인해야 합니다.
-- 루트 정리는 README와 release migration 설정까지만 했습니다. `lovable/`, `sales-reporting-system/`, `todolist/`, `settings_correct.py` 같은 과거 산출물 삭제/보관 판단은 별도 작업으로 남겨두었습니다.
+- 루트 정리는 README까지 했습니다. `lovable/`, `sales-reporting-system/`, `todolist/`, `settings_correct.py` 같은 과거 산출물 삭제/보관 판단은 별도 작업으로 남겨두었습니다.
 
 ### 권장 다음 작업
 
@@ -117,8 +134,11 @@ Production smoke
 
 - `e379204 feat: add department account ledger` push 완료.
 - `637ee52 chore: run migrations during railway release` push 완료.
+- `d8c3d98 fix: remove railway build-time migration release` push 완료.
+- `0c1587b docs: report department account ledger rollout` push 완료.
 - Railway frontend 공개 번들은 새 코드 반영을 확인했습니다.
-- Railway CLI 재인증이 필요해 web service의 release migration 완료 여부는 CLI로 최종 확인하지 못했습니다.
+- Railway web service는 최신 정상 배포 `8e1787a6-80b5-4b39-b2a9-816ca64dd049` 기준 Online입니다.
+- 운영 web 로그에서 migration 상태 `No migrations to apply`와 gunicorn 기동을 확인했습니다.
 
 ### 수동 서버 테스트 절차
 
