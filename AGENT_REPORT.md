@@ -78,6 +78,32 @@ Local browser smoke
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: add data quality cleanup decisions"
+→ ca8bc34
+
+git push origin main
+→ main pushed
+
+railway deployment list --service web --limit 3 --json
+→ b647e667-c107-49b3-baca-1e745b48a08c SUCCESS for commit ca8bc34
+
+railway logs --service web --deployment b647e667-c107-49b3-baca-1e745b48a08c --tail 220
+→ Applying reporting.0112_account_cleanup_decisions... OK
+→ gunicorn booted successfully
+
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ 41137d45-21de-4bda-82f6-e06b4f8e18b1 SUCCESS for commit ca8bc34
+
+railway logs --service sales-note-frontend --deployment 41137d45-21de-4bda-82f6-e06b4f8e18b1 --tail 120
+→ Frontend server listening on 8080
+
+Production smoke
+→ /reports/ 200
+→ /reporting/login/ 200
+→ Anonymous /reporting/api/reports/ 401 login_required
+→ Production JS bundle contains data-quality quick-fix/decision/history text
+→ Production CSS bundle contains reports-quality-quickfix
 ```
 
 ### 알려진 제한
@@ -92,7 +118,17 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시와 Railway 배포 후 이 섹션을 갱신합니다.
+- Runtime commit: `ca8bc34 feat: add data quality cleanup decisions`
+- GitHub: `main` pushed.
+- Railway web deployment: `b647e667-c107-49b3-baca-1e745b48a08c` SUCCESS.
+- Railway frontend deployment: `41137d45-21de-4bda-82f6-e06b4f8e18b1` SUCCESS.
+- 운영 마이그레이션: `reporting.0112_account_cleanup_decisions` applied OK.
+- 운영 스모크:
+  - `/reports/` returned 200.
+  - `/reporting/login/` returned 200.
+  - Anonymous `/reporting/api/reports/` returned 401 `login_required`.
+  - Production JS bundle contains `미지정 담당자 빠른 수정`, `보류`, `제외`, `최근 정리 이력`.
+  - Production CSS bundle contains `reports-quality-quickfix`.
 
 ### 운영 수동 확인 절차
 
