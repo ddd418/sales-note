@@ -1160,6 +1160,23 @@ cd frontend; npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git log -1 --oneline
+→ 2b3aa58 feat: enhance account reports
+
+git push origin main
+→ Everything up-to-date; origin/main already included the completed commit
+
+railway deployment list --service web --limit 5 --json
+→ Backend web service deployed commit 2b3aa58 successfully
+
+railway deployment list --service sales-note-frontend --limit 5 --json
+→ Frontend service deployed commit 2b3aa58 successfully
+
+Production smoke
+→ GET https://sales-note-frontend-production.up.railway.app/reports/?delivery_filter=with&prepayment_balance_filter=with&export_scope=prepayment_balance returned React shell 200
+→ GET https://sales-note-frontend-production.up.railway.app/reporting/api/reports/?delivery_filter=with&prepayment_balance_filter=with&export_scope=prepayment_balance returned expected anonymous 401 login_required JSON
+→ GET https://web-production-8a820.up.railway.app/reporting/api/reports/?delivery_filter=with&prepayment_balance_filter=with&export_scope=prepayment_balance returned expected anonymous 401 login_required JSON
 ```
 
 ### 알려진 제한
@@ -26193,7 +26210,12 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending final commit, push, and Railway verification. A post-deployment update will be appended after Railway reports the deployed services.
+- Completed.
+- Commit `2b3aa58 feat: enhance account reports` is present on `origin/main`.
+- Railway backend `web` service deployed commit `2b3aa58` successfully.
+- Railway frontend `sales-note-frontend` service deployed commit `2b3aa58` successfully.
+- Production anonymous access smoke passed: `/reports/` serves the React shell, and both frontend-proxied and direct backend reports API calls return `401 login_required`.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 8. Recommended Next Task
 
