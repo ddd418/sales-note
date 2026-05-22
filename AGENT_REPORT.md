@@ -79,6 +79,33 @@ Local browser smoke
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git commit -m "feat: manage account contacts by department"
+→ 7fdb8ce
+
+git push
+→ main pushed
+
+railway deployment list --service web --limit 5
+→ 93b09a15-d8c3-482b-b38a-8a443edf54b3 SUCCESS, 2026-05-22 20:35:48 +09:00
+
+railway deployment list --service sales-note-frontend --limit 5
+→ 1f10185b-9dd4-4f96-9b13-7254582258e2 SUCCESS, 2026-05-22 20:35:48 +09:00
+
+railway logs --service web --deployment 93b09a15-d8c3-482b-b38a-8a443edf54b3 --tail 140
+→ Applying reporting.0110_account_contact_management... OK
+→ gunicorn booted successfully
+
+railway logs --service sales-note-frontend --deployment 1f10185b-9dd4-4f96-9b13-7254582258e2 --tail 120
+→ Frontend server listening on 8080
+
+Production smoke
+→ /accounts/471/ returned 200
+→ Production JS bundle contains `계정 관리`
+→ Production JS bundle contains `담당자 수정/이동`
+→ Production JS bundle contains `contactRole`, `tax_invoice`, `accountSubmitUrl`, `contactCreateUrl`
+→ Anonymous /reporting/api/accounts/471/ through the frontend proxy returned 401
+→ /reporting/login/ through the frontend proxy returned 200 and rendered a password form
 ```
 
 ### 알려진 제한
@@ -93,7 +120,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전: 로컬 검증 완료. 코드 커밋/푸시 후 Railway 배포 상태와 운영 스모크 결과를 이 항목에 갱신합니다.
+- Runtime commit: `7fdb8ce feat: manage account contacts by department`
+- GitHub: `main` pushed.
+- Railway web deployment: `93b09a15-d8c3-482b-b38a-8a443edf54b3` SUCCESS.
+- Railway frontend deployment: `1f10185b-9dd4-4f96-9b13-7254582258e2` SUCCESS.
+- 운영 마이그레이션: `reporting.0110_account_contact_management` applied OK.
+- 운영 스모크: 계정 상세 200, 운영 번들 계정 관리/담당자 이동 코드 포함, 비로그인 계정 API 401, 프론트 경유 로그인 200 확인.
 
 ### 운영 수동 확인 절차
 
