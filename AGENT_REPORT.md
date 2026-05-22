@@ -81,7 +81,12 @@ Local preview /accounts/1/
 
 ### 운영 배포 상태
 
-- 배포 전. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 진행할 예정입니다.
+- `b85eef2 feat: clarify account detail shared ledger` push 완료.
+- Railway web deployment `67912879-a067-433a-a46f-aa97ec6b35d0` SUCCESS.
+- Railway frontend deployment `b9a8ebbe-838a-47ce-a413-d1070fecd297` SUCCESS.
+- 운영 frontend bundle `/assets/index-03V415e2.js`와 `/assets/index-1SaLH-zN.css`에 원장 범위, 납품 구분, 기록 담당자 표시 반영 확인.
+- 운영 `/reporting/api/accounts/1/` 미인증 요청은 401로 보호됨 확인.
+- web 로그에서 `No migrations to apply`와 gunicorn 기동 확인.
 
 ### 수동 운영 확인 절차
 
