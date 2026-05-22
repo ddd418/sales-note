@@ -65,6 +65,13 @@ Local preview /reports/
 → HTTP 200 from local preview server
 → Built bundle contains `정리 영향 미리보기` and `reports-quality-preview-link`
 → Playwright CLI opened the local route and confirmed the protected login redirect; authenticated candidate visual check still requires a user session
+
+Production smoke
+→ /reports/ returned 200
+→ /accounts/1/cleanup-preview/?target=2 returned 200 as a React route
+→ Anonymous /reporting/api/reports/ remains login-protected with 401
+→ Production JS bundle /assets/index-DX1CU5nK.js contains `정리 영향 미리보기`
+→ Production CSS bundle /assets/index-ozpiUNvo.css contains `reports-quality-preview-link`
 ```
 
 ### 알려진 제한
@@ -78,7 +85,12 @@ Local preview /reports/
 
 ### 운영 배포 상태
 
-- Pending commit/push/Railway deployment.
+- Runtime commit: `d3ee949 feat: link reports cleanup preview`
+- GitHub: `main` pushed.
+- Railway `sales-note-frontend`: `f6e0c6f6-c162-4d12-be09-82aee513a84f` SUCCESS.
+- Railway `web`: `f70934da-1b23-4603-84c4-e8a409ae59da` SUCCESS.
+- Production route/API smoke passed for `/reports/`, cleanup-preview route shell, frontend bundle text/class, and anonymous API protection.
+- Authenticated production candidate-click verification is pending user session confirmation.
 
 ### 수동 운영 확인 절차
 
