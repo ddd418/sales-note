@@ -1,5 +1,101 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Cleanup Execution API v1
+
+### 요약
+
+- 부서/연구실 계정 병합과 담당자 병합을 위한 1차 백엔드 API를 추가했습니다.
+- 기본 모드는 `dry_run`이며, 영향 기록 수와 샘플 ID만 계산하고 업무 원장은 변경하지 않습니다.
+- 실제 `execute`는 admin/superuser만 가능하고, API가 내려주는 정확한 확인 문구가 있어야 실행됩니다.
+- 실행 시 `AccountCleanupAuditLog`에 실행자, source/target, 실행 전/후 스냅샷, 이관 결과를 저장합니다.
+- source Department와 source FollowUp은 삭제하지 않고, 원본 추적을 위해 보존 메모/status를 남깁니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/admin.py`
+- `reporting/migrations/0108_accountcleanupauditlog.py`
+- `reporting/models.py`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- `POST /reporting/api/accounts/<department_id>/cleanup-merge/`
+  - Department 병합 dry-run/execute 지원.
+  - `FollowUp.department`, `CustomerAsset.department`, `DepartmentMemo` 이동 및 원본/대상 보존 메모 생성.
+- `POST /reporting/api/customers/<followup_id>/cleanup-merge/`
+  - 담당자 병합 dry-run/execute 지원.
+  - `History`, `Schedule`, `Quote`, `Prepayment`, `ServiceCase`, `CalibrationRecord`, `CustomerAsset.primary_followup` 이관.
+  - 원본 FollowUp은 삭제하지 않고 `paused` + 보존 메모로 남김.
+- cleanup preview 체크리스트의 Audit log 항목은 “준비됨”으로 바뀌었지만, React 화면에는 여전히 병합 버튼을 노출하지 않았습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 기존 라우트는 유지했습니다.
+- 기존 preview/search/reports API는 유지했고, cleanup preview는 계속 `canMerge=false`입니다.
+- 프론트엔드 실행 버튼은 추가하지 않았습니다.
+- 일반 사용자는 execute를 호출해도 403으로 차단됩니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\admin.py reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py makemigrations reporting
+→ reporting/migrations/0108_accountcleanupauditlog.py 생성
+
+python manage.py migrate --plan
+→ reporting.0108_accountcleanupauditlog Create model AccountCleanupAuditLog 예정
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_returns_source_and_target_impact reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_department_merge_api_dry_run_and_admin_execute reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_contact_merge_api_dry_run_and_admin_execute --verbosity=2
+→ Ran 4 tests, OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 16 tests, OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_contact_merge_api_dry_run_and_admin_execute --verbosity=1
+→ Ran 1 test, OK after scoped queryset simplification
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 실제 병합을 누르는 React UI는 아직 없습니다. 이번 단계는 API와 안전장치만 추가했습니다.
+- Department 병합은 같은 업체/학교 안에서만 허용됩니다.
+- 담당자 병합은 같은 업체/학교 + 같은 부서/연구실 안에서만 허용됩니다.
+- dry-run은 업무 원장을 변경하지 않으며 audit log도 생성하지 않습니다.
+
+### 권장 다음 작업
+
+- 관리자 전용 내부 화면에서 dry-run 결과와 확인 문구를 보여주되, 실제 execute 버튼은 별도 권한/2단계 확인 후 노출합니다.
+- 병합 실행 전 JSON export와 audit log를 같이 확인할 수 있는 운영자 검토 화면을 붙입니다.
+
+### 운영 배포 상태
+
+- 배포 전. 커밋/푸시 후 Railway `web` 서비스 배포와 운영 smoke를 진행해야 합니다.
+
+### 수동 운영 확인 절차
+
+1. 운영 배포 후 로그인 상태에서 `/reports/` 또는 `/accounts/<source>/cleanup-preview/?target=<target>`로 후보를 확인합니다.
+2. 아직 화면에 실제 병합 버튼이 없는지 확인합니다.
+3. 관리자 계정으로 API dry-run만 먼저 호출해 `dryRun=true`, `executed=false`, `requiredConfirmationText`가 내려오는지 확인합니다.
+4. 실제 execute는 운영 데이터에 영향을 주므로, 테스트용 중복 계정/담당자에서만 확인합니다.
+5. execute 후 Django admin에서 `계정 정리 감사 로그`가 생성되고 source record가 삭제되지 않았는지 확인합니다.
+
 ## 2026-05-22 — Account Cleanup Pre-Merge Checklist
 
 ### 요약

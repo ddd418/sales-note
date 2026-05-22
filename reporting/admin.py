@@ -2,11 +2,12 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
+    AccountCleanupAuditLog,
     AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
     CalibrationRecord, CustomerAsset,
     FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentUsage, ServiceCase,
-    Company, Department, DocumentTemplate, EmailLog, ScheduledEmail, ScheduledEmailAttachment,
+    Company, Department, DepartmentMemo, DocumentTemplate, EmailLog, ScheduledEmail, ScheduledEmailAttachment,
     BusinessCard, CustomerCategory
 )
 
@@ -50,6 +51,46 @@ class DepartmentAdmin(admin.ModelAdmin):
     search_fields = ('name', 'company__name')
     list_filter = ('company', 'created_by', 'created_at')
     autocomplete_fields = ['company']
+    date_hierarchy = 'created_at'
+    list_per_page = 20
+
+
+@admin.register(DepartmentMemo)
+class DepartmentMemoAdmin(admin.ModelAdmin):
+    list_display = ('department', 'created_by', 'updated_at')
+    search_fields = ('department__name', 'department__company__name', 'content')
+    list_filter = ('created_by', 'updated_at')
+    autocomplete_fields = ['department', 'created_by']
+    date_hierarchy = 'updated_at'
+    list_per_page = 20
+
+
+@admin.register(AccountCleanupAuditLog)
+class AccountCleanupAuditLogAdmin(admin.ModelAdmin):
+    list_display = ('id', 'action_type', 'mode', 'created_by', 'source_department', 'target_department', 'source_followup', 'target_followup', 'created_at')
+    list_filter = ('action_type', 'mode', 'created_at')
+    search_fields = (
+        'created_by__username',
+        'source_department__name',
+        'target_department__name',
+        'source_followup__customer_name',
+        'target_followup__customer_name',
+    )
+    readonly_fields = (
+        'created_by',
+        'action_type',
+        'mode',
+        'source_department',
+        'target_department',
+        'source_followup',
+        'target_followup',
+        'confirmation_text',
+        'before_snapshot',
+        'after_snapshot',
+        'result',
+        'created_at',
+        'updated_at',
+    )
     date_hierarchy = 'created_at'
     list_per_page = 20
 

@@ -11,8 +11,10 @@ from django.contrib.auth.models import User
 from django.template.loader import get_template
 from django.utils import timezone
 from reporting.models import (
+    AccountCleanupAuditLog,
     Company,
     Department,
+    DepartmentMemo,
     DocumentGenerationLog,
     DocumentTemplate,
     EmailLog,
@@ -778,7 +780,7 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(payload['combined']['metrics']['contactCount'], 2)
         self.assertEqual(payload['combined']['metrics']['deliveryCount'], 2)
         self.assertFalse(payload['mergeReadiness']['canMerge'])
-        self.assertEqual(payload['mergeReadiness']['status'], 'blocked')
+        self.assertEqual(payload['mergeReadiness']['status'], 'review')
         self.assertEqual(payload['mergeReadiness']['recommendedSurvivingAccount']['id'], target_department.id)
         self.assertIn(
             f'/reporting/api/accounts/{self.department.id}/cleanup-preview/?',
@@ -792,7 +794,7 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(checklist['prepayment_usage']['amount'], 2000)
         self.assertEqual(checklist['linked_records']['status'], 'review')
         self.assertEqual(checklist['export_ready']['status'], 'pass')
-        self.assertEqual(checklist['audit_log_required']['status'], 'blocked')
+        self.assertEqual(checklist['audit_log_required']['status'], 'pass')
         self.assertIn('읽기 전용', ' '.join(payload['warnings']))
 
         export_response = self.client.get(
@@ -803,7 +805,7 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertIn('attachment;', export_response['Content-Disposition'])
         self.assertIn('account-cleanup-preview', export_response['Content-Disposition'])
         export_payload = json.loads(export_response.content.decode('utf-8'))
-        self.assertEqual(export_payload['mergeReadiness']['status'], 'blocked')
+        self.assertEqual(export_payload['mergeReadiness']['status'], 'review')
         self.assertEqual(export_payload['targetAccount']['id'], target_department.id)
 
     def test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target(self):
@@ -829,6 +831,239 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
             {'target': other_department.id},
         )
         self.assertEqual(blocked.status_code, 403)
+
+    def test_account_cleanup_department_merge_api_dry_run_and_admin_execute(self):
+        target_department = Department.objects.create(
+            company=self.customer_company,
+            name='연구실 A 통합',
+            created_by=self.user,
+        )
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=target_department,
+            customer_name='대상 담당자',
+        )
+        asset = CustomerAsset.objects.create(
+            company=self.customer_company,
+            department=self.department,
+            primary_followup=self.followup,
+            asset_name='병합 장비',
+            created_by=self.user,
+        )
+        memo = DepartmentMemo.objects.create(
+            department=self.department,
+            content='원본 부서 메모',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        url = reverse('reporting:account_cleanup_department_merge_api', args=[self.department.id])
+        dry_run = self.client.post(
+            url,
+            data=json.dumps({'targetDepartmentId': target_department.id, 'mode': 'dry_run'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(dry_run.status_code, 200)
+        dry_payload = dry_run.json()
+        self.assertTrue(dry_payload['dryRun'])
+        self.assertFalse(dry_payload['executed'])
+        transfers = {item['key']: item for item in dry_payload['plan']['transfers']}
+        self.assertEqual(transfers['followups']['count'], 1)
+        self.assertEqual(transfers['assets']['count'], 1)
+        self.assertEqual(transfers['departmentMemos']['count'], 1)
+        self.followup.refresh_from_db()
+        asset.refresh_from_db()
+        memo.refresh_from_db()
+        self.assertEqual(self.followup.department_id, self.department.id)
+        self.assertEqual(asset.department_id, self.department.id)
+        self.assertEqual(memo.department_id, self.department.id)
+        self.assertEqual(AccountCleanupAuditLog.objects.count(), 0)
+
+        blocked = self.client.post(
+            url,
+            data=json.dumps({
+                'targetDepartmentId': target_department.id,
+                'mode': 'execute',
+                'confirmationText': dry_payload['requiredConfirmationText'],
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(blocked.status_code, 403)
+
+        admin_user = make_user('cleanup-admin', role='admin', company=self.company)
+        self.client.force_login(admin_user)
+        wrong_confirmation = self.client.post(
+            url,
+            data=json.dumps({
+                'targetDepartmentId': target_department.id,
+                'mode': 'execute',
+                'confirmationText': 'WRONG',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(wrong_confirmation.status_code, 400)
+        self.assertEqual(
+            wrong_confirmation.json()['requiredConfirmationText'],
+            dry_payload['requiredConfirmationText'],
+        )
+
+        executed = self.client.post(
+            url,
+            data=json.dumps({
+                'targetDepartmentId': target_department.id,
+                'mode': 'execute',
+                'confirmationText': dry_payload['requiredConfirmationText'],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(executed.status_code, 200)
+        executed_payload = executed.json()
+        self.assertTrue(executed_payload['executed'])
+        self.assertEqual(executed_payload['result']['followupsUpdated'], 1)
+        self.assertEqual(executed_payload['result']['assetsUpdated'], 1)
+        self.assertEqual(executed_payload['result']['departmentMemosMoved'], 1)
+        self.followup.refresh_from_db()
+        asset.refresh_from_db()
+        memo.refresh_from_db()
+        self.assertEqual(self.followup.department_id, target_department.id)
+        self.assertEqual(asset.department_id, target_department.id)
+        self.assertEqual(memo.department_id, target_department.id)
+        self.assertTrue(DepartmentMemo.objects.filter(department=self.department, content__contains='정리 보존').exists())
+        self.assertTrue(DepartmentMemo.objects.filter(department=target_department, content__contains='원본').exists())
+        audit_log = AccountCleanupAuditLog.objects.get()
+        self.assertEqual(audit_log.action_type, AccountCleanupAuditLog.ACTION_DEPARTMENT_MERGE)
+        self.assertEqual(audit_log.mode, AccountCleanupAuditLog.MODE_EXECUTE)
+        self.assertEqual(audit_log.result['status'], 'completed')
+
+    def test_account_cleanup_contact_merge_api_dry_run_and_admin_execute(self):
+        today = timezone.localdate()
+        target_followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='통합 대상 담당자',
+            email='target-contact@example.com',
+        )
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        quote = Quote.objects.create(
+            quote_number='CONTACT-MERGE-1',
+            schedule=schedule,
+            followup=self.followup,
+            user=self.user,
+            valid_until=today + timedelta(days=30),
+            subtotal=1000,
+        )
+        history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            action_type='customer_meeting',
+            content='담당자 병합 노트',
+        )
+        prepayment = Prepayment.objects.create(
+            customer=self.followup,
+            company=self.customer_company,
+            amount=5000,
+            balance=3000,
+            payment_date=today,
+            created_by=self.user,
+        )
+        asset = CustomerAsset.objects.create(
+            company=self.customer_company,
+            department=self.department,
+            primary_followup=self.followup,
+            asset_name='담당자 병합 장비',
+            created_by=self.user,
+        )
+        service_case = ServiceCase.objects.create(
+            asset=asset,
+            followup=self.followup,
+            case_type='service',
+            status='received',
+            received_date=today,
+            created_by=self.user,
+        )
+        calibration = CalibrationRecord.objects.create(
+            asset=asset,
+            followup=self.followup,
+            calibration_date=today,
+            next_due_date=today + timedelta(days=7),
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        url = reverse('reporting:account_cleanup_contact_merge_api', args=[self.followup.id])
+        dry_run = self.client.post(
+            url,
+            data=json.dumps({'targetFollowupId': target_followup.id, 'mode': 'dry_run'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(dry_run.status_code, 200)
+        dry_payload = dry_run.json()
+        self.assertTrue(dry_payload['dryRun'])
+        transfers = {item['key']: item for item in dry_payload['plan']['transfers']}
+        self.assertEqual(transfers['histories']['count'], 1)
+        self.assertEqual(transfers['schedules']['count'], 1)
+        self.assertEqual(transfers['quotes']['count'], 1)
+        self.assertEqual(transfers['prepayments']['count'], 1)
+        self.assertEqual(transfers['serviceCases']['count'], 1)
+        self.assertEqual(transfers['calibrations']['count'], 1)
+        self.assertEqual(transfers['primaryAssets']['count'], 1)
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.followup_id, self.followup.id)
+
+        admin_user = make_user('cleanup-admin-contact', role='admin', company=self.company)
+        self.client.force_login(admin_user)
+        executed = self.client.post(
+            url,
+            data=json.dumps({
+                'targetFollowupId': target_followup.id,
+                'mode': 'execute',
+                'confirmationText': dry_payload['requiredConfirmationText'],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(executed.status_code, 200)
+        executed_payload = executed.json()
+        self.assertTrue(executed_payload['executed'])
+        self.assertEqual(executed_payload['result']['historiesUpdated'], 1)
+        self.assertEqual(executed_payload['result']['schedulesUpdated'], 1)
+        self.assertEqual(executed_payload['result']['quotesUpdated'], 1)
+        self.assertEqual(executed_payload['result']['prepaymentsUpdated'], 1)
+        self.assertEqual(executed_payload['result']['serviceCasesUpdated'], 1)
+        self.assertEqual(executed_payload['result']['calibrationsUpdated'], 1)
+        self.assertEqual(executed_payload['result']['primaryAssetsUpdated'], 1)
+        for obj in [schedule, quote, history, prepayment, asset, service_case, calibration]:
+            obj.refresh_from_db()
+        self.followup.refresh_from_db()
+        self.assertEqual(schedule.followup_id, target_followup.id)
+        self.assertEqual(quote.followup_id, target_followup.id)
+        self.assertEqual(history.followup_id, target_followup.id)
+        self.assertEqual(prepayment.customer_id, target_followup.id)
+        self.assertEqual(asset.primary_followup_id, target_followup.id)
+        self.assertEqual(service_case.followup_id, target_followup.id)
+        self.assertEqual(calibration.followup_id, target_followup.id)
+        self.assertEqual(self.followup.status, 'paused')
+        self.assertIn('정리 보존', self.followup.notes)
+        audit_log = AccountCleanupAuditLog.objects.get()
+        self.assertEqual(audit_log.action_type, AccountCleanupAuditLog.ACTION_CONTACT_MERGE)
+        self.assertEqual(audit_log.source_followup_id, self.followup.id)
+        self.assertEqual(audit_log.target_followup_id, target_followup.id)
 
     def test_account_cleanup_account_search_api_finds_by_company_department_pi_contact_and_email(self):
         self.followup.manager = '김PI'

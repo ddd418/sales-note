@@ -1,5 +1,45 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account cleanup execution API v1 plan
+
+**Background**:
+
+- User wants the first implementation step for department/contact duplicate cleanup execution after read-only previews.
+- Department/lab account is the business ledger scope, so department merges must move contact/account relations and equipment department links together.
+- Contact merges must transfer linked records without deleting the source contact, because original traceability is important.
+- Actual execution is risky, so v1 must default to dry-run and require admin permission, exact confirmation text, and audit logging for execution.
+
+**DB change required**: Yes.
+
+- Add an `AccountCleanupAuditLog` model to store source/target, action type, dry-run/execute mode, snapshots, results, user, and confirmation text.
+- Create a reporting migration for the audit log table.
+
+**Implementation scope**:
+
+- Backend:
+  - Add department merge API at `/reporting/api/accounts/<department_id>/cleanup-merge/`.
+  - Add contact merge API at `/reporting/api/customers/<followup_id>/cleanup-merge/`.
+  - Support `mode=dry_run` that calculates affected records and does not update data.
+  - Support `mode=execute` only for admin/superuser with exact `confirmationText`.
+  - Department execution moves `FollowUp.department`, `CustomerAsset.department`, preserves source department details in target/source department memos, and records audit log.
+  - Contact execution moves `History`, `Schedule`, `Quote`, `Prepayment`, `ServiceCase`, `CalibrationRecord`, and `CustomerAsset.primary_followup`, then pauses/preserves the source `FollowUp`.
+  - Keep source Department and FollowUp rows; do not delete source records.
+  - Update cleanup checklist messaging so audit log is now available but UI merge remains intentionally absent.
+- Frontend:
+  - No merge button in this task. Existing preview remains read-only.
+- Tests/docs:
+  - Add focused API tests for dry-run no-op behavior, admin/confirmation gates, execution transfer counts, preservation, and audit log creation.
+  - Run focused backend validation, Django checks, migration dry-run, and deployment smoke.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused account cleanup preview/merge API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Account cleanup pre-merge checklist plan
 
 **Background**:

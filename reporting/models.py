@@ -99,6 +99,86 @@ class DepartmentMemo(models.Model):
         return f"{self.department.name} 메모 ({self.updated_at.strftime('%Y-%m-%d')})"
 
 
+class AccountCleanupAuditLog(models.Model):
+    """부서/담당자 정리 실행 감사 로그."""
+
+    ACTION_DEPARTMENT_MERGE = 'department_merge'
+    ACTION_CONTACT_MERGE = 'contact_merge'
+    ACTION_CHOICES = [
+        (ACTION_DEPARTMENT_MERGE, '부서/연구실 계정 병합'),
+        (ACTION_CONTACT_MERGE, '담당자 병합'),
+    ]
+
+    MODE_DRY_RUN = 'dry_run'
+    MODE_EXECUTE = 'execute'
+    MODE_CHOICES = [
+        (MODE_DRY_RUN, 'Dry-run'),
+        (MODE_EXECUTE, 'Execute'),
+    ]
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='account_cleanup_audit_logs',
+        verbose_name="실행자",
+    )
+    action_type = models.CharField(max_length=32, choices=ACTION_CHOICES, verbose_name="정리 유형")
+    mode = models.CharField(max_length=16, choices=MODE_CHOICES, default=MODE_DRY_RUN, verbose_name="실행 모드")
+    source_department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="원본 부서/연구실",
+    )
+    target_department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="대상 부서/연구실",
+    )
+    source_followup = models.ForeignKey(
+        'FollowUp',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="원본 담당자",
+    )
+    target_followup = models.ForeignKey(
+        'FollowUp',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name="대상 담당자",
+    )
+    confirmation_text = models.CharField(max_length=255, blank=True, verbose_name="확인 문구")
+    before_snapshot = models.JSONField(default=dict, blank=True, verbose_name="실행 전 스냅샷")
+    after_snapshot = models.JSONField(default=dict, blank=True, verbose_name="실행 후 스냅샷")
+    result = models.JSONField(default=dict, blank=True, verbose_name="실행 결과")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일시")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+
+    def __str__(self):
+        return f"{self.get_action_type_display()} {self.mode} #{self.id}"
+
+    class Meta:
+        verbose_name = "계정 정리 감사 로그"
+        verbose_name_plural = "계정 정리 감사 로그"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['action_type', 'mode', '-created_at'], name='acct_cleanup_action_idx'),
+            models.Index(fields=['source_department', 'target_department'], name='acct_cleanup_dept_idx'),
+            models.Index(fields=['source_followup', 'target_followup'], name='acct_cleanup_contact_idx'),
+        ]
+
+
 # 사용자 프로필 (UserProfile) 모델 - 권한 관리
 class UserProfile(models.Model):
     ROLE_CHOICES = [

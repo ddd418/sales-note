@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
+from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -5596,9 +5596,9 @@ def _account_cleanup_merge_readiness(source_payload, target_payload, export_href
         _account_cleanup_checklist_item(
             'audit_log_required',
             'Audit log 준비',
-            'blocked',
-            '실제 병합 API를 만들기 전 누가, 언제, 어떤 source/target/record를 옮겼는지 남기는 audit log 모델 또는 로그 저장소가 필요합니다.',
-            'danger',
+            'pass',
+            '실행 API는 AccountCleanupAuditLog에 실행자, source/target, 전후 스냅샷, 이관 결과를 남기도록 준비되어 있습니다.',
+            'success',
         ),
     ]
     blocked_count = sum(1 for item in items if item['status'] == 'blocked')
@@ -5623,6 +5623,546 @@ def _account_cleanup_merge_readiness(source_payload, target_payload, export_href
         'exportHref': export_href,
         'items': items,
     }
+
+
+_ACCOUNT_CLEANUP_ID_SAMPLE_LIMIT = 50
+
+
+def _account_cleanup_request_payload(request):
+    if request.body:
+        try:
+            return json.loads(request.body.decode('utf-8') or '{}'), None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}, JsonResponse({
+                'success': False,
+                'error': 'invalid_json',
+                'message': '요청 JSON 형식이 올바르지 않습니다.',
+            }, status=400)
+    return request.POST.dict(), None
+
+
+def _account_cleanup_payload_int(payload, *keys):
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ''):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _account_cleanup_payload_text(payload, *keys):
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ''):
+            return str(value).strip()
+    return ''
+
+
+def _account_cleanup_request_mode(payload):
+    mode = (payload.get('mode') or payload.get('runMode') or AccountCleanupAuditLog.MODE_DRY_RUN)
+    mode = str(mode).strip().lower().replace('-', '_')
+    if mode in ['dryrun', 'preview']:
+        mode = AccountCleanupAuditLog.MODE_DRY_RUN
+    if mode not in [AccountCleanupAuditLog.MODE_DRY_RUN, AccountCleanupAuditLog.MODE_EXECUTE]:
+        return None
+    return mode
+
+
+def _account_cleanup_user_can_execute(request, user_profile):
+    return bool(request.user.is_superuser or (user_profile and user_profile.is_admin()))
+
+
+def _account_cleanup_scope_users(request, user_profile):
+    if _account_cleanup_user_can_execute(request, user_profile):
+        return User.objects.all()
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    return scope_users
+
+
+def _account_cleanup_queryset_line(key, label, queryset, detail=''):
+    count = queryset.count()
+    ids = list(queryset.values_list('id', flat=True)[:_ACCOUNT_CLEANUP_ID_SAMPLE_LIMIT])
+    return {
+        'key': key,
+        'label': label,
+        'count': int(count or 0),
+        'sampleIds': ids,
+        'sampleLimit': _ACCOUNT_CLEANUP_ID_SAMPLE_LIMIT,
+        'truncated': count > _ACCOUNT_CLEANUP_ID_SAMPLE_LIMIT,
+        'detail': detail,
+    }
+
+
+def _account_cleanup_plan_counts(transfers):
+    return {
+        'transferCount': sum(int(item.get('count', 0) or 0) for item in transfers),
+        'groups': len(transfers),
+    }
+
+
+def _account_cleanup_department_ref(department):
+    return {
+        'id': department.id,
+        'name': department.name,
+        'companyId': department.company_id,
+        'companyName': department.company.name if department.company else '',
+        'href': f'/accounts/{department.id}/',
+    }
+
+
+def _account_cleanup_followup_ref(followup):
+    return {
+        'id': followup.id,
+        'customerName': followup.customer_name or '',
+        'manager': followup.manager or '',
+        'email': followup.email or '',
+        'status': followup.status,
+        'companyId': followup.company_id,
+        'companyName': followup.company.name if followup.company else '',
+        'departmentId': followup.department_id,
+        'departmentName': followup.department.name if followup.department else '',
+        'href': f'/customers/{followup.id}/',
+    }
+
+
+def _account_cleanup_department_confirmation(source_department, target_department):
+    return f"MERGE DEPARTMENT {source_department.id} INTO {target_department.id}"
+
+
+def _account_cleanup_contact_confirmation(source_followup, target_followup):
+    return f"MERGE CONTACT {source_followup.id} INTO {target_followup.id}"
+
+
+def _account_cleanup_preservation_note(now, audit_log, source_label, target_label, action_label):
+    actor = _user_display_name(audit_log.created_by) if audit_log.created_by else '알 수 없음'
+    return (
+        f"[정리 보존] {now:%Y-%m-%d %H:%M} {actor}가 {action_label}을 실행했습니다.\n"
+        f"- 원본: {source_label}\n"
+        f"- 대상: {target_label}\n"
+        f"- AuditLog: #{audit_log.id}"
+    )
+
+
+def _account_cleanup_append_note(existing, note):
+    existing = (existing or '').strip()
+    if not existing:
+        return note
+    return f"{existing}\n\n{note}"
+
+
+def _account_cleanup_department_merge_plan(source_department, target_department, scope_users):
+    followup_qs = FollowUp.objects.filter(department=source_department, user__in=scope_users)
+    asset_qs = CustomerAsset.objects.filter(department=source_department).filter(
+        Q(created_by__in=scope_users) | Q(created_by__isnull=True)
+    )
+    memo_qs = DepartmentMemo.objects.filter(department=source_department)
+    transfers = [
+        _account_cleanup_queryset_line(
+            'followups',
+            '담당자 계정',
+            followup_qs,
+            'FollowUp.department를 대상 부서/연구실로 변경합니다.',
+        ),
+        _account_cleanup_queryset_line(
+            'assets',
+            '장비',
+            asset_qs,
+            'CustomerAsset.department를 대상 부서/연구실로 변경합니다.',
+        ),
+        _account_cleanup_queryset_line(
+            'departmentMemos',
+            '부서 메모',
+            memo_qs,
+            '기존 원본 부서 메모를 대상 부서로 이동하고 보존 메모를 추가합니다.',
+        ),
+        {
+            'key': 'preservationMemos',
+            'label': '보존 메모',
+            'count': 2,
+            'sampleIds': [],
+            'sampleLimit': _ACCOUNT_CLEANUP_ID_SAMPLE_LIMIT,
+            'truncated': False,
+            'detail': '원본/대상 부서에 병합 추적 메모를 각각 1건씩 생성합니다.',
+        },
+    ]
+    return {
+        'actionType': AccountCleanupAuditLog.ACTION_DEPARTMENT_MERGE,
+        'sourceAccount': _account_cleanup_department_ref(source_department),
+        'targetAccount': _account_cleanup_department_ref(target_department),
+        'transfers': transfers,
+        'counts': _account_cleanup_plan_counts(transfers),
+    }
+
+
+def _account_cleanup_contact_merge_plan(source_followup, target_followup, scope_users):
+    history_qs = History.objects.filter(followup=source_followup, user__in=scope_users)
+    schedule_qs = Schedule.objects.filter(followup=source_followup, user__in=scope_users)
+    quote_qs = Quote.objects.filter(followup=source_followup, user__in=scope_users)
+    prepayment_qs = Prepayment.objects.filter(customer=source_followup, created_by__in=scope_users)
+    service_case_qs = ServiceCase.objects.filter(followup=source_followup).filter(
+        Q(created_by__in=scope_users)
+        | Q(assigned_to__in=scope_users)
+        | Q(asset__created_by__in=scope_users)
+        | Q(followup__user__in=scope_users)
+    ).distinct()
+    calibration_qs = CalibrationRecord.objects.filter(followup=source_followup).filter(
+        Q(created_by__in=scope_users)
+        | Q(performed_by__in=scope_users)
+        | Q(asset__created_by__in=scope_users)
+        | Q(followup__user__in=scope_users)
+    ).distinct()
+    asset_qs = CustomerAsset.objects.filter(primary_followup=source_followup).filter(
+        Q(created_by__in=scope_users) | Q(created_by__isnull=True)
+    )
+    transfers = [
+        _account_cleanup_queryset_line('histories', '서비스/영업노트', history_qs, 'History.followup를 대상 담당자로 변경합니다.'),
+        _account_cleanup_queryset_line('schedules', '일정/납품', schedule_qs, 'Schedule.followup를 대상 담당자로 변경합니다.'),
+        _account_cleanup_queryset_line('quotes', '견적', quote_qs, 'Quote.followup를 대상 담당자로 변경합니다.'),
+        _account_cleanup_queryset_line('prepayments', '선결제', prepayment_qs, 'Prepayment.customer를 대상 담당자로 변경합니다.'),
+        _account_cleanup_queryset_line('serviceCases', '서비스 기록', service_case_qs, 'ServiceCase.followup를 대상 담당자로 변경합니다.'),
+        _account_cleanup_queryset_line('calibrations', '교정 기록', calibration_qs, 'CalibrationRecord.followup를 대상 담당자로 변경합니다.'),
+        _account_cleanup_queryset_line('primaryAssets', '주 담당 장비', asset_qs, 'CustomerAsset.primary_followup를 대상 담당자로 변경합니다.'),
+        {
+            'key': 'sourceContactPreservation',
+            'label': '원본 담당자 보존',
+            'count': 1,
+            'sampleIds': [source_followup.id],
+            'sampleLimit': _ACCOUNT_CLEANUP_ID_SAMPLE_LIMIT,
+            'truncated': False,
+            'detail': '원본 담당자는 삭제하지 않고 일시중지 상태와 보존 메모로 남깁니다.',
+        },
+    ]
+    return {
+        'actionType': AccountCleanupAuditLog.ACTION_CONTACT_MERGE,
+        'sourceContact': _account_cleanup_followup_ref(source_followup),
+        'targetContact': _account_cleanup_followup_ref(target_followup),
+        'transfers': transfers,
+        'counts': _account_cleanup_plan_counts(transfers),
+    }
+
+
+def _account_cleanup_department_after_snapshot(source_department, target_department):
+    return {
+        'sourceAccount': {
+            **_account_cleanup_department_ref(source_department),
+            'followupCount': FollowUp.objects.filter(department=source_department).count(),
+            'assetCount': CustomerAsset.objects.filter(department=source_department).count(),
+            'memoCount': DepartmentMemo.objects.filter(department=source_department).count(),
+        },
+        'targetAccount': {
+            **_account_cleanup_department_ref(target_department),
+            'followupCount': FollowUp.objects.filter(department=target_department).count(),
+            'assetCount': CustomerAsset.objects.filter(department=target_department).count(),
+            'memoCount': DepartmentMemo.objects.filter(department=target_department).count(),
+        },
+    }
+
+
+def _account_cleanup_contact_after_snapshot(source_followup, target_followup):
+    return {
+        'sourceContact': {
+            **_account_cleanup_followup_ref(source_followup),
+            'historyCount': History.objects.filter(followup=source_followup).count(),
+            'scheduleCount': Schedule.objects.filter(followup=source_followup).count(),
+            'quoteCount': Quote.objects.filter(followup=source_followup).count(),
+            'prepaymentCount': Prepayment.objects.filter(customer=source_followup).count(),
+            'serviceCaseCount': ServiceCase.objects.filter(followup=source_followup).count(),
+            'calibrationCount': CalibrationRecord.objects.filter(followup=source_followup).count(),
+        },
+        'targetContact': {
+            **_account_cleanup_followup_ref(target_followup),
+            'historyCount': History.objects.filter(followup=target_followup).count(),
+            'scheduleCount': Schedule.objects.filter(followup=target_followup).count(),
+            'quoteCount': Quote.objects.filter(followup=target_followup).count(),
+            'prepaymentCount': Prepayment.objects.filter(customer=target_followup).count(),
+            'serviceCaseCount': ServiceCase.objects.filter(followup=target_followup).count(),
+            'calibrationCount': CalibrationRecord.objects.filter(followup=target_followup).count(),
+        },
+    }
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["POST"])
+def account_cleanup_department_merge_api(request, department_id):
+    """Dry-run or execute a limited department/lab account merge."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error_response = _account_cleanup_request_payload(request)
+    if error_response:
+        return error_response
+    mode = _account_cleanup_request_mode(payload)
+    if not mode:
+        return JsonResponse({'success': False, 'error': 'invalid_mode'}, status=400)
+
+    user_profile = get_user_profile(request.user)
+    scope_users = _account_cleanup_scope_users(request, user_profile)
+    can_execute = _account_cleanup_user_can_execute(request, user_profile)
+    is_execute = mode == AccountCleanupAuditLog.MODE_EXECUTE
+
+    target_department_id = _account_cleanup_payload_int(
+        payload, 'targetDepartmentId', 'target_department_id', 'target', 'targetId'
+    )
+    if not target_department_id:
+        return JsonResponse({'success': False, 'error': 'target_required'}, status=400)
+
+    source_department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    target_department = get_object_or_404(Department.objects.select_related('company'), pk=target_department_id)
+    if source_department.id == target_department.id:
+        return JsonResponse({'success': False, 'error': 'same_source_target'}, status=400)
+    if source_department.company_id != target_department.company_id:
+        return JsonResponse({'success': False, 'error': 'different_company'}, status=400)
+
+    if account_representative_followup(source_department, scope_users) is None:
+        return JsonResponse({'success': False, 'error': 'source_forbidden'}, status=403)
+    if account_representative_followup(target_department, scope_users) is None:
+        return JsonResponse({'success': False, 'error': 'target_forbidden'}, status=403)
+
+    required_confirmation = _account_cleanup_department_confirmation(source_department, target_department)
+    confirmation_text = _account_cleanup_payload_text(payload, 'confirmationText', 'confirmation_text', 'confirmation')
+    if is_execute and not can_execute:
+        return JsonResponse({'success': False, 'error': 'admin_required'}, status=403)
+    if is_execute and confirmation_text != required_confirmation:
+        return JsonResponse({
+            'success': False,
+            'error': 'confirmation_required',
+            'requiredConfirmationText': required_confirmation,
+        }, status=400)
+
+    plan = _account_cleanup_department_merge_plan(source_department, target_department, scope_users)
+    response_payload = {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'actionType': AccountCleanupAuditLog.ACTION_DEPARTMENT_MERGE,
+        'mode': mode,
+        'dryRun': not is_execute,
+        'executed': False,
+        'canExecute': can_execute,
+        'requiredConfirmationText': required_confirmation,
+        'plan': plan,
+        'warnings': [
+            'source Department와 FollowUp 원본 row는 삭제하지 않습니다.',
+            '실제 실행은 AccountCleanupAuditLog와 보존 메모를 남깁니다.',
+        ],
+        'auditLogId': None,
+    }
+    if not is_execute:
+        return JsonResponse(response_payload)
+
+    with transaction.atomic():
+        audit_log = AccountCleanupAuditLog.objects.create(
+            created_by=request.user,
+            action_type=AccountCleanupAuditLog.ACTION_DEPARTMENT_MERGE,
+            mode=AccountCleanupAuditLog.MODE_EXECUTE,
+            source_department=source_department,
+            target_department=target_department,
+            confirmation_text=confirmation_text,
+            before_snapshot=plan,
+            result={'status': 'started'},
+        )
+        now = timezone.now()
+        followups_updated = FollowUp.objects.filter(
+            department=source_department,
+            user__in=scope_users,
+        ).update(department=target_department, company=target_department.company, updated_at=now)
+        assets_updated = CustomerAsset.objects.filter(department=source_department).filter(
+            Q(created_by__in=scope_users) | Q(created_by__isnull=True)
+        ).update(department=target_department, company=target_department.company, updated_at=now)
+        memos_moved = DepartmentMemo.objects.filter(department=source_department).update(department=target_department)
+        source_label = f"Department #{source_department.id} {source_department.company.name} / {source_department.name}"
+        target_label = f"Department #{target_department.id} {target_department.company.name} / {target_department.name}"
+        target_note = _account_cleanup_preservation_note(
+            now, audit_log, source_label, target_label, '부서/연구실 계정 병합'
+        )
+        source_note = _account_cleanup_preservation_note(
+            now, audit_log, source_label, target_label, '부서/연구실 계정 병합'
+        )
+        DepartmentMemo.objects.create(department=target_department, content=target_note, created_by=request.user)
+        DepartmentMemo.objects.create(department=source_department, content=source_note, created_by=request.user)
+        result = {
+            'status': 'completed',
+            'followupsUpdated': followups_updated,
+            'assetsUpdated': assets_updated,
+            'departmentMemosMoved': memos_moved,
+            'preservationMemosCreated': 2,
+        }
+        audit_log.after_snapshot = _account_cleanup_department_after_snapshot(source_department, target_department)
+        audit_log.result = result
+        audit_log.save(update_fields=['after_snapshot', 'result', 'updated_at'])
+
+    response_payload.update({
+        'executed': True,
+        'dryRun': False,
+        'auditLogId': audit_log.id,
+        'result': result,
+        'after': audit_log.after_snapshot,
+    })
+    return JsonResponse(response_payload)
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["POST"])
+def account_cleanup_contact_merge_api(request, followup_id):
+    """Dry-run or execute a limited contact merge inside one department account."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error_response = _account_cleanup_request_payload(request)
+    if error_response:
+        return error_response
+    mode = _account_cleanup_request_mode(payload)
+    if not mode:
+        return JsonResponse({'success': False, 'error': 'invalid_mode'}, status=400)
+
+    user_profile = get_user_profile(request.user)
+    scope_users = _account_cleanup_scope_users(request, user_profile)
+    can_execute = _account_cleanup_user_can_execute(request, user_profile)
+    is_execute = mode == AccountCleanupAuditLog.MODE_EXECUTE
+
+    target_followup_id = _account_cleanup_payload_int(
+        payload, 'targetFollowupId', 'target_followup_id', 'targetCustomerId', 'target', 'targetId'
+    )
+    if not target_followup_id:
+        return JsonResponse({'success': False, 'error': 'target_required'}, status=400)
+
+    source_followup = get_object_or_404(
+        FollowUp.objects.select_related('company', 'department', 'user'),
+        pk=followup_id,
+    )
+    target_followup = get_object_or_404(
+        FollowUp.objects.select_related('company', 'department', 'user'),
+        pk=target_followup_id,
+    )
+    if source_followup.id == target_followup.id:
+        return JsonResponse({'success': False, 'error': 'same_source_target'}, status=400)
+    if source_followup.company_id != target_followup.company_id:
+        return JsonResponse({'success': False, 'error': 'different_company'}, status=400)
+    if source_followup.department_id != target_followup.department_id:
+        return JsonResponse({'success': False, 'error': 'different_department'}, status=400)
+    if not FollowUp.objects.filter(pk=source_followup.pk, user__in=scope_users).exists():
+        return JsonResponse({'success': False, 'error': 'source_forbidden'}, status=403)
+    if not FollowUp.objects.filter(pk=target_followup.pk, user__in=scope_users).exists():
+        return JsonResponse({'success': False, 'error': 'target_forbidden'}, status=403)
+
+    required_confirmation = _account_cleanup_contact_confirmation(source_followup, target_followup)
+    confirmation_text = _account_cleanup_payload_text(payload, 'confirmationText', 'confirmation_text', 'confirmation')
+    if is_execute and not can_execute:
+        return JsonResponse({'success': False, 'error': 'admin_required'}, status=403)
+    if is_execute and confirmation_text != required_confirmation:
+        return JsonResponse({
+            'success': False,
+            'error': 'confirmation_required',
+            'requiredConfirmationText': required_confirmation,
+        }, status=400)
+
+    plan = _account_cleanup_contact_merge_plan(source_followup, target_followup, scope_users)
+    response_payload = {
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'actionType': AccountCleanupAuditLog.ACTION_CONTACT_MERGE,
+        'mode': mode,
+        'dryRun': not is_execute,
+        'executed': False,
+        'canExecute': can_execute,
+        'requiredConfirmationText': required_confirmation,
+        'plan': plan,
+        'warnings': [
+            '원본 FollowUp 담당자는 삭제하지 않고 paused 상태로 보존합니다.',
+            '선결제 사용 내역은 Prepayment/Schedule 연결을 통해 함께 유지됩니다.',
+        ],
+        'auditLogId': None,
+    }
+    if not is_execute:
+        return JsonResponse(response_payload)
+
+    with transaction.atomic():
+        audit_log = AccountCleanupAuditLog.objects.create(
+            created_by=request.user,
+            action_type=AccountCleanupAuditLog.ACTION_CONTACT_MERGE,
+            mode=AccountCleanupAuditLog.MODE_EXECUTE,
+            source_department=source_followup.department,
+            target_department=target_followup.department,
+            source_followup=source_followup,
+            target_followup=target_followup,
+            confirmation_text=confirmation_text,
+            before_snapshot=plan,
+            result={'status': 'started'},
+        )
+        histories_updated = History.objects.filter(
+            followup=source_followup,
+            user__in=scope_users,
+        ).update(followup=target_followup)
+        schedules_updated = Schedule.objects.filter(
+            followup=source_followup,
+            user__in=scope_users,
+        ).update(followup=target_followup)
+        quotes_updated = Quote.objects.filter(
+            followup=source_followup,
+            user__in=scope_users,
+        ).update(followup=target_followup)
+        prepayments_updated = Prepayment.objects.filter(
+            customer=source_followup,
+            created_by__in=scope_users,
+        ).update(customer=target_followup)
+        service_case_ids = list(ServiceCase.objects.filter(followup=source_followup).filter(
+            Q(created_by__in=scope_users)
+            | Q(assigned_to__in=scope_users)
+            | Q(asset__created_by__in=scope_users)
+            | Q(followup__user__in=scope_users)
+        ).distinct().values_list('id', flat=True))
+        service_cases_updated = ServiceCase.objects.filter(id__in=service_case_ids).update(followup=target_followup)
+        calibration_ids = list(CalibrationRecord.objects.filter(followup=source_followup).filter(
+            Q(created_by__in=scope_users)
+            | Q(performed_by__in=scope_users)
+            | Q(asset__created_by__in=scope_users)
+            | Q(followup__user__in=scope_users)
+        ).distinct().values_list('id', flat=True))
+        calibrations_updated = CalibrationRecord.objects.filter(id__in=calibration_ids).update(followup=target_followup)
+        assets_updated = CustomerAsset.objects.filter(primary_followup=source_followup).filter(
+            Q(created_by__in=scope_users) | Q(created_by__isnull=True)
+        ).update(primary_followup=target_followup, updated_at=timezone.now())
+        now = timezone.now()
+        source_label = f"FollowUp #{source_followup.id} {source_followup.customer_name or ''}".strip()
+        target_label = f"FollowUp #{target_followup.id} {target_followup.customer_name or ''}".strip()
+        source_followup.status = 'paused'
+        source_followup.notes = _account_cleanup_append_note(
+            source_followup.notes,
+            _account_cleanup_preservation_note(now, audit_log, source_label, target_label, '담당자 병합'),
+        )
+        source_followup.save(update_fields=['status', 'notes', 'updated_at'])
+        source_followup.refresh_from_db()
+        target_followup.refresh_from_db()
+        result = {
+            'status': 'completed',
+            'historiesUpdated': histories_updated,
+            'schedulesUpdated': schedules_updated,
+            'quotesUpdated': quotes_updated,
+            'prepaymentsUpdated': prepayments_updated,
+            'serviceCasesUpdated': service_cases_updated,
+            'calibrationsUpdated': calibrations_updated,
+            'primaryAssetsUpdated': assets_updated,
+            'sourceContactPreserved': True,
+        }
+        audit_log.after_snapshot = _account_cleanup_contact_after_snapshot(source_followup, target_followup)
+        audit_log.result = result
+        audit_log.save(update_fields=['after_snapshot', 'result', 'updated_at'])
+
+    response_payload.update({
+        'executed': True,
+        'dryRun': False,
+        'auditLogId': audit_log.id,
+        'result': result,
+        'after': audit_log.after_snapshot,
+    })
+    return JsonResponse(response_payload)
 
 
 @ensure_csrf_cookie
