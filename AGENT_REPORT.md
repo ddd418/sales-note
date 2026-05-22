@@ -55,9 +55,10 @@ python manage.py diffsettings | findstr SESSION
 ### 운영 배포 상태
 
 - `97a617d fix: extend crm session lifetime` push 완료.
+- Railway web deployment `1b33383c-42f0-4fe8-ada1-78833e82cce1` SUCCESS.
+- Railway frontend deployment `3aff1c96-469a-4e5d-9b9f-c136c62ba065` SUCCESS.
 - 운영 `/reporting/login/` 200 응답과 로그인 폼 렌더링 확인.
 - 운영 `/reporting/api/reports/customer-operations.xlsx` 미인증 요청은 로그인으로 302 redirect 확인.
-- Railway CLI OAuth 토큰이 만료되어 deployment ID와 최신 로그는 CLI로 확인하지 못했습니다.
 
 ### 수동 서버 테스트 절차
 
@@ -147,9 +148,10 @@ Local Browser smoke
 ### 운영 배포 상태
 
 - `4513fc4 feat: export reports customer operations xlsx` push 완료.
+- Railway web deployment `6adcc8f3-1acd-4e52-b9d1-d0d51b5de39b`는 후속 배포로 REMOVED 되었고, 현재 최신 web deployment `1b33383c-42f0-4fe8-ada1-78833e82cce1` SUCCESS 상태에서 기능 반영 확인.
+- Railway frontend deployment `910db63c-23f8-40bf-816d-6ae989b411db`는 후속 배포로 REMOVED 되었고, 현재 최신 frontend deployment `3aff1c96-469a-4e5d-9b9f-c136c62ba065` SUCCESS 상태에서 기능 반영 확인.
 - 운영 frontend bundle `/assets/index-VEK_oDFF.js`에 `현황 엑셀`, `customer-operations.xlsx`, `customerOperationsXlsx` 반영 확인.
 - 운영 URL `https://sales-note-frontend-production.up.railway.app/reporting/api/reports/customer-operations.xlsx`는 미인증 상태에서 `/reporting/login/?next=/reporting/api/reports/customer-operations.xlsx`로 302 redirect 확인.
-- Railway CLI OAuth 토큰이 만료되어 deployment ID와 최신 로그는 CLI로 확인하지 못했습니다. HTTP smoke 기준으로 frontend와 backend route 반영은 확인했습니다.
 
 ### 수동 서버 테스트 절차
 
