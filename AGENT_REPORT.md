@@ -71,7 +71,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 커밋/푸시 후 Railway 상태와 운영 bundle smoke를 확인합니다.
+- `94c7297 feat: show customer list by account` push 완료.
+- Railway web deployment `ca800d14-4946-4c63-8716-4f2afc89f348` SUCCESS.
+- Railway frontend deployment `b72f3fbe-4e46-4d17-a223-313ed52c8a48` SUCCESS.
+- 운영 frontend bundle `/assets/index-COIaDpJ4.js`에 `계정 목록`, `priorityAccounts` 반영 확인.
+- 운영 `/reporting/api/customers/` 미인증 요청은 401로 보호됨 확인.
+- web 로그에서 `No migrations to apply`와 gunicorn 기동 확인.
 
 ### 수동 서버 테스트 절차
 
