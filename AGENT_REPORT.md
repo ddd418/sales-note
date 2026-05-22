@@ -1,5 +1,136 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Department Account Ledger Foundation
+
+### 요약
+
+- 고객 상세 기준을 단일 담당자 `FollowUp`에서 같은 `Department`/부서·연구실 계정 기준으로 더 명확히 정리했습니다.
+- `Schedule.delivery_payment_type` 필드를 추가해 납품 결제 구분을 `일반 납품` / `선결제 차감 납품`으로 구조화했습니다.
+- 고객 상세, `/accounts/<department_id>/`, 리포트, 엑셀, AI 납품 결제 분리가 모두 공통 `reporting/account_ledger.py` helper를 보도록 정렬했습니다.
+- React에서 `/accounts/<id>/` 계정 상세 라우트를 열 수 있게 하고, `/reports/` 현황표를 부서/연구실 계정 단위 집계로 바꿨습니다.
+- 오래된 루트 `README.md`를 현재 Django/React/Railway CRM 기준으로 교체했습니다.
+- Railway 배포에서 DB migration이 누락되지 않도록 `Procfile` release 명령을 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `Procfile`
+- `README.md`
+- `ai_chat/services.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `reporting/account_ledger.py`
+- `reporting/admin.py`
+- `reporting/migrations/0107_add_delivery_payment_type.py`
+- `reporting/models.py`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- `/customers/<id>/`는 기존 호환 URL로 유지하되, 화면과 데이터 범위는 부서/연구실 계정 관점으로 표시합니다.
+- `/reporting/api/accounts/<department_id>/`와 `/accounts/<department_id>/`를 추가해 부서/연구실 계정 상세의 1차 기반을 만들었습니다.
+- 같은 부서/연구실이면 납품, 견적, 선결제, 장비, 서비스 기록이 한 계정 원장 안에서 공유됩니다.
+- 납품 기록과 엑셀에는 명시 결제구분(`paymentType`, `paymentTypeLabel`)과 구조화 근거(`paymentEvidence`)가 포함됩니다.
+- `/reports/` 고객 운영 현황표는 담당자별 중복 행이 아니라 부서/연구실 계정별 한 줄 집계로 보이도록 바꿨습니다.
+- AI의 선결제/일반 납품 분리 답변은 메모 추정이 아니라 공통 계정 원장 helper의 구조화 결과만 사용합니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/*` URL과 Django template fallback은 삭제하지 않았습니다.
+- 기존 `/reporting/api/customers/<followup_id>/`와 고객 납품 엑셀 URL은 호환 entry point로 유지했습니다.
+- 인증/권한 범위는 유지했습니다. 같은 부서라도 현재 사용자가 볼 수 없는 사용자 범위의 기록은 강제로 공개하지 않습니다.
+- 고객 상세에는 AI 패널/AI payload를 넣지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python manage.py migrate --noinput
+→ 로컬 DB migration OK
+
+python -m py_compile reporting\models.py reporting\admin.py reporting\views.py reporting\account_ledger.py reporting\tests.py ai_chat\services.py
+→ OK
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_returns_notes_and_schedules reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_scoped_prepayment_summary reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_downloads_department_shared_deliveries reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_excludes_customer_ai_payload reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_customer_operations_with_structured_payment_split reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_groups_customer_operations_by_department_account reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_splits_delivery_payment_source_from_structured_prepayment reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_fallback_splits_prepayment_deliveries_without_notes_inference reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_includes_delivery_payment_split_rules --verbosity=1
+→ Ran 10 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-D12LceyQ.js / dist/assets/index-D2A_4Cx7.css generated
+→ Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Browser local smoke
+→ http://127.0.0.1:5174/reports/ opened
+→ Login screen rendered, no browser console errors
+
+railway run python manage.py migrate --noinput
+→ Failed: linked frontend service had no Django SECRET_KEY
+
+railway run --service web --environment production -- python manage.py migrate --noinput
+→ Failed: production Postgres private hostname is not resolvable from local machine
+
+git commit -m "feat: add department account ledger"
+→ e379204
+
+git push origin main
+→ main updated
+
+git commit -m "chore: run migrations during railway release"
+→ 637ee52
+
+git push origin main
+→ main updated
+
+Production smoke
+→ / 200
+→ latest JS bundle /assets/index-D12LceyQ.js contains "Department account", "accountDeliveryRecordsXlsx", "계정별 운영 현황표", "선결제 차감 납품", "표시 계정"
+→ anonymous /reporting/api/customers/471/delivery-records.xlsx redirects to /reporting/login/?next=/reporting/api/customers/471/delivery-records.xlsx
+```
+
+### 알려진 제한
+
+- Railway CLI OAuth token이 배포 중 만료되어 최종 deployment list/logs/SSH migration 결과를 CLI로 다시 조회하지 못했습니다.
+- 직접 SSH migration은 완료 확인을 못 했습니다. 대신 Nixpacks `Procfile` release command를 추가해 다음 Railway build/release에서 `python manage.py migrate --noinput`이 실행되도록 보완했습니다.
+- 운영에서 로그인 후 `/customers/471/`, `/customers/156/`, `/accounts/<department_id>/`, `/reports/`의 실제 데이터 화면을 수동 확인해야 합니다.
+- 루트 정리는 README와 release migration 설정까지만 했습니다. `lovable/`, `sales-reporting-system/`, `todolist/`, `settings_correct.py` 같은 과거 산출물 삭제/보관 판단은 별도 작업으로 남겨두었습니다.
+
+### 권장 다음 작업
+
+- 운영 계정으로 부서/연구실 계정 상세를 수동 검수한 뒤, 중복 부서/담당자 병합 및 잘못 연결된 납품/선결제 이관 도구를 개발합니다.
+
+### 운영 배포 상태
+
+- `e379204 feat: add department account ledger` push 완료.
+- `637ee52 chore: run migrations during railway release` push 완료.
+- Railway frontend 공개 번들은 새 코드 반영을 확인했습니다.
+- Railway CLI 재인증이 필요해 web service의 release migration 완료 여부는 CLI로 최종 확인하지 못했습니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/customers/471/`에 접속합니다.
+2. 화면 상단이 부서/연구실 계정 관점으로 보이고, 고객 주소/상세 정보가 정상 표시되는지 확인합니다.
+3. 납품, 견적, 선결제, 서비스/장비 기록이 같은 부서/연구실 기준으로 함께 보이는지 확인합니다.
+4. 납품 기록에서 `선결제 차감 납품`과 `일반 납품` 결제구분 및 구분근거가 표시되는지 확인합니다.
+5. `납품 엑셀`을 내려받아 같은 부서 납품이 포함되고 결제구분 컬럼이 맞는지 확인합니다.
+6. `https://sales-note-frontend-production.up.railway.app/accounts/<department_id>/`로 같은 계정 상세가 열리는지 확인합니다.
+7. `https://sales-note-frontend-production.up.railway.app/reports/`에서 계정별 운영 현황표가 부서/연구실별 한 줄로 집계되는지 확인합니다.
+8. AI 워크스페이스에서 선결제/선결제 없이 납품 분리 질문을 해보고, 메모 추정이 아니라 구조화 선결제 사용 기록 기준으로 답하는지 확인합니다.
+
 ## 2026-05-21 — Customer Detail Department Shared Records
 
 ### 요약
