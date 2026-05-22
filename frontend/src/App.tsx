@@ -56,7 +56,7 @@ import {
   DashboardData,
   DashboardHistoryItem,
   DashboardScheduleItem,
-  CustomerAssetCreateCustomerOption,
+  CustomerAssetAccountOption,
   CustomerAssetDirectoryData,
   CustomerAssetDirectoryItem,
   CustomerAssetWorkQueueItem,
@@ -263,6 +263,7 @@ import {
   saveCustomerAsset,
   saveCustomerCalibration,
   saveCustomerServiceCase,
+  searchCustomerAssetAccounts,
   saveAIWorkspaceMemory,
   sendMailboxEmail,
   submitAIWorkspaceActionFeedback,
@@ -569,9 +570,11 @@ type CustomerAssetEditorMode = '' | 'asset' | 'service' | 'calibration';
 
 type CustomerAssetFormState = {
   assetName: string;
+  departmentId: string;
   installLocation: string;
   modelName: string;
   notes: string;
+  primaryFollowupId: string;
   purchaseDate: string;
   serialNumber: string;
   status: string;
@@ -1465,9 +1468,11 @@ const makeCustomerAssetForm = (
   status = 'active',
 ): CustomerAssetFormState => ({
   assetName: asset?.assetName || '',
+  departmentId: asset?.departmentId ? String(asset.departmentId) : '',
   installLocation: asset?.installLocation || '',
   modelName: asset?.modelName || '',
   notes: asset?.notes || '',
+  primaryFollowupId: asset?.primaryFollowupId ? String(asset.primaryFollowupId) : '',
   purchaseDate: asset?.purchaseDate || '',
   serialNumber: asset?.serialNumber || '',
   status: asset?.status || status,
@@ -1514,9 +1519,11 @@ const customerAssetFormToPayload = (form: CustomerAssetFormState): { payload?: C
   return {
     payload: {
       assetName: form.assetName.trim(),
+      departmentId: form.departmentId ? Number(form.departmentId) : undefined,
       installLocation: form.installLocation.trim() || undefined,
       modelName: form.modelName.trim() || undefined,
       notes: form.notes.trim() || undefined,
+      primaryFollowupId: form.primaryFollowupId ? Number(form.primaryFollowupId) : undefined,
       purchaseDate: form.purchaseDate || undefined,
       serialNumber: form.serialNumber.trim() || undefined,
       status: form.status,
@@ -2181,6 +2188,29 @@ function makeCustomerSelectOption(customer: CustomerSelectSource): SearchableSel
   };
 }
 
+function makeCustomerAssetAccountSelectOption(account: CustomerAssetAccountOption): SearchableSelectOption {
+  const label = account.accountLabel || account.label || joinOptionParts([account.companyName, account.departmentName]) || `계정 #${account.departmentId}`;
+  const contactNames = account.contacts.map((contact) => contact.customerName).filter(Boolean).slice(0, 3).join(', ');
+  const meta = joinOptionParts([
+    `${account.contactCount}명`,
+    contactNames,
+    account.ownerNames.join(', '),
+  ]);
+  return {
+    value: String(account.departmentId || account.id),
+    label,
+    meta,
+    searchText: [
+      label,
+      account.companyName,
+      account.departmentName,
+      account.primaryContactName,
+      contactNames,
+      account.ownerNames.join(' '),
+    ].filter(Boolean).join(' '),
+  };
+}
+
 function SearchableSelect({
   allowEmpty = false,
   ariaLabel,
@@ -2188,6 +2218,7 @@ function SearchableSelect({
   disabled = false,
   emptyLabel = '선택 없음',
   onChange,
+  onSearchChange,
   options,
   placeholder = '검색해서 선택',
   value,
@@ -2198,6 +2229,7 @@ function SearchableSelect({
   disabled?: boolean;
   emptyLabel?: string;
   onChange: (value: string) => void;
+  onSearchChange?: (query: string) => void;
   options: SearchableSelectOption[];
   placeholder?: string;
   value: string;
@@ -2207,6 +2239,9 @@ function SearchableSelect({
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const selectedOption = options.find((option) => option.value === value);
+  useEffect(() => {
+    onSearchChange?.(query);
+  }, [onSearchChange, query]);
   const allOptions = useMemo(
     () => (allowEmpty ? [{ value: '', label: emptyLabel, searchText: emptyLabel }, ...options] : options),
     [allowEmpty, emptyLabel, options],
@@ -5623,21 +5658,25 @@ function CustomerAssetDirectoryTable({
               </td>
               <td>
                 <div className="asset-directory-info">
-                  <strong>{asset.companyName || '업체 없음'}</strong>
+                  {asset.accountHref ? (
+                    <a className="asset-directory-account-link" href={asset.accountHref}>{asset.companyName || '업체 없음'}</a>
+                  ) : (
+                    <strong>{asset.companyName || '업체 없음'}</strong>
+                  )}
                   <span>{[asset.departmentName, asset.customerName || asset.primaryFollowupName, asset.installLocation].filter(Boolean).join(' · ') || '고객/위치 없음'}</span>
-                  <small>{asset.ownerName || asset.createdBy || '등록자 없음'}</small>
+                  <small>{asset.contacts.length > 0 ? `담당자 ${asset.contacts.length}명` : (asset.ownerName || asset.createdBy || '등록자 없음')}</small>
                 </div>
               </td>
               <td>
                 <div className="asset-directory-info">
                   {asset.latestServiceCase ? (
                     <>
-                      <strong>{asset.latestServiceCase.statusLabel}</strong>
+                      <strong className={asset.latestServiceCase.overdue ? 'customer-overdue-text' : ''}>{asset.latestServiceCase.lifecycleLabel || asset.latestServiceCase.statusLabel}</strong>
                       <span>{[asset.latestServiceCase.caseTypeLabel, asset.latestServiceCase.priorityLabel].filter(Boolean).join(' · ')}</span>
-                      <small>{asset.latestServiceCase.receivedDate ? formatDateLabel(asset.latestServiceCase.receivedDate) : '접수일 없음'}</small>
+                      <small>{[asset.latestServiceCase.receivedDate ? formatDateLabel(asset.latestServiceCase.receivedDate) : '접수일 없음', asset.latestServiceCase.reportLabel].filter(Boolean).join(' · ')}</small>
                     </>
                   ) : (
-                    <span>서비스 이력 없음</span>
+                    <span>{asset.serviceStateLabel || '서비스 이력 없음'}</span>
                   )}
                 </div>
               </td>
@@ -5645,12 +5684,12 @@ function CustomerAssetDirectoryTable({
                 <div className="asset-directory-info">
                   {asset.latestCalibration ? (
                     <>
-                      <strong>{asset.latestCalibration.resultLabel}</strong>
+                      <strong className={asset.latestCalibration.overdue ? 'customer-overdue-text' : ''}>{asset.latestCalibration.dueStateLabel || asset.latestCalibration.resultLabel}</strong>
                       <span>{asset.latestCalibration.nextDueDate ? `다음 ${formatDateLabel(asset.latestCalibration.nextDueDate)}` : '다음 예정일 없음'}</span>
-                      <small>{asset.latestCalibration.calibrationDate ? formatDateLabel(asset.latestCalibration.calibrationDate) : '교정일 없음'}</small>
+                      <small>{[asset.latestCalibration.calibrationDate ? formatDateLabel(asset.latestCalibration.calibrationDate) : '교정일 없음', asset.latestCalibration.certificateLabel].filter(Boolean).join(' · ')}</small>
                     </>
                   ) : (
-                    <span>교정 이력 없음</span>
+                    <span>{asset.calibrationAlertLabel || '교정 이력 없음'}</span>
                   )}
                 </div>
               </td>
@@ -5659,6 +5698,7 @@ function CustomerAssetDirectoryTable({
                   <button className="customer-row-action" onClick={() => onSelectAsset(asset.id)} type="button">
                     상세/수정
                   </button>
+                  {asset.accountHref ? <a className="customer-row-action" href={asset.accountHref}>계정</a> : null}
                   {asset.customerHref ? <a className="customer-row-action" href={asset.customerHref}>고객 상세</a> : null}
                 </div>
                 <small className="asset-directory-updated">{asset.updatedAt ? formatDateTimeLabel(asset.updatedAt) : '-'}</small>
@@ -5904,7 +5944,7 @@ function CustomerAssetDirectoryDrawer({
         <div>
           <span className="eyebrow">Asset detail</span>
           <h2>{asset.assetName}</h2>
-          <p>{[asset.companyName, asset.departmentName, asset.customerName || asset.primaryFollowupName].filter(Boolean).join(' · ') || '고객 정보 없음'}</p>
+          <p>{asset.accountLabel || [asset.companyName, asset.departmentName, asset.customerName || asset.primaryFollowupName].filter(Boolean).join(' · ') || '고객 정보 없음'}</p>
         </div>
         <button aria-label="닫기" className="icon-button" onClick={onClose} type="button">
           <X size={17} />
@@ -5933,6 +5973,8 @@ function CustomerAssetDirectoryDrawer({
         <span>시리얼 <strong>{asset.serialNumber || '-'}</strong></span>
         <span>위치 <strong>{asset.installLocation || '-'}</strong></span>
         <span>보증 <strong>{formatDateLabel(asset.warrantyUntil) || '-'}</strong></span>
+        <span>A/S <strong className={asset.serviceOverdue ? 'customer-overdue-text' : ''}>{asset.serviceStateLabel}</strong></span>
+        <span>교정 <strong className={asset.calibrationAlert === 'overdue' ? 'customer-overdue-text' : ''}>{asset.calibrationAlertLabel}</strong></span>
         <span>수정 <strong>{formatDateTimeLabel(asset.updatedAt) || '-'}</strong></span>
       </div>
 
@@ -5959,7 +6001,24 @@ function CustomerAssetDirectoryDrawer({
             <MoveUpRight size={15} />
           </a>
         ) : null}
+        {asset.accountHref ? (
+          <a className="route-secondary-action" href={asset.accountHref}>
+            계정 상세
+            <MoveUpRight size={15} />
+          </a>
+        ) : null}
       </div>
+
+      {asset.contacts.length > 0 ? (
+        <div className="asset-directory-contact-strip">
+          {asset.contacts.map((contact) => (
+            <a href={contact.href} key={contact.id}>
+              <strong>{contact.customerName}</strong>
+              <span>{[contact.manager, contact.email, contact.phoneNumber].filter(Boolean).join(' · ') || contact.ownerName || '담당자 정보 없음'}</span>
+            </a>
+          ))}
+        </div>
+      ) : null}
 
       {asset.notes ? <p className="asset-directory-drawer-note">{asset.notes}</p> : null}
 
@@ -6134,9 +6193,9 @@ function CustomerAssetDirectoryDrawer({
           {asset.serviceCases.length > 0 ? asset.serviceCases.map((serviceCase) => (
             <article className="asset-directory-history-item" key={serviceCase.id}>
               <div>
-                <strong>{serviceCase.caseTypeLabel} · {serviceCase.statusLabel}</strong>
+                <strong className={serviceCase.overdue ? 'customer-overdue-text' : ''}>{serviceCase.caseTypeLabel} · {serviceCase.lifecycleLabel || serviceCase.statusLabel}</strong>
                 <span>
-                  {[serviceCase.priorityLabel, serviceCase.receivedDate ? formatDateLabel(serviceCase.receivedDate) : '', serviceCase.dueDate ? `기한 ${formatDateLabel(serviceCase.dueDate)}` : ''].filter(Boolean).join(' · ')}
+                  {[serviceCase.priorityLabel, serviceCase.receivedDate ? formatDateLabel(serviceCase.receivedDate) : '', serviceCase.dueDate ? `기한 ${formatDateLabel(serviceCase.dueDate)}` : '', serviceCase.reportLabel].filter(Boolean).join(' · ')}
                 </span>
               </div>
               <div className="asset-directory-history-actions">
@@ -6156,9 +6215,9 @@ function CustomerAssetDirectoryDrawer({
           {asset.calibrations.length > 0 ? asset.calibrations.map((calibration) => (
             <article className="asset-directory-history-item" key={calibration.id}>
               <div>
-                <strong>{calibration.resultLabel}</strong>
+                <strong className={calibration.overdue ? 'customer-overdue-text' : ''}>{calibration.dueStateLabel || calibration.resultLabel}</strong>
                 <span>
-                  {[calibration.calibrationDate ? formatDateLabel(calibration.calibrationDate) : '', calibration.nextDueDate ? `다음 ${formatDateLabel(calibration.nextDueDate)}` : ''].filter(Boolean).join(' · ') || '일자 없음'}
+                  {[calibration.calibrationDate ? formatDateLabel(calibration.calibrationDate) : '', calibration.nextDueDate ? `다음 ${formatDateLabel(calibration.nextDueDate)}` : '', calibration.resultLabel, calibration.certificateLabel].filter(Boolean).join(' · ') || '일자 없음'}
                 </span>
               </div>
               <div className="asset-directory-history-actions">
@@ -6187,23 +6246,34 @@ function CustomerAssetDirectoryCreatePanel({
   onCreated: (assetId: number | null) => void;
   onRefresh: () => Promise<CustomerAssetDirectoryData>;
 }) {
-  const customers = data.create.customers;
   const statusFallback = getOptionValue(data.options.assetStatuses, 'active');
-  const [customerId, setCustomerId] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [accountQuery, setAccountQuery] = useState('');
+  const [accountOptions, setAccountOptions] = useState<CustomerAssetAccountOption[]>(data.create.accounts);
+  const [accountSearchLoading, setAccountSearchLoading] = useState(false);
   const [form, setForm] = useState<CustomerAssetFormState>(() => makeCustomerAssetForm(null, statusFallback));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const selectedCustomer = customers.find((customer) => String(customer.id) === customerId) ?? null;
+  const mergedAccountOptions = useMemo(() => {
+    const byId = new Map<string, CustomerAssetAccountOption>();
+    [...data.create.accounts, ...accountOptions].forEach((account) => {
+      byId.set(String(account.departmentId || account.id), account);
+    });
+    return Array.from(byId.values());
+  }, [accountOptions, data.create.accounts]);
+  const selectedAccount = mergedAccountOptions.find((account) => String(account.departmentId || account.id) === accountId) ?? null;
+  const selectedContact = selectedAccount?.contacts.find((contact) => String(contact.id) === form.primaryFollowupId) ?? null;
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    setCustomerId((previous) => (
-      customers.some((customer) => String(customer.id) === previous)
+    setAccountOptions(data.create.accounts);
+    setAccountId((previous) => (
+      data.create.accounts.some((account) => String(account.departmentId || account.id) === previous)
         ? previous
-        : (customers[0]?.id ? String(customers[0].id) : '')
+        : (data.create.accounts[0]?.departmentId ? String(data.create.accounts[0].departmentId) : '')
     ));
     setForm((previous) => ({
       ...previous,
@@ -6211,7 +6281,59 @@ function CustomerAssetDirectoryCreatePanel({
     }));
     setError('');
     setMessage('');
-  }, [customers, open, statusFallback]);
+  }, [data.create.accounts, open, statusFallback]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const query = accountQuery.trim();
+    if (!query) {
+      setAccountOptions(data.create.accounts);
+      setAccountSearchLoading(false);
+      return;
+    }
+    let alive = true;
+    setAccountSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      searchCustomerAssetAccounts(query)
+        .then((accounts) => {
+          if (!alive) return;
+          setAccountOptions(accounts);
+          setAccountSearchLoading(false);
+        })
+        .catch(() => {
+          if (!alive) return;
+          setAccountOptions(data.create.accounts);
+          setAccountSearchLoading(false);
+        });
+    }, 220);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [accountQuery, data.create.accounts, open]);
+
+  useEffect(() => {
+    if (!selectedAccount) {
+      setForm((previous) => ({
+        ...previous,
+        departmentId: '',
+        primaryFollowupId: '',
+      }));
+      return;
+    }
+    setForm((previous) => {
+      const contactStillValid = selectedAccount.contacts.some((contact) => String(contact.id) === previous.primaryFollowupId);
+      return {
+        ...previous,
+        departmentId: String(selectedAccount.departmentId || selectedAccount.id),
+        primaryFollowupId: contactStillValid
+          ? previous.primaryFollowupId
+          : (selectedAccount.primaryFollowupId ? String(selectedAccount.primaryFollowupId) : ''),
+      };
+    });
+  }, [selectedAccount?.departmentId, selectedAccount?.id]);
 
   const closePanel = () => {
     setError('');
@@ -6221,6 +6343,18 @@ function CustomerAssetDirectoryCreatePanel({
 
   const handleFieldChange = (field: keyof CustomerAssetFormState, value: string) => {
     setForm((previous) => ({ ...previous, [field]: value }));
+    setError('');
+    setMessage('');
+  };
+
+  const handleAccountChange = (value: string) => {
+    setAccountId(value);
+    const account = mergedAccountOptions.find((item) => String(item.departmentId || item.id) === value) ?? null;
+    setForm((previous) => ({
+      ...previous,
+      departmentId: account ? String(account.departmentId || account.id) : '',
+      primaryFollowupId: account?.primaryFollowupId ? String(account.primaryFollowupId) : '',
+    }));
     setError('');
     setMessage('');
   };
@@ -6235,8 +6369,8 @@ function CustomerAssetDirectoryCreatePanel({
       setMessage('');
       return;
     }
-    if (!selectedCustomer?.assetCreateUrl) {
-      setError('장비를 등록할 고객을 선택하세요.');
+    if (!selectedAccount?.assetCreateUrl) {
+      setError('장비를 등록할 계정을 선택하세요.');
       setMessage('');
       return;
     }
@@ -6251,7 +6385,14 @@ function CustomerAssetDirectoryCreatePanel({
     setError('');
     setMessage('');
     try {
-      const result = await saveCustomerAsset(payload, selectedCustomer.assetCreateUrl);
+      const result = await saveCustomerAsset(
+        {
+          ...payload,
+          departmentId: selectedAccount.departmentId || selectedAccount.id,
+          primaryFollowupId: selectedContact?.id ?? selectedAccount.primaryFollowupId ?? undefined,
+        },
+        selectedAccount.assetCreateUrl,
+      );
       const createdAssetId = result.asset?.id ?? null;
       onCreated(createdAssetId);
       await onRefresh();
@@ -6275,8 +6416,8 @@ function CustomerAssetDirectoryCreatePanel({
         <div>
           <span className="eyebrow">New asset</span>
           <h2>장비 등록</h2>
-          {selectedCustomer ? (
-            <p>{[selectedCustomer.companyName, selectedCustomer.departmentName, selectedCustomer.customerName].filter(Boolean).join(' · ')}</p>
+          {selectedAccount ? (
+            <p>{selectedAccount.accountLabel || selectedAccount.label}</p>
           ) : null}
         </div>
         <button aria-label="장비 등록 패널 닫기" className="icon-button" onClick={closePanel} type="button">
@@ -6289,18 +6430,35 @@ function CustomerAssetDirectoryCreatePanel({
 
       {!data.create.canCreate ? (
         <DashboardEmpty label={data.create.message || '장비 등록 권한이 없습니다'} />
-      ) : customers.length === 0 ? (
-        <DashboardEmpty label="등록 가능한 고객이 없습니다" />
       ) : open ? (
         <form className="notes-create-form customer-asset-form asset-directory-form asset-directory-create-form" onSubmit={handleSubmit}>
           <div className="form-field">
-            <span>고객</span>
+            <span>계정</span>
             <SearchableSelect
-              ariaLabel="장비 등록 고객 선택"
-              onChange={setCustomerId}
-              options={customers.map((customer: CustomerAssetCreateCustomerOption) => makeCustomerSelectOption(customer))}
-              placeholder="고객, 회사, 부서 검색"
-              value={customerId}
+              ariaLabel="장비 등록 계정 선택"
+              onChange={handleAccountChange}
+              onSearchChange={setAccountQuery}
+              options={mergedAccountOptions.map(makeCustomerAssetAccountSelectOption)}
+              placeholder="업체, 부서, 담당자 검색"
+              value={accountId}
+            />
+            <small>{accountSearchLoading ? '계정 검색 중' : '장비는 계정 기준으로 저장되고 담당자는 보조 정보로만 연결됩니다.'}</small>
+          </div>
+          <div className="form-field">
+            <span>담당자</span>
+            <SearchableSelect
+              allowEmpty
+              ariaLabel="장비 보조 담당자 선택"
+              emptyLabel="담당자 없음"
+              onChange={(value) => handleFieldChange('primaryFollowupId', value)}
+              options={(selectedAccount?.contacts ?? []).map((contact) => ({
+                value: String(contact.id),
+                label: joinOptionParts([contact.customerName, contact.manager]) || `담당자 #${contact.id}`,
+                meta: joinOptionParts([contact.email, contact.phoneNumber, contact.ownerName]),
+                searchText: [contact.customerName, contact.manager, contact.email, contact.phoneNumber, contact.ownerName].filter(Boolean).join(' '),
+              }))}
+              placeholder="선택 계정의 담당자 검색"
+              value={form.primaryFollowupId}
             />
           </div>
           <div className="notes-create-grid">
@@ -6342,9 +6500,15 @@ function CustomerAssetDirectoryCreatePanel({
             <textarea onChange={(event) => handleFieldChange('notes', event.target.value)} rows={3} value={form.notes} />
           </label>
           <div className="notes-create-actions">
-            {selectedCustomer?.href ? (
-              <a className="route-secondary-action" href={selectedCustomer.href}>
-                고객 상세
+            {selectedAccount?.href ? (
+              <a className="route-secondary-action" href={selectedAccount.href}>
+                계정 상세
+                <MoveUpRight size={15} />
+              </a>
+            ) : null}
+            {selectedContact?.href ? (
+              <a className="route-secondary-action" href={selectedContact.href}>
+                담당자 상세
                 <MoveUpRight size={15} />
               </a>
             ) : null}
@@ -6557,7 +6721,7 @@ function CustomerAssetsPage({
 function ServiceCaseStatusBadge({ serviceCase }: { serviceCase: ServiceCaseListItem }) {
   return (
     <div className="customer-badge-row service-badge-row">
-      <span className={`service-case-status ${serviceCase.status}`}>{serviceCase.statusLabel}</span>
+      <span className={`service-case-status ${serviceCase.status}`}>{serviceCase.lifecycleLabel || serviceCase.statusLabel}</span>
       <span>{serviceCase.caseTypeLabel}</span>
       {serviceCase.priorityLabel ? <span>{serviceCase.priorityLabel}</span> : null}
       {serviceCase.overdue ? <span className="schedule-overdue">처리 지연</span> : null}
@@ -6593,6 +6757,7 @@ function ServiceCasesTable({ serviceCases }: { serviceCases: ServiceCaseListItem
                 <div className="notes-row-actions">
                   {serviceCase.reportUrl ? <a className="customer-row-action" href={serviceCase.reportUrl}>리포트</a> : null}
                   {serviceCase.assetHref ? <a className="customer-row-action" href={serviceCase.assetHref}>장비</a> : null}
+                  {serviceCase.accountHref ? <a className="customer-row-action" href={serviceCase.accountHref}>계정</a> : null}
                   {serviceCase.customerHref ? <a className="customer-row-action" href={serviceCase.customerHref}>고객</a> : null}
                 </div>
               </td>
@@ -6611,6 +6776,7 @@ function ServiceCasesTable({ serviceCases }: { serviceCases: ServiceCaseListItem
               </td>
               <td>
                 <span>{serviceCase.assignedTo || serviceCase.ownerName || '담당자 없음'}</span>
+                <small>{serviceCase.reportLabel}</small>
                 {serviceCase.updatedAt ? <small>{formatDateTimeLabel(serviceCase.updatedAt)}</small> : null}
               </td>
             </tr>

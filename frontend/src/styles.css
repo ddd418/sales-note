@@ -1069,6 +1069,20 @@ h2 {
   font-size: 13px;
 }
 
+.asset-directory-account-link {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-directory-account-link:hover {
+  color: var(--primary);
+}
+
 .asset-directory-info span,
 .asset-directory-info small,
 .asset-directory-updated {
@@ -1271,6 +1285,46 @@ h2 {
 
 .asset-directory-drawer-actions {
   gap: 7px;
+}
+
+.asset-directory-contact-strip {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  min-width: 0;
+}
+
+.asset-directory-contact-strip a {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.asset-directory-contact-strip a:hover {
+  border-color: var(--primary);
+  background: #f8fbff;
+}
+
+.asset-directory-contact-strip strong,
+.asset-directory-contact-strip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-directory-contact-strip strong {
+  font-size: 12px;
+}
+
+.asset-directory-contact-strip span {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .asset-directory-form {

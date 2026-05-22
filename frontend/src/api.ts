@@ -1117,7 +1117,10 @@ export type CustomerServiceCase = {
   resolution: string;
   assignedTo: string;
   hasReport: boolean;
+  reportLabel: string;
   reportUrl: string;
+  overdue: boolean;
+  lifecycleLabel: string;
   updateUrl: string;
   updatedAt: string | null;
 };
@@ -1133,7 +1136,12 @@ export type CustomerCalibrationRecord = {
   notes: string;
   performedBy: string;
   hasCertificate: boolean;
+  certificateLabel: string;
   certificateUrl: string;
+  dueState: string;
+  dueStateLabel: string;
+  overdue: boolean;
+  dueSoon: boolean;
   updateUrl: string;
   updatedAt: string | null;
 };
@@ -1142,6 +1150,8 @@ export type CustomerAssetItem = {
   id: number;
   companyId: number;
   departmentId: number;
+  accountLabel: string;
+  accountHref: string;
   primaryFollowupId: number | null;
   primaryFollowupName: string;
   productId: number | null;
@@ -1160,6 +1170,11 @@ export type CustomerAssetItem = {
   updateUrl: string;
   serviceCaseCreateUrl: string;
   calibrationCreateUrl: string;
+  openServiceCount: number;
+  serviceOverdue: boolean;
+  serviceStateLabel: string;
+  calibrationAlert: string;
+  calibrationAlertLabel: string;
   latestServiceCase: CustomerServiceCase | null;
   latestCalibration: CustomerCalibrationRecord | null;
   serviceCases: CustomerServiceCase[];
@@ -1197,6 +1212,15 @@ export type CustomerAssetDirectoryItem = CustomerAssetItem & {
   ownerName: string;
   customerHref: string;
   djangoCustomerHref: string;
+  contacts: Array<{
+    id: number;
+    customerName: string;
+    manager: string;
+    email: string;
+    phoneNumber: string;
+    ownerName: string;
+    href: string;
+  }>;
   assetDirectoryHref: string;
 };
 
@@ -1219,15 +1243,43 @@ export type CustomerAssetWorkQueueItem = {
 
 export type CustomerAssetCreateCustomerOption = {
   id: number;
+  departmentId?: number;
+  companyId?: number;
   customerName: string;
   companyName: string;
   departmentName: string;
+  accountLabel?: string;
   manager: string;
   email: string;
   ownerName: string;
   priorityLabel: string;
   href: string;
   assetCreateUrl: string;
+};
+
+export type CustomerAssetAccountOption = {
+  id: number;
+  departmentId: number;
+  companyId: number;
+  label: string;
+  accountLabel: string;
+  companyName: string;
+  departmentName: string;
+  contactCount: number;
+  primaryFollowupId: number | null;
+  primaryContactName: string;
+  ownerNames: string[];
+  href: string;
+  assetCreateUrl: string;
+  contacts: Array<{
+    id: number;
+    customerName: string;
+    manager: string;
+    email: string;
+    phoneNumber: string;
+    ownerName: string;
+    href: string;
+  }>;
 };
 
 export type CustomerAssetDirectoryData = {
@@ -1278,6 +1330,8 @@ export type CustomerAssetDirectoryData = {
   create: {
     canCreate: boolean;
     message: string;
+    assetCreateUrl: string;
+    accounts: CustomerAssetAccountOption[];
     customers: CustomerAssetCreateCustomerOption[];
   };
   workQueue: CustomerAssetWorkQueueItem[];
@@ -1308,12 +1362,14 @@ export type ServiceCaseListItem = {
   ownerName: string;
   assignedTo: string;
   hasReport: boolean;
+  reportLabel: string;
   reportUrl: string;
   assetHref: string;
   customerHref: string;
   accountHref: string;
   updateUrl: string;
   overdue: boolean;
+  lifecycleLabel: string;
   updatedAt: string | null;
 };
 
@@ -1361,6 +1417,8 @@ export type ServiceCasesData = {
 };
 
 export type CustomerAssetPayload = {
+  departmentId?: number;
+  primaryFollowupId?: number | null;
   assetName: string;
   modelName?: string;
   serialNumber?: string;
@@ -5232,6 +5290,8 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
   create: {
     canCreate: false,
     message: '',
+    assetCreateUrl: '/reporting/api/customer-assets/create/',
+    accounts: [],
     customers: [],
   },
   workQueue: [],
@@ -7562,6 +7622,8 @@ export async function saveCustomerAsset(
   submitUrl: string,
 ): Promise<CustomerAssetMutationResponse> {
   const form = new FormData();
+  if (payload.departmentId) form.set('department_id', String(payload.departmentId));
+  if (payload.primaryFollowupId) form.set('primary_followup_id', String(payload.primaryFollowupId));
   form.set('asset_name', payload.assetName);
   form.set('status', payload.status);
   if (payload.modelName) form.set('model_name', payload.modelName);
@@ -7670,6 +7732,10 @@ export async function loadCustomerAssetDirectoryData(params: {
       create: {
         ...emptyCustomerAssetDirectoryData.create,
         ...(payload.create ?? {}),
+        accounts: (payload.create?.accounts ?? emptyCustomerAssetDirectoryData.create.accounts).map((account) => ({
+          ...normalizeHrefFields(account, ['href', 'assetCreateUrl']),
+          contacts: (account.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href'])),
+        })),
         customers: (payload.create?.customers ?? emptyCustomerAssetDirectoryData.create.customers).map((customer) => (
           normalizeHrefFields(customer, ['href', 'assetCreateUrl'])
         )),
@@ -7677,9 +7743,10 @@ export async function loadCustomerAssetDirectoryData(params: {
       workQueue: (payload.workQueue ?? emptyCustomerAssetDirectoryData.workQueue).map((item) => (
         normalizeHrefFields(item, ['href', 'customerHref'])
       )),
-      assets: (payload.assets ?? emptyCustomerAssetDirectoryData.assets).map((asset) => (
-        normalizeHrefFields(asset, ['customerHref', 'djangoCustomerHref', 'assetDirectoryHref'])
-      )),
+      assets: (payload.assets ?? emptyCustomerAssetDirectoryData.assets).map((asset) => ({
+        ...normalizeHrefFields(asset, ['customerHref', 'djangoCustomerHref', 'assetDirectoryHref', 'accountHref']),
+        contacts: (asset.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href'])),
+      })),
     };
   } catch (error) {
     return {
@@ -7688,6 +7755,36 @@ export async function loadCustomerAssetDirectoryData(params: {
       error: error instanceof Error ? error.message : 'Customer assets API unavailable',
     };
   }
+}
+
+export async function searchCustomerAssetAccounts(query: string): Promise<CustomerAssetAccountOption[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+  const response = await fetch(`/reporting/api/customer-assets/account-search/${params.toString() ? `?${params.toString()}` : ''}`, {
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Asset account search unavailable: ${response.status}`);
+  }
+  const payload = (await response.json()) as {
+    success?: boolean;
+    error?: string;
+    message?: string;
+    accounts?: CustomerAssetAccountOption[];
+  };
+  redirectIfLoginRequired(response, payload);
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || payload.message || `Asset account search unavailable: ${response.status}`);
+  }
+  return (payload.accounts ?? []).map((account) => ({
+    ...normalizeHrefFields(account, ['href', 'assetCreateUrl']),
+    contacts: (account.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href'])),
+  }));
 }
 
 export async function loadServiceCasesData(params: {

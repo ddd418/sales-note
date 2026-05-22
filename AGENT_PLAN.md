@@ -8046,3 +8046,46 @@ python pre_deployment_check.py
 - `cd frontend && node --check server.mjs`
 - Local `/reports/` smoke where feasible
 - `git diff --check`
+
+## 2026-05-23 Asset, service, calibration operations audit plan
+
+**Background**:
+
+- User requested task `3-4. 장비, A/S, 교정 모듈 운영 검수`.
+- `CustomerAsset`, `ServiceCase`, and `CalibrationRecord` models already exist.
+- React `/assets/` and `/services/` screens already exist, but current creation flow still leans on individual customer/contact options.
+- Operational direction is that equipment must belong stably to a `Department` account, with a contact only as auxiliary information.
+
+**DB change required**: No.
+
+- Existing `CustomerAsset.company`, `CustomerAsset.department`, and optional `CustomerAsset.primary_followup` already support account-first ownership.
+- Existing `ServiceCase` and `CalibrationRecord` already link through `asset`, so service and calibration records can inherit account context without adding fields.
+- This task will add API payloads/routes and frontend workflow changes only.
+
+**Implementation scope**:
+
+- Backend:
+  - Add account autocomplete for `/assets/` create/search flows using accessible `Department` accounts.
+  - Add an account-first asset create API that accepts `department_id` and optional `primary_followup_id`.
+  - Preserve existing customer-based asset create/update APIs as compatibility paths.
+  - Return account/search metadata, contacts, account links, service lifecycle labels, report/certificate indicators, and calibration alert state in asset payloads.
+  - Keep manager read-only behavior and same-company/user-scope protections.
+- Frontend:
+  - Replace the `/assets/` create panel selector with account autocomplete first, then optional 담당자 selection.
+  - Surface account-level links and contact context in the asset table/drawer.
+  - Make A/S reception/status/service report and calibration alert/certificate state easier to verify in the drawer/history.
+  - Keep `/services/` list available as the service ledger.
+- Tests:
+  - Add focused API tests for account search, account-first asset creation, same-company scoping, payload account metadata, and service/calibration alert flags.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- Focused Django tests for customer asset and service APIs
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && node --check server.mjs`
+- `cd frontend && npm run build`
+- Browser/local smoke for `/assets/` when feasible
+- `git diff --check`

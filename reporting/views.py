@@ -4212,6 +4212,9 @@ def _service_case_payload(case, followup_id=None, asset_scoped=False):
         update_url = reverse('reporting:customer_asset_directory_service_case_update_api', args=[case.asset_id, case.id])
     elif followup_id:
         update_url = reverse('reporting:customer_service_case_update_api', args=[followup_id, case.id])
+    today = timezone.localdate()
+    open_statuses = {'received', 'in_progress', 'waiting'}
+    overdue = bool(case.status in open_statuses and case.due_date and case.due_date < today)
 
     return {
         'id': case.id,
@@ -4230,10 +4233,24 @@ def _service_case_payload(case, followup_id=None, asset_scoped=False):
         'resolution': case.resolution or '',
         'assignedTo': _user_display_name(case.assigned_to) if case.assigned_to else '',
         'hasReport': bool(case.service_report),
+        'reportLabel': '리포트 첨부' if case.service_report else '리포트 없음',
         'reportUrl': reverse('reporting:customer_asset_service_report_download_api', args=[case.id]) if case.service_report else '',
+        'overdue': overdue,
+        'lifecycleLabel': '처리 지연' if overdue else case.get_status_display(),
         'updateUrl': update_url,
         'updatedAt': _datetime_or_none(case.updated_at),
     }
+
+
+def _calibration_due_state(record, today=None):
+    today = today or timezone.localdate()
+    if not record or not record.next_due_date:
+        return 'none', '다음 예정 없음'
+    if record.next_due_date < today:
+        return 'overdue', '교정 지연'
+    if record.next_due_date <= today + timedelta(days=30):
+        return 'due30', '30일 내 교정'
+    return 'scheduled', '교정 예정'
 
 
 def _calibration_record_payload(record, followup_id=None, asset_scoped=False):
@@ -4242,6 +4259,7 @@ def _calibration_record_payload(record, followup_id=None, asset_scoped=False):
         update_url = reverse('reporting:customer_asset_directory_calibration_update_api', args=[record.asset_id, record.id])
     elif followup_id:
         update_url = reverse('reporting:customer_calibration_update_api', args=[followup_id, record.id])
+    due_state, due_state_label = _calibration_due_state(record)
 
     return {
         'id': record.id,
@@ -4254,7 +4272,12 @@ def _calibration_record_payload(record, followup_id=None, asset_scoped=False):
         'notes': record.notes or '',
         'performedBy': _user_display_name(record.performed_by) if record.performed_by else '',
         'hasCertificate': bool(record.certificate_file),
+        'certificateLabel': '성적서 첨부' if record.certificate_file else '성적서 없음',
         'certificateUrl': reverse('reporting:customer_asset_calibration_certificate_download_api', args=[record.id]) if record.certificate_file else '',
+        'dueState': due_state,
+        'dueStateLabel': due_state_label,
+        'overdue': due_state == 'overdue',
+        'dueSoon': due_state in {'overdue', 'due30'},
         'updateUrl': update_url,
         'updatedAt': _datetime_or_none(record.updated_at),
     }
@@ -4274,11 +4297,24 @@ def _customer_asset_payload(asset, service_cases=None, calibration_records=None,
         calibration_create_url = reverse('reporting:customer_asset_directory_calibration_create_api', args=[asset.id])
     elif followup_id:
         update_url = reverse('reporting:customer_asset_update_api', args=[followup_id, asset.id])
+    today = timezone.localdate()
+    open_service_cases = [case for case in service_cases if case.status not in ['completed', 'cancelled']]
+    service_overdue = any(case.due_date and case.due_date < today for case in open_service_cases)
+    calibration_alert, calibration_alert_label = _calibration_due_state(latest_calibration, today)
+    account_label = ' · '.join(
+        value for value in [
+            asset.company.name if asset.company else '',
+            asset.department.name if asset.department else '',
+        ]
+        if value
+    )
 
     return {
         'id': asset.id,
         'companyId': asset.company_id,
         'departmentId': asset.department_id,
+        'accountLabel': account_label,
+        'accountHref': f'/accounts/{asset.department_id}/' if asset.department_id else '',
         'primaryFollowupId': asset.primary_followup_id,
         'primaryFollowupName': asset.primary_followup.customer_name if asset.primary_followup else '',
         'productId': asset.product_id,
@@ -4297,6 +4333,13 @@ def _customer_asset_payload(asset, service_cases=None, calibration_records=None,
         'updateUrl': update_url,
         'serviceCaseCreateUrl': service_case_create_url,
         'calibrationCreateUrl': calibration_create_url,
+        'openServiceCount': len(open_service_cases),
+        'serviceOverdue': service_overdue,
+        'serviceStateLabel': '처리 지연' if service_overdue else (
+            f'진행 {len(open_service_cases)}건' if open_service_cases else '진행 A/S 없음'
+        ),
+        'calibrationAlert': calibration_alert,
+        'calibrationAlertLabel': calibration_alert_label,
         'latestServiceCase': _service_case_payload(latest_service, followup_id, asset_scoped=asset_scoped) if latest_service else None,
         'latestCalibration': _calibration_record_payload(latest_calibration, followup_id, asset_scoped=asset_scoped) if latest_calibration else None,
         'serviceCases': [_service_case_payload(case, followup_id, asset_scoped=asset_scoped) for case in service_cases],
@@ -4308,7 +4351,9 @@ def _customer_assets_queryset(followup, scope_users):
     return CustomerAsset.objects.filter(
         company=followup.company,
         department=followup.department,
-        created_by__in=scope_users,
+    ).filter(
+        Q(created_by__in=scope_users) |
+        Q(primary_followup__in=_customer_shared_followups_queryset(followup))
     ).select_related(
         'company', 'department', 'primary_followup', 'product', 'created_by'
     ).prefetch_related(
@@ -4378,7 +4423,19 @@ def _customer_asset_summary_payload(request, followup, scope_users, can_edit):
     }
 
 
-def _customer_asset_directory_payload(asset, service_cases=None, calibration_records=None):
+def _customer_asset_contact_payload(followup):
+    return {
+        'id': followup.id,
+        'customerName': followup.customer_name or followup.manager or '담당자명 없음',
+        'manager': followup.manager or '',
+        'email': followup.email or '',
+        'phoneNumber': followup.phone_number or '',
+        'ownerName': _user_display_name(followup.user) if followup.user else '',
+        'href': f'/customers/{followup.id}/',
+    }
+
+
+def _customer_asset_directory_payload(asset, service_cases=None, calibration_records=None, contacts=None):
     followup_id = asset.primary_followup_id
     payload = _customer_asset_payload(
         asset,
@@ -4394,6 +4451,8 @@ def _customer_asset_directory_payload(asset, service_cases=None, calibration_rec
         'ownerName': _user_display_name(asset.created_by) if asset.created_by else '',
         'customerHref': f'/customers/{followup_id}/' if followup_id else '',
         'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup_id]) if followup_id else '',
+        'accountHref': f'/accounts/{asset.department_id}/' if asset.department_id else '',
+        'contacts': contacts or [],
         'assetDirectoryHref': '/assets/',
     })
     return payload
@@ -4412,9 +4471,18 @@ def _customer_asset_directory_scope_label(user_profile, request_user, selected_u
 def _customer_asset_create_customer_payload(followup):
     return {
         'id': followup.id,
+        'departmentId': followup.department_id,
+        'companyId': followup.company_id,
         'customerName': followup.customer_name or followup.manager or '고객명 미정',
         'companyName': followup.company.name if followup.company else '',
         'departmentName': followup.department.name if followup.department else '',
+        'accountLabel': ' · '.join(
+            value for value in [
+                followup.company.name if followup.company else '',
+                followup.department.name if followup.department else '',
+            ]
+            if value
+        ),
         'manager': followup.manager or '',
         'email': followup.email or '',
         'ownerName': _user_display_name(followup.user),
@@ -4422,6 +4490,87 @@ def _customer_asset_create_customer_payload(followup):
         'href': f'/customers/{followup.id}/',
         'assetCreateUrl': reverse('reporting:customer_asset_create_api', args=[followup.id]),
     }
+
+
+def _customer_asset_accessible_users(request, user_profile):
+    """Users whose CRM accounts can be used by the asset directory."""
+    if user_profile.is_manager():
+        return _dashboard_scope_users(request, user_profile)[0]
+    return get_accessible_users(request.user, request).filter(is_active=True).select_related('userprofile')
+
+
+def _customer_asset_account_queryset(request, user_profile):
+    accessible_users = _customer_asset_accessible_users(request, user_profile)
+    return Department.objects.filter(
+        Q(created_by__in=accessible_users) |
+        Q(followup_departments__user__in=accessible_users)
+    ).select_related('company', 'created_by').distinct()
+
+
+def _customer_asset_create_account_payload(department, contacts=None):
+    contacts = contacts or []
+    primary_contact = contacts[0] if contacts else None
+    owner_names = sorted({contact.get('ownerName') for contact in contacts if contact.get('ownerName')})
+    account_label = ' · '.join(
+        value for value in [
+            department.company.name if department.company else '',
+            department.name,
+        ]
+        if value
+    )
+    return {
+        'id': department.id,
+        'departmentId': department.id,
+        'companyId': department.company_id,
+        'label': account_label or department.name,
+        'accountLabel': account_label or department.name,
+        'companyName': department.company.name if department.company else '',
+        'departmentName': department.name,
+        'contactCount': len(contacts),
+        'primaryFollowupId': primary_contact['id'] if primary_contact else None,
+        'primaryContactName': primary_contact['customerName'] if primary_contact else '',
+        'ownerNames': owner_names,
+        'href': f'/accounts/{department.id}/',
+        'assetCreateUrl': reverse('reporting:customer_asset_directory_create_api'),
+        'contacts': contacts,
+    }
+
+
+def _customer_asset_account_options(request, user_profile, q='', limit=80):
+    q = (q or '').strip()
+    account_qs = _customer_asset_account_queryset(request, user_profile)
+    if q:
+        account_qs = account_qs.filter(
+            Q(company__name__icontains=q) |
+            Q(name__icontains=q) |
+            Q(address__icontains=q) |
+            Q(notes__icontains=q) |
+            Q(followup_departments__customer_name__icontains=q) |
+            Q(followup_departments__manager__icontains=q) |
+            Q(followup_departments__email__icontains=q) |
+            Q(followup_departments__phone_number__icontains=q)
+        )
+
+    accounts = list(account_qs.order_by('company__name', 'name', 'id')[:limit])
+    department_ids = [account.id for account in accounts]
+    accessible_users = _customer_asset_accessible_users(request, user_profile)
+    contact_qs = FollowUp.objects.filter(
+        department_id__in=department_ids,
+        user__in=accessible_users,
+    ).select_related('user').order_by('department_id', '-is_active', 'customer_name', 'manager', 'id')
+    contacts_by_department = {}
+    for followup in contact_qs:
+        bucket = contacts_by_department.setdefault(followup.department_id, [])
+        if len(bucket) < 6:
+            bucket.append(_customer_asset_contact_payload(followup))
+
+    return [
+        _customer_asset_create_account_payload(
+            account,
+            contacts_by_department.get(account.id, []),
+        )
+        for account in accounts
+    ]
 
 
 def _customer_asset_work_queue_payload(scope_users, today):
@@ -4643,6 +4792,7 @@ def customer_assets_summary_api(request):
     ).distinct().count()
     no_calibration_assets = base_assets.filter(calibration_records__isnull=True).count()
     create_followups = []
+    create_accounts = []
     if can_manage_assets:
         create_followups = list(
             FollowUp.objects.filter(user__in=scope_users).select_related(
@@ -4651,6 +4801,18 @@ def customer_assets_summary_api(request):
                 'department',
             ).order_by('-updated_at', '-created_at', '-id')[:160]
         )
+        create_accounts = _customer_asset_account_options(request, user_profile, q=q, limit=80)
+
+    contacts_by_department = {}
+    if asset_ids:
+        contact_qs = FollowUp.objects.filter(
+            department_id__in={asset.department_id for asset in assets if asset.department_id},
+            user__in=_customer_asset_accessible_users(request, user_profile),
+        ).select_related('user').order_by('department_id', '-is_active', 'customer_name', 'manager', 'id')
+        for followup in contact_qs:
+            bucket = contacts_by_department.setdefault(followup.department_id, [])
+            if len(bucket) < 4:
+                bucket.append(_customer_asset_contact_payload(followup))
 
     return JsonResponse({
         'success': True,
@@ -4707,6 +4869,8 @@ def customer_assets_summary_api(request):
         'create': {
             'canCreate': can_manage_assets,
             'message': '' if can_manage_assets else 'Manager는 장비를 등록할 수 없습니다.',
+            'assetCreateUrl': reverse('reporting:customer_asset_directory_create_api'),
+            'accounts': create_accounts,
             'customers': [
                 _customer_asset_create_customer_payload(followup)
                 for followup in create_followups
@@ -4718,9 +4882,125 @@ def customer_assets_summary_api(request):
                 asset,
                 service_by_asset.get(asset.id, [])[:3],
                 calibration_by_asset.get(asset.id, [])[:3],
+                contacts_by_department.get(asset.department_id, []),
             )
             for asset in assets
         ],
+    })
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def customer_asset_account_search_api(request):
+    """Account autocomplete for the React asset directory."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    q = request.GET.get('q', '').strip()
+    accounts = _customer_asset_account_options(request, user_profile, q=q, limit=40)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'query': q,
+        'accounts': accounts,
+    })
+
+
+@never_cache
+@require_POST
+def customer_asset_directory_create_api(request):
+    """React asset directory account-first asset creation API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        return JsonResponse({'success': False, 'error': 'Manager는 장비를 등록할 수 없습니다.'}, status=403)
+
+    department_id = request.POST.get('department_id', '').strip()
+    if not department_id:
+        return JsonResponse({'success': False, 'error': '계정을 선택해주세요.'}, status=400)
+    try:
+        department_id_int = int(department_id)
+    except ValueError:
+        return JsonResponse({'success': False, 'error': '올바른 계정을 선택해주세요.'}, status=400)
+
+    department = get_object_or_404(
+        _customer_asset_account_queryset(request, user_profile),
+        pk=department_id_int,
+    )
+    scope_users = _customer_asset_accessible_users(request, user_profile)
+
+    primary_followup = None
+    primary_followup_id = request.POST.get('primary_followup_id', '').strip()
+    if primary_followup_id:
+        try:
+            primary_followup = FollowUp.objects.select_related('user', 'company', 'department').get(
+                pk=int(primary_followup_id),
+                department=department,
+                user__in=scope_users,
+            )
+        except (FollowUp.DoesNotExist, ValueError):
+            return JsonResponse({'success': False, 'error': '선택한 담당자를 찾을 수 없습니다.'}, status=400)
+    else:
+        primary_followup = account_representative_followup(department, scope_users)
+
+    asset_name = request.POST.get('asset_name', '').strip()
+    if not asset_name:
+        return JsonResponse({'success': False, 'error': '장비명을 입력해주세요.'}, status=400)
+
+    status = request.POST.get('status', 'active').strip() or 'active'
+    if status not in {value for value, _label in CustomerAsset.STATUS_CHOICES}:
+        return JsonResponse({'success': False, 'error': '올바른 장비 상태를 선택해주세요.'}, status=400)
+
+    purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
+    if purchase_error:
+        return JsonResponse({'success': False, 'error': purchase_error}, status=400)
+    warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
+    if warranty_error:
+        return JsonResponse({'success': False, 'error': warranty_error}, status=400)
+
+    product = None
+    product_id = request.POST.get('product_id', '').strip()
+    if product_id:
+        try:
+            from .models import Product
+            product = Product.objects.get(id=int(product_id))
+        except (Product.DoesNotExist, ValueError):
+            return JsonResponse({'success': False, 'error': '선택한 제품을 찾을 수 없습니다.'}, status=400)
+
+    asset = CustomerAsset.objects.create(
+        company=department.company,
+        department=department,
+        primary_followup=primary_followup,
+        product=product,
+        asset_name=asset_name,
+        model_name=request.POST.get('model_name', '').strip(),
+        serial_number=request.POST.get('serial_number', '').strip(),
+        purchase_date=purchase_date,
+        install_location=request.POST.get('install_location', '').strip(),
+        warranty_until=warranty_until,
+        status=status,
+        notes=request.POST.get('notes', '').strip(),
+        created_by=request.user,
+    )
+
+    contacts = [
+        _customer_asset_contact_payload(contact)
+        for contact in FollowUp.objects.filter(
+            department=department,
+            user__in=scope_users,
+        ).select_related('user').order_by('-is_active', 'customer_name', 'manager', 'id')[:4]
+    ]
+
+    return JsonResponse({
+        'success': True,
+        'message': '계정 기준으로 장비를 등록했습니다.',
+        'asset': _customer_asset_directory_payload(asset, [], [], contacts),
     })
 
 
@@ -4758,12 +5038,14 @@ def _service_case_list_payload(case, today):
         'ownerName': _user_display_name(case.created_by) if case.created_by else '',
         'assignedTo': _user_display_name(case.assigned_to) if case.assigned_to else '',
         'hasReport': bool(case.service_report),
+        'reportLabel': '리포트 첨부' if case.service_report else '리포트 없음',
         'reportUrl': reverse('reporting:customer_asset_service_report_download_api', args=[case.id]) if case.service_report else '',
         'assetHref': asset_href,
         'customerHref': f'/customers/{followup.id}/' if followup else '',
         'accountHref': f'/accounts/{department.id}/' if department else '',
         'updateUrl': reverse('reporting:customer_asset_directory_service_case_update_api', args=[asset.id, case.id]) if asset else '',
         'overdue': bool(case.status in open_statuses and case.due_date and case.due_date < today),
+        'lifecycleLabel': '처리 지연' if case.status in open_statuses and case.due_date and case.due_date < today else case.get_status_display(),
         'updatedAt': _datetime_or_none(case.updated_at),
     }
 

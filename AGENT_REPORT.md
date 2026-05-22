@@ -26232,3 +26232,105 @@ git diff --check
 7. Expand an account row with `드릴다운` and confirm contacts, delivery, quote, prepayment, service, and quick links appear.
 8. Confirm rows marked as `정리 후보` open the cleanup preview link.
 9. Change `엑셀 범위` and download `현황 엑셀`; confirm the workbook rows match the selected scope.
+
+## 2026-05-23 Asset, service, calibration operations audit
+
+### 1. Summary
+
+- Audited and strengthened `/assets/` for operational use.
+- Added account autocomplete for equipment creation and changed the create flow to select `계정` first, with 담당자 as auxiliary context.
+- Added an account-first asset create API while preserving existing customer/contact create APIs.
+- Added payload signals for A/S lifecycle, service report presence, calibration due state, certificate presence, account links, and account contacts.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- `/assets/` 장비 등록 now searches and selects a Department account before selecting an optional contact.
+- Equipment remains stored on `CustomerAsset.department`; `primary_followup` is only an optional representative contact.
+- Customer detail asset summary now includes same-account equipment instead of treating equipment as only a personal-contact record.
+- A/S cards and service ledger rows show overdue lifecycle labels and report attachment state.
+- Calibration rows show due/overdue state and certificate attachment state.
+- Asset rows and drawers link to `/accounts/<department_id>/` and show same-account contacts.
+
+### 4. Existing Functionality Preserved
+
+- No model fields or migrations were added.
+- Existing `/reporting/api/customers/<followup_id>/assets/create/` compatibility API remains available.
+- Existing `/reporting/api/customer-assets/<asset_id>/update/`, service case, calibration, report download, and certificate download APIs remain available.
+- Manager users remain read-only for asset mutations.
+- Anonymous asset/service API access still returns `401 login_required`.
+- Other-company asset access remains blocked by existing scope checks.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.ServiceCasesSummaryApiTests --verbosity=1
+→ First run exposed an expected test change: customer detail asset summary now includes same-account coworker assets.
+
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.ServiceCasesSummaryApiTests --verbosity=1
+→ Ran 45 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+Browser/local smoke
+→ Opened http://127.0.0.1:5174/assets/?service=open&calibration=due30 with no console errors
+→ GET http://127.0.0.1:5174/assets/?service=open&calibration=due30 returned React shell 200
+→ GET http://127.0.0.1:5174/reporting/api/customer-assets/?service=open&calibration=due30 returned expected anonymous 401 login_required JSON
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- Authenticated visual verification of account autocomplete, create, A/S report upload, and calibration certificate upload still needs production user-session testing after deployment.
+- The account-first create API does not create new Company/Department accounts; it searches existing accessible accounts.
+- Service reports and calibration certificates remain file attachments only; no separate report template/workflow was added in this task.
+
+### 7. Production Deployment Status
+
+- Pending final commit, push, and Railway verification. A post-deployment update will be appended after Railway reports the deployed services.
+
+### 8. Recommended Next Task
+
+- Add saved asset work views for `A/S 지연`, `교정 30일 이내`, and `성적서 없음`, plus optional Excel export for asset/service work queues.
+
+### 9. Manual Server Test Process
+
+1. Open `https://sales-note-frontend-production.up.railway.app/assets/` after deployment and login.
+2. Click `장비 등록`.
+3. Search by 업체/부서/담당자 and confirm account autocomplete results appear.
+4. Select a 계정, then select or clear the auxiliary 담당자.
+5. Register a test asset and confirm it appears with the selected account link.
+6. Open the asset drawer, click `서비스 접수`, set status/priority/due date, optionally attach a service report, and save.
+7. Confirm A/S lifecycle and report attachment labels appear in `/assets/` and `/services/`.
+8. In the same drawer, add a calibration record with next due date and optional certificate.
+9. Confirm due/overdue/certificate state is visible and the account detail link opens `/accounts/<department_id>/`.

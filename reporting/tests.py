@@ -3804,14 +3804,14 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         summary = response.json()['assetSummary']
         self.assertTrue(summary['canManage'])
-        self.assertEqual(summary['metrics']['assetCount'], 1)
-        self.assertEqual(summary['metrics']['activeAssetCount'], 1)
+        self.assertEqual(summary['metrics']['assetCount'], 2)
+        self.assertEqual(summary['metrics']['activeAssetCount'], 2)
         self.assertEqual(summary['metrics']['openServiceCaseCount'], 1)
         self.assertEqual(summary['metrics']['dueCalibrationCount'], 1)
         asset_ids = {item['id'] for item in summary['assets']}
         self.assertIn(asset.id, asset_ids)
-        self.assertNotIn(coworker_asset.id, asset_ids)
-        first_asset = summary['assets'][0]
+        self.assertIn(coworker_asset.id, asset_ids)
+        first_asset = next(item for item in summary['assets'] if item['id'] == asset.id)
         self.assertEqual(first_asset['assetName'], 'Pipette Set')
         self.assertEqual(first_asset['latestServiceCase']['caseType'], 'repair')
         self.assertEqual(first_asset['latestCalibration']['result'], 'pass')
@@ -4315,6 +4315,49 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(asset.primary_followup, own)
         self.assertEqual(asset.created_by, self.user)
 
+    def test_customer_asset_account_search_and_account_first_create_api(self):
+        own = self._create_customer(self.user, '계정장비등록')
+        coworker = self._create_customer(self.coworker, '동료계정장비등록')
+        self.client.force_login(self.user)
+
+        search_response = self.client.get(reverse('reporting:customer_asset_account_search_api'), {
+            'q': coworker.department.name,
+        })
+
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        account_ids = {item['departmentId'] for item in search_payload['accounts']}
+        self.assertIn(coworker.department_id, account_ids)
+        account_payload = next(item for item in search_payload['accounts'] if item['departmentId'] == coworker.department_id)
+        self.assertEqual(account_payload['assetCreateUrl'], reverse('reporting:customer_asset_directory_create_api'))
+        self.assertEqual(account_payload['href'], f'/accounts/{coworker.department_id}/')
+        self.assertTrue(any(contact['id'] == coworker.id for contact in account_payload['contacts']))
+
+        create_response = self.client.post(reverse('reporting:customer_asset_directory_create_api'), {
+            'department_id': str(coworker.department_id),
+            'primary_followup_id': str(coworker.id),
+            'asset_name': '계정 기준 등록 장비',
+            'status': 'active',
+            'serial_number': 'ACCOUNT-SN-1',
+        })
+
+        self.assertEqual(create_response.status_code, 200)
+        asset = CustomerAsset.objects.get(id=create_response.json()['asset']['id'])
+        self.assertEqual(asset.company, coworker.company)
+        self.assertEqual(asset.department, coworker.department)
+        self.assertEqual(asset.primary_followup, coworker)
+        self.assertEqual(asset.created_by, self.user)
+        self.assertEqual(create_response.json()['asset']['accountHref'], f'/accounts/{coworker.department_id}/')
+        self.assertTrue(create_response.json()['asset']['contacts'])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(reverse('reporting:customer_asset_directory_create_api'), {
+            'department_id': str(own.department_id),
+            'asset_name': 'Manager 등록 시도',
+            'status': 'active',
+        })
+        self.assertEqual(manager_response.status_code, 403)
+
     def test_customer_assets_summary_api_uses_manager_scope_and_metrics(self):
         from datetime import timedelta
         from django.utils import timezone
@@ -4508,6 +4551,12 @@ class CustomersSummaryApiTests(TestCase):
         queue_item = next(item for item in payload['workQueue'] if item['kind'] == 'service_overdue')
         self.assertEqual(queue_item['assetId'], asset.id)
         self.assertEqual(queue_item['href'], f'/assets/?asset={asset.id}')
+        self.assertEqual(asset_payload['accountHref'], f'/accounts/{target.department_id}/')
+        self.assertTrue(asset_payload['serviceOverdue'])
+        self.assertEqual(asset_payload['latestServiceCase']['lifecycleLabel'], '처리 지연')
+        self.assertEqual(asset_payload['latestServiceCase']['reportLabel'], '리포트 없음')
+        self.assertEqual(asset_payload['latestCalibration']['dueState'], 'due30')
+        self.assertEqual(asset_payload['latestCalibration']['certificateLabel'], '성적서 없음')
 
     def test_customer_asset_directory_mutation_updates_asset_service_and_calibration(self):
         target = self._create_customer(self.user, '장비운영고객')
