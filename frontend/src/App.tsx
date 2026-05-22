@@ -2888,6 +2888,11 @@ function CustomerDeliveryRecords({ records }: { records: CustomerDeliveryRecord[
               <span className={`customer-delivery-source ${record.paymentSource}`}>
                 {record.paymentTypeLabel || record.paymentSourceLabel || '일반 납품'}
               </span>
+              {record.paymentStatusLabel && record.paymentStatusLabel !== (record.paymentTypeLabel || record.paymentSourceLabel) ? (
+                <span className={`customer-delivery-status ${record.paymentStatus}`}>
+                  {record.paymentStatusLabel}
+                </span>
+              ) : null}
               <strong>{record.date ? formatDateLabel(record.date) : '납품일 없음'}</strong>
               <span>{record.statusLabel}</span>
             </div>

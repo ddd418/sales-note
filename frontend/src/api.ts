@@ -159,6 +159,8 @@ export type ReportsCustomerRecentDelivery = {
   amount: number;
   paymentSource: 'normal' | 'prepayment' | string;
   paymentSourceLabel: string;
+  paymentStatus?: string;
+  paymentStatusLabel?: string;
 };
 
 export type ReportsCustomerOperationRow = {
@@ -1337,6 +1339,9 @@ export type CustomerDeliveryRecord = {
   paymentSourceLabel: string;
   paymentType: 'prepayment_deduction' | 'normal' | string;
   paymentTypeLabel: string;
+  paymentStatus: 'normal' | 'prepayment_deduction' | 'needs_review' | 'settled' | 'cancelled_returned' | string;
+  paymentStatusLabel: string;
+  paymentStatusEvidence: string;
   prepaymentId: number | null;
   prepaymentAmount: number;
   prepaymentUsages: SchedulePrepaymentUsage[];

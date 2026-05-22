@@ -652,6 +652,18 @@ class Schedule(models.Model):
         (DELIVERY_PAYMENT_TYPE_NORMAL, '일반 납품'),
         (DELIVERY_PAYMENT_TYPE_PREPAYMENT, '선결제 차감 납품'),
     ]
+    DELIVERY_PAYMENT_STATUS_NORMAL = 'normal'
+    DELIVERY_PAYMENT_STATUS_PREPAYMENT = 'prepayment_deduction'
+    DELIVERY_PAYMENT_STATUS_NEEDS_REVIEW = 'needs_review'
+    DELIVERY_PAYMENT_STATUS_SETTLED = 'settled'
+    DELIVERY_PAYMENT_STATUS_CANCELLED_RETURNED = 'cancelled_returned'
+    DELIVERY_PAYMENT_STATUS_CHOICES = [
+        (DELIVERY_PAYMENT_STATUS_NORMAL, '일반 납품'),
+        (DELIVERY_PAYMENT_STATUS_PREPAYMENT, '선결제 차감 납품'),
+        (DELIVERY_PAYMENT_STATUS_NEEDS_REVIEW, '결제 확인 필요'),
+        (DELIVERY_PAYMENT_STATUS_SETTLED, '정산 완료'),
+        (DELIVERY_PAYMENT_STATUS_CANCELLED_RETURNED, '취소/반품'),
+    ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
@@ -681,6 +693,13 @@ class Schedule(models.Model):
         default=DELIVERY_PAYMENT_TYPE_NORMAL,
         verbose_name="납품 결제 구분",
         help_text="납품 일정의 결제 구분입니다. 선결제 차감은 구조화된 선결제 사용 내역으로만 확정합니다.",
+    )
+    delivery_payment_status = models.CharField(
+        max_length=32,
+        choices=DELIVERY_PAYMENT_STATUS_CHOICES,
+        default=DELIVERY_PAYMENT_STATUS_NORMAL,
+        verbose_name="납품 결제 상태",
+        help_text="납품 일정의 결제 처리 상태입니다. 리포트, 엑셀, AI 답변이 이 구조화 필드를 우선 참조합니다.",
     )
 
     # 부가세 모드

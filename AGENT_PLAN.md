@@ -1,5 +1,50 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Delivery payment status explicit field plan
+
+**Background**:
+
+- User wants delivery payment handling to be more explicit instead of relying only on inferred prepayment usage.
+- Current CRM already has `Schedule.delivery_payment_type` for normal vs prepayment deduction, but it does not cover workflow states such as payment review, settlement completed, or cancelled/returned.
+- Reports, Excel exports, customer/account detail, and AI context should all read the same structured delivery payment status from the common account ledger helper.
+
+**DB change required**: Yes.
+
+- Add `Schedule.delivery_payment_status` with explicit choices:
+  - `normal`: 일반 납품
+  - `prepayment_deduction`: 선결제 차감 납품
+  - `needs_review`: 결제 확인 필요
+  - `settled`: 정산 완료
+  - `cancelled_returned`: 취소/반품
+- Create a migration that backfills existing delivery schedules from structured fields:
+  - cancelled deliveries → `cancelled_returned`
+  - structured prepayment deliveries → `prepayment_deduction`
+  - remaining deliveries → `normal`
+
+**Implementation scope**:
+
+- Backend:
+  - Add Schedule constants/field for delivery payment status.
+  - Extend `reporting.account_ledger.delivery_payment_payload()` with `paymentStatus`, `paymentStatusLabel`, and evidence.
+  - Keep `paymentSource` and existing normal/prepayment split for compatibility.
+  - Sync status when prepayments are applied/restored and when common delivery payment sync runs.
+  - Include payment status in customer/account delivery payloads, reports recent delivery rows, customer delivery XLSX, reports XLSX, and AI delivery context.
+- Frontend:
+  - No new editing UI in this pass. Existing screens can consume the new API fields without breaking.
+- Tests/docs:
+  - Add/update focused tests for API payload status labels and XLSX columns.
+  - Run focused backend tests, Django checks, React typecheck/build if API types are touched, migration dry-run, and deployment smoke.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\account_ledger.py reporting\views.py reporting\admin.py reporting\tests.py`
+- Focused customer/account delivery and reports API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Frontend build only if React types/runtime are changed.
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Account cleanup execution API v1 plan
 
 **Background**:

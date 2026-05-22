@@ -3710,6 +3710,9 @@ def _customer_delivery_payment_payload(schedule):
         'paymentSourceLabel': payload['paymentSourceLabel'],
         'paymentType': payload['paymentType'],
         'paymentTypeLabel': payload['paymentTypeLabel'],
+        'paymentStatus': payload['paymentStatus'],
+        'paymentStatusLabel': payload['paymentStatusLabel'],
+        'paymentStatusEvidence': payload['paymentStatusEvidence'],
         'prepaymentId': payload['prepaymentId'],
         'prepaymentAmount': payload['prepaymentAmount'],
         'prepaymentUsages': [
@@ -6382,7 +6385,7 @@ def customer_delivery_records_xlsx_export_api(request, followup_id):
 
     headers = [
         '납품일', '일정ID', '고객명', '업체/학교', '부서/연구실', '담당자',
-        '상태', '납품구분', '선결제차감액', '품목명', '수량', '단위',
+        '상태', '납품구분', '결제상태', '선결제차감액', '품목명', '수량', '단위',
         '단가', '품목금액', '일정납품합계', '비고', '구분근거', '일정링크',
     ]
     ws.append(headers)
@@ -6413,6 +6416,7 @@ def customer_delivery_records_xlsx_export_api(request, followup_id):
                 record.get('ownerName') or '',
                 record.get('statusLabel') or '',
                 record.get('paymentSourceLabel') or '',
+                record.get('paymentStatusLabel') or '',
                 record.get('prepaymentAmount') or 0,
                 item.get('itemName') if item else '',
                 item.get('quantity') if item else '',
@@ -6430,10 +6434,10 @@ def customer_delivery_records_xlsx_export_api(request, followup_id):
         for cell in row:
             cell.border = border
             cell.alignment = body_alignment
-        for col_idx in [9, 13, 14, 15]:
+        for col_idx in [10, 14, 15, 16]:
             row[col_idx - 1].number_format = money_format
 
-    widths = [12, 10, 18, 22, 20, 12, 12, 18, 14, 24, 10, 8, 12, 14, 16, 32, 46, 42]
+    widths = [12, 10, 18, 22, 20, 12, 12, 18, 16, 14, 24, 10, 8, 12, 14, 16, 32, 46, 42]
     for col_idx, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = width
     ws.freeze_panes = 'A2'
@@ -9125,7 +9129,15 @@ def _schedules_restore_prepayments(schedule):
     schedule.prepayment = None
     schedule.prepayment_amount = Decimal('0')
     schedule.delivery_payment_type = Schedule.DELIVERY_PAYMENT_TYPE_NORMAL
-    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'delivery_payment_type', 'updated_at'])
+    schedule.delivery_payment_status = Schedule.DELIVERY_PAYMENT_STATUS_NORMAL
+    schedule.save(update_fields=[
+        'use_prepayment',
+        'prepayment',
+        'prepayment_amount',
+        'delivery_payment_type',
+        'delivery_payment_status',
+        'updated_at',
+    ])
     return restored_total
 
 
@@ -9233,7 +9245,18 @@ def _schedules_apply_prepayments(schedule, actor, raw_items, enforce_delivery_to
     schedule.prepayment = first_prepayment
     schedule.prepayment_amount = total_used
     schedule.delivery_payment_type = Schedule.DELIVERY_PAYMENT_TYPE_PREPAYMENT if total_used > 0 else Schedule.DELIVERY_PAYMENT_TYPE_NORMAL
-    schedule.save(update_fields=['use_prepayment', 'prepayment', 'prepayment_amount', 'delivery_payment_type', 'updated_at'])
+    schedule.delivery_payment_status = (
+        Schedule.DELIVERY_PAYMENT_STATUS_PREPAYMENT
+        if total_used > 0 else Schedule.DELIVERY_PAYMENT_STATUS_NORMAL
+    )
+    schedule.save(update_fields=[
+        'use_prepayment',
+        'prepayment',
+        'prepayment_amount',
+        'delivery_payment_type',
+        'delivery_payment_status',
+        'updated_at',
+    ])
     return total_used
 
 
@@ -14921,6 +14944,14 @@ def _ai_workspace_question_delivery_payload(delivery):
         delivery.get('paymentSourceLabel') or delivery.get('payment_source_label'),
         120,
     ) or ('선결제 사용 납품' if payment_source == 'prepayment' else '선결제 사용 기록 없음')
+    payment_status = _ai_workspace_question_text(
+        delivery.get('paymentStatus') or delivery.get('payment_status'),
+        80,
+    )
+    payment_status_label = _ai_workspace_question_text(
+        delivery.get('paymentStatusLabel') or delivery.get('payment_status_label'),
+        120,
+    )
     prepayment_amount = _money_int(delivery.get('prepaymentAmount') or delivery.get('prepayment_amount') or 0)
     prepayment_usages = []
     for usage in _ai_json_list(delivery.get('prepaymentUsages') or delivery.get('prepayment_usages'))[:4]:
@@ -14947,6 +14978,8 @@ def _ai_workspace_question_delivery_payload(delivery):
         'scheduleId': delivery.get('schedule_id'),
         'paymentSource': payment_source,
         'paymentSourceLabel': payment_label,
+        'paymentStatus': payment_status,
+        'paymentStatusLabel': payment_status_label,
         'prepaymentId': delivery.get('prepaymentId') or delivery.get('prepayment_id'),
         'prepaymentAmount': prepayment_amount,
         'prepaymentAmountLabel': _ai_workspace_money(prepayment_amount),
@@ -14973,6 +15006,8 @@ def _ai_workspace_question_delivery_payment_payload(delivery):
         'scheduleId': payload['scheduleId'],
         'paymentSource': payload['paymentSource'],
         'paymentSourceLabel': payload['paymentSourceLabel'],
+        'paymentStatus': payload['paymentStatus'],
+        'paymentStatusLabel': payload['paymentStatusLabel'],
         'prepaymentId': payload['prepaymentId'],
         'prepaymentAmount': payload['prepaymentAmount'],
         'prepaymentAmountLabel': payload['prepaymentAmountLabel'],
@@ -14992,7 +15027,9 @@ def _ai_workspace_question_delivery_payment_split(deliveries, limit_per_bucket=2
 
     return {
         'classificationRule': (
-            '선결제 사용 납품은 Schedule.delivery_payment_type, Schedule.use_prepayment, Schedule.prepayment, '
+            '납품 결제 상태는 Schedule.delivery_payment_status를 우선 참고한다. '
+            '선결제 사용 납품은 Schedule.delivery_payment_status=prepayment_deduction, '
+            'Schedule.delivery_payment_type, Schedule.use_prepayment, Schedule.prepayment, '
             'Schedule.prepayment_amount, PrepaymentUsage 중 하나가 공통 계정 원장 구조화 데이터로 확인될 때만 분류한다. '
             '납품/일정/메일 메모의 선결제 언급만으로는 선결제 납품으로 분류하지 않는다.'
         ),
@@ -15744,6 +15781,11 @@ def _ai_workspace_delivery_payment_line(item):
     amount_label = item.get('amountLabel') or _ai_workspace_money(item.get('amount') or 0)
     if amount_label:
         parts.append(amount_label)
+    status_label = item.get('paymentStatusLabel')
+    source_label = item.get('paymentSourceLabel')
+    for label in [source_label, status_label]:
+        if label and label not in parts:
+            parts.append(label)
     if item.get('items'):
         parts.append(item.get('items'))
     if item.get('prepaymentAmount'):
@@ -16007,7 +16049,7 @@ def _ai_workspace_question_fallback(question, context):
             return {
                 'summary': (
                     f"{scope_label} 기준으로 구조화된 납품 기록을 찾지 못했습니다. "
-                    '선결제/비선결제 구분은 공통 계정 원장의 Schedule.delivery_payment_type, '
+                    '납품 결제 상태/선결제 구분은 공통 계정 원장의 Schedule.delivery_payment_status, Schedule.delivery_payment_type, '
                     'Schedule 선결제 필드, PrepaymentUsage가 있는 납품에서만 확인할 수 있습니다.'
                 ),
                 'bullets': [
@@ -16035,7 +16077,7 @@ def _ai_workspace_question_fallback(question, context):
 
         summary_text = (
             'CRM 구조화 데이터 기준으로만 분리했습니다. 선결제 납품은 '
-            '`Schedule.delivery_payment_type`, `Schedule.use_prepayment`, `Schedule.prepayment`, '
+            '`Schedule.delivery_payment_status`, `Schedule.delivery_payment_type`, `Schedule.use_prepayment`, `Schedule.prepayment`, '
             '`Schedule.prepayment_amount`, `PrepaymentUsage` 중 하나가 공통 계정 원장에서 확인된 납품만 넣었습니다. 메모에 "선결제"라는 말이 있어도 '
             '실제 선결제 사용 내역이 없으면 선결제 납품으로 분류하지 않았습니다.\n\n'
             f"1) 선결제 사용 납품 ({delivery_payment_split.get('prepaymentCount') or 0}건)\n"
@@ -16044,8 +16086,8 @@ def _ai_workspace_question_fallback(question, context):
             f"2) 선결제 사용 기록 없는 납품 ({delivery_payment_split.get('withoutPrepaymentCount') or 0}건)\n"
             + '\n'.join(without_prepayment_lines)
             + '\n\n'
-            '주의: CRM에는 별도의 "일반결제" 확정 필드가 없으므로, 두 번째 목록은 '
-            '"일반결제 확정"이 아니라 "선결제 사용 기록 없음"으로 보는 것이 정확합니다.'
+            '주의: 납품 결제 상태가 정산 완료/결제 확인 필요/취소·반품으로 명시된 경우에는 해당 상태를 우선 함께 표시합니다. '
+            '명시 상태가 없는 두 번째 목록은 "일반결제 확정"이 아니라 "선결제 사용 기록 없음"으로 보는 것이 정확합니다.'
         )
         evidence_rows = [{'label': '분류 기준', 'value': delivery_payment_split.get('classificationRule') or ''}]
         for index, item in enumerate(prepayment_deliveries[:4], start=1):
@@ -16071,7 +16113,7 @@ def _ai_workspace_question_fallback(question, context):
                     f"납품금액 {_ai_workspace_money(delivery_payment_split.get('withoutPrepaymentDeliveryAmount') or 0)}"
                 ),
                 '메모/메일/이전 AI 답변은 선결제 납품 분류 근거로 쓰지 않았습니다.',
-                '별도 결제수단 필드가 생기기 전까지는 "일반결제"보다 "선결제 사용 기록 없음"이라고 답해야 합니다.',
+                '명시 결제 상태가 없는 납품은 "일반결제 확정"보다 "선결제 사용 기록 없음"이라고 답해야 합니다.',
             ],
             'evidence': _ai_workspace_question_evidence_payload(evidence_rows, limit=9, value_limit=700),
             'actionItems': [],
@@ -16684,8 +16726,9 @@ def _ai_workspace_question_response_guidance(question):
             'instruction': (
                 '선결제/일반결제/선결제 없이 납품 분리 질문이다. '
                 'crmContext.deliveryPaymentSplit의 prepaymentDeliveries와 withoutPrepaymentDeliveries만 기준으로 답한다. '
-                '메모에 선결제 표현이 있어도 Schedule.delivery_payment_type 또는 PrepaymentUsage 또는 Schedule 선결제 필드가 없으면 선결제 납품으로 분류하지 않는다. '
-                '별도 결제수단 필드가 없으므로 일반결제 확정이라고 쓰지 말고 "선결제 사용 기록 없음"으로 표현한다.'
+                'Schedule.delivery_payment_status가 정산 완료/결제 확인 필요/취소·반품이면 그 상태를 함께 표시한다. '
+                '메모에 선결제 표현이 있어도 Schedule.delivery_payment_status, Schedule.delivery_payment_type, PrepaymentUsage 또는 Schedule 선결제 필드가 없으면 선결제 납품으로 분류하지 않는다. '
+                '명시 상태가 없으면 일반결제 확정이라고 쓰지 말고 "선결제 사용 기록 없음"으로 표현한다.'
             ),
         }
 
@@ -16808,9 +16851,9 @@ def _ai_workspace_generate_department_question_answer(
                 'crmContext.productFacts는 제품 코드별 제품 마스터 설명/규격/단위다. 제품 코드의 품목 성격은 productFacts와 CRM 품목 메모를 우선 근거로 삼는다.',
                 '제품 코드는 식별자다. productFacts.label/description/specification 또는 CRM 메모에 없는 품목 유형을 코드 앞에 새로 붙이지 않는다.',
                 '예를 들어 productFacts에 튜브 근거가 없으면 "튜브(P4345N00)"처럼 쓰지 말고 productFacts.label 또는 "P4345N00 품목"처럼 쓴다.',
-                'crmContext.deliveryPaymentSplit은 납품별 선결제 사용 여부를 공통 계정 원장 데이터로 분리한 표다. 선결제 납품은 Schedule.delivery_payment_type, Schedule.use_prepayment, Schedule.prepayment, Schedule.prepayment_amount, PrepaymentUsage 중 하나가 확인될 때만 prepaymentDeliveries에 들어간다.',
+                'crmContext.deliveryPaymentSplit은 납품별 선결제 사용 여부와 명시 결제 상태를 공통 계정 원장 데이터로 분리한 표다. 선결제 납품은 Schedule.delivery_payment_status=prepayment_deduction, Schedule.delivery_payment_type, Schedule.use_prepayment, Schedule.prepayment, Schedule.prepayment_amount, PrepaymentUsage 중 하나가 확인될 때만 prepaymentDeliveries에 들어간다.',
                 '선결제/일반결제/그냥 결제/선결제 없이 납품 구분 질문에서는 crmContext.deliveryPaymentSplit을 우선 근거로 사용하고, recentNotes/recentEmails/recentQuestionLogs/납품 notes의 선결제 언급만으로 분류하지 않는다.',
-                'withoutPrepaymentDeliveries는 별도 결제수단 확정이 아니라 구조화 선결제 사용 기록이 없는 납품이다. CRM에 일반결제 필드가 없으면 "일반결제 확정"이 아니라 "선결제 사용 기록 없음"이라고 표현한다.',
+                'withoutPrepaymentDeliveries는 별도 결제수단 확정이 아니라 구조화 선결제 사용 기록이 없는 납품이다. Schedule.delivery_payment_status가 정산 완료/결제 확인 필요/취소·반품이면 그 상태를 함께 말하고, 명시 상태가 없으면 "일반결제 확정"이 아니라 "선결제 사용 기록 없음"이라고 표현한다.',
                 '이전 일정에는 "해야 함"이라고 적혀 있고 최신 feedback/노트에는 "했다/줬다/완료"라고 적혀 있으면 완료된 것으로 해석하고 둘을 같은 미완료 액션처럼 반복하지 않는다.',
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 실행할 작업/다음 액션을 묻는다면 범위가 전체 부서든 선택 부서든 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
@@ -35273,6 +35316,8 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
                 'amount': total_amount,
                 'paymentSource': record.get('paymentSource') or 'normal',
                 'paymentSourceLabel': record.get('paymentSourceLabel') or '일반 납품',
+                'paymentStatus': record.get('paymentStatus') or 'normal',
+                'paymentStatusLabel': record.get('paymentStatusLabel') or record.get('paymentSourceLabel') or '일반 납품',
             })
 
     quote_schedules_by_id = set()
@@ -35899,6 +35944,7 @@ def reports_customer_operations_xlsx_export_api(request):
             parts = [
                 str(item.get('date') or ''),
                 item.get('paymentSourceLabel') or '',
+                item.get('paymentStatusLabel') or '',
                 item.get('label') or '',
             ]
             amount = item.get('amount') or 0

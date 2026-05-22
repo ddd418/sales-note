@@ -513,6 +513,8 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(row['prepaymentBalance'], 3900)
         self.assertIn('prepayment', {item['paymentSource'] for item in row['recentDeliveryItems']})
         self.assertIn('normal', {item['paymentSource'] for item in row['recentDeliveryItems']})
+        self.assertIn('선결제 차감 납품', {item['paymentStatusLabel'] for item in row['recentDeliveryItems']})
+        self.assertIn('일반 납품', {item['paymentStatusLabel'] for item in row['recentDeliveryItems']})
         self.assertEqual(operations['metrics']['prepaymentDeliveryCount'], 1)
         self.assertEqual(operations['metrics']['normalDeliveryCount'], 1)
 
@@ -3915,10 +3917,14 @@ class CustomersSummaryApiTests(TestCase):
         delivery_by_id = {item['id']: item for item in records['deliveryRecords']}
         self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentSource'], 'prepayment')
         self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentSourceLabel'], '선결제 차감 납품')
+        self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentStatus'], 'prepayment_deduction')
+        self.assertEqual(delivery_by_id[prepaid_schedule.id]['paymentStatusLabel'], '선결제 차감 납품')
         self.assertEqual(delivery_by_id[prepaid_schedule.id]['prepaymentAmount'], 60000)
         self.assertEqual(delivery_by_id[prepaid_schedule.id]['prepaymentUsages'][0]['amount'], 60000)
         self.assertEqual(delivery_by_id[normal_schedule.id]['paymentSource'], 'normal')
         self.assertEqual(delivery_by_id[normal_schedule.id]['paymentSourceLabel'], '일반 납품')
+        self.assertEqual(delivery_by_id[normal_schedule.id]['paymentStatus'], 'normal')
+        self.assertEqual(delivery_by_id[normal_schedule.id]['paymentStatusLabel'], '일반 납품')
         self.assertEqual(delivery_by_id[normal_schedule.id]['prepaymentAmount'], 0)
         self.assertIn('선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.', delivery_by_id[normal_schedule.id]['paymentEvidence'])
         self.assertEqual(delivery_by_id[sibling_delivery_schedule.id]['customerName'], '운영기록 같은부서 담당자')
@@ -4060,7 +4066,8 @@ class CustomersSummaryApiTests(TestCase):
         sheet = workbook['납품 기록']
         rows = list(sheet.iter_rows(values_only=True))
         self.assertEqual(rows[0][0], '납품일')
-        item_names = {row[9] for row in rows[1:]}
+        self.assertEqual(rows[0][8], '결제상태')
+        item_names = {row[10] for row in rows[1:]}
         self.assertIn('엑셀 선결제 품목', item_names)
         self.assertIn('엑셀 일반 품목', item_names)
         self.assertIn('엑셀 같은부서 품목', item_names)
@@ -4070,12 +4077,15 @@ class CustomersSummaryApiTests(TestCase):
         payment_labels = {row[7] for row in rows[1:]}
         self.assertIn('선결제 차감 납품', payment_labels)
         self.assertIn('일반 납품', payment_labels)
-        prepaid_row = next(row for row in rows[1:] if row[9] == '엑셀 선결제 품목')
-        normal_row = next(row for row in rows[1:] if row[9] == '엑셀 일반 품목')
-        self.assertEqual(prepaid_row[8], 50000)
-        self.assertIn('PrepaymentUsage 합계=50,000원', prepaid_row[16])
-        self.assertEqual(normal_row[8], 0)
-        self.assertIn('선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.', normal_row[16])
+        payment_status_labels = {row[8] for row in rows[1:]}
+        self.assertIn('선결제 차감 납품', payment_status_labels)
+        self.assertIn('일반 납품', payment_status_labels)
+        prepaid_row = next(row for row in rows[1:] if row[10] == '엑셀 선결제 품목')
+        normal_row = next(row for row in rows[1:] if row[10] == '엑셀 일반 품목')
+        self.assertEqual(prepaid_row[9], 50000)
+        self.assertIn('PrepaymentUsage 합계=50,000원', prepaid_row[17])
+        self.assertEqual(normal_row[9], 0)
+        self.assertIn('선결제 사용 필드와 PrepaymentUsage 기록이 없습니다.', normal_row[17])
 
     def test_customer_delivery_records_xlsx_export_blocks_out_of_scope_customer(self):
         target = self._create_customer(self.other_user, '타사납품엑셀고객')

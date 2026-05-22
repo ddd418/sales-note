@@ -1,5 +1,106 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Delivery Payment Status Explicit Field
+
+### 요약
+
+- `Schedule.delivery_payment_status` 구조화 필드를 추가했습니다.
+- 상태 값은 `일반 납품`, `선결제 차감 납품`, `결제 확인 필요`, `정산 완료`, `취소/반품`입니다.
+- 기존 `delivery_payment_type`은 유지해서 선결제/일반 분리 호환성을 지켰고, 새 상태 필드를 리포트/엑셀/AI가 함께 보도록 공통 원장 helper를 확장했습니다.
+- 기존 납품 데이터는 마이그레이션에서 구조화 선결제 필드/PrepaymentUsage/취소 상태를 기준으로 backfill합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/account_ledger.py`
+- `reporting/admin.py`
+- `reporting/migrations/0109_schedule_delivery_payment_status.py`
+- `reporting/models.py`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 고객/계정 납품 기록 API에 `paymentStatus`, `paymentStatusLabel`, `paymentStatusEvidence`가 추가되었습니다.
+- `/reports/` 계정별 현황의 최근 납품 항목에도 결제 상태가 포함됩니다.
+- 고객 납품 엑셀에 `결제상태` 열을 추가했습니다.
+- 리포트 엑셀의 최근 납품품목 설명에도 결제 상태가 포함됩니다.
+- AI 납품 결제 분리 컨텍스트가 `Schedule.delivery_payment_status`를 우선 참고하도록 바뀌었습니다.
+- React 고객/계정 상세의 납품 기록에서 `결제 확인 필요`, `정산 완료`, `취소/반품` 같은 추가 상태가 보이도록 배지를 추가했습니다.
+
+### 기존 기능 보존
+
+- 기존 `paymentSource` 기반 `일반 납품`/`선결제 차감 납품` 구분은 유지했습니다.
+- 선결제 차감 여부는 계속 구조화 필드와 `PrepaymentUsage`를 근거로 합니다.
+- 새 상태 필드가 없던 기존 데이터는 migration backfill로 기본 상태를 채웁니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\models.py reporting\account_ledger.py reporting\views.py reporting\admin.py reporting\tests.py reporting\migrations\0109_schedule_delivery_payment_status.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_customer_operations_with_structured_payment_split reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source reporting.tests.CustomersSummaryApiTests.test_customer_delivery_records_xlsx_export_downloads_department_shared_deliveries --verbosity=1
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests reporting.tests.CustomersSummaryApiTests --verbosity=1
+→ Timed out after 364s before completion in the parallel validation run
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 16 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK, dist/assets/index-DrYdU82o.js / dist/assets/index-D6vu2STa.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py migrate --plan
+→ reporting.0109_schedule_delivery_payment_status Add field + Raw Python operation planned
+→ local DB also still had previous reporting.0108 pending, but production already applied 0108 in the previous deploy
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 단계는 필드/API/표시 기반입니다. 결제 상태를 수동으로 바꾸는 전용 React 편집 UI는 아직 없습니다.
+- `정산 완료`, `결제 확인 필요`는 운영자가 상태를 지정할 수 있는 화면이 붙으면 본격적으로 활용됩니다.
+
+### 권장 다음 작업
+
+- 일정/납품 상세 또는 관리자 전용 화면에서 `delivery_payment_status`를 변경할 수 있는 권한 제한 UI를 추가합니다.
+- AI 답변과 리포트에서 `결제 확인 필요` 납품만 따로 필터링하는 운영 검토 화면을 추가합니다.
+
+### 운영 배포 상태
+
+- 배포 전. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포가 필요합니다.
+
+### 수동 운영 확인 절차
+
+1. 배포 후 운영 프론트에서 고객/계정 상세의 납품 기록을 확인합니다.
+2. 선결제 차감 납품은 기존처럼 `선결제 차감 납품`으로 보이는지 확인합니다.
+3. 고객 납품 엑셀 다운로드 시 `결제상태` 열이 추가되어 있는지 확인합니다.
+4. `/reports/` 현황 엑셀의 최근 납품품목에 결제 상태가 같이 표시되는지 확인합니다.
+5. AI에 “선결제 없이 납품된 것과 선결제 차감 납품을 분리해줘”라고 물었을 때 메모 추정이 아니라 구조화 원장 기준으로 답하는지 확인합니다.
+
 ## 2026-05-22 — Account Cleanup Execution API v1
 
 ### 요약
