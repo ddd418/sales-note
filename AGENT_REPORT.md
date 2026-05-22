@@ -1,5 +1,95 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Account Cleanup Target Search
+
+### 요약
+
+- 계정 정리 영향 미리보기의 `비교 대상 부서 ID` 직접 입력 방식을 제거했습니다.
+- `/reporting/api/accounts/search/` 계정 검색 API를 추가했습니다.
+- 검색은 업체명, 부서/연구실명, PI/책임자(`manager`), 담당자명, 이메일 기준으로 동작합니다.
+- 검색 결과는 현재 로그인 사용자가 접근 가능한 부서/연구실 계정만 반환합니다.
+- React `/accounts/<id>/cleanup-preview/` 화면에서 검색 결과를 클릭하면 `target=<department_id>`로 비교가 실행됩니다.
+- 검색 결과에는 계정명, 담당자 미리보기, PI/책임자 미리보기를 표시합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 운영자가 부서 ID를 알 필요 없이 이름/부서/PI/담당자/이메일로 대상 계정을 찾을 수 있습니다.
+- 검색어에 직접 매칭된 담당자뿐 아니라 같은 부서/연구실의 다른 담당자도 계정 결과에 함께 표시됩니다.
+- 접근 불가 계정은 검색 결과에 나오지 않습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- 정리 영향 미리보기는 계속 읽기 전용입니다.
+- 기존 `/accounts/<id>/cleanup-preview/?target=<id>` URL 방식은 검색 선택 후에도 유지됩니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_returns_source_and_target_impact reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_preview_api_requires_login_and_blocks_inaccessible_target reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_account_search_api_finds_by_company_department_pi_contact_and_email --verbosity=1
+→ Ran 3 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-Bau9ISag.js / dist/assets/index-CXGWPmXK.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local preview /accounts/1/cleanup-preview/
+→ HTTP 200, React bundle index-Bau9ISag.js / index-CXGWPmXK.css served
+```
+
+### 알려진 제한
+
+- 검색 결과는 최대 20개 계정으로 제한합니다.
+- 아직 `/reports/` 데이터 정리 후보에서 바로 이 검색/미리보기로 연결하는 버튼은 없습니다.
+
+### 권장 다음 작업
+
+- `/reports/` 데이터 정리 후보의 각 계정 후보에서 바로 `정리 영향 미리보기`로 이동하는 링크를 추가합니다.
+- 이후 병합 실행 전 체크리스트와 권한 승인 흐름을 설계합니다.
+
+### 운영 배포 상태
+
+- 배포 대상 변경입니다. 커밋/푸시 후 Railway web/frontend 배포와 운영 smoke를 확인합니다.
+
+### 수동 운영 확인 절차
+
+1. `/accounts/<id>/cleanup-preview/`에 접속합니다.
+2. `대상 계정 검색` 입력창에 업체명, 부서명, PI/책임자, 담당자명, 이메일 중 하나를 입력합니다.
+3. 검색 결과에서 원하는 계정을 클릭합니다.
+4. 소스/대상 2개 패널로 비교되는지 확인합니다.
+5. 부서 ID를 직접 입력해야 하는 UI가 없어졌는지 확인합니다.
+
 ## 2026-05-22 — Account Cleanup Impact Preview
 
 ### 요약

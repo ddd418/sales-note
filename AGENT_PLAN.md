@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Account cleanup target search plan
+
+**Background**:
+
+- User confirmed that entering a raw department ID in cleanup preview is not usable.
+- The target account should be selected by searching company, department/lab, PI/manager, contact name, or email.
+- Existing department autocomplete is close, but the cleanup preview needs account-specific display metadata and the same account access scope.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- Backend:
+  - Add an account cleanup target search API.
+  - Search accessible department/lab accounts by company, department, contact name, PI/manager, and email.
+  - Return account labels, contact previews, PI/manager previews, and direct preview/account links.
+- Frontend:
+  - Replace target department ID input with a search box and selectable results.
+  - Keep direct comparison state in the URL via `target=<department_id>` after selecting a result.
+  - Keep cleanup preview read-only.
+- Tests/docs:
+  - Add focused API regression for search, auth, and inaccessible account exclusion.
+  - Run Django checks, migration dry-run, focused tests, React typecheck/build, and diff checks.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Focused account cleanup search/preview API tests.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Account cleanup impact preview plan
 
 **Background**:

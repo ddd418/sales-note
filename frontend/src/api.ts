@@ -359,6 +359,20 @@ export type AccountCleanupPreviewData = {
   };
 };
 
+export type AccountCleanupSearchResult = {
+  id: number;
+  label: string;
+  companyName: string;
+  departmentName: string;
+  contactPreview: string[];
+  piPreview: string[];
+  emailPreview: string[];
+  meta: string;
+  searchText: string;
+  href: string;
+  previewHref: string;
+};
+
 export type ReportsData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -4372,6 +4386,10 @@ const emptyAccountCleanupPreviewData: AccountCleanupPreviewData = {
   },
 };
 
+const emptyAccountCleanupSearchResult = {
+  results: [] as AccountCleanupSearchResult[],
+};
+
 const emptyReportsData: ReportsData = {
   success: false,
   source: 'unavailable',
@@ -6252,6 +6270,56 @@ export async function loadAccountCleanupPreviewData(
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Account cleanup preview API unavailable',
     };
+  }
+}
+
+export async function searchAccountCleanupTargets(
+  query: string,
+  sourceDepartmentId?: number | null,
+): Promise<AccountCleanupSearchResult[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) {
+    params.set('q', query.trim());
+  }
+  if (sourceDepartmentId) {
+    params.set('source', String(sourceDepartmentId));
+  }
+
+  try {
+    const response = await fetch(`/reporting/api/accounts/search/${params.toString() ? `?${params.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Account search API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as {
+      success?: boolean;
+      source?: string;
+      error?: string;
+      message?: string;
+      results?: AccountCleanupSearchResult[];
+    };
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Account search API unavailable: ${response.status}`);
+    }
+    return (payload.results ?? emptyAccountCleanupSearchResult.results).map((result) => ({
+      ...result,
+      href: normalizeCoreCrmHref(result.href),
+      previewHref: normalizeCoreCrmHref(result.previewHref),
+      contactPreview: result.contactPreview ?? [],
+      piPreview: result.piPreview ?? [],
+      emailPreview: result.emailPreview ?? [],
+      meta: result.meta ?? '',
+      searchText: result.searchText ?? '',
+    }));
+  } catch {
+    return emptyAccountCleanupSearchResult.results;
   }
 }
 

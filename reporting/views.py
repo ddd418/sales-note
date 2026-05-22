@@ -5237,6 +5237,115 @@ def _account_cleanup_combined_metrics(source_payload, target_payload):
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
+def account_cleanup_account_search_api(request):
+    """Search accessible department/lab accounts for cleanup preview target selection."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    query = (request.GET.get('q') or request.GET.get('query') or '').strip()
+    if len(query) < 1:
+        return JsonResponse({
+            'success': True,
+            'source': 'django',
+            'results': [],
+        })
+
+    user_profile = get_user_profile(request.user)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    source_id = request.GET.get('source') or request.GET.get('source_department_id')
+    followups_qs = FollowUp.objects.filter(
+        user__in=scope_users,
+        department_id__isnull=False,
+    ).filter(
+        Q(company__name__icontains=query)
+        | Q(department__name__icontains=query)
+        | Q(customer_name__icontains=query)
+        | Q(manager__icontains=query)
+        | Q(email__icontains=query)
+    ).select_related('company', 'department', 'user').order_by(
+        'company__name',
+        'department__name',
+        'customer_name',
+        'id',
+    )
+
+    if source_id:
+        try:
+            followups_qs = followups_qs.exclude(department_id=int(source_id))
+        except (TypeError, ValueError):
+            pass
+
+    matched_followups = list(followups_qs[:80])
+    matched_department_ids = []
+    for followup in matched_followups:
+        if followup.department_id and followup.department_id not in matched_department_ids:
+            matched_department_ids.append(followup.department_id)
+
+    accounts = {}
+    account_followups = FollowUp.objects.filter(
+        department_id__in=matched_department_ids[:20],
+        user__in=scope_users,
+    ).select_related('company', 'department', 'user').order_by(
+        'company__name',
+        'department__name',
+        'customer_name',
+        'id',
+    )
+    for followup in account_followups:
+        department = followup.department
+        if not department:
+            continue
+        account = accounts.setdefault(department.id, {
+            'id': department.id,
+            'label': ' · '.join([value for value in [
+                followup.company.name if followup.company else '',
+                department.name,
+            ] if value]) or department.name,
+            'companyName': followup.company.name if followup.company else '',
+            'departmentName': department.name,
+            'contactPreview': [],
+            'piPreview': [],
+            'emailPreview': [],
+            'href': f'/accounts/{department.id}/',
+            'previewHref': f'/accounts/{department.id}/cleanup-preview/',
+        })
+        contact_name = followup.customer_name or followup.manager or ''
+        if contact_name and contact_name not in account['contactPreview'] and len(account['contactPreview']) < 4:
+            account['contactPreview'].append(contact_name)
+        if followup.manager and followup.manager not in account['piPreview'] and len(account['piPreview']) < 3:
+            account['piPreview'].append(followup.manager)
+        if followup.email and followup.email not in account['emailPreview'] and len(account['emailPreview']) < 2:
+            account['emailPreview'].append(followup.email)
+
+    results = list(accounts.values())[:20]
+    for result in results:
+        search_parts = [
+            result['companyName'],
+            result['departmentName'],
+            ' '.join(result['contactPreview']),
+            ' '.join(result['piPreview']),
+            ' '.join(result['emailPreview']),
+        ]
+        result['meta'] = ' · '.join([
+            value for value in [
+                f"담당자 {', '.join(result['contactPreview'])}" if result['contactPreview'] else '',
+                f"PI/책임자 {', '.join(result['piPreview'])}" if result['piPreview'] else '',
+            ] if value
+        ])
+        result['searchText'] = ' '.join(part for part in search_parts if part)
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'query': query,
+        'results': results,
+    })
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
 def account_cleanup_preview_api(request, department_id):
     """Read-only impact preview before department/lab account cleanup."""
     auth_response = _api_login_required_response(request)

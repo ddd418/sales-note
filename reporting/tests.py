@@ -786,6 +786,66 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         )
         self.assertEqual(blocked.status_code, 403)
 
+    def test_account_cleanup_account_search_api_finds_by_company_department_pi_contact_and_email(self):
+        self.followup.manager = '김PI'
+        self.followup.email = 'pi-search@example.com'
+        self.followup.save(update_fields=['manager', 'email'])
+        sibling = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='검색 담당자',
+            manager='공동PI',
+        )
+        other_department = Department.objects.create(
+            company=self.customer_company,
+            name='숨겨진 연구실',
+            created_by=self.other,
+        )
+        FollowUp.objects.create(
+            user=self.other,
+            user_company=self.company,
+            company=self.customer_company,
+            department=other_department,
+            customer_name='숨겨진 담당자',
+            manager='김PI',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:account_cleanup_account_search_api'), {'q': '김PI'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        result_ids = {item['id'] for item in payload['results']}
+        self.assertIn(self.department.id, result_ids)
+        self.assertNotIn(other_department.id, result_ids)
+        result = next(item for item in payload['results'] if item['id'] == self.department.id)
+        self.assertEqual(result['label'], '고객사 A · 연구실 A')
+        self.assertIn('김PI', result['piPreview'])
+        self.assertIn('김고객', result['contactPreview'])
+        self.assertIn('검색 담당자', result['contactPreview'])
+        self.assertEqual(result['previewHref'], f'/accounts/{self.department.id}/cleanup-preview/')
+
+        department_response = self.client.get(reverse('reporting:account_cleanup_account_search_api'), {'q': '연구실 A'})
+        self.assertEqual(department_response.status_code, 200)
+        self.assertIn(self.department.id, {item['id'] for item in department_response.json()['results']})
+
+        email_response = self.client.get(reverse('reporting:account_cleanup_account_search_api'), {'q': 'pi-search@example.com'})
+        self.assertEqual(email_response.status_code, 200)
+        self.assertIn(self.department.id, {item['id'] for item in email_response.json()['results']})
+
+        source_excluded = self.client.get(
+            reverse('reporting:account_cleanup_account_search_api'),
+            {'q': '김PI', 'source': self.department.id},
+        )
+        self.assertNotIn(self.department.id, {item['id'] for item in source_excluded.json()['results']})
+
+        self.client.logout()
+        unauthenticated = self.client.get(reverse('reporting:account_cleanup_account_search_api'), {'q': '김PI'})
+        self.assertEqual(unauthenticated.status_code, 401)
+
     def test_reports_api_manager_can_filter_company_salesperson(self):
         History.objects.create(
             user=self.user,

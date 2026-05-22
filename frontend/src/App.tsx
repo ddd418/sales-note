@@ -145,6 +145,7 @@ import {
   AIWorkspacePainpoint,
   AIWorkspacePromptTarget,
   AccountCleanupPreviewData,
+  AccountCleanupSearchResult,
   BusinessCardItem,
   BusinessCardPayload,
   BusinessCardsData,
@@ -233,6 +234,7 @@ import {
   loadScheduleDocumentPreview,
   loadScheduleDetailData,
   loadFollowupQuoteItems,
+  searchAccountCleanupTargets,
   loadTaskDetailData,
   loadSchedulesData,
   loadTaskManagerData,
@@ -6009,11 +6011,36 @@ function AccountCleanupPreviewPage({
   targetDepartmentId: string;
   onTargetDepartmentChange: (value: string) => void;
 }) {
-  const [targetInput, setTargetInput] = useState(targetDepartmentId);
+  const [targetQuery, setTargetQuery] = useState('');
+  const [targetResults, setTargetResults] = useState<AccountCleanupSearchResult[]>([]);
+  const [targetSearchLoading, setTargetSearchLoading] = useState(false);
 
   useEffect(() => {
-    setTargetInput(targetDepartmentId);
-  }, [targetDepartmentId]);
+    if (!data?.sourceAccount?.id) {
+      return;
+    }
+    const query = targetQuery.trim();
+    if (!query) {
+      setTargetResults([]);
+      setTargetSearchLoading(false);
+      return;
+    }
+    let alive = true;
+    setTargetSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      searchAccountCleanupTargets(query, data.sourceAccount.id).then((results) => {
+        if (!alive) {
+          return;
+        }
+        setTargetResults(results);
+        setTargetSearchLoading(false);
+      });
+    }, 220);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [data?.sourceAccount?.id, targetQuery]);
 
   if (loading && !data) {
     return (
@@ -6034,9 +6061,10 @@ function AccountCleanupPreviewPage({
   const accountTitle = (account: typeof source | null) => (
     account ? [account.companyName, account.name].filter(Boolean).join(' · ') || '계정명 없음' : '계정 없음'
   );
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    onTargetDepartmentChange(targetInput.trim());
+  const handleSelectTarget = (result: AccountCleanupSearchResult) => {
+    setTargetQuery(result.label);
+    setTargetResults([]);
+    onTargetDepartmentChange(String(result.id));
   };
   const combinedCards = [
     { label: '담당자', value: `${formatNumber(combined.contactCount)}명`, detail: 'FollowUp 담당자' },
@@ -6076,25 +6104,53 @@ function AccountCleanupPreviewPage({
         <div className="dashboard-panel-heading">
           <div>
             <span className="eyebrow">Compare</span>
-            <h2>대상 계정 비교</h2>
+            <h2>대상 계정 검색</h2>
           </div>
           {loading ? <Loader2 className="spin-icon" size={18} /> : <ArrowRightLeft size={18} />}
         </div>
-        <form className="account-cleanup-target-form" onSubmit={handleSubmit}>
+        <div className="account-cleanup-target-form">
           <label>
-            <span>비교 대상 부서 ID</span>
+            <span>업체, 부서/연구실, PI/책임자, 담당자, 이메일</span>
             <input
-              inputMode="numeric"
-              onChange={(event) => setTargetInput(event.target.value)}
-              placeholder="예: 12"
-              value={targetInput}
+              onChange={(event) => setTargetQuery(event.target.value)}
+              placeholder="예: 서울대 김PI, 한은영, 줄기세포 연구실"
+              value={targetQuery}
             />
           </label>
-          <button className="route-primary-action" type="submit">비교</button>
           {targetDepartmentId ? (
-            <button className="route-secondary-action" onClick={() => onTargetDepartmentChange('')} type="button">비교 해제</button>
+            <button
+              className="route-secondary-action"
+              onClick={() => {
+                setTargetQuery('');
+                setTargetResults([]);
+                onTargetDepartmentChange('');
+              }}
+              type="button"
+            >
+              비교 해제
+            </button>
           ) : null}
-        </form>
+        </div>
+        {target ? (
+          <div className="account-cleanup-selected-target">
+            <CheckCircle2 size={16} />
+            <span>비교 중: {accountTitle(target)}</span>
+          </div>
+        ) : null}
+        <div className="account-cleanup-search-results">
+          {targetSearchLoading ? (
+            <span className="account-cleanup-search-status"><Loader2 className="spin-icon" size={15} />검색 중</span>
+          ) : null}
+          {!targetSearchLoading && targetQuery.trim() && targetResults.length === 0 ? (
+            <span className="account-cleanup-search-status">검색 결과가 없습니다</span>
+          ) : null}
+          {targetResults.map((result) => (
+            <button key={result.id} onClick={() => handleSelectTarget(result)} type="button">
+              <strong>{result.label}</strong>
+              <span>{result.meta || [result.companyName, result.departmentName].filter(Boolean).join(' · ')}</span>
+            </button>
+          ))}
+        </div>
         <p className="account-cleanup-note">이 화면은 실제 병합/이관을 실행하지 않고, 영향을 받는 기록 수와 범위만 확인합니다.</p>
       </section>
 
