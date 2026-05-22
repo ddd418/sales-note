@@ -1,5 +1,111 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Large File Split Phase 1
+
+### 요약
+
+- `reporting/views.py`의 `/reports/` 및 데이터 정리 API 구현을 `reporting/api/reports.py`로 분리했습니다.
+- `frontend/src/api.ts`에서 reports/account-cleanup 타입과 클라이언트를 `frontend/src/api/` 모듈로 분리하고, 기존 `./api` import 호환은 유지했습니다.
+- `frontend/src/App.tsx`에서 `/reports/` 페이지와 계정 정리 미리보기 페이지를 `frontend/src/pages/`로 이동했습니다.
+- React 공통 빈 상태, 지표 카드, 숫자/날짜 포맷터를 `frontend/src/components/shared/`로 분리했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/api/accountCleanup.ts`
+- `frontend/src/api/reports.ts`
+- `frontend/src/api/shared.ts`
+- `frontend/src/components/shared/DashboardEmpty.tsx`
+- `frontend/src/components/shared/DashboardMetricCard.tsx`
+- `frontend/src/components/shared/formatters.ts`
+- `frontend/src/pages/accounts/AccountCleanupPreviewPage.tsx`
+- `frontend/src/pages/prepayments/README.md`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+- `reporting/api/__init__.py`
+- `reporting/api/reports.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 큰 파일의 reports/data-quality 변경 범위를 API 모듈과 React page 모듈로 좁혀 이후 기능 수정 시 회귀 위험을 낮췄습니다.
+- `/reporting/*`, `/reports/`, 계정 정리 미리보기, 데이터 정리 판단/빠른 연결 API의 URL과 응답 계약은 유지했습니다.
+- 다음 단계의 account/prepayment/asset/AI API 분리를 위한 `reporting/api/`와 `frontend/src/api/` 구조를 만들었습니다.
+
+### 기존 기능 보존
+
+- 데이터 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 Django URL name, 인증/권한 흐름, Excel 다운로드 경로를 유지했습니다.
+- React 화면의 DOM 구조와 className은 이동 전과 동일하게 유지해 CSS 동작을 보존했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\api\__init__.py reporting\api\reports.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 19 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-Cv-dcE4R.js / dist/assets/index-DjsCYW2i.css generated
+→ Vite chunk-size warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+Local browser smoke
+→ http://127.0.0.1:4173/reports/ served the React shell
+→ Unauthenticated protected state showed login text
+→ Browser console error logs: none
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 단계는 구조 분리 1차입니다. account/prepayment/asset/AI API는 아직 `reporting/views.py`에 남아 있습니다.
+- `frontend/src/App.tsx`는 reports/account cleanup 페이지를 뺐지만, 나머지 고객/선결제/장비/AI 화면은 후속 분리 대상입니다.
+- `pages/prepayments`는 다음 작업을 위한 위치만 확보했습니다.
+
+### 권장 다음 작업
+
+- `reporting/views.py`에서 account/prepayment/asset/AI API를 각각 `reporting/api/accounts.py`, `prepayments.py`, `assets.py`, `ai.py`로 추가 분리합니다.
+- `frontend/src/App.tsx`에서 계정/선결제/장비 화면을 `pages/accounts`, `pages/prepayments`, `pages/assets`로 순차 이동합니다.
+- 프론트 번들 chunk warning을 줄이려면 page-level dynamic import를 별도 작업으로 검토합니다.
+
+### 운영 배포 상태
+
+- Runtime commit: pending.
+- GitHub: pending.
+- Railway web deployment: pending.
+- Railway frontend deployment: pending.
+
+### 운영 수동 확인 절차
+
+1. [리포트](https://sales-note-frontend-production.up.railway.app/reports/)에 접속해 로그인 후 계정별 운영 현황표가 표시되는지 확인합니다.
+2. 기간/업체/부서/담당자/납품/선결제 잔액 필터를 각각 변경해 데이터가 갱신되는지 확인합니다.
+3. 계정 행에서 `드릴다운`을 열어 담당자, 납품, 견적, 선결제, 서비스 목록이 표시되는지 확인합니다.
+4. `현황 엑셀` 다운로드가 기존처럼 동작하는지 확인합니다.
+5. `Data cleanup` 섹션에서 보류/제외/복구와 미지정 담당자 빠른 연결이 기존처럼 동작하는지 확인합니다.
+6. 계정 정리 미리보기 URL(`/customers/?cleanup_preview=<계정ID>`)에서 대상 계정 검색과 비교 해제가 동작하는지 확인합니다.
+7. 비로그인 상태에서 `/reporting/api/reports/`가 `401 login_required`로 보호되는지 확인합니다.
+
 ## 2026-05-23 — Data Quality Cleanup Tools
 
 ### 요약

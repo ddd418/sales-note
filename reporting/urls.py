@@ -238,8 +238,8 @@ urlpatterns = [
     
     # Admin 전용 API URL들
     path('api/users/', views.api_users_list, name='api_users_list'),
-    path('api/reports/', views.reports_summary_api, name='reports_summary_api'),
-    path('api/reports/customer-operations.xlsx', views.reports_customer_operations_xlsx_export_api, name='reports_customer_operations_xlsx'),
+    path('api/reports/', lazy_view('reporting.api.reports.reports_summary_api'), name='reports_summary_api'),
+    path('api/reports/customer-operations.xlsx', lazy_view('reporting.api.reports.reports_customer_operations_xlsx_export_api'), name='reports_customer_operations_xlsx'),
     path('api/profile/', views.profile_api, name='profile_api'),
     path('api/profile/update/', views.profile_update_api, name='profile_api_update'),
     path('api/profile/password/', views.profile_password_api, name='profile_api_password'),
@@ -258,8 +258,8 @@ urlpatterns = [
     path('api/customer-assets/service-cases/<int:case_id>/report/', views.customer_asset_service_report_download_api, name='customer_asset_service_report_download_api'),
     path('api/customer-assets/calibrations/<int:record_id>/certificate/', views.customer_asset_calibration_certificate_download_api, name='customer_asset_calibration_certificate_download_api'),
     path('api/accounts/search/', views.account_cleanup_account_search_api, name='account_cleanup_account_search_api'),
-    path('api/accounts/cleanup-decision/', views.account_cleanup_decision_api, name='account_cleanup_decision_api'),
-    path('api/data-quality/contacts/<int:followup_id>/assign-account/', views.data_quality_contact_assign_account_api, name='data_quality_contact_assign_account_api'),
+    path('api/accounts/cleanup-decision/', lazy_view('reporting.api.reports.account_cleanup_decision_api'), name='account_cleanup_decision_api'),
+    path('api/data-quality/contacts/<int:followup_id>/assign-account/', lazy_view('reporting.api.reports.data_quality_contact_assign_account_api'), name='data_quality_contact_assign_account_api'),
     path('api/accounts/<int:department_id>/', views.account_detail_summary_api, name='account_detail_summary_api'),
     path('api/accounts/<int:department_id>/update/', views.account_update_api, name='account_update_api'),
     path('api/accounts/<int:department_id>/contacts/create/', views.account_contact_save_api, name='account_contact_create_api'),

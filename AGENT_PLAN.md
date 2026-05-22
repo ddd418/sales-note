@@ -1,5 +1,53 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Large file split phase 1 plan
+
+**Background**:
+
+- User requested task `4-1. 큰 파일 분리`.
+- Current hot files are large and risky:
+  - `reporting/views.py`: ~35,980 lines
+  - `frontend/src/App.tsx`: ~23,473 lines
+  - `frontend/src/api.ts`: ~10,729 lines
+- The long-term target is smaller Django API modules and React page/API modules while preserving `/reporting/*` routes and deployed behavior.
+
+**DB change required**: No.
+
+- This task is structural only.
+- No model or migration changes are planned.
+
+**Implementation scope**:
+
+- Backend:
+  - Create `reporting/api/` as the new Django API module namespace.
+  - Move the reports/data-quality API implementation from `reporting/views.py` into `reporting/api/reports.py`.
+  - Route `/reporting/api/reports/`, `/reporting/api/reports/customer-operations.xlsx`, cleanup decision, and data-quality quick assignment through the new module.
+  - Keep existing URL names and auth/permission behavior unchanged.
+  - Leave account/prepayment/asset/AI API implementations in place for this phase, but establish the package structure for follow-up extraction.
+- Frontend:
+  - Create `frontend/src/api/` as the new API module namespace.
+  - Move account-cleanup API client functions into `frontend/src/api/accountCleanup.ts`.
+  - Move report-related TypeScript types and the reports data loader into `frontend/src/api/reports.ts`.
+  - Keep `frontend/src/api.ts` as the compatibility barrel so existing imports continue to work.
+  - Move the `/reports/` React page into `frontend/src/pages/reports/ReportsPage.tsx`.
+  - Move the account cleanup preview React page into `frontend/src/pages/accounts/AccountCleanupPreviewPage.tsx`.
+  - Add shared React helpers under `frontend/src/components/shared`.
+  - Leave `pages/prepayments` as the next split target for the account-based prepayment workflow.
+- Tests/docs:
+  - Run focused reports/data-quality tests to verify moved Django routes.
+  - Run Django checks, migration dry-run, TypeScript/build, and server syntax checks.
+
+**Validation plan**:
+
+- `python -m py_compile reporting/views.py reporting/urls.py reporting/api/reports.py reporting/tests.py`
+- Focused `ReactReportsProfileBusinessCardApiTests`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Production smoke after push/deploy.
+
 ## 2026-05-23 Data quality cleanup tools plan
 
 **Background**:
