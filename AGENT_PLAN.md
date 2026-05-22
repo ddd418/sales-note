@@ -7667,3 +7667,46 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-05-22 Schedule service removal and service list menu plan
+
+**Background**:
+
+- User requested that the schedules area should not contain a service schedule item, and that it should not be renamed to memo there.
+- Schedules should expose only customer meeting, quote, and delivery.
+- Memo should remain in the sales note flow.
+- Service work should have its own menu where service records can be listed.
+
+**DB change required**: No.
+
+- Reuse the existing `ServiceCase` model for service records.
+- Do not add or migrate schedule fields.
+- Do not delete legacy `activity_type='service'` rows; hide them from schedule list/calendar APIs and block new service schedule creation through React APIs.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a schedule activity type helper that returns only meeting, quote, and delivery for React schedules.
+  - Exclude `activity_type='service'` from React schedule list/calendar APIs and related counts.
+  - Keep direct legacy detail/read behavior for existing records unless explicitly removed later.
+  - Add a read-only `/reporting/api/services/` API that lists `ServiceCase` records with filters and counts.
+  - Add the services API to readonly bearer safe GET allowlist.
+- Frontend:
+  - Add `서비스` to the React navigation and `/services/` route.
+  - Render a service records list with search, status, priority, type, and owner filters.
+  - Keep service creation/editing linked through the existing `/assets/` asset/service flow.
+  - Adjust schedule copy so the visible schedule scope is meeting, quote, and delivery.
+- Tests:
+  - Update schedule API tests so service schedule rows and service activity options are absent.
+  - Add service list API tests for login, filtering, payload, and same-company scoping.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\readonly_api.py reporting\tests.py`
+- Focused Django tests for navigation, schedule APIs, service API, and readonly allowlist
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`

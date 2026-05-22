@@ -25107,3 +25107,95 @@ Production frontend bundle smoke
 4. Confirm `상세 내용` displays the saved notes/detail text.
 5. Click `수정`, confirm the existing edit form still opens and still contains address/detail fields.
 6. Confirm recent notes, schedule actions, asset/service, and prepayment sections still load.
+
+## 2026-05-22 Schedule service removal and service list menu
+
+### 1. Summary
+
+- Removed service from the React schedule workflow so schedule APIs and UI options expose only `고객 미팅`, `견적 제출`, and `납품 일정`.
+- Existing legacy service schedule rows are not deleted, but they are hidden from React schedule list/calendar APIs and cannot be newly created through the React schedule API.
+- Added a dedicated React `서비스` menu and `/services/` page backed by a new `/reporting/api/services/` service-record list API.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/readonly_api.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- 일정 화면 now focuses on meeting, quote, and delivery only.
+- Service records now have their own searchable list with status, type, priority, owner, asset/account, due-date, and report links.
+- The React navigation and backend navigation API both include `서비스`.
+- The new service API follows the same authenticated/scoped access pattern as the asset directory.
+
+### 4. Existing Functionality Preserved
+
+- No model fields or migrations were added.
+- Existing `/reporting/*` schedule, asset, service-case, and customer routes remain.
+- Existing service case create/edit/report download flows under the asset directory remain in place.
+- Sales note memo/service-history behavior was not removed.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\readonly_api.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.SalesNoteReadonlyBearerApiTests reporting.tests.ServiceCasesSummaryApiTests reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ Ran 66 tests, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local smoke
+→ /services/ frontend route returned 200
+→ /reporting/api/services/ returns 401 when anonymous
+→ Browser smoke reached login redirect because no local browser session was authenticated
+```
+
+### 6. Known Limitations
+
+- `/services/` is a list/read page. New service case registration still goes through the existing asset directory service flow.
+- Legacy `Schedule.activity_type='service'` database rows are preserved but hidden from React schedule list/calendar; a later cleanup/migration can decide whether to convert them to `ServiceCase` or historical notes.
+- Authenticated visual smoke of `/services/` still needs production/user-session verification after deployment.
+
+### 7. Production Deployment Status
+
+- Pending commit/push/Railway deployment.
+
+### 8. Recommended Next Task
+
+- Add a direct `서비스 접수` form on `/services/` that searches/selects the account and asset, instead of routing users through `/assets/`.
+
+### 9. Manual Server Test Process
+
+1. Open `/schedules/calendar/` and confirm the customer schedule registration type selector has only meeting, quote, and delivery.
+2. Open `/schedules/` and confirm the activity filter has no service item.
+3. Open `/services/` and confirm the service record list loads.
+4. Search by equipment name, company, department, or symptom.
+5. Filter by status, service type, priority, and owner.
+6. Click `장비` or `고객` from a service row and confirm it opens the expected record.

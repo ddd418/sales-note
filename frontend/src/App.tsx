@@ -126,6 +126,8 @@ import {
   ScheduleEditPayload,
   ScheduleItem,
   SchedulePrepaymentSelectionPayload,
+  ServiceCaseListItem,
+  ServiceCasesData,
   AIWorkspaceAction,
   AIWorkspaceData,
   AIWorkspaceDepartment,
@@ -233,6 +235,7 @@ import {
   loadScheduleCalendarData,
   loadScheduleDocumentPreview,
   loadScheduleDetailData,
+  loadServiceCasesData,
   loadFollowupQuoteItems,
   searchAccountCleanupTargets,
   loadTaskDetailData,
@@ -295,6 +298,7 @@ const navItems = [
   { id: 'analytics', label: '현황', icon: Activity, href: '/reports/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
+  { id: 'services', label: '서비스', icon: Wrench, href: '/services/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
@@ -314,6 +318,7 @@ const navIconMap: Record<string, typeof LayoutDashboard> = {
   analytics: Activity,
   customers: Users,
   assets: Wrench,
+  services: Wrench,
   pipeline: Columns3,
   notes: FileText,
   schedules: CalendarDays,
@@ -332,7 +337,7 @@ const navIconMap: Record<string, typeof LayoutDashboard> = {
 const scheduleCalendarUrl = '/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'analytics' | 'customers' | 'assets' | 'pipeline' | 'notes' | 'schedules' | 'tasks' | 'mail' | 'businessCards' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'profile' | 'ai';
+type MainView = 'dashboard' | 'analytics' | 'customers' | 'assets' | 'services' | 'pipeline' | 'notes' | 'schedules' | 'tasks' | 'mail' | 'businessCards' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'profile' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -756,13 +761,13 @@ const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?:
     return { error: '고객을 선택하세요.' };
   }
   if (!form.activityType) {
-    return { error: '활동 유형을 선택하세요.' };
+    return { error: '일정 유형을 선택하세요.' };
   }
   if (!form.visitDate) {
-    return { error: '방문 날짜를 선택하세요.' };
+    return { error: '일정 날짜를 선택하세요.' };
   }
   if (!form.visitTime) {
-    return { error: '방문 시간을 선택하세요.' };
+    return { error: '일정 시간을 선택하세요.' };
   }
 
   return {
@@ -806,16 +811,16 @@ const scheduleEditFormToPayload = (form: ScheduleEditFormState): { payload?: Sch
     return { error: '고객을 선택하세요.' };
   }
   if (!form.activityType) {
-    return { error: '활동 유형을 선택하세요.' };
+    return { error: '일정 유형을 선택하세요.' };
   }
   if (!form.status) {
     return { error: '일정 상태를 선택하세요.' };
   }
   if (!form.visitDate) {
-    return { error: '방문 날짜를 선택하세요.' };
+    return { error: '일정 날짜를 선택하세요.' };
   }
   if (!form.visitTime) {
-    return { error: '방문 시간을 선택하세요.' };
+    return { error: '일정 시간을 선택하세요.' };
   }
 
   return {
@@ -1542,6 +1547,18 @@ const routeMeta: Record<
       { label: '영업노트', href: '/notes/' },
     ],
   },
+  services: {
+    eyebrow: 'Sales CRM / Services',
+    title: '서비스',
+    summary: '장비 A/S, 수리, 점검, 클레임 기록을 서비스 원장으로 확인합니다.',
+    primaryHref: '/services/',
+    primaryLabel: '서비스 기록 열기',
+    actions: [
+      { label: '서비스 기록', href: '/services/', primary: true },
+      { label: '장비 디렉터리', href: '/assets/' },
+      { label: '고객 목록', href: '/customers/' },
+    ],
+  },
   pipeline: {
     eyebrow: 'Sales CRM / Pipeline',
     title: '파이프라인 관리',
@@ -1569,7 +1586,7 @@ const routeMeta: Record<
   schedules: {
     eyebrow: 'Sales CRM / Schedule',
     title: '일정',
-    summary: '방문, 견적, 납품, 후속 연락 일정을 캘린더 중심으로 관리합니다.',
+    summary: '미팅, 견적, 납품 일정을 캘린더 중심으로 관리합니다.',
     primaryHref: scheduleCalendarUrl,
     primaryLabel: '일정 캘린더 열기',
     actions: [
@@ -1696,6 +1713,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/accounts/')) return 'customers';
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/assets/')) return 'assets';
+  if (pathname.startsWith('/services/')) return 'services';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/tasks/')) return 'tasks';
@@ -6000,6 +6018,217 @@ function CustomerAssetsPage({
   );
 }
 
+function ServiceCaseStatusBadge({ serviceCase }: { serviceCase: ServiceCaseListItem }) {
+  return (
+    <div className="customer-badge-row service-badge-row">
+      <span className={`service-case-status ${serviceCase.status}`}>{serviceCase.statusLabel}</span>
+      <span>{serviceCase.caseTypeLabel}</span>
+      {serviceCase.priorityLabel ? <span>{serviceCase.priorityLabel}</span> : null}
+      {serviceCase.overdue ? <span className="schedule-overdue">처리 지연</span> : null}
+    </div>
+  );
+}
+
+function ServiceCasesTable({ serviceCases }: { serviceCases: ServiceCaseListItem[] }) {
+  if (serviceCases.length === 0) {
+    return <DashboardEmpty label="조건에 맞는 서비스 기록이 없습니다" />;
+  }
+
+  return (
+    <div className="customers-table-wrap service-cases-table-wrap">
+      <table className="customers-table service-cases-table">
+        <thead>
+          <tr>
+            <th>서비스 기록</th>
+            <th>장비/계정</th>
+            <th>상태</th>
+            <th>일자</th>
+            <th>담당</th>
+          </tr>
+        </thead>
+        <tbody>
+          {serviceCases.map((serviceCase) => (
+            <tr key={serviceCase.id}>
+              <td>
+                <a className="customer-name-link" href={serviceCase.assetHref || '/assets/'}>
+                  <strong>{serviceCase.summary || serviceCase.caseTypeLabel || '서비스 기록'}</strong>
+                  <span>{[serviceCase.symptom, serviceCase.resolution].filter(Boolean).join(' · ')}</span>
+                </a>
+                <div className="notes-row-actions">
+                  {serviceCase.reportUrl ? <a className="customer-row-action" href={serviceCase.reportUrl}>리포트</a> : null}
+                  {serviceCase.assetHref ? <a className="customer-row-action" href={serviceCase.assetHref}>장비</a> : null}
+                  {serviceCase.customerHref ? <a className="customer-row-action" href={serviceCase.customerHref}>고객</a> : null}
+                </div>
+              </td>
+              <td>
+                <strong>{serviceCase.assetName || '장비명 없음'}</strong>
+                <small>{[serviceCase.assetModelName, serviceCase.serialNumber].filter(Boolean).join(' · ')}</small>
+                <small>{[serviceCase.companyName, serviceCase.departmentName, serviceCase.customerName].filter(Boolean).join(' · ')}</small>
+              </td>
+              <td>
+                <ServiceCaseStatusBadge serviceCase={serviceCase} />
+              </td>
+              <td>
+                <span>{serviceCase.receivedDate ? formatDateLabel(serviceCase.receivedDate) : '접수일 없음'}</span>
+                {serviceCase.dueDate ? <small className={serviceCase.overdue ? 'customer-overdue-text' : ''}>기한 {formatDateLabel(serviceCase.dueDate)}</small> : null}
+                {serviceCase.completedDate ? <small>완료 {formatDateLabel(serviceCase.completedDate)}</small> : null}
+              </td>
+              <td>
+                <span>{serviceCase.assignedTo || serviceCase.ownerName || '담당자 없음'}</span>
+                {serviceCase.updatedAt ? <small>{formatDateTimeLabel(serviceCase.updatedAt)}</small> : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ServicesPage({
+  caseType,
+  data,
+  loading,
+  owner,
+  priority,
+  query,
+  status,
+  onCaseTypeChange,
+  onOwnerChange,
+  onPriorityChange,
+  onQueryChange,
+  onStatusChange,
+}: {
+  caseType: string;
+  data: ServiceCasesData | null;
+  loading: boolean;
+  owner: string;
+  priority: string;
+  query: string;
+  status: string;
+  onCaseTypeChange: (value: string) => void;
+  onOwnerChange: (value: string) => void;
+  onPriorityChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>서비스 기록을 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '전체 서비스', value: `${formatNumber(data.metrics.totalCases)}건`, detail: data.scope.label, icon: Wrench, tone: 'blue' as const },
+    { label: '검색 결과', value: `${formatNumber(data.metrics.filteredCases)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
+    { label: '진행 서비스', value: `${formatNumber(data.metrics.openCases)}건`, detail: '접수/진행/대기', icon: Activity, tone: 'amber' as const },
+    { label: '처리 지연', value: `${formatNumber(data.metrics.overdueCases)}건`, detail: '기한 경과', icon: AlertTriangle, tone: data.metrics.overdueCases > 0 ? 'red' as const : 'green' as const },
+  ];
+
+  return (
+    <section className="customers-page services-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>서비스 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Service records</span>
+          <h2>{data.scope.label || '서비스 기록'}</h2>
+          <p>장비 A/S, 수리, 점검, 클레임 기록을 일정과 분리해서 확인합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-primary-action" href={data.links.assets || '/assets/'}>
+            서비스 접수
+            <Plus size={15} />
+          </a>
+          <a className="route-secondary-action" href={data.links.customers || '/customers/'}>고객 목록</a>
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="서비스 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="customers-filter-bar services-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="서비스 내용, 장비, 시리얼, 업체, 연구실 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onStatusChange(event.target.value)} value={status}>
+          <option value="">상태 전체</option>
+          {data.options.statuses.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onCaseTypeChange(event.target.value)} value={caseType}>
+          <option value="">유형 전체</option>
+          {data.options.caseTypes.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onPriorityChange(event.target.value)} value={priority}>
+          <option value="">우선순위 전체</option>
+          {data.options.priorities.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
+          <option value="">담당자 전체</option>
+          {data.options.owners.map((option) => (
+            <option key={option.id} value={option.id}>{option.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {data.metrics.truncated ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>결과가 많아 최근 {formatNumber(data.metrics.returnedCases)}건만 표시합니다. 검색어나 필터를 좁혀 확인하세요.</span>
+        </div>
+      ) : null}
+
+      <section className="dashboard-panel services-main-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Service list</span>
+            <h2>서비스 기록 목록</h2>
+          </div>
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <Wrench size={18} />}
+        </div>
+        <ServiceCasesTable serviceCases={data.serviceCases} />
+      </section>
+    </section>
+  );
+}
+
 function AccountCleanupPreviewPage({
   data,
   loading,
@@ -8972,7 +9201,7 @@ function ScheduleCalendarPage({
               ) : data.create.customers.length === 0 ? (
                 <DashboardEmpty label="등록 가능한 담당 고객이 없습니다" />
               ) : data.create.activityTypes.length === 0 ? (
-                <DashboardEmpty label="등록 가능한 활동 유형이 없습니다" />
+                <DashboardEmpty label="등록 가능한 일정 유형이 없습니다" />
               ) : calendarCreateOpen ? (
                 <form className="notes-create-form schedule-calendar-form" onSubmit={handleCalendarCreateSubmit}>
                   <div className="notes-create-grid schedules-create-grid">
@@ -8987,7 +9216,7 @@ function ScheduleCalendarPage({
                       />
                     </div>
                     <label>
-                      <span>활동 유형</span>
+                      <span>일정 유형</span>
                       <select
                         onChange={(event) => handleCalendarCreateFieldChange('activityType', event.target.value)}
                         required
@@ -8999,7 +9228,7 @@ function ScheduleCalendarPage({
                       </select>
                     </label>
                     <label>
-                      <span>방문 날짜</span>
+                      <span>일정 날짜</span>
                       <input
                         onChange={(event) => handleCalendarCreateFieldChange('visitDate', event.target.value)}
                         required
@@ -9008,7 +9237,7 @@ function ScheduleCalendarPage({
                       />
                     </label>
                     <label>
-                      <span>방문 시간</span>
+                      <span>일정 시간</span>
                       <input
                         onChange={(event) => handleCalendarCreateFieldChange('visitTime', event.target.value)}
                         required
@@ -9049,7 +9278,7 @@ function ScheduleCalendarPage({
                     </label>
                   </div>
                   <label>
-                    <span>메모</span>
+                    <span>일정 내용</span>
                     <textarea
                       onChange={(event) => handleCalendarCreateFieldChange('notes', event.target.value)}
                       rows={3}
@@ -9173,7 +9402,7 @@ function ScheduleCalendarPage({
                       />
                     </div>
                     <label>
-                      <span>활동 유형</span>
+                      <span>일정 유형</span>
                       <select
                         onChange={(event) => handleCalendarEditFieldChange('activityType', event.target.value)}
                         required
@@ -9197,7 +9426,7 @@ function ScheduleCalendarPage({
                       </select>
                     </label>
                     <label>
-                      <span>방문 날짜</span>
+                      <span>일정 날짜</span>
                       <input
                         onChange={(event) => handleCalendarEditFieldChange('visitDate', event.target.value)}
                         required
@@ -9206,7 +9435,7 @@ function ScheduleCalendarPage({
                       />
                     </label>
                     <label>
-                      <span>방문 시간</span>
+                      <span>일정 시간</span>
                       <input
                         onChange={(event) => handleCalendarEditFieldChange('visitTime', event.target.value)}
                         required
@@ -9260,7 +9489,7 @@ function ScheduleCalendarPage({
                     <span>구매 확정</span>
                   </label>
                   <label>
-                    <span>메모</span>
+                    <span>일정 내용</span>
                     <textarea
                       onChange={(event) => handleCalendarEditFieldChange('notes', event.target.value)}
                       rows={3}
@@ -10311,7 +10540,7 @@ function ScheduleDetailPage({
       return;
     }
     if (!editForm.activityType) {
-      setEditError('활동 유형을 선택하세요.');
+      setEditError('일정 유형을 선택하세요.');
       return;
     }
     if (!editForm.status) {
@@ -10319,11 +10548,11 @@ function ScheduleDetailPage({
       return;
     }
     if (!editForm.visitDate) {
-      setEditError('방문 날짜를 선택하세요.');
+      setEditError('일정 날짜를 선택하세요.');
       return;
     }
     if (!editForm.visitTime) {
-      setEditError('방문 시간을 선택하세요.');
+      setEditError('일정 시간을 선택하세요.');
       return;
     }
 
@@ -11206,7 +11435,7 @@ function ScheduleDetailPage({
                   />
                 </div>
                 <label>
-                  <span>활동 유형</span>
+                  <span>일정 유형</span>
                   <select
                     onChange={(event) => handleEditFieldChange('activityType', event.target.value)}
                     required
@@ -11230,7 +11459,7 @@ function ScheduleDetailPage({
                   </select>
                 </label>
                 <label>
-                  <span>방문 날짜</span>
+                  <span>일정 날짜</span>
                   <input
                     onChange={(event) => handleEditFieldChange('visitDate', event.target.value)}
                     required
@@ -11239,7 +11468,7 @@ function ScheduleDetailPage({
                   />
                 </label>
                 <label>
-                  <span>방문 시간</span>
+                  <span>일정 시간</span>
                   <input
                     onChange={(event) => handleEditFieldChange('visitTime', event.target.value)}
                     required
@@ -11357,7 +11586,7 @@ function ScheduleDetailPage({
                 </div>
               ) : null}
               <label>
-                <span>메모</span>
+                <span>일정 내용</span>
                 <textarea
                   onChange={(event) => handleEditFieldChange('notes', event.target.value)}
                   rows={4}
@@ -11385,7 +11614,7 @@ function ScheduleDetailPage({
             <ScheduleStatusBadge schedule={schedule} />
           </div>
           <div className="note-detail-content schedule-detail-content">
-            {schedule.notesFull || schedule.notes ? <p>{schedule.notesFull || schedule.notes}</p> : <DashboardEmpty label="일정 메모가 없습니다" />}
+            {schedule.notesFull || schedule.notes ? <p>{schedule.notesFull || schedule.notes}</p> : <DashboardEmpty label="일정 내용이 없습니다" />}
           </div>
           <div className="note-detail-field-grid">
             <div className="note-detail-field">
@@ -12100,7 +12329,7 @@ function SchedulesPage({
           ) : createCustomers.length === 0 ? (
             <DashboardEmpty label="등록 가능한 담당 고객이 없습니다" />
           ) : createActivityTypes.length === 0 ? (
-            <DashboardEmpty label="등록 가능한 활동 유형이 없습니다" />
+            <DashboardEmpty label="등록 가능한 일정 유형이 없습니다" />
           ) : (
             <form className="notes-create-form" onSubmit={onCreateSubmit}>
               <div className="notes-create-grid schedules-create-grid">
@@ -12115,7 +12344,7 @@ function SchedulesPage({
                   />
                 </div>
                 <label>
-                  <span>활동 유형</span>
+                  <span>일정 유형</span>
                   <select
                     onChange={(event) => onCreateFormChange('activityType', event.target.value)}
                     required
@@ -12127,7 +12356,7 @@ function SchedulesPage({
                   </select>
                 </label>
                 <label>
-                  <span>방문 날짜</span>
+                  <span>일정 날짜</span>
                   <input
                     onChange={(event) => onCreateFormChange('visitDate', event.target.value)}
                     required
@@ -12136,7 +12365,7 @@ function SchedulesPage({
                   />
                 </label>
                 <label>
-                  <span>방문 시간</span>
+                  <span>일정 시간</span>
                   <input
                     onChange={(event) => onCreateFormChange('visitTime', event.target.value)}
                     required
@@ -12177,10 +12406,10 @@ function SchedulesPage({
                 </label>
               </div>
               <label>
-                <span>메모</span>
+                <span>일정 내용</span>
                 <textarea
                   onChange={(event) => onCreateFormChange('notes', event.target.value)}
-                  placeholder="일정 메모, 준비사항, 후속 확인 사항"
+                  placeholder="일정 내용, 준비사항, 후속 확인 사항"
                   rows={3}
                   value={createForm.notes}
                 />
@@ -12218,7 +12447,7 @@ function SchedulesPage({
           <Search size={17} />
           <input
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="고객, 회사, 장소, 메모 검색"
+            placeholder="고객, 회사, 장소, 일정 내용 검색"
             value={query}
           />
         </label>
@@ -12235,7 +12464,7 @@ function SchedulesPage({
           ))}
         </select>
         <select onChange={(event) => onActivityTypeChange(event.target.value)} value={activityType}>
-          <option value="">활동 유형 전체</option>
+          <option value="">일정 유형 전체</option>
           {data.options.activityTypes.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
@@ -20098,6 +20327,15 @@ export function App() {
     const value = Number(new URLSearchParams(window.location.search).get('asset') || '0');
     return Number.isFinite(value) && value > 0 ? value : null;
   });
+  const [servicesData, setServicesData] = useState<ServiceCasesData | null>(null);
+  const [servicesLoading, setServicesLoading] = useState(currentView === 'services');
+  const [serviceCaseQuery, setServiceCaseQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [serviceCaseStatus, setServiceCaseStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
+  const [serviceCaseOwner, setServiceCaseOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
+  const [serviceCasePriority, setServiceCasePriority] = useState(() => new URLSearchParams(window.location.search).get('priority') || '');
+  const [serviceCaseType, setServiceCaseType] = useState(
+    () => new URLSearchParams(window.location.search).get('case_type') || new URLSearchParams(window.location.search).get('caseType') || '',
+  );
   const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && !accountDetailId && !accountCleanupPreviewId && shouldOpenCreatePanel());
   const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
   const [customerCreating, setCustomerCreating] = useState(false);
@@ -20373,6 +20611,44 @@ export function App() {
     assetDirectoryStatus,
     currentView,
   ]);
+
+  useEffect(() => {
+    if (currentView !== 'services') {
+      return;
+    }
+    let alive = true;
+    setServicesLoading(true);
+    loadServiceCasesData({
+      q: serviceCaseQuery,
+      status: serviceCaseStatus,
+      owner: serviceCaseOwner,
+      priority: serviceCasePriority,
+      caseType: serviceCaseType,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setServicesData(data);
+      setServicesLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, serviceCaseOwner, serviceCasePriority, serviceCaseQuery, serviceCaseStatus, serviceCaseType]);
+
+  useEffect(() => {
+    if (currentView !== 'services') {
+      return;
+    }
+    const params = new URLSearchParams();
+    if (serviceCaseQuery.trim()) params.set('q', serviceCaseQuery.trim());
+    if (serviceCaseStatus) params.set('status', serviceCaseStatus);
+    if (serviceCaseOwner) params.set('owner', serviceCaseOwner);
+    if (serviceCasePriority) params.set('priority', serviceCasePriority);
+    if (serviceCaseType) params.set('case_type', serviceCaseType);
+    const queryString = params.toString();
+    window.history.replaceState(null, '', `/services/${queryString ? `?${queryString}` : ''}`);
+  }, [currentView, serviceCaseOwner, serviceCasePriority, serviceCaseQuery, serviceCaseStatus, serviceCaseType]);
 
   useEffect(() => {
     if (currentView !== 'customers' || accountCleanupPreviewId || (!customerDetailId && !accountDetailId)) {
@@ -21426,15 +21702,15 @@ export function App() {
       return;
     }
     if (!scheduleCreateForm.activityType) {
-      setScheduleCreateError('활동 유형을 선택하세요.');
+      setScheduleCreateError('일정 유형을 선택하세요.');
       return;
     }
     if (!scheduleCreateForm.visitDate) {
-      setScheduleCreateError('방문 날짜를 선택하세요.');
+      setScheduleCreateError('일정 날짜를 선택하세요.');
       return;
     }
     if (!scheduleCreateForm.visitTime) {
-      setScheduleCreateError('방문 시간을 선택하세요.');
+      setScheduleCreateError('일정 시간을 선택하세요.');
       return;
     }
 
@@ -22230,6 +22506,28 @@ export function App() {
           onSelectedAssetChange={setAssetDirectorySelectedId}
           onServiceChange={setAssetDirectoryService}
           onStatusChange={setAssetDirectoryStatus}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'services') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <ServicesPage
+          caseType={serviceCaseType}
+          data={servicesData}
+          loading={servicesLoading}
+          owner={serviceCaseOwner}
+          priority={serviceCasePriority}
+          query={serviceCaseQuery}
+          status={serviceCaseStatus}
+          onCaseTypeChange={setServiceCaseType}
+          onOwnerChange={setServiceCaseOwner}
+          onPriorityChange={setServiceCasePriority}
+          onQueryChange={setServiceCaseQuery}
+          onStatusChange={setServiceCaseStatus}
         />
       </AppShell>
     );

@@ -2220,6 +2220,7 @@ def navigation_api(request):
         {'id': 'analytics', 'label': '분석', 'href': '/reports/'},
         {'id': 'customers', 'label': '고객', 'href': '/customers/'},
         {'id': 'assets', 'label': '장비', 'href': '/assets/'},
+        {'id': 'services', 'label': '서비스', 'href': '/services/'},
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
         {'id': 'notes', 'label': '영업노트', 'href': '/notes/'},
         {'id': 'schedules', 'label': '일정', 'href': '/schedules/calendar/'},
@@ -4580,6 +4581,188 @@ def customer_assets_summary_api(request):
             )
             for asset in assets
         ],
+    })
+
+
+def _service_case_list_payload(case, today):
+    asset = case.asset
+    followup = case.followup or (asset.primary_followup if asset else None)
+    company = asset.company if asset and asset.company else (followup.company if followup else None)
+    department = asset.department if asset and asset.department else (followup.department if followup else None)
+    customer_name = ''
+    if followup:
+        customer_name = followup.customer_name or followup.manager or ''
+    open_statuses = {'received', 'in_progress', 'waiting'}
+    asset_href = f'/assets/?asset={asset.id}' if asset else '/assets/'
+    return {
+        'id': case.id,
+        'caseType': case.case_type,
+        'caseTypeLabel': case.get_case_type_display(),
+        'status': case.status,
+        'statusLabel': case.get_status_display(),
+        'priority': case.priority,
+        'priorityLabel': case.get_priority_display(),
+        'receivedDate': _date_or_none(case.received_date),
+        'dueDate': _date_or_none(case.due_date),
+        'completedDate': _date_or_none(case.completed_date),
+        'symptom': case.symptom or '',
+        'resolution': case.resolution or '',
+        'summary': case.symptom or case.resolution or '',
+        'assetId': asset.id if asset else None,
+        'assetName': asset.asset_name if asset else '',
+        'assetModelName': asset.model_name if asset else '',
+        'serialNumber': asset.serial_number if asset else '',
+        'companyName': company.name if company else '',
+        'departmentName': department.name if department else '',
+        'customerName': customer_name,
+        'ownerName': _user_display_name(case.created_by) if case.created_by else '',
+        'assignedTo': _user_display_name(case.assigned_to) if case.assigned_to else '',
+        'hasReport': bool(case.service_report),
+        'reportUrl': reverse('reporting:customer_asset_service_report_download_api', args=[case.id]) if case.service_report else '',
+        'assetHref': asset_href,
+        'customerHref': f'/customers/{followup.id}/' if followup else '',
+        'accountHref': f'/accounts/{department.id}/' if department else '',
+        'updateUrl': reverse('reporting:customer_asset_directory_service_case_update_api', args=[asset.id, case.id]) if asset else '',
+        'overdue': bool(case.status in open_statuses and case.due_date and case.due_date < today),
+        'updatedAt': _datetime_or_none(case.updated_at),
+    }
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def service_cases_summary_api(request):
+    """React service records list API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    today = timezone.localdate()
+    open_statuses = ['received', 'in_progress', 'waiting']
+
+    q = request.GET.get('q', '').strip()
+    status = request.GET.get('status', '').strip()
+    owner = request.GET.get('owner', '').strip()
+    priority = request.GET.get('priority', '').strip()
+    case_type = request.GET.get('case_type') or request.GET.get('caseType') or ''
+    case_type = case_type.strip()
+
+    base_cases = ServiceCase.objects.filter(
+        Q(asset__created_by__in=scope_users) |
+        Q(created_by__in=scope_users) |
+        Q(assigned_to__in=scope_users)
+    ).select_related(
+        'asset',
+        'asset__company',
+        'asset__department',
+        'asset__primary_followup',
+        'followup',
+        'followup__company',
+        'followup__department',
+        'created_by',
+        'assigned_to',
+    ).distinct()
+    queryset = base_cases
+
+    if owner:
+        try:
+            owner_id = int(owner)
+        except ValueError:
+            owner_id = None
+        if owner_id and scope_users.filter(id=owner_id).exists():
+            queryset = queryset.filter(
+                Q(asset__created_by_id=owner_id) |
+                Q(created_by_id=owner_id) |
+                Q(assigned_to_id=owner_id)
+            )
+        else:
+            queryset = queryset.none()
+
+    valid_statuses = {value for value, _label in ServiceCase.STATUS_CHOICES}
+    if status in valid_statuses:
+        queryset = queryset.filter(status=status)
+    elif status == 'open':
+        queryset = queryset.filter(status__in=open_statuses)
+    elif status == 'overdue':
+        queryset = queryset.filter(status__in=open_statuses, due_date__lt=today)
+
+    if priority in {value for value, _label in ServiceCase.PRIORITY_CHOICES}:
+        queryset = queryset.filter(priority=priority)
+
+    if case_type in {value for value, _label in ServiceCase.CASE_TYPE_CHOICES}:
+        queryset = queryset.filter(case_type=case_type)
+
+    if q:
+        queryset = queryset.filter(
+            Q(asset__asset_name__icontains=q) |
+            Q(asset__model_name__icontains=q) |
+            Q(asset__serial_number__icontains=q) |
+            Q(asset__company__name__icontains=q) |
+            Q(asset__department__name__icontains=q) |
+            Q(asset__primary_followup__customer_name__icontains=q) |
+            Q(followup__customer_name__icontains=q) |
+            Q(followup__manager__icontains=q) |
+            Q(symptom__icontains=q) |
+            Q(resolution__icontains=q)
+        )
+
+    owner_options = [
+        {
+            'id': user.id,
+            'name': _user_display_name(user),
+        }
+        for user in scope_users.order_by('username')
+    ]
+
+    filtered_cases = queryset.distinct().order_by('-received_date', '-updated_at', '-id')
+    filtered_count = filtered_cases.count()
+    cases = list(filtered_cases[:120])
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': _customer_asset_directory_scope_label(user_profile, request.user, selected_user),
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'filters': {
+            'q': q,
+            'status': status,
+            'owner': owner,
+            'priority': priority,
+            'caseType': case_type,
+        },
+        'options': {
+            'owners': owner_options,
+            'statuses': [
+                {'value': 'open', 'label': '진행 서비스'},
+                {'value': 'overdue', 'label': '처리 지연'},
+                *[{'value': value, 'label': label} for value, label in ServiceCase.STATUS_CHOICES],
+            ],
+            'priorities': [{'value': value, 'label': label} for value, label in ServiceCase.PRIORITY_CHOICES],
+            'caseTypes': [{'value': value, 'label': label} for value, label in ServiceCase.CASE_TYPE_CHOICES],
+        },
+        'metrics': {
+            'totalCases': base_cases.count(),
+            'filteredCases': filtered_count,
+            'openCases': base_cases.filter(status__in=open_statuses).count(),
+            'overdueCases': base_cases.filter(status__in=open_statuses, due_date__lt=today).count(),
+            'completedCases': base_cases.filter(status='completed').count(),
+            'urgentCases': base_cases.filter(priority='urgent').count(),
+            'returnedCases': len(cases),
+            'truncated': filtered_count > len(cases),
+        },
+        'links': {
+            'services': '/services/',
+            'assets': '/assets/',
+            'customers': '/customers/',
+        },
+        'serviceCases': [_service_case_list_payload(case, today) for case in cases],
     })
 
 
@@ -7013,14 +7196,16 @@ def _schedules_calendar_scope(request, user_profile):
     }
 
 
+REACT_SCHEDULE_ACTIVITY_TYPES = ('customer_meeting', 'quote', 'delivery')
+
+
 def _schedules_create_activity_types(request):
-    excluded_types = set()
-    if not getattr(request, 'is_hanagwahak', False):
-        excluded_types.add('service')
+    """React schedules only support meeting, quote, and delivery."""
+    allowed_types = set(REACT_SCHEDULE_ACTIVITY_TYPES)
     return [
         {'value': value, 'label': label}
         for value, label in Schedule.ACTIVITY_TYPE_CHOICES
-        if value not in excluded_types
+        if value in allowed_types
     ]
 
 
@@ -7451,7 +7636,10 @@ def schedules_summary_api(request):
     activity_type = request.GET.get('activityType', '').strip()
     range_filter = request.GET.get('range', '').strip()
 
-    base_schedules = Schedule.objects.filter(user__in=scope_users)
+    base_schedules = Schedule.objects.filter(
+        user__in=scope_users,
+        activity_type__in=REACT_SCHEDULE_ACTIVITY_TYPES,
+    )
     base_personal_schedules = PersonalSchedule.objects.filter(user__in=scope_users)
     schedules = base_schedules.select_related(
         'user', 'followup', 'followup__company', 'followup__department'
@@ -7491,7 +7679,7 @@ def schedules_summary_api(request):
     elif status == 'personal':
         include_customer = False
 
-    valid_activity_types = {value for value, _label in Schedule.ACTIVITY_TYPE_CHOICES}
+    valid_activity_types = set(REACT_SCHEDULE_ACTIVITY_TYPES)
     if activity_type in valid_activity_types:
         schedules = schedules.filter(activity_type=activity_type)
         include_personal = False
@@ -7610,10 +7798,7 @@ def schedules_summary_api(request):
                 {'value': value, 'label': label}
                 for value, label in Schedule.STATUS_CHOICES
             ] + [{'value': 'personal', 'label': '개인 일정'}],
-            'activityTypes': [
-                {'value': value, 'label': label}
-                for value, label in Schedule.ACTIVITY_TYPE_CHOICES
-            ] + [{'value': 'personal', 'label': '개인 일정'}],
+            'activityTypes': _schedules_create_activity_types(request) + [{'value': 'personal', 'label': '개인 일정'}],
             'ranges': [
                 {'value': 'today', 'label': '오늘'},
                 {'value': 'week', 'label': '7일 이내'},
@@ -7643,11 +7828,11 @@ def schedules_summary_api(request):
         ] + [{'value': 'personal', 'label': '개인 일정', 'count': personal_count}],
         'activityCounts': [
             {
-                'value': value,
-                'label': label,
-                'count': activity_counts.get(value, 0),
+                'value': item['value'],
+                'label': item['label'],
+                'count': activity_counts.get(item['value'], 0),
             }
-            for value, label in Schedule.ACTIVITY_TYPE_CHOICES
+            for item in _schedules_create_activity_types(request)
         ] + [{'value': 'personal', 'label': '개인 일정', 'count': personal_count}],
         'links': {
             'createSchedule': reverse('reporting:schedule_create'),
@@ -7701,6 +7886,7 @@ def schedules_calendar_api(request):
         user__in=filter_users,
         visit_date__gte=start_date,
         visit_date__lte=end_date,
+        activity_type__in=REACT_SCHEDULE_ACTIVITY_TYPES,
     )
     base_personal_schedules = PersonalSchedule.objects.filter(
         user__in=filter_users,
@@ -7887,7 +8073,7 @@ def _schedules_status_choices_for_activity(activity_type, current_status=''):
 def _schedules_activity_types_for_edit(request, schedule):
     activity_types = _schedules_create_activity_types(request)
     activity_values = {item['value'] for item in activity_types}
-    if schedule.activity_type not in activity_values:
+    if schedule.activity_type not in activity_values and schedule.activity_type != 'service':
         activity_labels = dict(Schedule.ACTIVITY_TYPE_CHOICES)
         activity_types = [
             {

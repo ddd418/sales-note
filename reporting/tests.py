@@ -241,6 +241,8 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['analytics']['label'], '분석')
         self.assertEqual(items_by_id['businessCards']['href'], '/mailbox/business-cards/')
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
+        self.assertEqual(items_by_id['services']['href'], '/services/')
+        self.assertEqual(items_by_id['services']['label'], '서비스')
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
         self.assertEqual(items_by_id['profile']['label'], '프로필')
 
@@ -275,6 +277,7 @@ class SalesNoteReadonlyBearerApiTests(TestCase):
             reverse('reporting:notes_summary_api'),
             reverse('reporting:schedules_summary_api'),
             reverse('reporting:customer_assets_summary_api'),
+            reverse('reporting:service_cases_summary_api'),
             reverse('reporting:ai_workspace_summary_api'),
             reverse('reporting:prepayment_api_list'),
             reverse('reporting:product_api_list'),
@@ -6071,6 +6074,114 @@ class PrepaymentCustomerApiTests(TestCase):
         self.assertEqual(response.json()['error'], 'login_required')
 
 
+class ServiceCasesSummaryApiTests(TestCase):
+    """React 서비스 기록 목록 API 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='서비스API회사')
+        self.other_company = UserCompany.objects.create(name='서비스API타사회사')
+        self.user = make_user('service_api_me', role='salesman', company=self.company)
+        self.coworker = make_user('service_api_coworker', role='salesman', company=self.company)
+        self.manager = make_user('service_api_manager', role='manager', company=self.company)
+        self.other_user = make_user('service_api_other', role='salesman', company=self.other_company)
+        self.url = reverse('reporting:service_cases_summary_api')
+
+    def _create_customer_asset(self, owner, name):
+        crm_company = Company.objects.create(name=f'{name} 업체', created_by=owner)
+        department = Department.objects.create(
+            company=crm_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+        followup = FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=f'{name} 담당자',
+            manager=f'{name} PI',
+            company=crm_company,
+            department=department,
+        )
+        asset = CustomerAsset.objects.create(
+            company=crm_company,
+            department=department,
+            primary_followup=followup,
+            asset_name=f'{name} 장비',
+            model_name=f'{name} 모델',
+            serial_number=f'{name}-SN',
+            created_by=owner,
+        )
+        return followup, asset
+
+    def _create_service_case(self, owner, name, status='received', priority='normal', case_type='service'):
+        followup, asset = self._create_customer_asset(owner, name)
+        return ServiceCase.objects.create(
+            asset=asset,
+            followup=followup,
+            case_type=case_type,
+            status=status,
+            priority=priority,
+            received_date=timezone.localdate(),
+            due_date=timezone.localdate() - timedelta(days=1),
+            symptom=f'{name} 증상',
+            resolution=f'{name} 처리',
+            assigned_to=owner,
+            created_by=owner,
+        )
+
+    def test_service_cases_summary_api_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_service_cases_summary_api_lists_and_filters_records(self):
+        target = self._create_service_case(
+            self.user,
+            'PCR',
+            status='in_progress',
+            priority='urgent',
+            case_type='repair',
+        )
+        self._create_service_case(self.user, '다른', status='completed', priority='normal', case_type='service')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {
+            'q': 'PCR',
+            'status': 'open',
+            'priority': 'urgent',
+            'case_type': 'repair',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['filters']['q'], 'PCR')
+        self.assertEqual(payload['filters']['caseType'], 'repair')
+        self.assertEqual(payload['metrics']['filteredCases'], 1)
+        self.assertEqual(payload['serviceCases'][0]['id'], target.id)
+        self.assertEqual(payload['serviceCases'][0]['assetName'], 'PCR 장비')
+        self.assertEqual(payload['serviceCases'][0]['companyName'], 'PCR 업체')
+        self.assertTrue(payload['serviceCases'][0]['overdue'])
+        self.assertTrue(any(option['value'] == 'open' for option in payload['options']['statuses']))
+
+    def test_service_cases_summary_api_manager_sees_same_company_only(self):
+        own = self._create_service_case(self.user, '내서비스')
+        coworker = self._create_service_case(self.coworker, '동료서비스')
+        other = self._create_service_case(self.other_user, '타사서비스')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['serviceCases']}
+        self.assertIn(own.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertNotIn(other.id, ids)
+        self.assertEqual(payload['metrics']['totalCases'], 2)
+        self.assertTrue(payload['scope']['canViewAll'])
+
+
 class SchedulesSummaryApiTests(TestCase):
     """React 일정 화면 읽기 API 검증"""
 
@@ -6246,7 +6357,23 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(ids, [('customer', target.id)])
         self.assertEqual(payload['filters']['q'], 'PCR')
         self.assertTrue(any(option['value'] == 'quote' for option in payload['options']['activityTypes']))
+        self.assertFalse(any(option['value'] == 'service' for option in payload['options']['activityTypes']))
         self.assertEqual(payload['metrics']['filteredSchedules'], 1)
+
+    def test_schedules_summary_api_excludes_service_schedule_type(self):
+        self._create_schedule(self.user, '미팅일정', activity_type='customer_meeting')
+        service_schedule = self._create_schedule(self.user, '서비스일정', activity_type='service')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['schedules'] if item['type'] == 'customer'}
+        self.assertNotIn(service_schedule.id, ids)
+        self.assertFalse(any(option['value'] == 'service' for option in payload['create']['activityTypes']))
+        self.assertFalse(any(item['value'] == 'service' for item in payload['activityCounts']))
+        self.assertEqual(payload['metrics']['customerSchedules'], 1)
 
     def test_schedules_summary_api_manager_sees_same_company_only(self):
         own = self._create_schedule(self.user, '회사내일정')
@@ -6332,8 +6459,29 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['links']['djangoCalendar'], reverse('reporting:schedule_calendar'))
         self.assertTrue(payload['create']['canCreate'])
         self.assertEqual(payload['create']['submitUrl'], self.create_url)
+        self.assertFalse(any(option['value'] == 'service' for option in payload['create']['activityTypes']))
         self.assertEqual(payload['create']['personalSchedule']['submitUrl'], self.personal_create_url)
         self.assertTrue(any(customer['id'] == own.followup_id for customer in payload['create']['customers']))
+
+    def test_schedules_calendar_api_excludes_service_schedule_type(self):
+        import datetime
+
+        target_date = datetime.date(2026, 5, 10)
+        meeting = self._create_schedule(self.user, '월간미팅', activity_type='customer_meeting', visit_date=target_date)
+        service = self._create_schedule(self.user, '월간서비스', activity_type='service', visit_date=target_date)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.calendar_url, {
+            'start': '2026-05-01',
+            'end': '2026-05-31',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['schedules'] if item['type'] == 'customer'}
+        self.assertIn(meeting.id, ids)
+        self.assertNotIn(service.id, ids)
+        self.assertEqual(payload['metrics']['customerSchedules'], 1)
 
     def test_schedules_calendar_api_all_filter_uses_same_company_only(self):
         import datetime
@@ -6598,6 +6746,27 @@ class SchedulesSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Schedule.objects.filter(followup=followup, user=self.user).exists())
+
+    def test_schedules_create_api_rejects_service_activity_type(self):
+        import json
+        from reporting.models import Schedule
+
+        followup = self._create_customer(self.user, '서비스차단')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'service',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Schedule.objects.filter(followup=followup, activity_type='service').exists())
 
     def test_schedules_detail_api_returns_detail_and_edit_config(self):
         from django.core.files.uploadedfile import SimpleUploadedFile

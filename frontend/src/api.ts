@@ -1155,6 +1155,82 @@ export type CustomerAssetDirectoryData = {
   assets: CustomerAssetDirectoryItem[];
 };
 
+export type ServiceCaseListItem = {
+  id: number;
+  caseType: string;
+  caseTypeLabel: string;
+  status: string;
+  statusLabel: string;
+  priority: string;
+  priorityLabel: string;
+  receivedDate: string | null;
+  dueDate: string | null;
+  completedDate: string | null;
+  symptom: string;
+  resolution: string;
+  summary: string;
+  assetId: number | null;
+  assetName: string;
+  assetModelName: string;
+  serialNumber: string;
+  companyName: string;
+  departmentName: string;
+  customerName: string;
+  ownerName: string;
+  assignedTo: string;
+  hasReport: boolean;
+  reportUrl: string;
+  assetHref: string;
+  customerHref: string;
+  accountHref: string;
+  updateUrl: string;
+  overdue: boolean;
+  updatedAt: string | null;
+};
+
+export type ServiceCasesData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    userCount: number;
+    canViewAll: boolean;
+    selectedUserId: number | null;
+  };
+  filters: {
+    q: string;
+    status: string;
+    owner: string;
+    priority: string;
+    caseType: string;
+  };
+  options: {
+    owners: Array<{ id: number; name: string }>;
+    statuses: Array<{ value: string; label: string }>;
+    priorities: Array<{ value: string; label: string }>;
+    caseTypes: Array<{ value: string; label: string }>;
+  };
+  metrics: {
+    totalCases: number;
+    filteredCases: number;
+    openCases: number;
+    overdueCases: number;
+    completedCases: number;
+    urgentCases: number;
+    returnedCases: number;
+    truncated: boolean;
+  };
+  links: {
+    services: string;
+    assets: string;
+    customers: string;
+  };
+  serviceCases: ServiceCaseListItem[];
+};
+
 export type CustomerAssetPayload = {
   assetName: string;
   modelName?: string;
@@ -4904,6 +4980,50 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
   assets: [],
 };
 
+const emptyServiceCasesData: ServiceCasesData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    userCount: 0,
+    canViewAll: false,
+    selectedUserId: null,
+  },
+  filters: {
+    q: '',
+    status: '',
+    owner: '',
+    priority: '',
+    caseType: '',
+  },
+  options: {
+    owners: [],
+    statuses: [
+      { value: 'open', label: '진행 서비스' },
+      { value: 'overdue', label: '처리 지연' },
+    ],
+    priorities: [],
+    caseTypes: [],
+  },
+  metrics: {
+    totalCases: 0,
+    filteredCases: 0,
+    openCases: 0,
+    overdueCases: 0,
+    completedCases: 0,
+    urgentCases: 0,
+    returnedCases: 0,
+    truncated: false,
+  },
+  links: {
+    services: '/services/',
+    assets: '/assets/',
+    customers: '/customers/',
+  },
+  serviceCases: [],
+};
+
 export function normalizeCustomerAiDepartment(payload?: Partial<CustomerAiDepartment> | null): CustomerAiDepartment {
   return {
     ...emptyCustomerAiDepartment,
@@ -7146,6 +7266,77 @@ export async function loadCustomerAssetDirectoryData(params: {
       ...emptyCustomerAssetDirectoryData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Customer assets API unavailable',
+    };
+  }
+}
+
+export async function loadServiceCasesData(params: {
+  q?: string;
+  status?: string;
+  owner?: string;
+  priority?: string;
+  caseType?: string;
+} = {}): Promise<ServiceCasesData> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      query.set(key, value);
+    }
+  });
+
+  try {
+    const response = await fetch(`/reporting/api/services/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Services API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<ServiceCasesData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Services API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyServiceCasesData,
+      ...payload,
+      scope: {
+        ...emptyServiceCasesData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyServiceCasesData.filters,
+        ...(payload.filters ?? {}),
+      },
+      options: {
+        ...emptyServiceCasesData.options,
+        ...(payload.options ?? {}),
+        owners: payload.options?.owners ?? emptyServiceCasesData.options.owners,
+        statuses: payload.options?.statuses ?? emptyServiceCasesData.options.statuses,
+        priorities: payload.options?.priorities ?? emptyServiceCasesData.options.priorities,
+        caseTypes: payload.options?.caseTypes ?? emptyServiceCasesData.options.caseTypes,
+      },
+      metrics: {
+        ...emptyServiceCasesData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: normalizeHrefFields({
+        ...emptyServiceCasesData.links,
+        ...(payload.links ?? {}),
+      }, ['services', 'assets', 'customers']),
+      serviceCases: (payload.serviceCases ?? emptyServiceCasesData.serviceCases).map((serviceCase) => (
+        normalizeHrefFields(serviceCase, ['reportUrl', 'assetHref', 'customerHref', 'accountHref', 'updateUrl'])
+      )),
+    };
+  } catch (error) {
+    return {
+      ...emptyServiceCasesData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Services API unavailable',
     };
   }
 }

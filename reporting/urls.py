@@ -247,6 +247,7 @@ urlpatterns = [
     path('api/followups/', views.followups_summary_api, name='followups_summary_api'),
     path('api/customers/', views.customers_summary_api, name='customers_summary_api'),
     path('api/customer-assets/', views.customer_assets_summary_api, name='customer_assets_summary_api'),
+    path('api/services/', views.service_cases_summary_api, name='service_cases_summary_api'),
     path('api/customer-assets/<int:asset_id>/update/', views.customer_asset_directory_update_api, name='customer_asset_directory_update_api'),
     path('api/customer-assets/<int:asset_id>/service-cases/create/', views.customer_asset_directory_service_case_save_api, name='customer_asset_directory_service_case_create_api'),
     path('api/customer-assets/<int:asset_id>/service-cases/<int:case_id>/update/', views.customer_asset_directory_service_case_save_api, name='customer_asset_directory_service_case_update_api'),
