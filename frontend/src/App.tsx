@@ -5924,6 +5924,7 @@ function ReportsPage({
   }
 
   const operations = data.customerOperations;
+  const dataQuality = data.dataQuality;
   const rows = operations.rows;
   const metrics = operations.metrics;
   const customersWithRecords = rows.filter((row) => (
@@ -5942,6 +5943,13 @@ function ReportsPage({
   ];
   const dateRangeLabel = `${formatDateLabel(data.filters.dateFrom) || data.filters.dateFrom} - ${formatDateLabel(data.filters.dateTo) || data.filters.dateTo}`;
   const generatedLabel = data.generatedAt ? formatDateTimeLabel(data.generatedAt) : '';
+  const cleanupMetrics = dataQuality.metrics;
+  const cleanupCards = [
+    { label: '계정명 유사', value: `${formatNumber(cleanupMetrics.duplicateAccountGroups)}그룹` },
+    { label: '담당자 중복', value: `${formatNumber(cleanupMetrics.duplicateContactGroups)}그룹` },
+    { label: '부서 미지정', value: `${formatNumber(cleanupMetrics.contactsWithoutDepartment)}명` },
+    { label: '업체 미지정', value: `${formatNumber(cleanupMetrics.contactsWithoutCompany)}명` },
+  ];
 
   const lastDateLabel = (value: string | null) => formatDateLabel(value) || '-';
 
@@ -6029,6 +6037,91 @@ function ReportsPage({
             value={metric.value}
           />
         ))}
+      </section>
+
+      <section className="dashboard-panel reports-quality-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Data cleanup</span>
+            <h2>데이터 정리 후보</h2>
+          </div>
+          <AlertTriangle size={18} />
+        </div>
+        <div className="reports-quality-metrics">
+          {cleanupCards.map((card) => (
+            <span key={card.label}>
+              {card.label}
+              <strong>{card.value}</strong>
+            </span>
+          ))}
+        </div>
+        <p className="reports-quality-rule">{dataQuality.normalizationRule || '중복/누락 후보를 읽기 전용으로 표시합니다.'}</p>
+        <div className="reports-quality-grid">
+          <section>
+            <h3>계정명 유사 후보</h3>
+            {dataQuality.duplicateAccounts.length > 0 ? (
+              <div className="reports-quality-list">
+                {dataQuality.duplicateAccounts.map((group) => (
+                  <article key={`${group.companyName}-${group.normalizedDepartmentName}`}>
+                    <strong>{group.companyName || '업체 미지정'}</strong>
+                    <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명</span>
+                    <small>부서 ID {group.departmentIds.join(', ')}</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty label="계정명 유사 후보 없음" />
+            )}
+          </section>
+          <section>
+            <h3>담당자 중복 후보</h3>
+            {dataQuality.duplicateContacts.length > 0 ? (
+              <div className="reports-quality-list">
+                {dataQuality.duplicateContacts.map((group) => (
+                  <article key={`${group.companyName}-${group.departmentName}-${group.identity}`}>
+                    <strong>{group.identity}</strong>
+                    <span>{[group.companyName, group.departmentName].filter(Boolean).join(' · ') || '계정 미지정'} · {formatNumber(group.contactCount)}건</span>
+                    <small>{group.contacts.map((contact) => contact.name).join(', ')}</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty label="담당자 중복 후보 없음" />
+            )}
+          </section>
+          <section>
+            <h3>부서 미지정 담당자</h3>
+            {dataQuality.contactsWithoutDepartment.length > 0 ? (
+              <div className="reports-quality-list">
+                {dataQuality.contactsWithoutDepartment.map((contact) => (
+                  <article key={contact.id}>
+                    <a href={contact.href}><strong>{contact.name}</strong></a>
+                    <span>{contact.companyName || '업체 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
+                    <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty label="부서 미지정 담당자 없음" />
+            )}
+          </section>
+          <section>
+            <h3>업체 미지정 담당자</h3>
+            {dataQuality.contactsWithoutCompany.length > 0 ? (
+              <div className="reports-quality-list">
+                {dataQuality.contactsWithoutCompany.map((contact) => (
+                  <article key={contact.id}>
+                    <a href={contact.href}><strong>{contact.name}</strong></a>
+                    <span>{contact.departmentName || '부서 미지정'} · 기록 {formatNumber(contact.recordCount)}건</span>
+                    <small>{[contact.email, contact.phone, contact.ownerName].filter(Boolean).join(' · ') || '연락처 없음'}</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <DashboardEmpty label="업체 미지정 담당자 없음" />
+            )}
+          </section>
+        </div>
       </section>
 
       <section className="dashboard-panel reports-customer-panel reports-operations-panel">

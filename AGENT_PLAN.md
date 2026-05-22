@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 Reports data quality candidates plan
+
+**Background**:
+
+- User asked to continue improvement work without stopping between tasks.
+- The next high-value area is duplicate/merge tooling, but destructive merge actions should not be introduced before operators can see candidates.
+- First step: add a read-only data quality panel to `/reports/`.
+
+**DB change required**: No.
+
+- Use existing `FollowUp`, `Company`, `Department`, `Schedule`, `History`, `Quote`, and `Prepayment`.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `dataQuality` to `/reporting/api/reports/`.
+  - Detect department/account name similarity by normalized company+department names.
+  - Detect duplicate contact candidates by same account scope and same email/name key.
+  - List contacts missing department or company assignment.
+- Frontend:
+  - Add `dataQuality` types and normalization.
+  - Add `/reports/` `데이터 정리 후보` panel.
+- Tests/docs:
+  - Add reports API regression for cleanup candidates.
+  - Update report, commit, push, deploy, then provide manual check steps.
+
+**Validation plan**:
+
+- `python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates`
+- Existing reports test(s)
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Railway deployment status and production bundle smoke.
+
 ## 2026-05-22 Account contacts detail plan
 
 **Background**:

@@ -11036,6 +11036,105 @@ tbody tr:hover {
   grid-template-columns: repeat(6, minmax(150px, 1fr));
 }
 
+.reports-quality-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.reports-quality-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reports-quality-metrics span {
+  display: grid;
+  gap: 4px;
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reports-quality-metrics strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.reports-quality-rule {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.reports-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reports-quality-grid section {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reports-quality-grid h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.reports-quality-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reports-quality-list article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.reports-quality-list strong,
+.reports-quality-list span,
+.reports-quality-list small {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.reports-quality-list strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.reports-quality-list a {
+  color: var(--primary-strong);
+  text-decoration: none;
+}
+
+.reports-quality-list span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reports-quality-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .reports-layout,
 .business-cards-layout,
 .profile-layout {
@@ -11423,7 +11522,8 @@ tbody tr:hover {
 }
 
 @media (max-width: 1180px) {
-  .reports-metric-grid {
+  .reports-metric-grid,
+  .reports-quality-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -11447,6 +11547,8 @@ tbody tr:hover {
 @media (max-width: 760px) {
   .reports-metric-grid,
   .reports-signal-strip,
+  .reports-quality-metrics,
+  .reports-quality-grid,
   .business-card-summary-strip,
   .profile-overview-strip,
   .business-card-form,

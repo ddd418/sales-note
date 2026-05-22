@@ -227,6 +227,57 @@ export type ReportsCustomerOperations = {
   rows: ReportsCustomerOperationRow[];
 };
 
+export type ReportsDataQualityContact = {
+  id: number;
+  name: string;
+  manager: string;
+  email: string;
+  phone: string;
+  companyName: string;
+  departmentName: string;
+  departmentId: number | null;
+  ownerName: string;
+  scheduleCount: number;
+  historyCount: number;
+  quoteCount: number;
+  prepaymentCount: number;
+  recordCount: number;
+  href: string;
+  accountHref: string;
+};
+
+export type ReportsDuplicateAccountGroup = {
+  companyName: string;
+  normalizedDepartmentName: string;
+  departmentNames: string[];
+  departmentIds: number[];
+  contactCount: number;
+  contacts: ReportsDataQualityContact[];
+};
+
+export type ReportsDuplicateContactGroup = {
+  companyName: string;
+  departmentName: string;
+  identity: string;
+  contactCount: number;
+  contacts: ReportsDataQualityContact[];
+};
+
+export type ReportsDataQuality = {
+  metrics: {
+    duplicateAccountGroups: number;
+    duplicateContactGroups: number;
+    contactsWithoutDepartment: number;
+    contactsWithoutCompany: number;
+    cleanupCandidateCount: number;
+  };
+  normalizationRule: string;
+  duplicateAccounts: ReportsDuplicateAccountGroup[];
+  duplicateContacts: ReportsDuplicateContactGroup[];
+  contactsWithoutDepartment: ReportsDataQualityContact[];
+  contactsWithoutCompany: ReportsDataQualityContact[];
+};
+
 export type ReportsData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -278,6 +329,7 @@ export type ReportsData = {
     djangoHref: string;
   }>;
   customerOperations: ReportsCustomerOperations;
+  dataQuality: ReportsDataQuality;
   pipelineSummary: Array<{ stage: string; label: string; count: number }>;
   links: {
     activityCsv: string;
@@ -4227,6 +4279,20 @@ const emptyReportsData: ReportsData = {
     },
     rows: [],
   },
+  dataQuality: {
+    metrics: {
+      duplicateAccountGroups: 0,
+      duplicateContactGroups: 0,
+      contactsWithoutDepartment: 0,
+      contactsWithoutCompany: 0,
+      cleanupCandidateCount: 0,
+    },
+    normalizationRule: '',
+    duplicateAccounts: [],
+    duplicateContacts: [],
+    contactsWithoutDepartment: [],
+    contactsWithoutCompany: [],
+  },
   pipelineSummary: [],
   links: {
     activityCsv: '/reporting/analytics/export/activity.csv',
@@ -5913,6 +5979,28 @@ export async function loadReportsData(params: {
         rows: (payload.customerOperations?.rows ?? emptyReportsData.customerOperations.rows).map((customer) => (
           normalizeHrefFields(customer, ['href', 'djangoHref'])
         )),
+      },
+      dataQuality: {
+        ...emptyReportsData.dataQuality,
+        ...(payload.dataQuality ?? {}),
+        metrics: {
+          ...emptyReportsData.dataQuality.metrics,
+          ...(payload.dataQuality?.metrics ?? {}),
+        },
+        duplicateAccounts: (payload.dataQuality?.duplicateAccounts ?? emptyReportsData.dataQuality.duplicateAccounts).map((group) => ({
+          ...group,
+          contacts: (group.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
+        })),
+        duplicateContacts: (payload.dataQuality?.duplicateContacts ?? emptyReportsData.dataQuality.duplicateContacts).map((group) => ({
+          ...group,
+          contacts: (group.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
+        })),
+        contactsWithoutDepartment: (
+          payload.dataQuality?.contactsWithoutDepartment ?? emptyReportsData.dataQuality.contactsWithoutDepartment
+        ).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
+        contactsWithoutCompany: (
+          payload.dataQuality?.contactsWithoutCompany ?? emptyReportsData.dataQuality.contactsWithoutCompany
+        ).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
       },
       pipelineSummary: payload.pipelineSummary ?? emptyReportsData.pipelineSummary,
     };

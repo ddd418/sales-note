@@ -33911,6 +33911,154 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
     }
 
 
+def _reports_cleanup_key(value):
+    compact = re.sub(r'[\s\-_./,()（）\[\]{}]+', '', str(value or '').strip().lower())
+    return compact
+
+
+def _reports_cleanup_contact_payload(followup):
+    record_count = (
+        int(getattr(followup, 'dq_schedule_count', 0) or 0)
+        + int(getattr(followup, 'dq_history_count', 0) or 0)
+        + int(getattr(followup, 'dq_quote_count', 0) or 0)
+        + int(getattr(followup, 'dq_prepayment_count', 0) or 0)
+    )
+    return {
+        'id': followup.id,
+        'name': followup.customer_name or followup.manager or '담당자 미정',
+        'manager': followup.manager or '',
+        'email': followup.email or '',
+        'phone': followup.phone_number or '',
+        'companyName': followup.company.name if followup.company else '',
+        'departmentName': followup.department.name if followup.department else '',
+        'departmentId': followup.department_id,
+        'ownerName': _user_display_name(followup.user),
+        'scheduleCount': int(getattr(followup, 'dq_schedule_count', 0) or 0),
+        'historyCount': int(getattr(followup, 'dq_history_count', 0) or 0),
+        'quoteCount': int(getattr(followup, 'dq_quote_count', 0) or 0),
+        'prepaymentCount': int(getattr(followup, 'dq_prepayment_count', 0) or 0),
+        'recordCount': record_count,
+        'href': f'/customers/{followup.id}/',
+        'accountHref': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
+    }
+
+
+def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
+    followups = list(
+        followups_qs.select_related('user', 'company', 'department')
+        .annotate(
+            dq_schedule_count=Count('schedules', distinct=True),
+            dq_history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True),
+            dq_quote_count=Count('quotes', distinct=True),
+            dq_prepayment_count=Count('prepayments', distinct=True),
+        )
+        .order_by('company__name', 'department__name', 'customer_name', 'id')
+    )
+
+    account_name_groups = {}
+    duplicate_contact_groups = {}
+    contacts_without_department = []
+    contacts_without_company = []
+    for followup in followups:
+        company_name = followup.company.name if followup.company else ''
+        department_name = followup.department.name if followup.department else ''
+        if followup.company_id and followup.department_id:
+            account_key = (
+                _reports_cleanup_key(company_name),
+                _reports_cleanup_key(department_name),
+            )
+            if account_key[0] and account_key[1]:
+                account_name_groups.setdefault(account_key, []).append(followup)
+
+        if followup.department_id:
+            contact_scope = f'department:{followup.department_id}'
+        elif followup.company_id:
+            contact_scope = f'company:{followup.company_id}'
+        else:
+            contact_scope = 'unassigned'
+        identity = (followup.email or '').strip().lower()
+        if not identity:
+            identity = _reports_cleanup_key(followup.customer_name or followup.manager)
+        if identity:
+            duplicate_contact_groups.setdefault((contact_scope, identity), []).append(followup)
+
+        if not followup.department_id:
+            contacts_without_department.append(followup)
+        if not followup.company_id:
+            contacts_without_company.append(followup)
+
+    duplicate_accounts = []
+    for grouped_followups in account_name_groups.values():
+        department_ids = sorted({item.department_id for item in grouped_followups if item.department_id})
+        department_names = sorted({item.department.name for item in grouped_followups if item.department})
+        if len(department_ids) < 2:
+            continue
+        first = grouped_followups[0]
+        duplicate_accounts.append({
+            'companyName': first.company.name if first.company else '',
+            'normalizedDepartmentName': _reports_cleanup_key(first.department.name if first.department else ''),
+            'departmentNames': department_names,
+            'departmentIds': department_ids,
+            'contactCount': len(grouped_followups),
+            'contacts': [_reports_cleanup_contact_payload(item) for item in grouped_followups[:6]],
+        })
+    duplicate_accounts.sort(key=lambda item: (-item['contactCount'], item['companyName'], item['normalizedDepartmentName']))
+
+    duplicate_contacts = []
+    for grouped_followups in duplicate_contact_groups.values():
+        if len(grouped_followups) < 2:
+            continue
+        first = grouped_followups[0]
+        duplicate_contacts.append({
+            'companyName': first.company.name if first.company else '',
+            'departmentName': first.department.name if first.department else '',
+            'identity': (first.email or first.customer_name or first.manager or '담당자 미정'),
+            'contactCount': len(grouped_followups),
+            'contacts': [_reports_cleanup_contact_payload(item) for item in grouped_followups[:6]],
+        })
+    duplicate_contacts.sort(key=lambda item: (-item['contactCount'], item['companyName'], item['departmentName'], item['identity']))
+
+    contacts_without_department.sort(
+        key=lambda item: (
+            -(
+                int(getattr(item, 'dq_schedule_count', 0) or 0)
+                + int(getattr(item, 'dq_history_count', 0) or 0)
+                + int(getattr(item, 'dq_quote_count', 0) or 0)
+                + int(getattr(item, 'dq_prepayment_count', 0) or 0)
+            ),
+            item.company.name if item.company else '',
+            item.customer_name or item.manager or '',
+        )
+    )
+    contacts_without_company.sort(key=lambda item: (item.customer_name or item.manager or '', item.id))
+    cleanup_candidate_count = (
+        len(duplicate_accounts)
+        + len(duplicate_contacts)
+        + len(contacts_without_department)
+        + len(contacts_without_company)
+    )
+    return {
+        'metrics': {
+            'duplicateAccountGroups': len(duplicate_accounts),
+            'duplicateContactGroups': len(duplicate_contacts),
+            'contactsWithoutDepartment': len(contacts_without_department),
+            'contactsWithoutCompany': len(contacts_without_company),
+            'cleanupCandidateCount': cleanup_candidate_count,
+        },
+        'normalizationRule': '업체/부서/담당자명은 공백, 일부 특수문자, 대소문자를 제거한 값으로 후보를 찾습니다.',
+        'duplicateAccounts': duplicate_accounts[:limit],
+        'duplicateContacts': duplicate_contacts[:limit],
+        'contactsWithoutDepartment': [
+            _reports_cleanup_contact_payload(item)
+            for item in contacts_without_department[:limit]
+        ],
+        'contactsWithoutCompany': [
+            _reports_cleanup_contact_payload(item)
+            for item in contacts_without_company[:limit]
+        ],
+    }
+
+
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
@@ -33941,6 +34089,7 @@ def reports_summary_api(request):
         date_to,
         request.user,
     )
+    data_quality = _reports_data_quality_payload(followups_qs, filter_users)
 
     total_histories = histories_qs.count()
     completed_followups = histories_qs.filter(
@@ -34064,6 +34213,7 @@ def reports_summary_api(request):
         'activityReport': activity_report,
         'customerReport': customer_report,
         'customerOperations': customer_operations,
+        'dataQuality': data_quality,
         'pipelineSummary': pipeline_summary,
         'links': {
             'activityCsv': reverse('reporting:analytics_activity_csv') + query,

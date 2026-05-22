@@ -1,5 +1,86 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — Reports Data Quality Candidates
+
+### 요약
+
+- `/reports/` API에 읽기 전용 `dataQuality` payload를 추가했습니다.
+- `/reports/` 화면에 `데이터 정리 후보` 패널을 추가했습니다.
+- 후보 유형은 계정명 유사, 담당자 중복, 부서 미지정, 업체 미지정입니다.
+- 실제 병합/이관 버튼은 아직 만들지 않았고, 먼저 후보를 눈으로 검수할 수 있게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 중복 부서/연구실 계정과 중복 담당자를 정리하기 전에 후보를 한 화면에서 볼 수 있습니다.
+- 계정명 유사 후보는 업체명+부서명을 공백/일부 특수문자 제거 기준으로 비교합니다.
+- 담당자 중복 후보는 같은 계정 범위에서 이메일 또는 이름 키가 같은 FollowUp을 묶습니다.
+- 각 후보에는 담당자 상세 링크와 기록 수를 같이 보여줘 정리 우선순위를 판단할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 migration 변경은 없습니다.
+- `/reports/` 기존 계정별 운영 현황표는 유지했습니다.
+- 데이터 정리 후보는 읽기 전용입니다. 병합/삭제/이관을 실행하지 않습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-CW78eOQQ.js / dist/assets/index-Cms_6TpV.css generated
+→ Vite chunk-size warning only
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_customer_operations_with_structured_payment_split reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_groups_customer_operations_by_department_account reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates --verbosity=1
+→ Ran 3 tests, OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 현재 `FollowUp.company`와 `FollowUp.department`는 모델상 필수라 실제 운영에서 부서/업체 미지정 후보는 보통 0건이어야 합니다. 이 항목은 레거시/비정상 데이터 방어용입니다.
+- 후보 판별은 정확한 병합이 아니라 “검토할 만한 후보”입니다. 실제 병합 전 사용자가 확인해야 합니다.
+
+### 권장 다음 작업
+
+- 사용자가 후보를 확인한 뒤, 선택한 후보에 대해 담당자 병합/부서 병합/기록 이관을 수행하는 안전한 관리자 도구를 만듭니다.
+
+### 운영 배포 상태
+
+- 아직 이 작업 커밋/배포 전입니다. 검증 완료 후 커밋, 푸시, Railway 상태 확인 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 배포 후 `/reports/`에 접속합니다.
+2. `데이터 정리 후보` 패널이 보이는지 확인합니다.
+3. `계정명 유사 후보`가 실제로 같은 부서/연구실을 의미하는지 확인합니다.
+4. `담당자 중복 후보`의 이메일/이름이 실제 중복인지 확인합니다.
+5. 후보의 담당자 상세 링크로 이동해 납품/견적/선결제 기록이 어느 쪽에 붙어 있는지 확인합니다.
+
 ## 2026-05-22 — Account Contacts Detail
 
 ### 요약

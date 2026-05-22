@@ -571,6 +571,50 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(row['normalDeliveryCount'], 2)
         self.assertEqual(operations['metrics']['totalCustomers'], 1)
 
+    def test_reports_api_returns_data_quality_cleanup_candidates(self):
+        compact_department = Department.objects.create(
+            company=self.customer_company,
+            name='연구실A',
+            created_by=self.user,
+        )
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=compact_department,
+            customer_name='유사계정 담당자',
+            email='similar@example.com',
+        )
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='중복담당자 1',
+            email='dup@example.com',
+        )
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            customer_name='중복담당자 2',
+            email='dup@example.com',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        data_quality = response.json()['dataQuality']
+        self.assertGreaterEqual(data_quality['metrics']['duplicateAccountGroups'], 1)
+        self.assertGreaterEqual(data_quality['metrics']['duplicateContactGroups'], 1)
+        account_text = json.dumps(data_quality['duplicateAccounts'], ensure_ascii=False)
+        contact_text = json.dumps(data_quality['duplicateContacts'], ensure_ascii=False)
+        self.assertIn('연구실 A', account_text)
+        self.assertIn('연구실A', account_text)
+        self.assertIn('dup@example.com', contact_text)
+
     def test_reports_api_manager_can_filter_company_salesperson(self):
         History.objects.create(
             user=self.user,
