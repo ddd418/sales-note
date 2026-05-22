@@ -10215,6 +10215,10 @@ class AIWorkspaceSummaryApiTests(TestCase):
         context = _ai_workspace_department_question_context(department, self.user)
 
         split = context['deliveryPaymentSplit']
+        self.assertEqual(split['source'], 'common_account_ledger')
+        self.assertEqual(split['answerMode'], 'deterministic_ledger')
+        self.assertFalse(split['usesNotesForClassification'])
+        self.assertIn('Schedule.delivery_payment_status', split['evidenceFields'])
         self.assertEqual(split['prepaymentCount'], 1)
         self.assertEqual(split['withoutPrepaymentCount'], 1)
         prepayment_text = json.dumps(split['prepaymentDeliveries'], ensure_ascii=False)
@@ -10222,14 +10226,16 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('선결제Kit', prepayment_text)
         self.assertIn(str(prepaid_schedule.id), prepayment_text)
         self.assertIn('PrepaymentUsage', prepayment_text)
+        self.assertIn('선결제 차감 납품', prepayment_text)
         self.assertNotIn('일반Kit', prepayment_text)
         self.assertIn('일반Kit', without_prepayment_text)
         self.assertIn(str(normal_schedule.id), without_prepayment_text)
         self.assertIn('선결제 사용 기록 없음', without_prepayment_text)
+        self.assertIn('일반 납품', without_prepayment_text)
         self.assertIn('메모', split['classificationRule'])
 
-    @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
-    def test_ai_workspace_department_question_fallback_splits_prepayment_deliveries_without_notes_inference(self, _mock_client):
+    @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_department_question_ledger_splits_prepayment_deliveries_without_notes_inference(self, mock_client):
         _followup, department, _prepaid_schedule, _normal_schedule = self._create_prepayment_delivery_split_fixture()
         self.client.force_login(self.user)
 
@@ -10244,37 +10250,27 @@ class AIWorkspaceSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['source'], 'fallback')
+        self.assertEqual(payload['source'], 'ledger')
+        mock_client.assert_not_called()
         split = payload['context']['deliveryPaymentSplit']
+        self.assertEqual(split['source'], 'common_account_ledger')
+        self.assertFalse(split['usesNotesForClassification'])
         self.assertEqual(split['prepaymentCount'], 1)
         self.assertEqual(split['withoutPrepaymentCount'], 1)
         answer_text = payload['answer']['summary']
-        prepayment_section = answer_text.split('2) 선결제 사용 기록 없는 납품')[0]
+        prepayment_section = answer_text.split('2) 일반 납품 / 선결제 사용 기록 없는 납품')[0]
         self.assertIn('선결제Kit', prepayment_section)
         self.assertNotIn('일반Kit', prepayment_section)
         self.assertIn('일반Kit', answer_text)
-        self.assertIn('일반결제 확정', answer_text)
+        self.assertIn('일반 납품', answer_text)
         self.assertIn('메모에 "선결제"', answer_text)
         self.assertIn('선결제 사용 기록 없음', answer_text)
+        evidence_text = ' '.join(item['value'] for item in payload['answer']['evidence'])
+        self.assertIn('Schedule.delivery_payment_status', evidence_text)
+        self.assertIn('PrepaymentUsage', evidence_text)
 
     @patch('ai_chat.services.get_openai_client')
-    def test_ai_workspace_department_question_prompt_includes_delivery_payment_split_rules(self, mock_client):
-        from types import SimpleNamespace
-
-        captured = {}
-
-        class FakeCompletions:
-            def create(self, **kwargs):
-                captured.update(kwargs)
-                content = json.dumps({
-                    'answer': '구조화된 선결제 사용 내역 기준으로만 분리했습니다.',
-                    'bullets': ['메모 문구는 분류 근거로 쓰지 않았습니다.'],
-                    'evidence': [{'label': '분류 기준', 'value': 'PrepaymentUsage'}],
-                    'confidence': 'high',
-                })
-                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
-
-        mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    def test_ai_workspace_department_question_delivery_payment_split_bypasses_openai_when_client_available(self, mock_client):
         _followup, department, _prepaid_schedule, _normal_schedule = self._create_prepayment_delivery_split_fixture()
         self.client.force_login(self.user)
 
@@ -10289,18 +10285,17 @@ class AIWorkspaceSummaryApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['source'], 'openai')
-        prompt_payload = json.loads(captured['messages'][1]['content'])
-        split = prompt_payload['crmContext']['deliveryPaymentSplit']
+        payload = response.json()
+        self.assertEqual(payload['source'], 'ledger')
+        mock_client.assert_not_called()
+        split = payload['context']['deliveryPaymentSplit']
         self.assertEqual(split['prepaymentCount'], 1)
         self.assertEqual(split['withoutPrepaymentCount'], 1)
         self.assertIn('선결제Kit', json.dumps(split['prepaymentDeliveries'], ensure_ascii=False))
         self.assertIn('일반Kit', json.dumps(split['withoutPrepaymentDeliveries'], ensure_ascii=False))
-        self.assertEqual(prompt_payload['responseGuidance']['intent'], 'delivery_payment_split')
-        rules_text = '\n'.join(prompt_payload['rules'])
-        self.assertIn('crmContext.deliveryPaymentSplit', rules_text)
-        self.assertIn('PrepaymentUsage', rules_text)
-        self.assertIn('메모', rules_text)
+        self.assertEqual(payload['questionLog']['source'], 'ledger')
+        self.assertFalse(payload['webSearchUsed'])
+        self.assertIn('CRM 공통 원장 데이터 기준으로만 분리했습니다', payload['answer']['summary'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_answers_global_action_search_without_department(self, _mock_client):

@@ -3600,7 +3600,7 @@ export type AIWorkspaceQuestionHistory = {
 
 export type AIWorkspaceDepartmentQuestionResponse = {
   success?: boolean;
-  source: 'openai' | 'fallback';
+  source: 'openai' | 'fallback' | 'ledger';
   model?: string;
   modelLabel?: string;
   webSearchUsed?: boolean;

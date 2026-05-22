@@ -1,5 +1,98 @@
 # AGENT_REPORT.md
 
+## 2026-05-22 — AI Delivery Payment Ledger-Only Answers
+
+### 요약
+
+- AI Workspace의 선결제/일반 납품 분리 질문을 OpenAI 추론 전에 차단하고, 공통 계정 원장 데이터로 즉시 답하도록 변경했습니다.
+- 답변 출처는 `ledger`로 기록되며, 답변에는 납품일, Schedule ID, 품목, 결제 상태, 선결제 차감액, 구조화 근거가 같이 표시됩니다.
+- `ai_chat.services`의 납품 데이터 payload가 `Schedule.delivery_payment_status` 기반 `paymentStatus`, `paymentStatusLabel`, `paymentStatusEvidence`를 AI 컨텍스트에 넘기도록 보강했습니다.
+- 고객/계정 상세 화면에는 AI UI를 추가하지 않았고, AI Workspace 화면에서만 질문 기능을 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/services.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- “선결제로 납품된 것과 그냥/일반 결제로 납품된 것 분리” 질문은 이제 메모, 메일, 과거 AI 답변을 분류 근거로 쓰지 않습니다.
+- `deliveryPaymentSplit`에 `source=common_account_ledger`, `answerMode=deterministic_ledger`, `usesNotesForClassification=false`, `evidenceFields`를 포함해 근거 범위를 명시했습니다.
+- 메모에 “선결제”라고 적혀 있어도 `Schedule.delivery_payment_status`, `delivery_payment_type`, 선결제 필드, `PrepaymentUsage`가 없으면 선결제 차감 납품으로 분류하지 않습니다.
+- React AI Workspace는 `ledger` 출처를 `CRM 원장 답변`으로 표시합니다.
+
+### 기존 기능 보존
+
+- 일반 전략 질문, 메일 문안, 다음 액션 추천 등 기존 AI Workspace OpenAI 답변 흐름은 유지했습니다.
+- 고객/계정 상세, 리포트, 엑셀의 기존 납품 결제 표시 구조는 유지했습니다.
+- `/reporting/*` API 인증/권한 흐름은 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_splits_delivery_payment_source_from_structured_prepayment reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_ledger_splits_prepayment_deliveries_without_notes_inference reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_delivery_payment_split_bypasses_openai_when_client_available --verbosity=1
+→ Ran 3 tests, OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=1
+→ Timed out after 604s before completion
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_answers_last_order_from_delivery_context reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_records_question_log reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_uses_crm_strategy_system_prompt reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_includes_recent_email_history reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_request_stays_freeform --verbosity=1
+→ Ran 5 tests, OK
+
+cd frontend; npm run build
+→ OK, dist/assets/index-BAAz_rfg.js / dist/assets/index-D6vu2STa.css generated
+→ Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 단계는 선결제/일반 납품 분리 질문을 원장 답변으로 고정한 것입니다. 다른 자유형 AI 전략 질문은 기존처럼 CRM 컨텍스트와 OpenAI를 사용할 수 있습니다.
+- AIWorkspace 전체 테스트 클래스는 로컬 10분 제한에서 완료되지 않아, 변경 지점 중심의 테스트 묶음으로 검증했습니다.
+
+### 권장 다음 작업
+
+- 납품 결제 상태를 운영자가 직접 `결제 확인 필요`, `정산 완료`, `취소/반품`으로 변경할 수 있는 제한 권한 UI를 추가합니다.
+- AI Workspace 답변 상세 화면에서 `ledger` 출처 답변은 원장 근거 표를 더 보기 좋게 렌더링합니다.
+
+### 운영 배포 상태
+
+- 배포 전: 로컬 검증 완료. 코드 커밋/푸시 후 Railway 배포 상태와 운영 스모크 결과를 이 항목에 갱신합니다.
+
+### 운영 수동 확인 절차
+
+1. [AI Workspace](https://sales-note-frontend-production.up.railway.app/ai-workspace/)에 접속합니다.
+2. 특정 부서/연구실 계정을 선택합니다.
+3. `선결제로 납품된거랑 그냥 결제로 납품된거 분리해줘`라고 질문합니다.
+4. 답변 상단이 `CRM 원장 답변`으로 표시되는지 확인합니다.
+5. 선결제 목록에는 `PrepaymentUsage` 또는 Schedule 선결제 필드 근거가 있는 납품만 들어가는지 확인합니다.
+6. 메모에 “선결제”라는 문구만 있는 납품은 `일반 납품 / 선결제 사용 기록 없는 납품` 쪽에 남는지 확인합니다.
+7. 고객/계정 상세 화면에는 AI 질문/분석 UI가 보이지 않는지 확인합니다.
+
 ## 2026-05-22 — Delivery Payment Status Explicit Field
 
 ### 요약

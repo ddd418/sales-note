@@ -293,6 +293,7 @@ def _delivery_items_payload(items, amount_key='total_price'):
 
 def _schedule_prepayment_payload(schedule):
     """Return structured prepayment evidence for a delivery schedule."""
+    ledger_source = 'common_account_ledger'
     empty_without_prepayment = {
         'payment_source': 'without_prepayment',
         'paymentSource': 'normal',
@@ -302,6 +303,12 @@ def _schedule_prepayment_payload(schedule):
         'paymentType': 'normal',
         'payment_type_label': '일반 납품',
         'paymentTypeLabel': '일반 납품',
+        'payment_status': 'normal',
+        'paymentStatus': 'normal',
+        'payment_status_label': '일반 납품',
+        'paymentStatusLabel': '일반 납품',
+        'payment_status_evidence': '연결된 납품 일정이 없어 Schedule.delivery_payment_status를 확인할 수 없습니다.',
+        'paymentStatusEvidence': '연결된 납품 일정이 없어 Schedule.delivery_payment_status를 확인할 수 없습니다.',
         'prepayment_id': None,
         'prepaymentId': None,
         'prepayment_amount': 0,
@@ -310,6 +317,8 @@ def _schedule_prepayment_payload(schedule):
         'prepaymentUsages': [],
         'payment_evidence': '연결된 납품 일정의 Schedule.delivery_payment_type, 선결제 사용 필드, PrepaymentUsage가 없습니다.',
         'paymentEvidence': '연결된 납품 일정의 Schedule.delivery_payment_type, 선결제 사용 필드, PrepaymentUsage가 없습니다.',
+        'ledger_source': ledger_source,
+        'ledgerSource': ledger_source,
     }
     if not schedule:
         payload = dict(empty_without_prepayment)
@@ -346,8 +355,22 @@ def _schedule_prepayment_payload(schedule):
             'usedAt': usage.used_at.strftime('%Y-%m-%d') if getattr(usage, 'used_at', None) else '',
         })
 
+    payment_status = ledger_payload.get('paymentStatus') or 'normal'
+    payment_status_label = ledger_payload.get('paymentStatusLabel') or '일반 납품'
+    payment_status_evidence = ledger_payload.get('paymentStatusEvidence') or ''
+
     if ledger_payload.get('paymentSource') != 'prepayment':
         payload = dict(empty_without_prepayment)
+        payload['payment_type'] = ledger_payload.get('paymentType') or 'normal'
+        payload['paymentType'] = payload['payment_type']
+        payload['payment_type_label'] = ledger_payload.get('paymentTypeLabel') or '일반 납품'
+        payload['paymentTypeLabel'] = payload['payment_type_label']
+        payload['payment_status'] = payment_status
+        payload['paymentStatus'] = payment_status
+        payload['payment_status_label'] = payment_status_label
+        payload['paymentStatusLabel'] = payment_status_label
+        payload['payment_status_evidence'] = payment_status_evidence
+        payload['paymentStatusEvidence'] = payment_status_evidence
         payload['payment_evidence'] = ledger_payload.get('paymentEvidence') or payload['payment_evidence']
         payload['paymentEvidence'] = payload['payment_evidence']
         return payload
@@ -361,6 +384,12 @@ def _schedule_prepayment_payload(schedule):
         'paymentType': ledger_payload.get('paymentType') or 'prepayment_deduction',
         'payment_type_label': ledger_payload.get('paymentTypeLabel') or '선결제 차감 납품',
         'paymentTypeLabel': ledger_payload.get('paymentTypeLabel') or '선결제 차감 납품',
+        'payment_status': payment_status,
+        'paymentStatus': payment_status,
+        'payment_status_label': payment_status_label,
+        'paymentStatusLabel': payment_status_label,
+        'payment_status_evidence': payment_status_evidence,
+        'paymentStatusEvidence': payment_status_evidence,
         'prepayment_id': ledger_payload.get('prepaymentId'),
         'prepaymentId': ledger_payload.get('prepaymentId'),
         'prepayment_amount': ledger_payload.get('prepaymentAmount') or 0,
@@ -369,6 +398,8 @@ def _schedule_prepayment_payload(schedule):
         'prepaymentUsages': usage_rows,
         'payment_evidence': ledger_payload.get('paymentEvidence') or '',
         'paymentEvidence': ledger_payload.get('paymentEvidence') or '',
+        'ledger_source': ledger_source,
+        'ledgerSource': ledger_source,
     }
 
 

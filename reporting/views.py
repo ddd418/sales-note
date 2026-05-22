@@ -14952,6 +14952,10 @@ def _ai_workspace_question_delivery_payload(delivery):
         delivery.get('paymentStatusLabel') or delivery.get('payment_status_label'),
         120,
     )
+    payment_status_evidence = _ai_workspace_question_text(
+        delivery.get('paymentStatusEvidence') or delivery.get('payment_status_evidence'),
+        320,
+    )
     prepayment_amount = _money_int(delivery.get('prepaymentAmount') or delivery.get('prepayment_amount') or 0)
     prepayment_usages = []
     for usage in _ai_json_list(delivery.get('prepaymentUsages') or delivery.get('prepayment_usages'))[:4]:
@@ -14980,6 +14984,7 @@ def _ai_workspace_question_delivery_payload(delivery):
         'paymentSourceLabel': payment_label,
         'paymentStatus': payment_status,
         'paymentStatusLabel': payment_status_label,
+        'paymentStatusEvidence': payment_status_evidence,
         'prepaymentId': delivery.get('prepaymentId') or delivery.get('prepayment_id'),
         'prepaymentAmount': prepayment_amount,
         'prepaymentAmountLabel': _ai_workspace_money(prepayment_amount),
@@ -14987,6 +14992,10 @@ def _ai_workspace_question_delivery_payload(delivery):
         'paymentEvidence': _ai_workspace_question_text(
             delivery.get('paymentEvidence') or delivery.get('payment_evidence'),
             320,
+        ),
+        'ledgerSource': _ai_workspace_question_text(
+            delivery.get('ledgerSource') or delivery.get('ledger_source') or 'common_account_ledger',
+            80,
         ),
         'notes': _ai_workspace_question_text(delivery.get('notes'), 280),
     }
@@ -15008,11 +15017,13 @@ def _ai_workspace_question_delivery_payment_payload(delivery):
         'paymentSourceLabel': payload['paymentSourceLabel'],
         'paymentStatus': payload['paymentStatus'],
         'paymentStatusLabel': payload['paymentStatusLabel'],
+        'paymentStatusEvidence': payload['paymentStatusEvidence'],
         'prepaymentId': payload['prepaymentId'],
         'prepaymentAmount': payload['prepaymentAmount'],
         'prepaymentAmountLabel': payload['prepaymentAmountLabel'],
         'prepaymentUsages': payload['prepaymentUsages'],
         'paymentEvidence': payload['paymentEvidence'],
+        'ledgerSource': payload['ledgerSource'],
     }
 
 
@@ -15026,6 +15037,18 @@ def _ai_workspace_question_delivery_payment_split(deliveries, limit_per_bucket=2
     without_prepayment_deliveries = [item for item in rows if item.get('paymentSource') != 'prepayment']
 
     return {
+        'source': 'common_account_ledger',
+        'ledgerScope': 'department_or_all_accessible_departments',
+        'answerMode': 'deterministic_ledger',
+        'usesNotesForClassification': False,
+        'evidenceFields': [
+            'Schedule.delivery_payment_status',
+            'Schedule.delivery_payment_type',
+            'Schedule.use_prepayment',
+            'Schedule.prepayment',
+            'Schedule.prepayment_amount',
+            'PrepaymentUsage',
+        ],
         'classificationRule': (
             '납품 결제 상태는 Schedule.delivery_payment_status를 우선 참고한다. '
             '선결제 사용 납품은 Schedule.delivery_payment_status=prepayment_deduction, '
@@ -15778,6 +15801,8 @@ def _ai_workspace_delivery_payment_line(item):
         item.get('date') or '날짜 없음',
         item.get('customer') or '고객명 미정',
     ]
+    if item.get('scheduleId'):
+        parts.append(f"Schedule #{item.get('scheduleId')}")
     amount_label = item.get('amountLabel') or _ai_workspace_money(item.get('amount') or 0)
     if amount_label:
         parts.append(amount_label)
@@ -15792,6 +15817,8 @@ def _ai_workspace_delivery_payment_line(item):
         parts.append(f"선결제 차감 {item.get('prepaymentAmountLabel') or _ai_workspace_money(item.get('prepaymentAmount'))}")
     if item.get('paymentEvidence'):
         parts.append(item.get('paymentEvidence'))
+    elif item.get('paymentStatusEvidence'):
+        parts.append(item.get('paymentStatusEvidence'))
     return ' / '.join(part for part in parts if part)
 
 
@@ -16054,7 +16081,7 @@ def _ai_workspace_question_fallback(question, context):
                 ),
                 'bullets': [
                     '선결제 사용 납품: 0건',
-                    '선결제 사용 기록 없는 납품: 0건',
+                    '일반 납품/선결제 사용 기록 없는 납품: 0건',
                     '메모 문구만으로 선결제 납품을 추정하지 않았습니다.',
                 ],
                 'evidence': [{'label': '분류 기준', 'value': delivery_payment_split.get('classificationRule') or '구조화 납품/선결제 사용 내역 없음'}],
@@ -16076,18 +16103,18 @@ def _ai_workspace_question_fallback(question, context):
             without_prepayment_lines.append(f"- 외 {delivery_payment_split.get('omittedWithoutPrepaymentCount')}건은 목록 길이 제한으로 생략")
 
         summary_text = (
-            'CRM 구조화 데이터 기준으로만 분리했습니다. 선결제 납품은 '
+            'CRM 공통 원장 데이터 기준으로만 분리했습니다. 선결제 납품은 '
             '`Schedule.delivery_payment_status`, `Schedule.delivery_payment_type`, `Schedule.use_prepayment`, `Schedule.prepayment`, '
             '`Schedule.prepayment_amount`, `PrepaymentUsage` 중 하나가 공통 계정 원장에서 확인된 납품만 넣었습니다. 메모에 "선결제"라는 말이 있어도 '
             '실제 선결제 사용 내역이 없으면 선결제 납품으로 분류하지 않았습니다.\n\n'
             f"1) 선결제 사용 납품 ({delivery_payment_split.get('prepaymentCount') or 0}건)\n"
             + '\n'.join(prepayment_lines)
             + '\n\n'
-            f"2) 선결제 사용 기록 없는 납품 ({delivery_payment_split.get('withoutPrepaymentCount') or 0}건)\n"
+            f"2) 일반 납품 / 선결제 사용 기록 없는 납품 ({delivery_payment_split.get('withoutPrepaymentCount') or 0}건)\n"
             + '\n'.join(without_prepayment_lines)
             + '\n\n'
-            '주의: 납품 결제 상태가 정산 완료/결제 확인 필요/취소·반품으로 명시된 경우에는 해당 상태를 우선 함께 표시합니다. '
-            '명시 상태가 없는 두 번째 목록은 "일반결제 확정"이 아니라 "선결제 사용 기록 없음"으로 보는 것이 정확합니다.'
+            '주의: 납품 결제 상태가 일반 납품/정산 완료/결제 확인 필요/취소·반품으로 명시된 경우에는 해당 상태를 함께 표시합니다. '
+            '두 번째 목록은 원장상 선결제 차감 근거가 없는 납품이며, 각 행의 결제 상태와 근거 문구를 같이 확인해야 합니다.'
         )
         evidence_rows = [{'label': '분류 기준', 'value': delivery_payment_split.get('classificationRule') or ''}]
         for index, item in enumerate(prepayment_deliveries[:4], start=1):
@@ -16113,7 +16140,7 @@ def _ai_workspace_question_fallback(question, context):
                     f"납품금액 {_ai_workspace_money(delivery_payment_split.get('withoutPrepaymentDeliveryAmount') or 0)}"
                 ),
                 '메모/메일/이전 AI 답변은 선결제 납품 분류 근거로 쓰지 않았습니다.',
-                '명시 결제 상태가 없는 납품은 "일반결제 확정"보다 "선결제 사용 기록 없음"이라고 답해야 합니다.',
+                '각 납품의 결제 상태와 차감 여부는 Schedule/PrepaymentUsage 구조화 원장을 기준으로 답했습니다.',
             ],
             'evidence': _ai_workspace_question_evidence_payload(evidence_rows, limit=9, value_limit=700),
             'actionItems': [],
@@ -16725,10 +16752,10 @@ def _ai_workspace_question_response_guidance(question):
             'intent': 'delivery_payment_split',
             'instruction': (
                 '선결제/일반결제/선결제 없이 납품 분리 질문이다. '
-                'crmContext.deliveryPaymentSplit의 prepaymentDeliveries와 withoutPrepaymentDeliveries만 기준으로 답한다. '
+                '답변은 공통 계정 원장인 crmContext.deliveryPaymentSplit의 prepaymentDeliveries와 withoutPrepaymentDeliveries만 기준으로 답한다. '
                 'Schedule.delivery_payment_status가 정산 완료/결제 확인 필요/취소·반품이면 그 상태를 함께 표시한다. '
                 '메모에 선결제 표현이 있어도 Schedule.delivery_payment_status, Schedule.delivery_payment_type, PrepaymentUsage 또는 Schedule 선결제 필드가 없으면 선결제 납품으로 분류하지 않는다. '
-                '명시 상태가 없으면 일반결제 확정이라고 쓰지 말고 "선결제 사용 기록 없음"으로 표현한다.'
+                '납품일, 품목, 선결제 차감 여부, 원장 근거를 같이 쓰고, recentNotes/recentEmails/recentQuestionLogs는 분류 근거로 쓰지 않는다.'
             ),
         }
 
@@ -16816,6 +16843,10 @@ def _ai_workspace_generate_department_question_answer(
     prompt_cache_key='sales-note:ai-workspace-question:v1',
 ):
     fallback = _ai_workspace_question_fallback(question, context)
+    if _ai_workspace_question_is_delivery_payment_split(question):
+        fallback.setdefault('actionItems', [])
+        return _ai_workspace_apply_product_fact_guard(fallback, context), 'ledger', False
+
     use_web_search = bool(allow_web_search and _ai_workspace_question_needs_web_search(question))
     try:
         from ai_chat.services import (

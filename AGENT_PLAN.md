@@ -1,5 +1,46 @@
 # AGENT_PLAN.md
 
+## 2026-05-22 AI delivery payment ledger-only answer plan
+
+**Background**:
+
+- User wants AI answers about 선결제/일반 납품 to stop reading notes and guessing.
+- Customer detail, reports, Excel, and AI should all use the same department/lab account delivery ledger facts.
+- The existing AI prompt already includes delivery payment split rules, but payment split questions can still be sent to OpenAI when a model key is available.
+- `ai_chat.services` uses the shared `delivery_payment_payload()` helper, but it does not fully expose the newer `paymentStatus` fields to AI context yet.
+
+**DB change required**: No.
+
+- Reuse `Schedule.delivery_payment_status`, `Schedule.delivery_payment_type`, `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, and `PrepaymentUsage`.
+- No migrations are needed.
+
+**Implementation scope**:
+
+- Backend:
+  - Make delivery payment split questions return a deterministic ledger answer before any OpenAI call.
+  - Mark the response source as a structured ledger answer and keep question logs/audit history intact.
+  - Enrich `deliveryPaymentSplit` with ledger source metadata and evidence field names so the basis is explicit.
+  - Include delivery date, item summary, payment status label, prepayment deduction amount, and structured evidence in answer/evidence rows.
+  - Propagate `paymentStatus`, `paymentStatusLabel`, and `paymentStatusEvidence` from the shared delivery ledger helper through AI quote/delivery data.
+  - Preserve AI Workspace for other strategy questions and keep AI UI out of customer/account detail.
+- Frontend:
+  - Accept the new `ledger` source for AI Workspace question responses and label it as CRM 원장 답변.
+- Tests/docs:
+  - Add/update focused tests proving payment split questions do not call OpenAI and that memo-only “선결제” text stays in the non-prepayment bucket.
+  - Run focused backend AI tests, Django checks, migration dry-run, frontend typecheck/build, and deployment smoke.
+
+**Validation plan**:
+
+- `python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py`
+- Focused AI Workspace payment split tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, Railway deployment/smoke.
+
 ## 2026-05-22 Delivery payment status explicit field plan
 
 **Background**:

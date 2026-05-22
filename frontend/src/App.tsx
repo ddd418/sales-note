@@ -17857,6 +17857,11 @@ function AIWorkspaceDepartmentQuestionPanel({
     : [
       { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
     ];
+  const answerSourceLabel = result?.source === 'openai'
+    ? `${result.modelLabel || 'AI'} 답변${result.webSearchUsed ? ' · 웹 검색' : ''}`
+    : result?.source === 'ledger'
+      ? 'CRM 원장 답변'
+      : 'CRM 기반 답변';
 
   useEffect(() => {
     setReviewMode('');
@@ -17966,7 +17971,7 @@ function AIWorkspaceDepartmentQuestionPanel({
         <article className="ai-department-question-answer">
           <div className="ai-department-question-answer-head">
             <p>{answer.summary}</p>
-            <span>{result.source === 'openai' ? `${result.modelLabel || 'AI'} 답변${result.webSearchUsed ? ' · 웹 검색' : ''}` : 'CRM 기반 답변'}</span>
+            <span>{answerSourceLabel}</span>
           </div>
           {decision?.recommendedChoice ? (
             <section className="ai-department-question-decision">
