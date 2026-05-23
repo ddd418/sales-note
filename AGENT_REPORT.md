@@ -1,5 +1,80 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — AI 질문 기록 목록 답변 미리보기 숨김
+
+### 요약
+
+- AI Workspace의 `질문/답변 기록` 목록 카드에서 답변 요약 미리보기를 제거했습니다.
+- 목록에서는 질문 내용, 생성일/모델, 상세 이동, 삭제 버튼, 추천 선택 표시만 유지합니다.
+- 질문 기록 상세 화면은 기존처럼 답변 본문과 근거 블록을 표시합니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- 질문 기록 목록이 답변 본문으로 길어지지 않아 훑어보기 쉬워졌습니다.
+- 답변 내용은 클릭 후 상세 화면에서 확인하는 흐름으로 정리했습니다.
+
+### 기존 기능 보존
+
+- DB/model/migration 변경은 없습니다.
+- AI 질문 기록 API 응답과 저장 구조는 변경하지 않았습니다.
+- 질문 기록 상세 화면의 답변 표시, 삭제, 페이지네이션, 권한 흐름은 유지했습니다.
+- `/reporting/*` backend route와 인증/권한 로직은 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK
+→ Vite existing warning only: App chunk is larger than 500 kB
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warning only
+
+cd frontend && npm run e2e
+→ 7 passed
+```
+
+### 알려진 제한
+
+- 이번 변경은 AI 질문 기록 목록의 표시만 조정했습니다. AI Workspace 전체 화면 분리나 전용 E2E 케이스 추가는 후속 작업입니다.
+
+### 권장 다음 작업
+
+- AI Workspace도 `App.tsx`에서 route chunk로 분리해 비홈 화면 로딩 비용을 더 줄입니다.
+- AI 질문 기록 목록/상세에 대한 focused E2E를 추가합니다.
+
+### 운영 배포 상태
+
+- 배포 전 로컬 검증 완료.
+- commit/push 후 Railway frontend 배포 확인 예정.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. 운영 프론트엔드에서 로그인 후 `/ai-workspace/`로 이동합니다.
+2. `질문/답변 기록` 목록 카드에 질문 내용만 보이고 답변 요약 문장이 보이지 않는지 확인합니다.
+3. 목록의 질문 카드를 클릭해 상세 화면으로 이동합니다.
+4. 상세 화면에서 `질문`과 `답변` 본문이 정상적으로 보이는지 확인합니다.
+5. 목록으로 돌아와 삭제 버튼과 페이지 이동이 기존처럼 동작하는지 확인합니다.
+
 ## 2026-05-23 — Homepage Dashboard Speed Optimization
 
 ### 요약

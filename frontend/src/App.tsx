@@ -18334,7 +18334,6 @@ function AIWorkspaceDepartmentQuestionPanel({
                     <MoveUpRight size={13} />
                   </div>
                   <strong>{item.question}</strong>
-                  <p>{item.answerSummary}</p>
                   {item.decision?.recommendedChoice ? (
                     <em>{item.decision.recommendedChoice}</em>
                   ) : null}
