@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
-from django.db.models import Count, Max, Prefetch, Q
+from django.db.models import Count, Max, Q
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -27,7 +27,11 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from reporting.account_ledger import account_representative_followup
+from reporting.account_ledger import (
+    account_key_for_followup,
+    account_operational_ledgers_for_followups,
+    account_representative_followup,
+)
 from reporting.models import (
     AccountCleanupAuditLog,
     AccountCleanupDecision,
@@ -35,9 +39,6 @@ from reporting.models import (
     Department,
     FollowUp,
     History,
-    Prepayment,
-    PrepaymentUsage,
-    Quote,
     Schedule,
     ServiceCase,
 )
@@ -50,12 +51,8 @@ from reporting.views import (
     _analytics_api_scope_users,
     _analytics_user_payload,
     _api_login_required_response,
-    _customer_delivery_record_payload,
-    _customer_quote_record_payload,
-    _customer_quote_schedule_record_payload,
     _customers_edit_config,
     _date_or_none,
-    _money_int,
     _user_display_name,
     can_access_followup,
     can_modify_user_data,
@@ -297,13 +294,6 @@ def _reports_delivery_item_summary(record):
 
 
 def _reports_customer_operations_payload(followups_qs, filter_users, date_from, date_to, actor):
-    service_history_prefetch = Prefetch(
-        'histories',
-        queryset=History.objects.filter(
-            parent_history__isnull=True,
-        ).prefetch_related('delivery_items_set').order_by('-created_at'),
-        to_attr='_customer_record_histories',
-    )
     followups = list(
         followups_qs.select_related(
             'user', 'company', 'department',
@@ -313,7 +303,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
     account_key_by_followup_id = {}
     rows_by_key = {}
     for followup in followups:
-        account_key = f'department:{followup.department_id}' if followup.department_id else f'followup:{followup.id}'
+        account_key = account_key_for_followup(followup)
         account_key_by_followup_id[followup.id] = account_key
         contact_label = followup.customer_name or followup.manager or '담당자 미정'
         if account_key not in rows_by_key:
@@ -350,44 +340,40 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             'rows': [],
         }
 
-    delivery_schedules = list(
-        Schedule.objects.filter(
-            followup_id__in=followup_ids,
-            user__in=filter_users,
-            activity_type='delivery',
-            visit_date__gte=date_from,
-            visit_date__lte=date_to,
-        ).exclude(status='cancelled').select_related(
-            'user', 'followup', 'followup__company', 'followup__department', 'prepayment',
-        ).prefetch_related(
-            'delivery_items_set',
-            service_history_prefetch,
-            Prefetch(
-                'prepayment_usages',
-                queryset=PrepaymentUsage.objects.select_related(
-                    'prepayment', 'prepayment__customer',
-                ).order_by('id'),
-            ),
-        ).order_by('-visit_date', '-visit_time', '-id')
+    account_ledgers = account_operational_ledgers_for_followups(
+        followups,
+        filter_users,
+        date_from=date_from,
+        date_to=date_to,
+        actor=actor,
+        record_limit=50,
     )
-    for schedule in delivery_schedules:
-        row = rows_by_key.get(account_key_by_followup_id.get(schedule.followup_id))
+    for account_key, ledger in account_ledgers.items():
+        row = rows_by_key.get(account_key)
         if not row:
             continue
-        record = _customer_delivery_record_payload(schedule)
-        total_amount = record.get('totalAmount') or 0
-        row['deliveryCount'] += 1
-        row['deliveryAmount'] += total_amount
-        row['lastDeliveryDate'] = _reports_latest_date(row['lastDeliveryDate'], schedule.visit_date)
-        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], schedule.visit_date)
-        if record.get('paymentSource') == 'prepayment':
-            row['prepaymentDeliveryCount'] += 1
-            row['prepaymentDeliveryAmount'] += total_amount
-            row['prepaymentUsedAmount'] += record.get('prepaymentAmount') or 0
-        else:
-            row['normalDeliveryCount'] += 1
-            row['normalDeliveryAmount'] += total_amount
-        if len(row['recentDeliveryItems']) < 5:
+        ledger_metrics = ledger.get('metrics') or {}
+        for field in [
+            'deliveryCount',
+            'deliveryAmount',
+            'normalDeliveryCount',
+            'normalDeliveryAmount',
+            'prepaymentDeliveryCount',
+            'prepaymentDeliveryAmount',
+            'prepaymentUsedAmount',
+            'quoteCount',
+            'quoteAmount',
+            'prepaymentCount',
+            'prepaymentAmount',
+            'prepaymentBalance',
+            'prepaymentUsedTotal',
+        ]:
+            row[field] = ledger_metrics.get(field) or 0
+        for field in ['lastDeliveryDate', 'lastQuoteDate', 'lastPrepaymentDate', 'lastActivityDate']:
+            row[field] = ledger_metrics.get(field)
+
+        for record in (ledger.get('deliveryRecords') or [])[:5]:
+            total_amount = record.get('totalAmount') or 0
             row['recentDeliveryItems'].append({
                 'id': record.get('id'),
                 'date': record.get('date'),
@@ -399,87 +385,44 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
                 'paymentStatusLabel': record.get('paymentStatusLabel') or record.get('paymentSourceLabel') or '일반 납품',
                 'href': record.get('href') or '',
             })
-        _reports_append_drilldown(row, 'deliveries', {
-            'id': record.get('id'),
-            'date': record.get('date'),
-            'label': _reports_delivery_item_summary(record),
-            'amount': total_amount,
-            'customerName': record.get('customerName') or '',
-            'ownerName': record.get('ownerName') or '',
-            'paymentSource': record.get('paymentSource') or 'normal',
-            'paymentSourceLabel': record.get('paymentSourceLabel') or '일반 납품',
-            'paymentStatusLabel': record.get('paymentStatusLabel') or record.get('paymentSourceLabel') or '일반 납품',
-            'href': record.get('href') or '',
-        })
-
-    quote_schedules_by_id = set()
-    quote_records = list(
-        Quote.objects.filter(
-            followup_id__in=followup_ids,
-            user__in=filter_users,
-            quote_date__gte=date_from,
-            quote_date__lte=date_to,
-        ).select_related(
-            'schedule', 'followup', 'user',
-        ).prefetch_related('items__product').order_by('-quote_date', '-created_at', '-id')
-    )
-    for quote in quote_records:
-        row = rows_by_key.get(account_key_by_followup_id.get(quote.followup_id))
-        if not row:
-            continue
-        if quote.schedule_id:
-            quote_schedules_by_id.add(quote.schedule_id)
-        record = _customer_quote_record_payload(quote)
-        row['quoteCount'] += 1
-        row['quoteAmount'] += record.get('totalAmount') or 0
-        row['lastQuoteDate'] = _reports_latest_date(row['lastQuoteDate'], quote.quote_date)
-        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], quote.quote_date)
-        _reports_append_drilldown(row, 'quotes', {
-            'id': record.get('id'),
-            'date': record.get('date'),
-            'label': record.get('quoteNumber') or '견적',
-            'amount': record.get('totalAmount') or 0,
-            'customerName': record.get('customerName') or '',
-            'ownerName': record.get('ownerName') or '',
-            'statusLabel': record.get('statusLabel') or '',
-            'href': record.get('href') or '',
-        })
-
-    quote_schedules = list(
-        Schedule.objects.filter(
-            followup_id__in=followup_ids,
-            user__in=filter_users,
-            activity_type='quote',
-            visit_date__gte=date_from,
-            visit_date__lte=date_to,
-        ).exclude(
-            id__in=quote_schedules_by_id,
-        ).select_related(
-            'user', 'followup', 'followup__company', 'followup__department',
-        ).prefetch_related(
-            'delivery_items_set',
-            service_history_prefetch,
-        ).order_by('-visit_date', '-visit_time', '-id')
-    )
-    for schedule in quote_schedules:
-        row = rows_by_key.get(account_key_by_followup_id.get(schedule.followup_id))
-        if not row:
-            continue
-        record = _customer_quote_schedule_record_payload(schedule)
-        row['quoteCount'] += 1
-        row['quoteAmount'] += record.get('totalAmount') or 0
-        row['lastQuoteDate'] = _reports_latest_date(row['lastQuoteDate'], schedule.visit_date)
-        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], schedule.visit_date)
-        _reports_append_drilldown(row, 'quotes', {
-            'id': record.get('id'),
-            'date': record.get('date'),
-            'label': record.get('quoteNumber') or '견적 일정',
-            'amount': record.get('totalAmount') or 0,
-            'customerName': record.get('customerName') or '',
-            'ownerName': record.get('ownerName') or '',
-            'statusLabel': record.get('statusLabel') or '',
-            'href': record.get('href') or '',
-        })
+        for record in (ledger.get('deliveryRecords') or [])[:6]:
+            total_amount = record.get('totalAmount') or 0
+            _reports_append_drilldown(row, 'deliveries', {
+                'id': record.get('id'),
+                'date': record.get('date'),
+                'label': _reports_delivery_item_summary(record),
+                'amount': total_amount,
+                'customerName': record.get('customerName') or '',
+                'ownerName': record.get('ownerName') or '',
+                'paymentSource': record.get('paymentSource') or 'normal',
+                'paymentSourceLabel': record.get('paymentSourceLabel') or '일반 납품',
+                'paymentStatusLabel': record.get('paymentStatusLabel') or record.get('paymentSourceLabel') or '일반 납품',
+                'href': record.get('href') or '',
+            })
+        for record in (ledger.get('quoteRecords') or [])[:6]:
+            _reports_append_drilldown(row, 'quotes', {
+                'id': record.get('id'),
+                'date': record.get('date'),
+                'label': record.get('quoteNumber') or ('견적 일정' if record.get('recordType') == 'quote_schedule' else '견적'),
+                'amount': record.get('totalAmount') or 0,
+                'customerName': record.get('customerName') or '',
+                'ownerName': record.get('ownerName') or '',
+                'statusLabel': record.get('statusLabel') or '',
+                'href': record.get('href') or '',
+            })
+        for record in (ledger.get('prepaymentRecords') or [])[:6]:
+            prepayment_id = record.get('id')
+            _reports_append_drilldown(row, 'prepayments', {
+                'id': prepayment_id,
+                'date': record.get('paymentDate'),
+                'label': record.get('payerName') or record.get('customerName') or '입금자 미정',
+                'amount': record.get('amount') or 0,
+                'balance': record.get('balance') or 0,
+                'statusLabel': record.get('statusLabel') or '',
+                'customerName': record.get('customerName') or '',
+                'ownerName': record.get('ownerName') or '',
+                'href': f'/prepayments/{prepayment_id}/' if prepayment_id else '',
+            })
 
     open_service_statuses = ['received', 'in_progress', 'waiting']
     service_cases = list(
@@ -571,41 +514,6 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             'customerName': schedule.followup.customer_name or schedule.followup.manager or '',
             'ownerName': _user_display_name(schedule.user),
             'href': f'/schedules/{schedule.id}/',
-        })
-
-    department_ids = [followup.department_id for followup in followups if followup.department_id]
-    prepayments = list(
-        Prepayment.objects.filter(
-            created_by__in=filter_users,
-        ).filter(
-            Q(customer_id__in=followup_ids) | Q(department_id__in=department_ids)
-        ).select_related('customer', 'department', 'created_by').distinct().order_by('-payment_date', '-created_at')
-    )
-    for prepayment in prepayments:
-        account_key = (
-            f'department:{prepayment.department_id}'
-            if prepayment.department_id else account_key_by_followup_id.get(prepayment.customer_id)
-        )
-        row = rows_by_key.get(account_key)
-        if not row:
-            continue
-        amount = _money_int(prepayment.amount)
-        balance = _money_int(prepayment.balance)
-        row['prepaymentCount'] += 1
-        row['prepaymentAmount'] += amount
-        row['prepaymentBalance'] += balance
-        row['prepaymentUsedTotal'] += max(amount - balance, 0)
-        row['lastPrepaymentDate'] = _reports_latest_date(row['lastPrepaymentDate'], prepayment.payment_date)
-        _reports_append_drilldown(row, 'prepayments', {
-            'id': prepayment.id,
-            'date': _date_or_none(prepayment.payment_date),
-            'label': prepayment.payer_name or (prepayment.customer.customer_name if prepayment.customer_id else '입금자 미정'),
-            'amount': amount,
-            'balance': balance,
-            'statusLabel': prepayment.get_status_display(),
-            'customerName': prepayment.customer.customer_name if prepayment.customer_id else '',
-            'ownerName': _user_display_name(prepayment.created_by),
-            'href': f'/prepayments/{prepayment.id}/',
         })
 
     rows = sorted(

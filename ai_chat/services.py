@@ -447,61 +447,173 @@ def _empty_quote_delivery_data():
     }
 
 
+def _account_ledger_items_for_ai(items, amount_key):
+    payload = []
+    for item in items or []:
+        product_name = (
+            item.get('productCode')
+            or item.get('itemName')
+            or item.get('productDescription')
+            or '미정'
+        )
+        row = {
+            'product': product_name,
+            'quantity': item.get('quantity') or 0,
+            'unit_price': item.get('effectiveUnitPrice') or item.get('unitPrice') or 0,
+            'subtotal': 0,
+            'total_price': 0,
+        }
+        if amount_key == 'subtotal':
+            row['subtotal'] = item.get('totalPrice') or 0
+        else:
+            row['total_price'] = item.get('totalPrice') or 0
+        payload.append(row)
+    return payload
+
+
+def _account_ledger_payment_payload_for_ai(record):
+    ledger_source = record.get('ledgerSource') or 'common_account_ledger'
+    usage_rows = []
+    for usage in record.get('prepaymentUsages') or []:
+        used_at = usage.get('usedAt') or ''
+        payment_date = usage.get('paymentDate') or ''
+        usage_rows.append({
+            'id': usage.get('id'),
+            'prepayment_id': usage.get('prepaymentId'),
+            'prepaymentId': usage.get('prepaymentId'),
+            'payment_date': payment_date,
+            'paymentDate': payment_date,
+            'payer_name': usage.get('payerName') or '',
+            'payerName': usage.get('payerName') or '',
+            'product': usage.get('productName') or '',
+            'quantity': usage.get('quantity') or 1,
+            'amount': usage.get('amount') or 0,
+            'remaining_balance': usage.get('remainingBalance') or 0,
+            'remainingBalance': usage.get('remainingBalance') or 0,
+            'used_at': used_at[:10] if used_at else '',
+            'usedAt': used_at[:10] if used_at else '',
+        })
+
+    payment_status = record.get('paymentStatus') or 'normal'
+    payment_status_label = record.get('paymentStatusLabel') or '일반 납품'
+    if record.get('paymentSource') != 'prepayment':
+        return {
+            'payment_source': 'without_prepayment',
+            'paymentSource': 'normal',
+            'payment_source_label': '선결제 사용 기록 없음',
+            'paymentSourceLabel': '선결제 사용 기록 없음',
+            'payment_type': record.get('paymentType') or 'normal',
+            'paymentType': record.get('paymentType') or 'normal',
+            'payment_type_label': record.get('paymentTypeLabel') or '일반 납품',
+            'paymentTypeLabel': record.get('paymentTypeLabel') or '일반 납품',
+            'payment_status': payment_status,
+            'paymentStatus': payment_status,
+            'payment_status_label': payment_status_label,
+            'paymentStatusLabel': payment_status_label,
+            'payment_status_evidence': record.get('paymentStatusEvidence') or '',
+            'paymentStatusEvidence': record.get('paymentStatusEvidence') or '',
+            'prepayment_id': None,
+            'prepaymentId': None,
+            'prepayment_amount': 0,
+            'prepaymentAmount': 0,
+            'prepayment_usages': usage_rows,
+            'prepaymentUsages': usage_rows,
+            'payment_evidence': record.get('paymentEvidence') or '',
+            'paymentEvidence': record.get('paymentEvidence') or '',
+            'ledger_source': ledger_source,
+            'ledgerSource': ledger_source,
+        }
+
+    return {
+        'payment_source': 'prepayment',
+        'paymentSource': 'prepayment',
+        'payment_source_label': record.get('paymentSourceLabel') or '선결제 차감 납품',
+        'paymentSourceLabel': record.get('paymentSourceLabel') or '선결제 차감 납품',
+        'payment_type': record.get('paymentType') or 'prepayment_deduction',
+        'paymentType': record.get('paymentType') or 'prepayment_deduction',
+        'payment_type_label': record.get('paymentTypeLabel') or '선결제 차감 납품',
+        'paymentTypeLabel': record.get('paymentTypeLabel') or '선결제 차감 납품',
+        'payment_status': payment_status,
+        'paymentStatus': payment_status,
+        'payment_status_label': payment_status_label,
+        'paymentStatusLabel': payment_status_label,
+        'payment_status_evidence': record.get('paymentStatusEvidence') or '',
+        'paymentStatusEvidence': record.get('paymentStatusEvidence') or '',
+        'prepayment_id': record.get('prepaymentId'),
+        'prepaymentId': record.get('prepaymentId'),
+        'prepayment_amount': record.get('prepaymentAmount') or 0,
+        'prepaymentAmount': record.get('prepaymentAmount') or 0,
+        'prepayment_usages': usage_rows,
+        'prepaymentUsages': usage_rows,
+        'payment_evidence': record.get('paymentEvidence') or '',
+        'paymentEvidence': record.get('paymentEvidence') or '',
+        'ledger_source': ledger_source,
+        'ledgerSource': ledger_source,
+    }
+
+
 def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
     """견적/납품 관련 모델과 일정 품목 데이터를 하나의 AI 입력으로 통합한다."""
-    from reporting.models import Quote, History, Schedule
+    from reporting.account_ledger import account_operational_ledger_for_followups
+    from reporting.models import FollowUp, History
 
     followup_ids = [followup_id for followup_id in dict.fromkeys(followup_ids or []) if followup_id]
     if not followup_ids:
         return _empty_quote_delivery_data()
 
+    followups = list(
+        FollowUp.objects.filter(
+            id__in=followup_ids,
+            user=user,
+        ).select_related('company', 'department', 'user')
+    )
+    if not followups:
+        return _empty_quote_delivery_data()
+
     quote_list = []
     delivery_list = []
-
-    quotes = Quote.objects.filter(
-        user=user,
-        followup_id__in=followup_ids,
-    ).select_related(
-        'followup',
-        'schedule',
-    ).prefetch_related(
-        'items__product',
-        'schedule__delivery_items_set__product',
-    ).order_by('-quote_date', '-created_at')
-
     quote_schedule_ids = set()
-    for q in quotes:
-        if q.schedule_id:
-            quote_schedule_ids.add(q.schedule_id)
+    delivery_schedule_ids = set()
 
-        items = _quote_items_payload(q.items.all())
-        schedule_items = []
-        schedule_total = Decimal('0')
-        schedule_has_amount = False
-        if q.schedule_id and q.schedule:
-            schedule_items, schedule_total, schedule_has_amount = _delivery_items_payload(
-                q.schedule.delivery_items_set.all(),
-                amount_key='subtotal',
-            )
-        if not items and schedule_items:
-            items = schedule_items
-
-        total_amount = _money_to_int(q.total_amount)
-        if total_amount == 0 and schedule_has_amount:
-            total_amount = _money_to_int(schedule_total)
-
-        quote_list.append({
-            'quote_number': q.quote_number,
-            'date': q.quote_date.strftime('%Y-%m-%d') if q.quote_date else '',
-            'customer': q.followup.customer_name if q.followup else '미정',
-            'stage': q.get_stage_display(),
-            'total_amount': total_amount,
-            'converted_to_delivery': q.converted_to_delivery,
-            'items': items,
-            'source': '견적서',
-            'schedule_id': q.schedule_id,
-            'notes': q.notes or q.customer_feedback or '',
-        })
+    account_ledger = account_operational_ledger_for_followups(
+        followups,
+        [user],
+        actor=user,
+        record_limit=None,
+    )
+    for ledger in [account_ledger]:
+        for record in ledger.get('quoteRecords') or []:
+            schedule_id = record.get('scheduleId') or record.get('schedule_id')
+            if schedule_id:
+                quote_schedule_ids.add(schedule_id)
+            quote_list.append({
+                'quote_number': record.get('quoteNumber') or (
+                    f"견적일정-{schedule_id}" if record.get('recordType') == 'quote_schedule' else f"견적-{record.get('id')}"
+                ),
+                'date': record.get('date') or '',
+                'customer': record.get('customerName') or '미정',
+                'stage': record.get('stage') or record.get('statusLabel') or '',
+                'total_amount': record.get('totalAmount') or 0,
+                'converted_to_delivery': bool(record.get('converted_to_delivery')),
+                'items': _account_ledger_items_for_ai(record.get('items'), 'subtotal'),
+                'source': record.get('source') or '공통 견적 원장',
+                'schedule_id': schedule_id,
+                'notes': record.get('notes') or '',
+            })
+        for record in ledger.get('deliveryRecords') or []:
+            schedule_id = record.get('schedule_id') or record.get('scheduleId') or record.get('id')
+            if schedule_id:
+                delivery_schedule_ids.add(schedule_id)
+            delivery_list.append({
+                'date': record.get('date') or '',
+                'customer': record.get('customerName') or '미정',
+                'amount': record.get('totalAmount') or record.get('amount') or 0,
+                'items': _account_ledger_items_for_ai(record.get('items'), 'total_price'),
+                'source': record.get('source') or '공통 납품 원장',
+                'schedule_id': schedule_id,
+                'notes': record.get('notes') or '',
+                **_account_ledger_payment_payload_for_ai(record),
+            })
 
     quote_histories = History.objects.filter(
         user=user,
@@ -516,13 +628,11 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
         'delivery_items_set__product',
         'schedule__delivery_items_set__product',
         'schedule__prepayment_usages__prepayment',
+    ).exclude(
+        schedule_id__in=quote_schedule_ids,
     ).order_by('-created_at')
 
-    quote_history_schedule_ids = set()
     for history in quote_histories:
-        if history.schedule_id:
-            quote_history_schedule_ids.add(history.schedule_id)
-
         items, item_total, has_item_amount = _delivery_items_payload(
             history.delivery_items_set.all(),
             amount_key='subtotal',
@@ -547,40 +657,6 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
             'notes': history.content or '',
         })
 
-    excluded_quote_schedule_ids = quote_schedule_ids | quote_history_schedule_ids
-    quote_schedules = Schedule.objects.filter(
-        user=user,
-        followup_id__in=followup_ids,
-        activity_type='quote',
-    ).exclude(
-        status='cancelled',
-    ).exclude(
-        id__in=excluded_quote_schedule_ids,
-    ).select_related(
-        'followup',
-    ).prefetch_related(
-        'delivery_items_set__product',
-    ).order_by('-visit_date', '-visit_time')
-
-    for schedule in quote_schedules:
-        items, item_total, has_item_amount = _delivery_items_payload(
-            schedule.delivery_items_set.all(),
-            amount_key='subtotal',
-        )
-        total_amount = item_total if has_item_amount else schedule.expected_revenue
-        quote_list.append({
-            'quote_number': f"견적일정-{schedule.pk}",
-            'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
-            'customer': schedule.followup.customer_name if schedule.followup else '미정',
-            'stage': schedule.get_status_display(),
-            'total_amount': _money_to_int(total_amount),
-            'converted_to_delivery': bool(schedule.purchase_confirmed),
-            'items': items,
-            'source': '견적 일정',
-            'schedule_id': schedule.pk,
-            'notes': schedule.notes or '',
-        })
-
     delivery_histories = History.objects.filter(
         user=user,
         followup_id__in=followup_ids,
@@ -592,13 +668,11 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
     ).prefetch_related(
         'delivery_items_set__product',
         'schedule__delivery_items_set__product',
+    ).exclude(
+        schedule_id__in=delivery_schedule_ids,
     ).order_by('-created_at')
 
-    delivery_history_schedule_ids = set()
     for history in delivery_histories:
-        if history.schedule_id:
-            delivery_history_schedule_ids.add(history.schedule_id)
-
         items, item_total, has_item_amount = _delivery_items_payload(
             history.delivery_items_set.all(),
             amount_key='total_price',
@@ -625,39 +699,6 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
             'schedule_id': history.schedule_id,
             'notes': history.content or '',
             **_schedule_prepayment_payload(history.schedule if history.schedule_id else None),
-        })
-
-    delivery_schedules = Schedule.objects.filter(
-        user=user,
-        followup_id__in=followup_ids,
-        activity_type='delivery',
-    ).exclude(
-        status='cancelled',
-    ).exclude(
-        id__in=delivery_history_schedule_ids,
-    ).select_related(
-        'followup',
-        'prepayment',
-    ).prefetch_related(
-        'delivery_items_set__product',
-        'prepayment_usages__prepayment',
-    ).order_by('-visit_date', '-visit_time')
-
-    for schedule in delivery_schedules:
-        items, item_total, has_item_amount = _delivery_items_payload(
-            schedule.delivery_items_set.all(),
-            amount_key='total_price',
-        )
-        amount = item_total if has_item_amount else schedule.expected_revenue
-        delivery_list.append({
-            'date': schedule.visit_date.strftime('%Y-%m-%d') if schedule.visit_date else '',
-            'customer': schedule.followup.customer_name if schedule.followup else '미정',
-            'amount': _money_to_int(amount),
-            'items': items,
-            'source': '납품 일정',
-            'schedule_id': schedule.pk,
-            'notes': schedule.notes or '',
-            **_schedule_prepayment_payload(schedule),
         })
 
     quote_list.sort(key=lambda item: item.get('date') or '', reverse=True)
@@ -1496,49 +1537,90 @@ def gather_prepayment_data(followups):
     팔로우업 목록(queryset)에 대한 선결제 데이터 수집.
     followups: FollowUp queryset (이미 권한 범위 내로 필터링됨)
     """
-    from django.db.models import Q
-    from reporting.models import Prepayment
     from datetime import date, timedelta
+    from reporting.account_ledger import account_operational_ledgers_for_followups
 
-    followup_ids = list(followups.values_list('id', flat=True))
-    department_ids = list(followups.exclude(department__isnull=True).values_list('department_id', flat=True).distinct())
-    prepayments = Prepayment.objects.filter(
-        Q(department_id__in=department_ids) |
-        Q(department__isnull=True, customer_id__in=followup_ids)
-    ).select_related('department', 'customer').prefetch_related('usages').order_by('-payment_date')
+    try:
+        followup_list = list(followups.select_related('user', 'company', 'department'))
+    except AttributeError:
+        followup_list = list(followups)
+    if not followup_list:
+        return {
+            'prepayments': [],
+            'summary': {
+                'total_count': 0,
+                'active_count': 0,
+                'total_remaining_balance': 0,
+                'stalled_count': 0,
+                'stalled_customers': [],
+            }
+        }
+
+    scope_users = [followup.user for followup in followup_list if getattr(followup, 'user_id', None)]
+    account_ledgers = account_operational_ledgers_for_followups(
+        followup_list,
+        scope_users,
+        record_limit=None,
+    )
 
     result = []
     today = date.today()
     stale_threshold = today - timedelta(days=90)
+    usages_by_prepayment_id = {}
+    prepayment_records = []
+    seen_prepayment_ids = set()
 
-    for p in prepayments:
-        usages = p.usages.all().order_by('-used_at')
+    def parse_ledger_date(value):
+        if not value:
+            return None
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return None
+
+    for ledger in account_ledgers.values():
+        for usage in ledger.get('prepaymentUsageRecords') or []:
+            usages_by_prepayment_id.setdefault(usage.get('prepaymentId'), []).append(usage)
+        for record in ledger.get('prepaymentRecords') or []:
+            record_id = record.get('id')
+            if record_id in seen_prepayment_ids:
+                continue
+            seen_prepayment_ids.add(record_id)
+            prepayment_records.append(record)
+
+    for record in sorted(prepayment_records, key=lambda item: (item.get('paymentDate') or '', item.get('id') or 0), reverse=True):
+        usages = sorted(
+            usages_by_prepayment_id.get(record.get('id'), []),
+            key=lambda item: item.get('usedAt') or '',
+            reverse=True,
+        )
         usage_list = []
         for u in usages:
+            used_date = parse_ledger_date(u.get('usedAt'))
             usage_list.append({
-                'product': u.product_name,
-                'quantity': u.quantity,
-                'amount': int(u.amount),
-                'remaining_after': int(u.remaining_balance),
-                'used_at': u.used_at.strftime('%Y-%m-%d'),
+                'product': u.get('productName') or '',
+                'quantity': u.get('quantity') or 0,
+                'amount': u.get('amount') or 0,
+                'remaining_after': u.get('remainingBalance') or 0,
+                'used_at': used_date.strftime('%Y-%m-%d') if used_date else '',
             })
-        last_usage = usages.first()
-        last_used_date = last_usage.used_at.date() if last_usage else None
+        last_usage = usages[0] if usages else None
+        last_used_date = parse_ledger_date(last_usage.get('usedAt')) if last_usage else None
         days_since_use = (today - last_used_date).days if last_used_date else None
         is_stalled = (
-            p.status == 'active'
-            and p.balance > 0
+            record.get('status') == 'active'
+            and (record.get('balance') or 0) > 0
             and (last_used_date is None or last_used_date < stale_threshold)
         )
         result.append({
-            'customer': p.customer.customer_name,
-            'original_amount': int(p.amount),
-            'balance': int(p.balance),
-            'used_amount': int(p.amount - p.balance),
-            'payment_date': p.payment_date.strftime('%Y-%m-%d'),
-            'status': p.status,
-            'status_display': p.get_status_display(),
-            'payer_name': p.payer_name,
+            'customer': record.get('customerName') or record.get('departmentName') or '계정 미정',
+            'original_amount': record.get('amount') or 0,
+            'balance': record.get('balance') or 0,
+            'used_amount': record.get('usedAmount') or 0,
+            'payment_date': record.get('paymentDate') or '',
+            'status': record.get('status') or '',
+            'status_display': record.get('statusLabel') or '',
+            'payer_name': record.get('payerName') or '',
             'last_used_date': last_used_date.strftime('%Y-%m-%d') if last_used_date else None,
             'days_since_last_use': days_since_use,
             'is_stalled': is_stalled,

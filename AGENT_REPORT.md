@@ -1,5 +1,85 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Account Ledger Service Consolidation
+
+### 요약
+
+- `reporting/account_ledger.py`를 부서/연구실 계정 기준 공통 원장 서비스로 확장했습니다.
+- 고객/계정 상세, `/reports/` 현황/엑셀, AI 견적/납품/선결제 문맥이 같은 납품, 견적, 선결제, 차감 계산을 참조하도록 연결했습니다.
+- 계정 원장 테스트 fixture를 공통 helper로 분리하고, 리포트/고객 상세/AI 숫자가 같은 서비스 결과와 일치하는 회귀 테스트를 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/services.py`
+- `reporting/account_ledger.py`
+- `reporting/api/reports.py`
+- `reporting/test_fixtures.py`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 부서 계정 기준 납품 원장, 견적 원장, 선결제 잔액 원장, 선결제 차감 내역을 한 서비스 레이어에서 생성합니다.
+- 선결제 차감 납품과 일반 납품의 금액/상태/증거 payload가 고객 상세, 리포트, AI에서 동일한 기준으로 노출됩니다.
+- `/reports/` 고객/계정별 현황표와 Excel 다운로드가 고객 상세 운영 기록과 같은 원장 계산을 사용합니다.
+- AI 답변 문맥도 공통 원장의 납품/견적/선결제 계산을 우선 사용하고, 일정에 연결되지 않은 기존 활동 기록만 보조 문맥으로 유지합니다.
+
+### 기존 기능 보존
+
+- 데이터 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 `/reporting/*`, `/reports/`, 고객 상세, 계정 상세, 선결제 API, Excel URL과 인증/권한 흐름을 유지했습니다.
+- 기존 Django template 호환 helper는 남기되 내부 payload 생성만 공통 원장 helper로 위임했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\account_ledger.py reporting\test_fixtures.py reporting\views.py reporting\api\reports.py ai_chat\services.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_common_account_ledger_feeds_reports_customer_detail_and_ai reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_customer_operations_with_structured_payment_split
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_splits_delivery_payment_source_from_structured_prepayment reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_ledger_splits_prepayment_deliveries_without_notes_inference reporting.tests.PrepaymentCustomerApiTests.test_account_prepayment_api_returns_department_scope_and_metrics reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_customer_operations_xlsx_export_downloads_table
+→ Ran 5 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 20 tests, OK
+```
+
+### 알려진 제한
+
+- 이번 작업은 서비스 정리와 계산 경로 통합입니다. React UI 변경은 없습니다.
+- 장비/A/S/교정 원장은 아직 별도 운영 모듈이며, 이번 공통 원장은 납품/견적/선결제/차감 범위에 집중했습니다.
+- 오래된 `History` 기반 견적/납품 활동은 AI 보조 문맥으로만 남겼고, 주요 합계는 일정/견적/선결제 구조화 원장을 기준으로 계산합니다.
+
+### 권장 다음 작업
+
+- 공통 원장 서비스 위에 account/prepayment/asset/AI API 모듈 분리를 이어 진행합니다.
+- 장비/A/S/교정 운영 검수 때 장비 원장도 계정 기준 service layer로 합칠 수 있는지 검토합니다.
+- 운영 데이터에서 부서 없는 담당자/선결제의 fallback 계정 묶임을 수동 확인합니다.
+
+### 운영 배포 상태
+
+- 배포 전: commit/push 이후 Railway web 배포와 운영 smoke 결과를 갱신합니다.
+
+### 운영 수동 확인 절차
+
+1. [리포트](https://sales-note-frontend-production.up.railway.app/reports/)에서 최근 30일 기간을 선택하고 계정 행의 납품/견적/선결제 합계를 확인합니다.
+2. 같은 계정의 `/accounts/<부서ID>/` 상세에서 운영 기록의 납품/견적/선결제 합계가 리포트 행과 맞는지 확인합니다.
+3. 리포트 드릴다운에서 선결제 차감 납품과 일반 납품의 라벨/금액이 구분되는지 확인합니다.
+4. 현황 Excel을 내려받아 납품 건수, 선결제 차감 납품, 선결제 잔액 열이 화면과 같은지 확인합니다.
+5. AI Workspace에서 해당 부서 질문을 던져 선결제 차감 납품이 일반 납품으로 섞이지 않는지 확인합니다.
+
 ## 2026-05-23 — Large File Split Phase 1
 
 ### 요약

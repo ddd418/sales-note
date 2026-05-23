@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Account ledger service consolidation plan
+
+**Background**:
+
+- User requested task `4-2. 공통 계정 원장 서비스 정리`.
+- Current account-level calculations are partially shared through `reporting/account_ledger.py`, but customer detail, reports, Excel, and AI still build delivery/quote/prepayment totals in separate code paths.
+- The business rule is that account history should be based on the `Department` account whenever possible, not on one individual `FollowUp` contact.
+
+**DB change required**: No.
+
+- This task is service/refactor only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Extend `reporting/account_ledger.py` into a common department-account ledger service:
+  - account key and account prepayment filter helpers
+  - delivery ledger records and payment split totals
+  - quote ledger records including Quote rows and quote schedules
+  - prepayment ledger records and balance totals
+  - prepayment usage/deduction records
+- Rewire `/reports/` customer operations API and Excel export to use the common ledger result for delivery, quote, prepayment, and deduction totals.
+- Rewire customer/account detail operational records to use the same common ledger result.
+- Rewire AI quote/delivery/prepayment context to consume the common ledger result so AI answers see the same delivery payment split as reports.
+- Add shared test fixture helper for department account ledger scenarios and use it in focused API/AI tests.
+
+**Validation plan**:
+
+- `python -m py_compile reporting/account_ledger.py reporting/views.py reporting/api/reports.py reporting/tests.py ai_chat/services.py`
+- Focused account ledger tests covering reports/customer detail/AI agreement
+- Existing `ReactReportsProfileBusinessCardApiTests`, `CustomersSummaryApiTests`, and AI payment split tests as practical
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Frontend build only if response payload shape requires TS changes.
+
 ## 2026-05-23 Large file split phase 1 plan
 
 **Background**:

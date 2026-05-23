@@ -37,6 +37,7 @@ from reporting.models import (
     UserProfile,
     UserCompany,
 )
+from reporting.test_fixtures import create_account_ledger_fixture
 
 
 FRONTEND_BASE_URL = 'https://sales-note-frontend-production.up.railway.app/'
@@ -528,6 +529,74 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         comparison = payload['comparison']['customerOperations']
         self.assertIn('deliveryCount', comparison['deltas'])
         self.assertIn('dateFrom', comparison)
+
+    def test_common_account_ledger_feeds_reports_customer_detail_and_ai(self):
+        from ai_chat.services import gather_prepayment_data, gather_quote_delivery_data
+        from reporting.account_ledger import account_operational_ledger_for_followups
+
+        today = timezone.localdate()
+        create_account_ledger_fixture(
+            self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=self.department,
+            today=today,
+            prefix='ledgercommon',
+        )
+        shared_followups = FollowUp.objects.filter(user=self.user, department=self.department)
+        service_ledger = account_operational_ledger_for_followups(
+            shared_followups,
+            [self.user],
+            actor=self.user,
+            record_limit=None,
+        )
+        service_metrics = service_ledger['metrics']
+        self.assertEqual(service_metrics['deliveryRecords'], 2)
+        self.assertEqual(service_metrics['deliveryAmount'], 90000)
+        self.assertEqual(service_metrics['prepaymentDeliveryRecords'], 1)
+        self.assertEqual(service_metrics['prepaymentUsedAmount'], 60000)
+        self.assertEqual(service_metrics['quoteRecords'], 1)
+        self.assertEqual(service_metrics['quoteAmount'], 110000)
+        self.assertEqual(service_metrics['prepaymentRecords'], 1)
+        self.assertEqual(service_metrics['prepaymentBalance'], 40000)
+
+        self.client.force_login(self.user)
+        reports_response = self.client.get(reverse('reporting:reports_summary_api'), {
+            'date_from': (today - timedelta(days=30)).isoformat(),
+            'date_to': today.isoformat(),
+        })
+        self.assertEqual(reports_response.status_code, 200)
+        reports_row = next(
+            row for row in reports_response.json()['customerOperations']['rows']
+            if row['id'] == self.department.id
+        )
+        self.assertEqual(reports_row['deliveryCount'], service_metrics['deliveryRecords'])
+        self.assertEqual(reports_row['deliveryAmount'], service_metrics['deliveryAmount'])
+        self.assertEqual(reports_row['prepaymentDeliveryCount'], service_metrics['prepaymentDeliveryRecords'])
+        self.assertEqual(reports_row['prepaymentUsedAmount'], service_metrics['prepaymentUsedAmount'])
+        self.assertEqual(reports_row['quoteCount'], service_metrics['quoteRecords'])
+        self.assertEqual(reports_row['quoteAmount'], service_metrics['quoteAmount'])
+        self.assertEqual(reports_row['prepaymentCount'], service_metrics['prepaymentRecords'])
+        self.assertEqual(reports_row['prepaymentBalance'], service_metrics['prepaymentBalance'])
+
+        account_response = self.client.get(reverse('reporting:account_detail_summary_api', args=[self.department.id]))
+        self.assertEqual(account_response.status_code, 200)
+        account_metrics = account_response.json()['operationalRecords']['metrics']
+        self.assertEqual(account_metrics['deliveryRecords'], service_metrics['deliveryRecords'])
+        self.assertEqual(account_metrics['quoteRecords'], service_metrics['quoteRecords'])
+        self.assertEqual(account_metrics['prepaymentRecords'], service_metrics['prepaymentRecords'])
+        self.assertEqual(account_metrics['prepaymentUsedAmount'], service_metrics['prepaymentUsedAmount'])
+
+        ai_quote_delivery = gather_quote_delivery_data(self.department, self.user)
+        self.assertEqual(ai_quote_delivery['summary']['total_deliveries'], service_metrics['deliveryRecords'])
+        self.assertEqual(ai_quote_delivery['summary']['total_delivery_amount'], service_metrics['deliveryAmount'])
+        self.assertEqual(ai_quote_delivery['summary']['total_quotes'], service_metrics['quoteRecords'])
+        self.assertEqual(ai_quote_delivery['summary']['total_quote_amount'], service_metrics['quoteAmount'])
+        self.assertIn('common_account_ledger', {row['ledgerSource'] for row in ai_quote_delivery['deliveries']})
+
+        ai_prepayments = gather_prepayment_data(shared_followups)
+        self.assertEqual(ai_prepayments['summary']['total_count'], service_metrics['prepaymentRecords'])
+        self.assertEqual(ai_prepayments['summary']['total_remaining_balance'], service_metrics['prepaymentBalance'])
 
     def test_reports_api_groups_customer_operations_by_department_account(self):
         today = timezone.localdate()

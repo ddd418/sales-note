@@ -20,9 +20,18 @@ from django.utils import timezone
 from .decorators import hanagwahak_only, get_allowed_action_types, get_allowed_activity_types, filter_service_for_non_hanagwahak
 from .readonly_api import api_login_required_or_readonly_response
 from .account_ledger import (
+    account_operational_ledger_for_followups,
     account_followups_for_followup,
     account_representative_followup,
+    delivery_record_payload as account_delivery_record_payload,
     delivery_payment_payload,
+    prepayment_account_company,
+    prepayment_account_department,
+    prepayment_account_filter,
+    prepayment_item_payload as account_prepayment_item_payload,
+    prepayment_usage_drilldown_payload as account_prepayment_usage_drilldown_payload,
+    quote_record_payload as account_quote_record_payload,
+    quote_schedule_record_payload as account_quote_schedule_record_payload,
     sync_schedule_delivery_payment_type,
 )
 import os
@@ -3861,31 +3870,7 @@ def _customer_delivery_payment_payload(schedule):
 
 
 def _customer_delivery_record_payload(schedule):
-    items = _customer_schedule_items(schedule, 'delivery_schedule')
-    total_amount = _customer_record_items_total(items)
-    if total_amount <= 0:
-        total_amount = _customer_schedule_fallback_history_amount(schedule, 'delivery_schedule')
-    payment_payload = _customer_delivery_payment_payload(schedule)
-    return {
-        'id': schedule.id,
-        'recordType': 'delivery_schedule',
-        'date': _date_or_none(schedule.visit_date),
-        'time': schedule.visit_time.isoformat(timespec='minutes') if schedule.visit_time else None,
-        'customerName': schedule.followup.customer_name or schedule.followup.manager or '',
-        'companyName': schedule.followup.company.name if schedule.followup and schedule.followup.company else '',
-        'departmentName': schedule.followup.department.name if schedule.followup and schedule.followup.department else '',
-        'ownerName': _user_display_name(schedule.user),
-        'status': schedule.status,
-        'statusLabel': schedule.get_status_display(),
-        'activityLabel': schedule.get_activity_type_display(),
-        'items': _customer_record_items_payload(items),
-        'itemCount': len(items),
-        'totalAmount': total_amount,
-        'notes': schedule.notes or '',
-        'href': f'/schedules/{schedule.id}/',
-        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
-        **payment_payload,
-    }
+    return account_delivery_record_payload(schedule)
 
 
 def _customer_delivery_record_payloads(followup, scope_users, limit=50):
@@ -3939,56 +3924,11 @@ def _customer_quote_item_payload(item):
 
 
 def _customer_quote_record_payload(quote):
-    items = [_customer_quote_item_payload(item) for item in quote.items.all().order_by('order', 'id')]
-    total_amount = _money_int(quote.total_amount) or sum(item['totalPrice'] for item in items)
-    schedule = quote.schedule
-    return {
-        'id': quote.id,
-        'recordType': 'quote',
-        'scheduleId': schedule.id if schedule else None,
-        'quoteNumber': quote.quote_number,
-        'date': _date_or_none(quote.quote_date or (schedule.visit_date if schedule else None)),
-        'validUntil': _date_or_none(quote.valid_until),
-        'customerName': quote.followup.customer_name or quote.followup.manager or '',
-        'companyName': quote.followup.company.name if quote.followup and quote.followup.company else '',
-        'departmentName': quote.followup.department.name if quote.followup and quote.followup.department else '',
-        'ownerName': _user_display_name(quote.user),
-        'status': quote.stage,
-        'statusLabel': quote.get_stage_display(),
-        'items': items,
-        'itemCount': len(items),
-        'totalAmount': total_amount,
-        'notes': quote.notes or quote.customer_feedback or '',
-        'href': f'/schedules/{schedule.id}/' if schedule else '',
-        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
-    }
+    return account_quote_record_payload(quote)
 
 
 def _customer_quote_schedule_record_payload(schedule):
-    items = _customer_schedule_items(schedule, 'quote')
-    total_amount = _customer_record_items_total(items)
-    if total_amount <= 0 and schedule.expected_revenue:
-        total_amount = _money_int(schedule.expected_revenue)
-    return {
-        'id': schedule.id,
-        'recordType': 'quote_schedule',
-        'scheduleId': schedule.id,
-        'quoteNumber': '',
-        'date': _date_or_none(schedule.visit_date),
-        'validUntil': None,
-        'customerName': schedule.followup.customer_name or schedule.followup.manager or '',
-        'companyName': schedule.followup.company.name if schedule.followup and schedule.followup.company else '',
-        'departmentName': schedule.followup.department.name if schedule.followup and schedule.followup.department else '',
-        'ownerName': _user_display_name(schedule.user),
-        'status': schedule.status,
-        'statusLabel': schedule.get_status_display(),
-        'items': _customer_record_items_payload(items),
-        'itemCount': len(items),
-        'totalAmount': total_amount,
-        'notes': schedule.notes or schedule.quote_extra_notes or '',
-        'href': f'/schedules/{schedule.id}/',
-        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
-    }
+    return account_quote_schedule_record_payload(schedule)
 
 
 def _customer_service_case_record_payload(case):
@@ -4076,44 +4016,16 @@ def _customer_service_schedule_record_payload(schedule):
 
 
 def _customer_operational_records_payload(followup, scope_users, actor):
-    service_history_prefetch = Prefetch(
-        'histories',
-        queryset=History.objects.filter(parent_history__isnull=True).prefetch_related('delivery_items_set').order_by('-created_at'),
-        to_attr='_customer_record_histories',
-    )
     shared_followups = _customer_shared_followups_queryset(followup)
-    delivery_records = _customer_delivery_record_payloads(followup, scope_users, limit=50)
-
-    quote_records_qs = Quote.objects.filter(
-        followup__in=shared_followups,
-        user__in=scope_users,
-    ).select_related(
-        'schedule', 'followup', 'followup__company', 'followup__department', 'user'
-    ).prefetch_related(
-        'items__product'
-    ).order_by('-quote_date', '-created_at', '-id')
-    quote_records = [_customer_quote_record_payload(quote) for quote in list(quote_records_qs[:50])]
-    quoted_schedule_ids = {record['scheduleId'] for record in quote_records if record.get('scheduleId')}
-    quote_schedules = list(
-        Schedule.objects.filter(
-            followup__in=shared_followups,
-            user__in=scope_users,
-            activity_type='quote',
-        ).exclude(
-            id__in=quoted_schedule_ids,
-        ).select_related(
-            'user', 'followup', 'followup__company', 'followup__department'
-        ).prefetch_related(
-            'delivery_items_set',
-            service_history_prefetch,
-        ).order_by('-visit_date', '-visit_time', '-id')[:50]
+    account_ledger = account_operational_ledger_for_followups(
+        list(shared_followups.select_related('user', 'company', 'department')),
+        scope_users,
+        actor=actor,
+        record_limit=50,
     )
-    quote_records.extend(_customer_quote_schedule_record_payload(schedule) for schedule in quote_schedules)
-    quote_records = sorted(
-        quote_records,
-        key=lambda row: (row.get('date') or '', row.get('id') or 0),
-        reverse=True,
-    )[:50]
+    ledger_metrics = account_ledger['metrics']
+    delivery_records = account_ledger['deliveryRecords']
+    quote_records = account_ledger['quoteRecords']
 
     asset_ids = list(_customer_assets_queryset(followup, scope_users).values_list('id', flat=True)[:200])
     service_cases = list(
@@ -4153,46 +4065,24 @@ def _customer_operational_records_payload(followup, scope_users, actor):
         reverse=True,
     )[:50]
 
-    account_filter = _prepayment_department_filter(followup.department) if followup.department_id else Q(customer=followup)
-    prepayments_qs = Prepayment.objects.filter(
-        account_filter,
-        created_by__in=scope_users,
-    ).select_related(
-        'department', 'department__company', 'company', 'customer', 'customer__company', 'customer__department', 'created_by'
-    ).annotate(
-        usage_count=Count('usages', distinct=True),
-    ).order_by('-payment_date', '-created_at', '-id')
-    prepayment_records = [
-        _prepayment_item_payload(prepayment, actor)
-        for prepayment in list(prepayments_qs[:50])
-    ]
-
-    prepayment_delivery_records = [
-        record for record in delivery_records
-        if record.get('paymentSource') == 'prepayment'
-    ]
-    normal_delivery_records = [
-        record for record in delivery_records
-        if record.get('paymentSource') != 'prepayment'
-    ]
-
     return {
         'metrics': {
             'serviceRecords': len(service_records),
-            'quoteRecords': len(quote_records),
-            'deliveryRecords': len(delivery_records),
-            'prepaymentDeliveryRecords': len(prepayment_delivery_records),
-            'normalDeliveryRecords': len(normal_delivery_records),
-            'prepaymentRecords': prepayments_qs.count(),
-            'deliveryAmount': sum(record.get('totalAmount') or 0 for record in delivery_records),
-            'prepaymentDeliveryAmount': sum(record.get('totalAmount') or 0 for record in prepayment_delivery_records),
-            'normalDeliveryAmount': sum(record.get('totalAmount') or 0 for record in normal_delivery_records),
-            'prepaymentUsedAmount': sum(record.get('prepaymentAmount') or 0 for record in prepayment_delivery_records),
+            'quoteRecords': ledger_metrics['quoteRecords'],
+            'deliveryRecords': ledger_metrics['deliveryRecords'],
+            'prepaymentDeliveryRecords': ledger_metrics['prepaymentDeliveryRecords'],
+            'normalDeliveryRecords': ledger_metrics['normalDeliveryRecords'],
+            'prepaymentRecords': ledger_metrics['prepaymentRecords'],
+            'deliveryAmount': ledger_metrics['deliveryAmount'],
+            'prepaymentDeliveryAmount': ledger_metrics['prepaymentDeliveryAmount'],
+            'normalDeliveryAmount': ledger_metrics['normalDeliveryAmount'],
+            'prepaymentUsedAmount': ledger_metrics['prepaymentUsedAmount'],
         },
         'serviceRecords': service_records,
         'quoteRecords': quote_records,
         'deliveryRecords': delivery_records,
-        'prepaymentRecords': prepayment_records,
+        'prepaymentRecords': account_ledger['prepaymentRecords'],
+        'prepaymentUsageRecords': account_ledger['prepaymentUsageRecords'],
     }
 
 
@@ -29533,31 +29423,15 @@ def _prepayment_list_scope(request, user_profile):
 
 
 def _prepayment_account_department(prepayment):
-    customer = getattr(prepayment, 'customer', None)
-    if getattr(prepayment, 'department_id', None):
-        return prepayment.department
-    if customer and customer.department_id:
-        return customer.department
-    return None
+    return prepayment_account_department(prepayment)
 
 
 def _prepayment_account_company(prepayment):
-    department = _prepayment_account_department(prepayment)
-    customer = getattr(prepayment, 'customer', None)
-    if getattr(prepayment, 'company_id', None):
-        return prepayment.company
-    if department and department.company_id:
-        return department.company
-    if customer and customer.company_id:
-        return customer.company
-    return None
+    return prepayment_account_company(prepayment)
 
 
 def _prepayment_department_filter(department):
-    return Q(department=department) | Q(
-        department__isnull=True,
-        customer__department=department,
-    )
+    return prepayment_account_filter(department=department)
 
 
 def _prepayment_create_ledger(
@@ -29604,45 +29478,7 @@ def _prepayment_balance_row_payload(prepayment):
 
 
 def _prepayment_usage_drilldown_payload(usage):
-    prepayment = usage.prepayment
-    customer = prepayment.customer if prepayment and prepayment.customer_id else None
-    department = _prepayment_account_department(prepayment) if prepayment else None
-    schedule = usage.schedule
-    delivery_items = []
-    if schedule:
-        delivery_items = [
-            {
-                'id': item.id,
-                'itemName': item.item_name,
-                'quantity': item.quantity,
-                'unit': item.unit or '',
-                'unitPrice': _money_int(item.unit_price),
-                'totalPrice': _money_int(item.total_price),
-            }
-            for item in schedule.delivery_items_set.all().order_by('id')
-        ]
-
-    return {
-        'id': usage.id,
-        'prepaymentId': usage.prepayment_id,
-        'paymentDate': _date_or_none(prepayment.payment_date) if prepayment else None,
-        'payerName': prepayment.payer_name or '미지정' if prepayment else '미지정',
-        'customerId': customer.id if customer else None,
-        'customerName': customer.customer_name if customer else '',
-        'departmentId': department.id if department else None,
-        'departmentName': department.name if department else '',
-        'usedAt': _datetime_or_none(usage.used_at),
-        'productName': usage.product_name or '',
-        'quantity': int(usage.quantity or 0),
-        'amount': _money_int(usage.amount),
-        'remainingBalance': _money_int(usage.remaining_balance),
-        'memo': usage.memo or '',
-        'scheduleId': schedule.id if schedule else None,
-        'scheduleDate': _date_or_none(schedule.visit_date) if schedule else None,
-        'scheduleHref': f'/schedules/{schedule.id}/' if schedule else '',
-        'djangoScheduleHref': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
-        'deliveryItems': delivery_items,
-    }
+    return account_prepayment_usage_drilldown_payload(usage)
 
 
 def _prepayment_ledger_payload(entry):
@@ -29668,56 +29504,7 @@ def _prepayment_ledger_payload(entry):
 
 
 def _prepayment_item_payload(prepayment, actor):
-    customer = prepayment.customer
-    company = _prepayment_account_company(prepayment)
-    department = _prepayment_account_department(prepayment)
-    owner = prepayment.created_by
-    amount = _money_int(prepayment.amount)
-    balance = _money_int(prepayment.balance)
-    used_amount = max(amount - balance, 0)
-    owner_id_matches = prepayment.created_by_id == actor.id
-    can_manage = owner_id_matches
-    usage_count = getattr(prepayment, 'usage_count', None)
-    if usage_count is None:
-        usage_count = prepayment.usages.count()
-
-    return {
-        'id': prepayment.id,
-        'customerId': customer.id if customer else None,
-        'customerName': customer.customer_name if customer else '',
-        'companyId': company.id if company else None,
-        'companyName': company.name if company else '',
-        'departmentId': department.id if department else None,
-        'departmentName': department.name if department else '',
-        'payerName': prepayment.payer_name or '',
-        'paymentDate': _date_or_none(prepayment.payment_date),
-        'paymentMethod': prepayment.payment_method,
-        'paymentMethodLabel': prepayment.get_payment_method_display(),
-        'amount': amount,
-        'balance': balance,
-        'usedAmount': used_amount,
-        'usageCount': usage_count,
-        'status': prepayment.status,
-        'statusLabel': prepayment.get_status_display(),
-        'ownerId': prepayment.created_by_id,
-        'ownerName': _user_display_name(owner),
-        'memo': (prepayment.memo or '')[:220],
-        'createdAt': _datetime_or_none(prepayment.created_at),
-        'cancelledAt': _datetime_or_none(prepayment.cancelled_at),
-        'cancelReason': (prepayment.cancel_reason or '')[:220],
-        'canManage': can_manage,
-        'href': reverse('reporting:prepayment_detail', args=[prepayment.id]),
-        'editHref': reverse('reporting:prepayment_edit', args=[prepayment.id]) if owner_id_matches else '',
-        'deleteHref': reverse('reporting:prepayment_delete', args=[prepayment.id]) if owner_id_matches else '',
-        'transferHref': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if owner_id_matches else '',
-        'customerHref': f'/customers/{customer.id}/' if customer else '',
-        'djangoCustomerHref': reverse('reporting:followup_detail', args=[customer.id]) if customer else '',
-        'customerPrepaymentHref': (
-            f'/prepayments/account/{department.id}/'
-            if department else f'/prepayments/customer/{customer.id}/' if customer else ''
-        ),
-        'djangoCustomerPrepaymentHref': reverse('reporting:prepayment_customer', args=[customer.id]) if customer else '',
-    }
+    return account_prepayment_item_payload(prepayment, actor)
 
 
 def _prepayment_customer_payload(followup):
