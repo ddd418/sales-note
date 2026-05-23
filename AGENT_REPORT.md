@@ -61,6 +61,20 @@ python manage.py test todos.tests.ReactTasksApiTests --verbosity=1
 
 git diff --check
 → OK, CRLF normalization warning only
+
+git push origin main
+→ Pushed commit 50bcb87 to main
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+→ sales-note-frontend deployment 06efb61a-6004-4374-8c7b-f2777cd80fc8 SUCCESS
+
+railway deployment list --service web --limit 1 --json
+→ web deployment eda6a735-897f-4764-b1be-c843ea50fe51 SUCCESS
+
+python scripts/post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+→ backend healthz 200, readyz 200, login 200, reports API protected 401
+→ frontend healthz 200, dashboard shell 200, reports API protected 401
 ```
 
 ### 알려진 제한
@@ -73,8 +87,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전 로컬 검증 완료.
-- 커밋/푸시 후 Railway backend/frontend 배포와 smoke test를 진행합니다.
+- Runtime commit `50bcb87` 배포 완료.
+- `sales-note-frontend`: `06efb61a-6004-4374-8c7b-f2777cd80fc8` SUCCESS.
+- `web`: `eda6a735-897f-4764-b1be-c843ea50fe51` SUCCESS.
+- 운영 smoke test 통과.
 
 ### 사용자가 운영 서버에서 확인할 절차
 
