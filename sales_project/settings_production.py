@@ -22,6 +22,7 @@ ALLOWED_HOSTS = [
     'localhost',
     'web-production-5096.up.railway.app',  # Railway 명시적 도메인
     'web.railway.internal',
+    'healthcheck.railway.app',
     'sales-note-frontend-production.up.railway.app',
     # *.railway.app 와일드카드는 Django ALLOWED_HOSTS에서 지원되지 않으므로 제거
 ]

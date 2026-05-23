@@ -15530,6 +15530,13 @@ class OperationsHealthTests(TestCase):
         self.assertNotIn('customers', payload)
         self.assertIn('no-store', response.headers.get('Cache-Control', ''))
 
+    @override_settings(ALLOWED_HOSTS=['healthcheck.railway.app'])
+    def test_healthz_accepts_railway_healthcheck_host(self):
+        response = self.client.get('/healthz/', HTTP_HOST='healthcheck.railway.app')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'ok')
+
     def test_readyz_returns_database_and_migration_status(self):
         response = self.client.get('/readyz/')
 
