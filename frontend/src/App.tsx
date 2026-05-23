@@ -7942,7 +7942,7 @@ function NoteDetailPage({
         <aside className="dashboard-panel note-detail-side">
           <div className="dashboard-panel-heading">
             <div>
-              <span className="eyebrow">Follow-up</span>
+              <span className="eyebrow">Related</span>
               <h2>연결 정보</h2>
             </div>
             <PanelRight size={18} />
@@ -11707,7 +11707,7 @@ function ScheduleDetailPage({
         <aside className="dashboard-panel note-detail-side schedule-detail-side">
           <div className="dashboard-panel-heading">
             <div>
-              <span className="eyebrow">Follow-up</span>
+              <span className="eyebrow">Related</span>
               <h2>연결 정보</h2>
             </div>
             <PanelRight size={18} />

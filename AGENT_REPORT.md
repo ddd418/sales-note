@@ -1,5 +1,66 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — DashboardApp 지연 후속조치 패널 추가 제거
+
+### 요약
+
+- 운영 첫 화면에서 여전히 보이던 `Follow-up / 지연 후속조치` 패널을 제거했습니다.
+- 원인은 대시보드 속도 최적화 후 `/dashboard/`가 `App.tsx`가 아니라 별도 `DashboardApp.tsx` 번들을 사용하기 때문이었습니다.
+- 노트/일정 상세의 `Follow-up` eyebrow도 혼동 방지를 위해 `Related`로 변경했습니다.
+
+### 변경된 파일
+
+- `frontend/src/DashboardApp.tsx`
+- `frontend/src/App.tsx`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- 운영 대시보드에서 `지연 후속조치` 패널이 더 이상 표시되지 않습니다.
+- 프론트 소스 기준으로 visible text `Follow-up`, `지연 후속`, `지연 후속조치`, `지연된 후속조치`가 남지 않게 정리했습니다.
+
+### 기존 기능 보존
+
+- DB/model/API 변경은 없습니다.
+- 대시보드의 일정, 우선 고객, 최근 영업노트, 이번 주 예정, 파이프라인 요약은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+rg -n "Follow-up|지연 후속조치|지연된 후속조치|지연 후속" frontend/src
+→ No matches
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite warning only: App chunk is larger than 500 kB
+
+git diff --check
+→ OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- Backend API의 overdue follow-up 데이터 필드는 호환성을 위해 유지했습니다. 이번 변경은 화면 노출 제거입니다.
+
+### 권장 다음 작업
+
+- 운영 배포 후 강력 새로고침으로 `/dashboard/` 대시보드 전용 청크가 새 버전으로 로드되는지 확인합니다.
+
+### 운영 배포 상태
+
+- 배포 전 로컬 검증 완료.
+- Commit/push 후 Railway 배포와 smoke test를 진행할 예정입니다.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. `/dashboard/` 또는 첫 화면을 강력 새로고침합니다.
+2. `Follow-up / 지연 후속조치` 패널이 사라졌는지 확인합니다.
+3. 상단 지표에도 `지연 후속` 카드가 없는지 확인합니다.
+
 ## 2026-05-23 — 일정 캘린더 매니저 기본 범위 및 지연 후속 UI 정리
 
 ### 요약

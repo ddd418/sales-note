@@ -437,14 +437,6 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       href: data.links.calendar,
     },
     {
-      label: '지연 후속',
-      value: `${formatNumber(data.metrics.overdueActions)}건`,
-      detail: `오늘 예정 ${formatNumber(data.metrics.dueTodayActions)}건`,
-      icon: AlertTriangle,
-      tone: 'red' as const,
-      href: data.links.notes,
-    },
-    {
       label: '이번 달 활동',
       value: `${formatNumber(data.metrics.monthlyActivity)}건`,
       detail: data.scope.label || data.currentUser.name || '현재 범위',
@@ -543,17 +535,6 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
             <CalendarDays size={18} />
           </div>
           <DashboardScheduleList items={data.today.items} />
-        </section>
-
-        <section className="dashboard-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Follow-up</span>
-              <h2>지연 후속조치</h2>
-            </div>
-            <Bell size={18} />
-          </div>
-          <DashboardHistoryList emptyLabel="지연된 후속조치가 없습니다" items={data.overdueActions} urgent />
         </section>
 
         <section className="dashboard-panel">

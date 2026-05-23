@@ -1,5 +1,29 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 DashboardApp overdue follow-up panel removal follow-up plan
+
+**Background**:
+
+- User reported that `Follow-up / 지연 후속조치` still appears in production.
+- The previous cleanup removed it from `App.tsx`, but the optimized dashboard route uses the separate `DashboardApp.tsx` bundle.
+
+**DB change required**: No.
+
+- Frontend presentation only.
+
+**Implementation scope**:
+
+- Remove the overdue follow-up metric and panel from `DashboardApp.tsx`.
+- Replace remaining visible `Follow-up` eyebrow text on detail-side related-info panels with `Related` to avoid confusion.
+- Confirm no visible `Follow-up`, `지연 후속`, or `지연 후속조치` strings remain under `frontend/src`.
+
+**Validation plan**:
+
+- `rg -n "Follow-up|지연 후속조치|지연된 후속조치|지연 후속" frontend/src`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+
 ## 2026-05-23 Schedule calendar manager default and overdue follow-up cleanup plan
 
 **Background**:
