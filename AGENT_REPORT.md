@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — 일정 캘린더 매니저 기본 범위 및 지연 후속 UI 정리
+
+### 요약
+
+- Manager가 `/schedules/calendar/`에 들어오면 기본 범위가 `직원전체` 캘린더가 되도록 변경했습니다.
+- Manager 일정 캘린더 필터에서 `내 일정`을 제거했습니다.
+- Manager가 생성할 수 없는 `개인 일정 권한 없음` 버튼도 숨겼습니다.
+- React CRM의 `지연 후속` 지표/패널/노출 문구를 제거했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- Manager는 일정 캘린더 첫 화면에서 바로 회사/팀 직원 전체 일정을 봅니다.
+- Salesman/admin의 일정 캘린더 필터 동작은 기존과 동일하게 유지했습니다.
+- 대시보드, 고객, 노트, 파이프라인 화면에서 실무적으로 덜 필요한 지연 후속 카드와 패널을 제거해 화면 밀도를 낮췄습니다.
+
+### 기존 기능 보존
+
+- DB/model/migration 변경은 없습니다.
+- 일정 생성/수정/삭제 권한은 변경하지 않았습니다.
+- 지연 후속 계산 필드는 API 호환성을 위해 유지했고, React UI 노출만 제거했습니다.
+- A/S, 교정, 일정 지연 표시는 이번 요청의 `지연 후속 조치`와 별개라 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting/views.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_calendar_api_manager_defaults_to_company_scope_without_me_filter reporting.tests.SchedulesSummaryApiTests.test_schedules_calendar_api_all_filter_uses_same_company_only reporting.tests.SchedulesSummaryApiTests.test_schedules_calendar_api_user_filter_limits_to_selected_company_user --verbosity=2
+→ OK, 3 tests
+
+python manage.py test reporting.tests.NotesSummaryApiTests.test_notes_summary_api_filters_search_owner_action_review_and_next_action --verbosity=2
+→ OK, 1 test
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite warning only: App chunk is larger than 500 kB
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=1
+→ OK, 60 tests
+
+git diff --check
+→ OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- Legacy Django dashboard template의 지연 후속 표시 계산은 API 호환성과 기존 `/reporting/*` 보존 원칙 때문에 이번 변경에서 제거하지 않았습니다.
+
+### 권장 다음 작업
+
+- 운영 확인 후, 필요하면 legacy Django dashboard에서도 같은 지연 후속 UI 정리를 별도 호환성 검수 후 진행합니다.
+
+### 운영 배포 상태
+
+- 배포 전 로컬 검증 완료.
+- Commit/push 후 Railway 배포와 smoke test를 진행할 예정입니다.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. Manager 계정으로 `/schedules/calendar/`에 접속합니다.
+2. 첫 화면 필터가 `직원전체`이고, 같은 회사 직원 일정이 함께 보이는지 확인합니다.
+3. Manager 필터에 `내 일정`이 없는지 확인합니다.
+4. Salesman 계정에서는 기존처럼 `내 일정` 필터가 있는지 확인합니다.
+5. Dashboard/Customers/Notes/Pipeline 화면에서 `지연 후속` 카드나 `지연 후속조치` 패널이 사라졌는지 확인합니다.
+
 ## 2026-05-23 — Admin 사용자관리 메뉴 복구
 
 ### 요약

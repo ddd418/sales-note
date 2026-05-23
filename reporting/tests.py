@@ -7616,6 +7616,33 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['scope']['dataFilter'], 'all')
         self.assertTrue(any(option['id'] == self.coworker.id for option in payload['options']['users']))
 
+    def test_schedules_calendar_api_manager_defaults_to_company_scope_without_me_filter(self):
+        import datetime
+
+        target_date = datetime.date(2026, 5, 10)
+        manager_schedule = self._create_schedule(self.manager, '매니저월간일정', visit_date=target_date)
+        coworker = self._create_schedule(self.coworker, '직원월간일정', visit_date=target_date)
+        other = self._create_schedule(self.other_user, '타사회사월간일정', visit_date=target_date)
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.calendar_url, {
+            'start': '2026-05-01',
+            'end': '2026-05-31',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['schedules'] if item['type'] == 'customer'}
+        self.assertIn(manager_schedule.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertNotIn(other.id, ids)
+        self.assertEqual(payload['scope']['dataFilter'], 'all')
+        self.assertEqual(payload['filters']['dataFilter'], 'all')
+        filter_options = payload['options']['dataFilters']
+        self.assertEqual(filter_options[0], {'value': 'all', 'label': '직원전체'})
+        self.assertFalse(any(option['value'] == 'me' for option in filter_options))
+        self.assertFalse(payload['create']['canCreate'])
+
     def test_schedules_calendar_api_user_filter_limits_to_selected_company_user(self):
         import datetime
 

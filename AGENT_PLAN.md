@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Schedule calendar manager default and overdue follow-up cleanup plan
+
+**Background**:
+
+- User requested manager `/schedules/calendar/` to open on the all-employee calendar by default.
+- Manager cannot create personal schedules, so the `내 일정` filter is unnecessary for manager.
+- User also requested delayed follow-up action UI to be removed for salesman, manager, and admin.
+
+**DB change required**: No.
+
+- This task changes API defaults/options and React presentation only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Coerce manager schedule calendar default `data_filter` from `me` to `all`.
+- Hide the `내 일정` data filter option for manager and label all-company calendar as `직원전체`.
+- Keep salesman/admin calendar filtering behavior unchanged.
+- Remove visible `지연 후속` cards, panels, and note filter option from the React CRM UI.
+- Keep existing backend overdue fields available so unrelated calculations and API compatibility are preserved.
+
+**Validation plan**:
+
+- Focused Django schedule calendar API tests for manager default scope and filter options.
+- `python -m py_compile reporting/views.py`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+
 ## 2026-05-23 Admin user management menu restore plan
 
 **Background**:

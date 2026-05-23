@@ -8175,7 +8175,6 @@ def notes_summary_api(request):
                 {'value': 'reviewed', 'label': '검토 완료'},
             ],
             'nextActionStates': [
-                {'value': 'overdue', 'label': '지연'},
                 {'value': 'upcoming', 'label': '7일 이내'},
                 {'value': 'has_date', 'label': '예정일 있음'},
             ],
@@ -8512,6 +8511,7 @@ def _schedules_calendar_scope(request, user_profile):
     data_filter = request.GET.get('data_filter') or request.GET.get('dataFilter') or 'me'
     filter_user_id = request.GET.get('filter_user') or request.GET.get('filterUser') or ''
     selected_user = None
+    is_manager = bool(user_profile and user_profile.is_manager())
 
     if user_profile and user_profile.company:
         company_users = User.objects.filter(
@@ -8520,6 +8520,9 @@ def _schedules_calendar_scope(request, user_profile):
         ).select_related('userprofile').order_by('username')
     else:
         company_users = User.objects.filter(id=request.user.id).select_related('userprofile')
+
+    if is_manager and data_filter == 'me':
+        data_filter = 'all'
 
     if data_filter == 'all' and user_profile and user_profile.company:
         filter_users = company_users
@@ -8530,15 +8533,25 @@ def _schedules_calendar_scope(request, user_profile):
             filter_users = User.objects.filter(id=selected_user.id).select_related('userprofile')
             scope_label = _user_display_name(selected_user)
         except (User.DoesNotExist, ValueError):
-            data_filter = 'me'
             filter_user_id = ''
+            if is_manager and user_profile and user_profile.company:
+                data_filter = 'all'
+                filter_users = company_users
+                scope_label = f'{user_profile.company.name} 전체'
+            else:
+                data_filter = 'me'
+                filter_users = User.objects.filter(id=request.user.id).select_related('userprofile')
+                scope_label = _user_display_name(request.user)
+    else:
+        filter_user_id = ''
+        if is_manager and user_profile and user_profile.company:
+            data_filter = 'all'
+            filter_users = company_users
+            scope_label = f'{user_profile.company.name} 전체'
+        else:
+            data_filter = 'me'
             filter_users = User.objects.filter(id=request.user.id).select_related('userprofile')
             scope_label = _user_display_name(request.user)
-    else:
-        data_filter = 'me'
-        filter_user_id = ''
-        filter_users = User.objects.filter(id=request.user.id).select_related('userprofile')
-        scope_label = _user_display_name(request.user)
 
     user_options = [
         {
@@ -8550,6 +8563,14 @@ def _schedules_calendar_scope(request, user_profile):
         }
         for user in company_users
     ]
+    data_filters = []
+    if not is_manager:
+        data_filters.append({'value': 'me', 'label': '내 일정'})
+    if user_profile and user_profile.company:
+        data_filters.extend([
+            {'value': 'all', 'label': '직원전체' if is_manager else '회사 전체'},
+            {'value': 'user', 'label': '직원 선택'},
+        ])
 
     return filter_users, {
         'label': scope_label,
@@ -8558,11 +8579,7 @@ def _schedules_calendar_scope(request, user_profile):
         'canViewCompany': bool(user_profile and user_profile.company),
     }, {
         'users': user_options,
-        'dataFilters': [
-            {'value': 'me', 'label': '내 일정'},
-            {'value': 'all', 'label': '회사 전체'},
-            {'value': 'user', 'label': '직원 선택'},
-        ],
+        'dataFilters': data_filters,
     }
 
 

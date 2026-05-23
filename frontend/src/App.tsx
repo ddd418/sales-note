@@ -1619,7 +1619,7 @@ const routeMeta: Record<
   dashboard: {
     eyebrow: 'Sales CRM / Dashboard',
     title: '대시보드',
-    summary: '영업 현황, 지연 후속, 이번 주 접촉을 한 화면에서 확인합니다.',
+    summary: '영업 현황과 이번 주 접촉을 한 화면에서 확인합니다.',
     primaryHref: '/dashboard/',
     primaryLabel: '프론트 대시보드 보기',
     actions: [
@@ -2528,11 +2528,6 @@ function WorkspaceRoutePage({
       detail: '파이프라인 기준',
     },
     {
-      label: '지연 후속',
-      value: `${data.metrics.overdueCount}건`,
-      detail: '우선 대응',
-    },
-    {
       label: '예상 매출',
       value: formatWon(data.metrics.weightedPipelineValue),
       detail: '확률 가중',
@@ -2839,7 +2834,6 @@ function DashboardTeamActivity({ data }: { data: DashboardData['teamActivity'] }
           <article className="dashboard-team-row" key={item.userId}>
             <strong>{item.name}</strong>
             <span>최근 30일 {formatNumber(item.recentCount)}건</span>
-            <small>지연 {formatNumber(item.overdueCount)}건</small>
           </article>
         ))}
       </div>
@@ -2878,9 +2872,6 @@ function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
               <small>
                 {formatDateLabel(customer.upcomingSchedule.date)} {customer.upcomingSchedule.time} · {customer.upcomingSchedule.activityLabel}
               </small>
-            ) : null}
-            {customer.overdueActionCount > 0 ? (
-              <small className="customer-priority-warning">지연 후속 {formatNumber(customer.overdueActionCount)}건</small>
             ) : null}
           </div>
           <div className="customer-priority-meta">
@@ -2933,9 +2924,6 @@ function CustomersTable({ customers }: { customers: CustomerItem[] }) {
                   {customer.nextAction || '다음 액션 없음'}
                 </span>
                 {customer.nextActionDate ? <small>{formatDateLabel(customer.nextActionDate)}</small> : null}
-                {customer.overdueActionCount > 0 ? (
-                  <small className="customer-overdue-text">지연 후속 {formatNumber(customer.overdueActionCount)}건</small>
-                ) : null}
               </td>
               <td>
                 {customer.upcomingSchedule ? (
@@ -4007,7 +3995,6 @@ function CustomerDetailPage({
   const metrics = [
     { label: '최근 노트', value: `${formatNumber(data.metrics.recentNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '예정 일정', value: `${formatNumber(data.metrics.upcomingSchedules)}건`, detail: '진행 예정', icon: CalendarDays, tone: 'green' as const },
-    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueActions)}건`, detail: '확인 필요', icon: AlertTriangle, tone: 'red' as const },
     { label: '14일 내 후속', value: `${formatNumber(data.metrics.upcomingActions)}건`, detail: '예정 액션', icon: Clock, tone: 'teal' as const },
   ];
   const assetMetrics = [
@@ -5214,15 +5201,6 @@ function CustomerDetailPage({
             <CalendarDays size={18} />
           </div>
           <SchedulesCompactList emptyLabel="예정 일정이 없습니다" items={data.upcomingSchedules} />
-
-          <div className="dashboard-panel-heading customer-detail-section-heading">
-            <div>
-              <span className="eyebrow">Overdue</span>
-              <h2>지연 후속</h2>
-            </div>
-            <AlertTriangle size={18} />
-          </div>
-          <CustomerDetailNoteList emptyLabel="지연 후속이 없습니다" notes={data.overdueActions} urgent />
         </aside>
       </div>
     </section>
@@ -5319,7 +5297,6 @@ function CustomersPage({
     { label: '계정', value: `${formatNumber(totalAccountCount)}개`, detail: data.scope.label, icon: Users, tone: 'blue' as const },
     { label: '검색 결과', value: `${formatNumber(filteredAccountCount)}개`, detail: '부서/연구실 계정', icon: Search, tone: 'teal' as const },
     { label: '예정 일정 고객', value: `${formatNumber(data.metrics.scheduledCustomers)}건`, detail: '미래 일정 보유', icon: CalendarDays, tone: 'green' as const },
-    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueCustomers)}건`, detail: '다음 액션 경과', icon: AlertTriangle, tone: 'red' as const },
   ];
   const createConfig = data.create;
   const canCreateCustomers = createConfig.canCreate;
@@ -8180,7 +8157,6 @@ function NotesPage({
     { label: '전체 노트', value: `${formatNumber(data.metrics.totalNotes)}건`, detail: data.scope.label, icon: FileText, tone: 'blue' as const },
     { label: '검색 결과', value: `${formatNumber(data.metrics.filteredNotes)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
     { label: '미검토', value: `${formatNumber(data.metrics.unreviewedNotes)}건`, detail: '검토 필요', icon: CheckCircle2, tone: 'amber' as const },
-    { label: '지연 후속', value: `${formatNumber(data.metrics.overdueActions)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: 'red' as const },
     { label: '7일 이내', value: `${formatNumber(data.metrics.upcomingActions)}건`, detail: '다가오는 액션', icon: Clock, tone: 'green' as const },
   ];
   const createConfig = data.create;
@@ -9260,13 +9236,11 @@ function ScheduleCalendarPage({
           </div>
           <div className="customers-side-actions">
             <button onClick={openCalendarCreatePanel} type="button">고객 일정 등록</button>
-            <button
-              disabled={!personalScheduleCreateConfig?.canCreate}
-              onClick={openPersonalCreatePanel}
-              type="button"
-            >
-              {personalScheduleCreateConfig?.canCreate ? '개인 일정 등록' : '개인 일정 권한 없음'}
-            </button>
+            {personalScheduleCreateConfig?.canCreate ? (
+              <button onClick={openPersonalCreatePanel} type="button">
+                개인 일정 등록
+              </button>
+            ) : null}
             <a href={data.links.weeklyReports}>주간보고</a>
             <a href={data.links.schedules}>일정 목록</a>
           </div>
@@ -19871,14 +19845,6 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       href: data.links.calendar,
     },
     {
-      label: '지연 후속',
-      value: `${formatNumber(data.metrics.overdueActions)}건`,
-      detail: `오늘 예정 ${formatNumber(data.metrics.dueTodayActions)}건`,
-      icon: AlertTriangle,
-      tone: 'red' as const,
-      href: data.links.notes,
-    },
-    {
       label: '이번 달 활동',
       value: `${formatNumber(data.metrics.monthlyActivity)}건`,
       detail: data.scope.label || data.currentUser.name || '현재 범위',
@@ -19982,17 +19948,6 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
         <section className="dashboard-panel">
           <div className="dashboard-panel-heading">
             <div>
-              <span className="eyebrow">Follow-up</span>
-              <h2>지연 후속조치</h2>
-            </div>
-            <Bell size={18} />
-          </div>
-          <DashboardHistoryList emptyLabel="지연된 후속조치가 없습니다" items={data.overdueActions} urgent />
-        </section>
-
-        <section className="dashboard-panel">
-          <div className="dashboard-panel-heading">
-            <div>
               <span className="eyebrow">Customers</span>
               <h2>우선 고객</h2>
             </div>
@@ -20055,13 +20010,6 @@ function MetricStrip({ data }: { data: PipelineData }) {
       icon: Target,
     },
     {
-      label: '지연 후속',
-      value: `${data.metrics.overdueCount}건`,
-      detail: '오늘 우선 처리',
-      icon: Bell,
-      alert: data.metrics.overdueCount > 0,
-    },
-    {
       label: '접촉/미팅',
       value: `${data.metrics.contactCount}건`,
       detail: '이번 주 일정',
@@ -20074,7 +20022,7 @@ function MetricStrip({ data }: { data: PipelineData }) {
       {metrics.map((metric) => {
         const Icon = metric.icon;
         return (
-          <article className={`metric-card ${metric.alert ? 'alert' : ''}`} key={metric.label}>
+          <article className="metric-card" key={metric.label}>
             <div className="metric-icon">
               <Icon size={19} />
             </div>
@@ -21329,6 +21277,12 @@ export function App() {
         return;
       }
       setScheduleCalendarData(data);
+      if (data.filters.dataFilter && data.filters.dataFilter !== scheduleCalendarDataFilter) {
+        setScheduleCalendarDataFilter(data.filters.dataFilter);
+      }
+      if (data.filters.filterUser !== scheduleCalendarFilterUser) {
+        setScheduleCalendarFilterUser(data.filters.filterUser);
+      }
       setScheduleCalendarLoading(false);
     });
     return () => {
