@@ -1,5 +1,57 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Documentation and root cleanup plan
+
+**Background**:
+
+- User requested task `4-3. 문서와 루트 정리`.
+- README should keep matching the current internal Sales Note CRM direction.
+- Root cleanup candidates must not be deleted until deployment/config/reference usage is checked.
+
+**DB change required**: No.
+
+- This task only updates docs and removes unused historical artifacts.
+- No model fields or migrations are planned.
+
+**Reference check summary**:
+
+- Active Django settings are `sales_project.settings` and production branches into `sales_project.settings_production`.
+- `sales_project/urls.py` includes active apps `reporting`, `todos`, and `ai_chat`.
+- Production/local `INSTALLED_APPS` include `todos`, not `todolist`.
+- `lovable/` is a standalone TSX/CSS prototype folder. No imports, URL routing, build config, Railway config, or Django settings reference it.
+- `sales-reporting-system/` is a standalone static prototype/reporting-planning artifact. No runtime config references it.
+- `todolist/` is a separate empty Django app skeleton and is not the active `todos/` app.
+- Root `settings_correct.py` does not exist, but tracked duplicate `sales_project/settings_correct.py` exists and is not referenced by `DJANGO_SETTINGS_MODULE`, Railway, `manage.py`, ASGI, WSGI, or scripts.
+
+**Implementation scope**:
+
+- Remove only verified unused candidates:
+  - `lovable/`
+  - `sales-reporting-system/`
+  - `todolist/`
+  - `sales_project/settings_correct.py`
+- Keep active apps and runtime files untouched:
+  - `reporting/`
+  - `todos/`
+  - `ai_chat/`
+  - `frontend/`
+  - `sales_project/settings.py`
+  - `sales_project/settings_production.py`
+- Strengthen README with:
+  - active app/directory map
+  - root hygiene notes
+  - cleanup status for removed historical candidates
+  - guidance for future artifact cleanup.
+
+**Validation plan**:
+
+- `python -m py_compile sales_project/settings.py sales_project/settings_production.py sales_project/urls.py reporting/urls.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test reporting.tests.AuthenticationSmoke --verbosity=1`
+- `git diff --check`
+- No Railway deployment unless runtime behavior changes.
+
 ## 2026-05-23 Account ledger service consolidation plan
 
 **Background**:

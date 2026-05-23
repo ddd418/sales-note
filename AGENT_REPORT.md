@@ -1,5 +1,98 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Documentation and Root Cleanup
+
+### 요약
+
+- README를 현재 내부 Sales Note CRM 구조에 맞게 보강했습니다.
+- 후보 산출물의 설정/배포/참조 여부를 확인한 뒤 미사용 과거 폴더와 중복 settings 파일을 제거했습니다.
+- 활성 앱 `todos/`, Django settings 진입점, Railway/Nixpacks 설정, `/reporting/*` 라우트는 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `README.md`
+- Removed `lovable/`
+- Removed `sales-reporting-system/`
+- Removed `todolist/`
+- Removed `sales_project/settings_correct.py`
+
+### CRM 개선
+
+- 루트의 과거 prototype/기획 산출물을 제거해 실제 운영 CRM 코드와 혼동될 여지를 줄였습니다.
+- README에 활성 앱/설정 기준과 루트 정리 절차를 명시했습니다.
+- `todolist/`와 활성 `todos/` 앱의 차이를 문서화해 업무/TODO 기능을 잘못 정리하는 위험을 낮췄습니다.
+
+### 기존 기능 보존
+
+- `reporting/`, `todos/`, `ai_chat/`, `frontend/`는 변경하지 않았습니다.
+- `sales_project/settings.py`, `sales_project/settings_production.py`, `sales_project/urls.py`, `reporting/urls.py`는 유지했습니다.
+- `/todos/`, `/reporting/api/tasks/*`, `/reporting/*`, React CRM routes는 삭제 대상에 포함하지 않았습니다.
+- 데이터 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 삭제 판단 근거
+
+- `lovable/`: 독립 TSX/CSS prototype이며 `frontend/` build, Django settings, URLConf, Railway/Nixpacks 설정에서 참조 없음.
+- `sales-reporting-system/`: 독립 정적 HTML/CSV/이미지 기획 산출물이며 runtime 참조 없음.
+- `todolist/`: 빈 Django app skeleton이며 `INSTALLED_APPS`와 URLConf는 활성 `todos/` 앱을 사용함.
+- `sales_project/settings_correct.py`: 중복/과거 settings 파일이며 `DJANGO_SETTINGS_MODULE`, `manage.py`, ASGI, WSGI, Railway 설정에서 참조 없음.
+
+### 실행한 명령어 및 결과
+
+```text
+rg -n "lovable|sales-reporting-system|todolist|settings_correct" -S . -g "!node_modules" -g "!.git" -g "!frontend/dist"
+→ 후보 runtime 참조 없음. `todos/` 앱과 legacy style comment 참조만 확인.
+
+Resolve-Path lovable, sales-reporting-system, todolist, sales_project\settings_correct.py
+→ 모든 삭제 대상이 D:\projects\sales-note 하위임을 확인.
+
+git rm -r -- lovable sales-reporting-system todolist sales_project/settings_correct.py
+→ tracked 후보 제거.
+
+Remove-Item todolist residual __pycache__
+→ git rm 후 남은 ignored cache 제거.
+
+python -m py_compile sales_project\settings.py sales_project\settings_production.py sales_project\urls.py reporting\urls.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.AuthenticationSmoke --verbosity=1
+→ Ran 9 tests, OK
+
+git diff --cached --check
+→ OK
+```
+
+### 알려진 제한
+
+- 이번 작업은 후보 4개 범위만 정리했습니다. 루트에는 과거 점검 스크립트와 로컬 로그 파일이 더 남아 있으나, 별도 검토 없이 확장 삭제하지 않았습니다.
+- Django template 내부의 `Lovable Style` 같은 주석 문구는 과거 디자인 명칭일 뿐 runtime 경로 참조가 아니므로 이번 작업에서 수정하지 않았습니다.
+
+### 권장 다음 작업
+
+- 루트의 `check_*.py`, `fix_*.py`, `tmp-*.log`, `django-*.log`, `frontend-*.log`를 별도 후보 목록으로 만들고, 재사용/보관/삭제 기준을 정합니다.
+- account/prepayment/asset/AI API 모듈 분리를 계속 진행합니다.
+
+### 운영 배포 상태
+
+- Runtime code behavior change: 없음.
+- Railway deployment: 불필요. 삭제 대상은 미참조 prototype/중복 파일이며 Django 설정/URL smoke를 로컬에서 통과했습니다.
+- GitHub push 후 별도 운영 배포 확인은 하지 않습니다.
+
+### 운영 수동 확인 절차
+
+1. 운영 프론트에서 로그인 후 [대시보드](https://sales-note-frontend-production.up.railway.app/dashboard/)가 기존처럼 열리는지 확인합니다.
+2. `/todos/` 또는 React 업무 화면이 기존처럼 접근되는지 확인합니다. 이번에 삭제한 것은 `todolist/`이고 활성 앱은 `todos/`입니다.
+3. [리포트](https://sales-note-frontend-production.up.railway.app/reports/)와 고객 상세 화면 중 하나를 열어 기존 데이터가 표시되는지 확인합니다.
+
 ## 2026-05-23 — Account Ledger Service Consolidation
 
 ### 요약
