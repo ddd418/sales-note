@@ -40,6 +40,20 @@ cd frontend && npm run build
 
 git diff --check
 → OK, CRLF normalization warning only
+
+git push origin main
+→ Pushed commit c993cf8 to main
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+→ sales-note-frontend deployment 16a0680e-2abf-4438-8038-df870bcc8a53 SUCCESS
+
+railway deployment list --service web --limit 1 --json
+→ web deployment 935e37f6-65bc-4730-8361-729ca4a7fb09 SUCCESS
+
+python scripts/post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+→ backend healthz 200, readyz 200, login 200, reports API protected 401
+→ frontend healthz 200, dashboard shell 200, reports API protected 401
 ```
 
 ### 알려진 제한
@@ -52,8 +66,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전 로컬 검증 완료.
-- Commit/push 후 Railway 배포와 smoke test를 진행할 예정입니다.
+- Runtime commit `c993cf8` 배포 완료.
+- `sales-note-frontend`: `16a0680e-2abf-4438-8038-df870bcc8a53` SUCCESS.
+- `web`: `935e37f6-65bc-4730-8361-729ca4a7fb09` SUCCESS.
+- 운영 smoke test 통과.
 
 ### 사용자가 운영 서버에서 확인할 절차
 
