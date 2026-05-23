@@ -311,6 +311,10 @@ def can_modify_user_data(request_user, target_user):
     return request_user == target_user
 
 
+def manager_core_readonly_message(noun='데이터'):
+    return f'Manager 계정은 {noun}를 등록/수정/삭제할 수 없습니다.'
+
+
 def can_access_followup(request_user, followup):
     """
     고객(FollowUp) 접근 권한 확인
@@ -20164,15 +20168,17 @@ def schedule_calendar_view(request):
     user_profile = get_user_profile(request.user)
     
     # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
-    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    requested_data_filter = request.GET.get('data_filter')
+    data_filter = requested_data_filter or ('all' if user_profile and user_profile.is_manager() and user_profile.company else 'me')
     filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
     
     # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
     company_users = []
     if user_profile and user_profile.company:
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         company_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True
         ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
@@ -20403,15 +20409,17 @@ def history_list_view(request):
     user_profile = get_user_profile(request.user)
     
     # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
-    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    requested_data_filter = request.GET.get('data_filter')
+    data_filter = requested_data_filter or ('all' if user_profile and user_profile.is_manager() and user_profile.company else 'me')
     filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
     
-    # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
+    # 같은 회사 사용자 목록 가져오기 (드롭다운용)
     company_users = []
     if user_profile and user_profile.company:
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         company_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True
         ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
@@ -20421,9 +20429,10 @@ def history_list_view(request):
     
     if data_filter == 'all' and user_profile and user_profile.company:
         # 같은 회사 전체 (salesman만)
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         filter_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True
         )
         is_viewing_others = True
@@ -25421,10 +25430,11 @@ def customer_report_view(request):
     target_user = request.user  # 기본값
     
     if data_filter == 'all' and user_profile and user_profile.company:
-        # 같은 회사 전체 (salesman만)
+        # 같은 회사 전체
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         filter_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True
         )
         target_user = None  # 전체
@@ -28178,15 +28188,17 @@ def prepayment_list_view(request):
     base_queryset = Prepayment.objects.select_related('department', 'department__company', 'customer', 'company', 'created_by')
     
     # === 데이터 필터: 나 / 전체(같은 회사) / 특정 직원 ===
-    data_filter = request.GET.get('data_filter', 'me')  # 기본값: 나
+    requested_data_filter = request.GET.get('data_filter')
+    data_filter = requested_data_filter or ('all' if user_profile and user_profile.is_manager() and user_profile.company else 'me')
     filter_user_id = request.GET.get('filter_user')  # 특정 직원 ID
     
-    # 같은 회사 사용자 목록 가져오기 (드롭다운용) - 매니저 제외
+    # 같은 회사 사용자 목록 가져오기 (드롭다운용)
     company_users = []
     if user_profile and user_profile.company:
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         company_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True
         ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
     
@@ -28195,10 +28207,11 @@ def prepayment_list_view(request):
     is_viewing_others = False
     
     if data_filter == 'all' and user_profile and user_profile.company:
-        # 같은 회사 전체 (salesman만)
+        # 같은 회사 전체
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         filter_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True
         )
         base_queryset = base_queryset.filter(created_by__in=filter_users)
@@ -28269,6 +28282,7 @@ def prepayment_list_view(request):
         'company_users': company_users,
         'selected_filter_user': selected_filter_user,
         'is_viewing_others': is_viewing_others,
+        'can_create_prepayment': not user_profile.is_manager(),
     }
     
     return render(request, 'reporting/prepayment/list.html', context)
@@ -28279,6 +28293,10 @@ def prepayment_create_view(request):
     """선결제 등록 뷰"""
     from reporting.models import Prepayment, FollowUp, Department
     from django import forms
+
+    if get_user_profile(request.user).is_manager():
+        messages.error(request, manager_core_readonly_message('선결제'))
+        return redirect('reporting:prepayment_list')
     
     # Tailwind CSS 클래스
     input_class = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent'
@@ -28407,8 +28425,8 @@ def prepayment_detail_view(request, pk):
             messages.error(request, '접근 권한이 없습니다.')
             return redirect('reporting:prepayment_list')
     
-    # 본인 데이터 여부
-    is_owner = (prepayment.created_by == request.user)
+    # 본인 데이터 여부. Manager는 본인이 과거에 만든 데이터라도 핵심 선결제 수정은 불가합니다.
+    is_owner = _prepayment_can_edit(request.user, prepayment)
     
     # 사용 내역
     usages = prepayment.usages.select_related(
@@ -28459,9 +28477,9 @@ def prepayment_edit_view(request, pk):
         pk=pk,
     )
     
-    # 권한 체크 - 본인 데이터만 수정 가능
-    if prepayment.created_by != request.user:
-        messages.error(request, '본인이 등록한 선결제만 수정할 수 있습니다.')
+    # 권한 체크 - 본인 데이터만 수정 가능. Manager는 핵심 선결제 수정 불가.
+    if not _prepayment_can_edit(request.user, prepayment):
+        messages.error(request, _prepayment_edit_denied_message(request.user, '수정'))
         return redirect('reporting:prepayment_list')
     
     # Tailwind CSS 클래스
@@ -28574,9 +28592,9 @@ def prepayment_transfer_view(request, pk):
         pk=pk,
     )
 
-    # 본인 선결제만 이관 가능
-    if prepayment.created_by != request.user:
-        messages.error(request, '본인이 등록한 선결제만 이관할 수 있습니다.')
+    # 본인 선결제만 이관 가능. Manager는 핵심 선결제 이관 불가.
+    if not _prepayment_can_edit(request.user, prepayment):
+        messages.error(request, _prepayment_edit_denied_message(request.user, '이관'))
         return redirect('reporting:prepayment_detail', pk=pk)
 
     # 같은 회사 내 다른 salesman 목록
@@ -28645,9 +28663,9 @@ def prepayment_delete_view(request, pk):
     
     prepayment = get_object_or_404(Prepayment, pk=pk)
     
-    # 권한 체크 - 본인 데이터만 삭제 가능
-    if prepayment.created_by != request.user:
-        messages.error(request, '본인이 등록한 선결제만 삭제할 수 있습니다.')
+    # 권한 체크 - 본인 데이터만 삭제 가능. Manager는 핵심 선결제 삭제/취소 불가.
+    if not _prepayment_can_edit(request.user, prepayment):
+        messages.error(request, _prepayment_edit_denied_message(request.user, '삭제'))
         return redirect('reporting:prepayment_list')
     
     if request.method == 'POST':
@@ -28730,18 +28748,22 @@ def prepayment_customer_view(request, customer_id):
             messages.error(request, '접근 권한이 없습니다.')
             return redirect('reporting:prepayment_list')
     
-    # 현재 보고 있는 사용자 결정 (세션에서 선택된 사용자 또는 본인)
+    # 현재 보고 있는 사용자 결정 (manager 기본값: 회사 전체)
     target_user = request.user
+    target_users = User.objects.filter(id=request.user.id)
     
     if user_profile.can_view_all_users():
         user_filter = request.session.get('selected_user_id')
         if user_filter:
-            from django.contrib.auth.models import User
             accessible_users = get_accessible_users(request.user, request)
             try:
                 target_user = accessible_users.get(id=user_filter)
+                target_users = User.objects.filter(id=target_user.id)
             except User.DoesNotExist:
                 target_user = request.user
+                target_users = User.objects.filter(id=request.user.id)
+        elif user_profile.is_manager() and user_profile.company:
+            target_users = get_accessible_users(request.user, request).filter(is_active=True)
     
     # 부서 기준 조회: 동일 부서 내 모든 고객의 선결제 조회
     if department:
@@ -28751,14 +28773,14 @@ def prepayment_customer_view(request, customer_id):
         # 부서 내 모든 고객의 선결제 조회
         prepayments = Prepayment.objects.filter(
             _prepayment_department_filter(department),
-            created_by=target_user
+            created_by__in=target_users
         ).select_related('department', 'company', 'customer', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
     else:
         # 부서 정보가 없는 경우 기존 고객 기준 조회
         department_followups = [customer]
         prepayments = Prepayment.objects.filter(
             customer=customer,
-            created_by=target_user
+            created_by__in=target_users
         ).select_related('company', 'customer', 'created_by').prefetch_related('usages').order_by('payment_date', 'id')
     
     # 각 선결제의 사용금액 계산
@@ -28838,24 +28860,28 @@ def prepayment_customer_excel(request, customer_id):
             messages.error(request, '접근 권한이 없습니다.')
             return redirect('reporting:prepayment_list')
     
-    # 현재 보고 있는 사용자 결정 (세션에서 선택된 사용자 또는 본인)
+    # 현재 보고 있는 사용자 결정 (manager 기본값: 회사 전체)
     target_user = request.user
+    target_users = User.objects.filter(id=request.user.id)
     
     if user_profile.can_view_all_users():
         user_filter = request.session.get('selected_user_id')
         if user_filter:
-            from django.contrib.auth.models import User
             accessible_users = get_accessible_users(request.user, request)
             try:
                 target_user = accessible_users.get(id=user_filter)
+                target_users = User.objects.filter(id=target_user.id)
             except User.DoesNotExist:
                 target_user = request.user
+                target_users = User.objects.filter(id=request.user.id)
+        elif user_profile.is_manager() and user_profile.company:
+            target_users = get_accessible_users(request.user, request).filter(is_active=True)
     
     # 부서 기준 조회: 동일 부서 내 모든 고객의 선결제 조회
     if department:
         prepayments = Prepayment.objects.filter(
             _prepayment_department_filter(department),
-            created_by=target_user
+            created_by__in=target_users
         ).select_related('department', 'company', 'customer', 'created_by').prefetch_related(
             'usages__schedule__delivery_items_set'
         ).order_by('payment_date', 'id')
@@ -28863,7 +28889,7 @@ def prepayment_customer_excel(request, customer_id):
         # 부서 정보가 없는 경우 기존 고객 기준 조회
         prepayments = Prepayment.objects.filter(
             customer=customer,
-            created_by=target_user
+            created_by__in=target_users
         ).select_related('company', 'customer', 'created_by').prefetch_related(
             'usages__schedule__delivery_items_set'
         ).order_by('payment_date', 'id')
@@ -29365,14 +29391,16 @@ def prepayment_list_excel(request):
 
 
 def _prepayment_list_scope(request, user_profile):
-    data_filter = request.GET.get('data_filter', 'me')
+    requested_data_filter = request.GET.get('data_filter')
+    data_filter = requested_data_filter or ('all' if user_profile and user_profile.is_manager() and user_profile.company else 'me')
     filter_user_id = request.GET.get('filter_user') or request.GET.get('owner') or ''
     company_users = User.objects.none()
 
     if user_profile and user_profile.company:
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         company_users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True,
         ).exclude(id=request.user.id).select_related('userprofile').order_by('username')
 
@@ -29380,9 +29408,10 @@ def _prepayment_list_scope(request, user_profile):
     is_viewing_others = False
 
     if data_filter == 'all' and user_profile and user_profile.company:
+        role_filter = ['salesman', 'manager'] if user_profile.is_manager() else ['salesman']
         users = User.objects.filter(
             userprofile__company=user_profile.company,
-            userprofile__role='salesman',
+            userprofile__role__in=role_filter,
             is_active=True,
         )
         is_viewing_others = True
@@ -29591,8 +29620,20 @@ def _prepayment_can_view(user, prepayment):
     return can_access_user_data(user, prepayment.created_by)
 
 
+def _prepayment_can_create(user):
+    return not get_user_profile(user).is_manager()
+
+
 def _prepayment_can_edit(user, prepayment):
+    if get_user_profile(user).is_manager():
+        return False
     return prepayment.created_by_id == user.id
+
+
+def _prepayment_edit_denied_message(user, action='수정'):
+    if get_user_profile(user).is_manager():
+        return manager_core_readonly_message('선결제')
+    return f'본인이 등록한 선결제만 {action}할 수 있습니다.'
 
 
 def _prepayment_form_options(request, prepayment=None):
@@ -29739,7 +29780,11 @@ def _prepayment_detail_payload(request, prepayment):
         },
         'edit': {
             'canEdit': can_manage,
-            'message': '' if can_manage else '본인이 등록한 선결제만 수정할 수 있습니다.',
+            'message': '' if can_manage else (
+                manager_core_readonly_message('선결제')
+                if get_user_profile(request.user).is_manager()
+                else '본인이 등록한 선결제만 수정할 수 있습니다.'
+            ),
             'submitUrl': reverse('reporting:prepayment_update_api', args=[prepayment.id]) if can_manage else '',
             'djangoUrl': reverse('reporting:prepayment_edit', args=[prepayment.id]) if can_manage else '',
             **_prepayment_form_options(request, prepayment=prepayment),
@@ -29756,15 +29801,16 @@ def _prepayment_detail_payload(request, prepayment):
 
 
 def _prepayment_create_payload(request):
+    can_create = _prepayment_can_create(request.user)
     return {
         'success': True,
         'source': 'django',
         'generatedAt': timezone.now().isoformat(),
         'create': {
-            'canCreate': True,
-            'message': '',
-            'submitUrl': reverse('reporting:prepayment_create_api'),
-            'djangoUrl': reverse('reporting:prepayment_create'),
+            'canCreate': can_create,
+            'message': '' if can_create else manager_core_readonly_message('선결제'),
+            'submitUrl': reverse('reporting:prepayment_create_api') if can_create else '',
+            'djangoUrl': reverse('reporting:prepayment_create') if can_create else '',
             **_prepayment_form_options(request),
         },
         'links': {
@@ -29786,6 +29832,21 @@ def _prepayment_customer_target_user(request, user_profile):
     return target_user
 
 
+def _prepayment_customer_target_scope(request, user_profile):
+    selected_user_id = request.GET.get('user') or request.GET.get('target_user') or request.session.get('selected_user_id')
+    if user_profile.can_view_all_users():
+        accessible_users = get_accessible_users(request.user, request).filter(is_active=True)
+        if selected_user_id:
+            try:
+                target_user = accessible_users.get(id=selected_user_id)
+                return User.objects.filter(id=target_user.id), target_user, False
+            except (User.DoesNotExist, ValueError, TypeError):
+                pass
+        if user_profile.is_manager() and user_profile.company:
+            return accessible_users, None, True
+    return User.objects.filter(id=request.user.id), request.user, False
+
+
 def _prepayment_customer_access_allowed(request, customer):
     user_profile = get_user_profile(request.user)
     if user_profile.is_admin() or user_profile.is_manager():
@@ -29805,7 +29866,7 @@ def _prepayment_customer_context_payload(request, customer):
     department = customer.department
     company = customer.company
     user_profile = get_user_profile(request.user)
-    target_user = _prepayment_customer_target_user(request, user_profile)
+    target_users, target_user, is_all_users = _prepayment_customer_target_scope(request, user_profile)
 
     if department:
         department_followups = list(
@@ -29815,7 +29876,7 @@ def _prepayment_customer_context_payload(request, customer):
         )
         prepayments = Prepayment.objects.filter(
             _prepayment_department_filter(department),
-            created_by=target_user,
+            created_by__in=target_users,
         )
         scope_name = ' · '.join([value for value in [
             company.name if company else '',
@@ -29826,7 +29887,7 @@ def _prepayment_customer_context_payload(request, customer):
         department_followups = [customer]
         prepayments = Prepayment.objects.filter(
             customer=customer,
-            created_by=target_user,
+            created_by__in=target_users,
         )
         scope_name = customer.customer_name or '고객명 미정'
         scope_mode = 'customer'
@@ -29871,8 +29932,12 @@ def _prepayment_customer_context_payload(request, customer):
     )
     ledger_filter = Q(prepayment_id__in=prepayment_ids)
     if department:
-        ledger_filter |= Q(department=department, actor=target_user)
-        ledger_filter |= Q(department=department, target_user=target_user)
+        if is_all_users:
+            ledger_filter |= Q(department=department, actor__in=target_users)
+            ledger_filter |= Q(department=department, target_user__in=target_users)
+        elif target_user:
+            ledger_filter |= Q(department=department, actor=target_user)
+            ledger_filter |= Q(department=department, target_user=target_user)
     ledger_rows = list(
         PrepaymentLedgerEntry.objects.filter(ledger_filter)
         .select_related('prepayment', 'department', 'customer', 'schedule', 'actor', 'target_user')
@@ -29900,9 +29965,10 @@ def _prepayment_customer_context_payload(request, customer):
             'mode': scope_mode,
             'name': scope_name,
             'label': f'{scope_name} 선결제',
-            'targetUserId': target_user.id,
-            'targetUserName': _user_display_name(target_user),
+            'targetUserId': target_user.id if target_user else None,
+            'targetUserName': _user_display_name(target_user) if target_user else '회사 전체',
             'canSelectUser': bool(user_profile.can_view_all_users()),
+            'isAllUsers': is_all_users,
         },
         'customer': {
             'id': customer.id,
@@ -30211,7 +30277,7 @@ def _prepayment_summary_payload(request):
         },
         'links': {
             'djangoList': django_list,
-            'create': reverse('reporting:prepayment_create') if not scope['is_viewing_others'] else '',
+            'create': reverse('reporting:prepayment_create') if _prepayment_can_create(request.user) and not scope['is_viewing_others'] else '',
             'excel': excel_href,
             'customers': '/customers/',
         },
@@ -30270,6 +30336,9 @@ def prepayment_create_api(request):
 
     if request.method == 'GET':
         return JsonResponse(_prepayment_create_payload(request))
+
+    if not _prepayment_can_create(request.user):
+        return JsonResponse({'success': False, 'error': manager_core_readonly_message('선결제')}, status=403)
 
     try:
         cleaned = _prepayment_parse_form_data(request)
@@ -30394,7 +30463,7 @@ def prepayment_update_api(request, pk):
     if not _prepayment_can_view(request.user, prepayment):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
     if not _prepayment_can_edit(request.user, prepayment):
-        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 수정할 수 있습니다.'}, status=403)
+        return JsonResponse({'success': False, 'error': _prepayment_edit_denied_message(request.user, '수정')}, status=403)
 
     try:
         cleaned = _prepayment_parse_form_data(request, existing=prepayment)
@@ -30494,7 +30563,7 @@ def prepayment_cancel_api(request, pk):
     if not _prepayment_can_view(request.user, prepayment):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
     if not _prepayment_can_edit(request.user, prepayment):
-        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 취소할 수 있습니다.'}, status=403)
+        return JsonResponse({'success': False, 'error': _prepayment_edit_denied_message(request.user, '취소')}, status=403)
 
     data = _prepayment_request_data(request)
     reason = str(_prepayment_field(data, 'cancel_reason', 'cancelReason', 'reason') or '사용자 요청으로 취소').strip()
@@ -30541,7 +30610,7 @@ def prepayment_delete_api(request, pk):
     if not _prepayment_can_view(request.user, prepayment):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
     if not _prepayment_can_edit(request.user, prepayment):
-        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 삭제할 수 있습니다.'}, status=403)
+        return JsonResponse({'success': False, 'error': _prepayment_edit_denied_message(request.user, '삭제')}, status=403)
 
     usage_count = prepayment.usages.count()
     if usage_count > 0:
@@ -30584,7 +30653,7 @@ def prepayment_transfer_api(request, pk):
     if not _prepayment_can_view(request.user, prepayment):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
     if not _prepayment_can_edit(request.user, prepayment):
-        return JsonResponse({'success': False, 'error': '본인이 등록한 선결제만 이관할 수 있습니다.'}, status=403)
+        return JsonResponse({'success': False, 'error': _prepayment_edit_denied_message(request.user, '이관')}, status=403)
 
     data = _prepayment_request_data(request)
     target_user_id = _prepayment_field(data, 'target_user', 'targetUser', 'targetUserId')
@@ -30698,6 +30767,8 @@ def _product_usage_annotations(queryset):
 
 def _product_can_manage(request, product=None):
     user_profile = get_user_profile(request.user)
+    if user_profile.is_manager():
+        return False
     if user_profile.is_admin():
         return True
     if product is None:
@@ -30705,6 +30776,12 @@ def _product_can_manage(request, product=None):
     if product.created_by_id is None:
         return user_profile.role in ['admin', 'manager']
     return _product_scope_queryset(request, include_inactive=True).filter(id=product.id).exists()
+
+
+def _product_manage_denied_message(request):
+    if get_user_profile(request.user).is_manager():
+        return 'Manager 계정은 제품을 등록/수정/삭제할 수 없습니다.'
+    return '이 제품을 등록/수정/삭제할 권한이 없습니다.'
 
 
 def _product_payload(product):
@@ -31153,6 +31230,9 @@ def _product_payload_from_dict(data):
 def _upsert_product_from_payload(request, payload):
     from reporting.models import Product
 
+    if not _product_can_manage(request):
+        return None, False, False, ['권한 없음']
+
     existing = Product.objects.filter(product_code=payload['product_code']).first()
     changed_fields = []
 
@@ -31315,6 +31395,12 @@ def product_create(request):
     from reporting.models import Product
     from decimal import Decimal
     from django.db import IntegrityError
+
+    if not _product_can_manage(request):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'error': _product_manage_denied_message(request)}, status=403)
+        messages.error(request, _product_manage_denied_message(request))
+        return redirect('reporting:product_list')
     
     if request.method == 'POST':
         # AJAX 요청 처리
@@ -31426,6 +31512,9 @@ def product_create(request):
 def product_bulk_create(request):
     """엑셀 데이터 일괄 제품 등록 (AJAX) - 중복 시 업데이트"""
     import json
+
+    if not _product_can_manage(request):
+        return JsonResponse({'success': False, 'error': _product_manage_denied_message(request)}, status=403)
     
     try:
         data = json.loads(request.body)
@@ -31491,6 +31580,10 @@ def product_edit(request, product_id):
     
     product = get_object_or_404(Product, id=product_id)
     
+    if not _product_can_manage(request, product):
+        messages.error(request, _product_manage_denied_message(request))
+        return redirect('reporting:product_list')
+
     # 권한 체크: 같은 회사 사용자만 수정 가능
     user_profile = get_user_profile(request.user)
     if not user_profile.is_admin():
@@ -31539,6 +31632,10 @@ def product_delete(request, product_id):
     from reporting.models import Product
     
     product = get_object_or_404(Product, id=product_id)
+
+    if not _product_can_manage(request, product):
+        messages.error(request, _product_manage_denied_message(request))
+        return redirect('reporting:product_list')
     
     # 권한 체크: 같은 회사 사용자만 삭제 가능
     user_profile = get_user_profile(request.user)
@@ -31569,6 +31666,7 @@ def products_management_api(request):
     if auth_response:
         return auth_response
 
+    can_manage = _product_can_manage(request)
     products = _product_scope_queryset(request, include_inactive=True)
     search_query = request.GET.get('q') or request.GET.get('search') or ''
     status = request.GET.get('status') or ''
@@ -31620,7 +31718,7 @@ def products_management_api(request):
         'success': True,
         'source': 'django',
         'scope': {
-            'canManage': True,
+            'canManage': can_manage,
             'label': '전체 제품' if get_user_profile(request.user).is_admin() else '접근 가능 제품',
         },
         'metrics': {
@@ -31641,9 +31739,9 @@ def products_management_api(request):
         'links': {
             'djangoList': reverse('reporting:product_list'),
             'excelDownload': reverse('reporting:products_excel_export_api'),
-            'bulkUpsert': reverse('reporting:products_bulk_upsert_api'),
-            'bulkDelete': reverse('reporting:products_bulk_delete_api'),
-            'save': reverse('reporting:product_save_api'),
+            'bulkUpsert': reverse('reporting:products_bulk_upsert_api') if can_manage else '',
+            'bulkDelete': reverse('reporting:products_bulk_delete_api') if can_manage else '',
+            'save': reverse('reporting:product_save_api') if can_manage else '',
         },
     })
 
@@ -31653,6 +31751,9 @@ def products_management_api(request):
 def product_save_api(request, product_id=None):
     """React 제품 단일 생성/수정 API."""
     from reporting.models import Product
+
+    if not _product_can_manage(request):
+        return JsonResponse({'success': False, 'error': _product_manage_denied_message(request)}, status=403)
 
     try:
         payload = _product_payload_from_dict(json.loads(request.body or '{}'))
@@ -31704,6 +31805,9 @@ def product_save_api(request, product_id=None):
 @require_POST
 def products_bulk_upsert_api(request):
     """Ecount/Excel 붙여넣기 기반 제품 일괄 등록 및 갱신 API."""
+    if not _product_can_manage(request):
+        return JsonResponse({'success': False, 'error': _product_manage_denied_message(request)}, status=403)
+
     try:
         body = json.loads(request.body or '{}')
     except json.JSONDecodeError:
@@ -31764,6 +31868,9 @@ def products_bulk_upsert_api(request):
 @require_POST
 def products_bulk_delete_api(request):
     """붙여넣은 품번 기준 제품 일괄 삭제 API."""
+    if not _product_can_manage(request):
+        return JsonResponse({'success': False, 'error': _product_manage_denied_message(request)}, status=403)
+
     try:
         body = json.loads(request.body or '{}')
     except json.JSONDecodeError:
@@ -31840,6 +31947,9 @@ def products_bulk_delete_api(request):
 @require_POST
 def product_replace_reference_api(request):
     """제품 삭제 차단 참조 1건을 사용자가 선택한 대체 제품으로 이동한다."""
+    if not _product_can_manage(request):
+        return JsonResponse({'success': False, 'error': _product_manage_denied_message(request)}, status=403)
+
     try:
         body = json.loads(request.body or '{}')
     except json.JSONDecodeError:

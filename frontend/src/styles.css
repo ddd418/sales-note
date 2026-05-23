@@ -1480,6 +1480,10 @@ h2 {
   align-items: start;
 }
 
+.products-layout.readonly {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .products-main-panel,
 .products-side {
   min-width: 0;

@@ -365,6 +365,11 @@ def prepayment_item_payload(prepayment, actor=None):
     balance = money_int(prepayment.balance)
     used_amount = max(amount - balance, 0)
     owner_id_matches = bool(actor and prepayment.created_by_id == actor.id)
+    try:
+        actor_is_manager = bool(actor and actor.userprofile.role == 'manager')
+    except Exception:
+        actor_is_manager = False
+    can_manage = owner_id_matches and not actor_is_manager
     usage_count = getattr(prepayment, 'usage_count', None)
     if usage_count is None:
         usage_count = prepayment.usages.count()
@@ -393,11 +398,11 @@ def prepayment_item_payload(prepayment, actor=None):
         'createdAt': datetime_or_none(prepayment.created_at),
         'cancelledAt': datetime_or_none(prepayment.cancelled_at),
         'cancelReason': (prepayment.cancel_reason or '')[:220],
-        'canManage': owner_id_matches,
+        'canManage': can_manage,
         'href': reverse('reporting:prepayment_detail', args=[prepayment.id]),
-        'editHref': reverse('reporting:prepayment_edit', args=[prepayment.id]) if owner_id_matches else '',
-        'deleteHref': reverse('reporting:prepayment_delete', args=[prepayment.id]) if owner_id_matches else '',
-        'transferHref': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if owner_id_matches else '',
+        'editHref': reverse('reporting:prepayment_edit', args=[prepayment.id]) if can_manage else '',
+        'deleteHref': reverse('reporting:prepayment_delete', args=[prepayment.id]) if can_manage else '',
+        'transferHref': reverse('reporting:prepayment_transfer', args=[prepayment.id]) if can_manage else '',
         'customerHref': f'/customers/{customer.id}/' if customer else '',
         'djangoCustomerHref': reverse('reporting:followup_detail', args=[customer.id]) if customer else '',
         'customerPrepaymentHref': (

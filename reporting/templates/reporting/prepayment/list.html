@@ -547,7 +547,7 @@
             <a href="{% url 'reporting:prepayment_list_excel' %}?data_filter={{ data_filter }}{% if filter_user_id %}&filter_user={{ filter_user_id }}{% endif %}" class="btn btn-success">
                 <i class="fas fa-file-excel"></i> 엑셀 다운로드
             </a>
-            {% if not is_viewing_others %}
+            {% if not is_viewing_others and can_create_prepayment %}
             <a href="{% url 'reporting:prepayment_create' %}" class="btn-create">
                 <i class="fas fa-plus"></i> 선결제 등록
             </a>

@@ -1,5 +1,103 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Manager 회사 전체 조회 + 핵심 데이터 읽기 전용 정책 보강
+
+### 요약
+
+- Manager는 같은 회사의 모든 사람 데이터를 기본 조회하도록 선결제 목록/계정 선결제 조회 범위를 보강했습니다.
+- Manager는 핵심 CRM 데이터인 선결제와 제품 마스터를 등록/수정/삭제/취소/이관할 수 없도록 API와 레거시 Django view 양쪽을 막았습니다.
+- 각 row에는 기존처럼 등록자/소유자 정보가 남아 manager가 “누구의 데이터인지” 확인할 수 있습니다.
+- 예외로 허용해야 하는 댓글/업무하달/서류 흐름은 유지했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/account_ledger.py`
+- `reporting/templates/reporting/prepayment/list.html`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- Manager 선결제 현황 기본값이 `나`가 아니라 같은 회사 전체로 잡힙니다.
+- Manager 계정/고객 선결제 상세도 사용자 선택이 없으면 회사 전체 등록분을 합산해서 보여줍니다.
+- Manager가 과거에 직접 만든 선결제라도 수정/취소/삭제/이관 버튼과 API가 막힙니다.
+- Manager 제품관리 화면은 목록/검색/엑셀은 가능하지만 제품 등록, 수정, 일괄 반영, 일괄 삭제 UI가 숨겨집니다.
+- 제품/선결제 목록에서 등록자 이름은 유지되어 데이터 소유자를 확인할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB/model/migration 변경은 없습니다.
+- Salesman의 본인 데이터 등록/수정 흐름은 유지했습니다.
+- Admin 권한 흐름은 유지했습니다.
+- Manager의 업무하달 API와 서류 템플릿 등록/수정/삭제 권한은 기존 테스트로 보존 확인했습니다.
+- `/reporting/*` route와 legacy fallback screen은 삭제하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting/views.py reporting/account_ledger.py
+→ OK
+
+python manage.py test reporting.tests.PrepaymentsSummaryApiTests reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentCustomerApiTests --verbosity=2
+→ OK, 20 tests
+
+python manage.py test reporting.tests.ProductManagementReactApiTests --verbosity=2
+→ OK, 8 tests
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests todos.tests.ReactTasksApiTests --verbosity=1
+→ OK, 23 tests
+
+python manage.py test reporting.tests.PrepaymentsSummaryApiTests --verbosity=2
+→ OK, 4 tests after legacy prepayment list adjustment
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Vite existing warning only: App chunk is larger than 500 kB
+
+git diff --check
+→ OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- 이번 변경은 manager 핵심 데이터 쓰기 금지 범위를 선결제/제품 마스터 중심으로 확실히 막았습니다. 다른 신규 핵심 mutation API가 추가될 때 같은 정책 테스트를 붙여야 합니다.
+- Manager의 서류 예외는 기존 문서 템플릿 관리/업무 문서 흐름을 보존하는 범위입니다.
+
+### 권장 다음 작업
+
+- Manager role E2E를 추가해 `/prepayments/`, `/products/`, `/tasks/manager/`, `/documents/` 화면 버튼 노출까지 브라우저에서 고정합니다.
+- 공통 권한 헬퍼를 API 모듈 분리 작업 때 별도 permission/service layer로 이동합니다.
+
+### 운영 배포 상태
+
+- 배포 전 로컬 검증 완료.
+- 커밋/푸시 후 Railway backend/frontend 배포와 smoke test를 진행합니다.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. Manager 계정으로 로그인 후 `/prepayments/`에 들어갑니다.
+2. 기본 필터가 회사 전체이며, 선결제 row에 등록자/소유자 이름이 보이는지 확인합니다.
+3. 선결제 상세로 들어가 수정/취소/삭제/이관 버튼이 보이지 않거나 동작하지 않는지 확인합니다.
+4. `/prepayments/new/`에 직접 접근했을 때 등록 권한 없음 안내가 나오는지 확인합니다.
+5. `/products/`에서 제품 목록/검색/엑셀은 가능하지만 제품 등록/수정/일괄 반영/삭제 UI가 보이지 않는지 확인합니다.
+6. `/tasks/manager/`에서 업무하달은 기존처럼 가능한지 확인합니다.
+7. `/documents/`에서 서류 템플릿 등록/수정/삭제가 기존처럼 가능한지 확인합니다.
+
 ## 2026-05-23 — AI 질문 기록 목록 답변 미리보기 숨김
 
 ### 요약

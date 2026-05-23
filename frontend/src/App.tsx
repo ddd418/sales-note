@@ -12902,7 +12902,7 @@ function PrepaymentCustomerPage({
               <label>
                 <span>조회 사용자</span>
                 <select onChange={(event) => onSelectedUserChange(event.target.value)} value={selectedUser || (data.scope.targetUserId ? String(data.scope.targetUserId) : '')}>
-                  <option value="">현재 선택 사용자</option>
+                  <option value="">{data.scope.targetUserName || '회사 전체'}</option>
                   {data.options.owners.map((owner) => (
                     <option key={owner.id} value={owner.id}>{owner.name}</option>
                   ))}
@@ -17091,11 +17091,24 @@ function ProductManagementPage({
   const products = data?.products ?? [];
   const pagination = data?.pagination;
   const canManage = Boolean(data?.scope.canManage);
+  const productRouteActions = data && !canManage
+    ? routeMeta.products.actions.filter((action) => action.href !== '/products/?create=1')
+    : routeMeta.products.actions;
   const pastedProducts = useMemo(() => parseProductPasteRows(bulkText), [bulkText]);
   const deleteCodes = useMemo(() => parseProductDeleteCodes(deleteText), [deleteText]);
   const replaceableDeleteRows = useMemo(() => (
     (deleteResult?.results ?? []).filter((row) => row.status === 'blocked' && row.canReplace)
   ), [deleteResult]);
+
+  useEffect(() => {
+    if (!data || canManage || !formOpen) {
+      return;
+    }
+    setFormOpen(false);
+    setEditingProduct(null);
+    setFormError('');
+    setFormMessage('');
+  }, [canManage, data, formOpen]);
 
   useEffect(() => {
     if (!replaceableDeleteRows.length || deleteReplacementOptions.length) {
@@ -17378,7 +17391,7 @@ function ProductManagementPage({
 
   return (
     <section className="products-page">
-      <WorkspaceRoutePage data={routeData} view="products" />
+      <WorkspaceRoutePage actions={productRouteActions} data={routeData} view="products" />
       {data?.source === 'unavailable' ? (
         <div className="dashboard-api-alert">
           <AlertTriangle size={18} />
@@ -17484,7 +17497,7 @@ function ProductManagementPage({
         </form>
       ) : null}
 
-      <div className="products-layout">
+      <div className={`products-layout ${canManage ? '' : 'readonly'}`.trim()}>
         <section className="dashboard-panel products-main-panel">
           <div className="dashboard-panel-heading">
             <div>
@@ -17532,8 +17545,14 @@ function ProductManagementPage({
                         <td>{product.updatedAt ? formatDateTimeLabel(product.updatedAt) : '-'}</td>
                         <td>
                           <div className="product-row-actions">
-                            <button className="route-secondary-action" onClick={() => openEdit(product)} type="button">수정</button>
-                            {product.djangoEditHref ? <a className="icon-button" aria-label="Django 수정" href={product.djangoEditHref}><MoveUpRight size={16} /></a> : null}
+                            {canManage ? (
+                              <>
+                                <button className="route-secondary-action" onClick={() => openEdit(product)} type="button">수정</button>
+                                {product.djangoEditHref ? <a className="icon-button" aria-label="Django 수정" href={product.djangoEditHref}><MoveUpRight size={16} /></a> : null}
+                              </>
+                            ) : (
+                              <span className="customer-muted-cell">읽기 전용</span>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -17558,6 +17577,7 @@ function ProductManagementPage({
           )}
         </section>
 
+        {canManage ? (
         <aside className="products-side">
           <section className="dashboard-panel product-bulk-panel">
             <div className="dashboard-panel-heading">
@@ -17723,6 +17743,7 @@ function ProductManagementPage({
             </button>
           </section>
         </aside>
+        ) : null}
       </div>
     </section>
   );

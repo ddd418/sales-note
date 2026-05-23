@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Manager read-only company-wide access plan
+
+**Background**:
+
+- User clarified that manager accounts must be read-only for core CRM data but must see all people's data inside the same company.
+- Manager screens must still identify whose data each row belongs to.
+- Exceptions: manager can input comments, assign tasks, and handle documents.
+
+**DB change required**: No.
+
+- This task only tightens permission checks and UI/API capability flags.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Keep existing company-wide manager read access for customers, schedules, assets, reports, products, and prepayments.
+- Make manager prepayment list default to same-company team scope instead of "me".
+- Block manager core prepayment mutations: create, update, cancel, delete, transfer, including legacy Django views and React APIs.
+- Keep owner/created-by labels visible so managers know whose data they are viewing.
+- Make product master management read-only for manager: list/search/export remain available; create/update/bulk delete/reference replacement are blocked.
+- Hide React product edit/bulk mutation UI when `scope.canManage` is false.
+- Preserve manager comment, task assignment, and document template/document flows.
+
+**Validation plan**:
+
+- Focused Django tests for prepayment and product manager permission behavior.
+- Existing focused tests for manager task assignment and document template permissions.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+
 ## 2026-05-23 Homepage speed optimization plan
 
 **Background**:

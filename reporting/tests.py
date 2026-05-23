@@ -6331,6 +6331,7 @@ class PrepaymentsSummaryApiTests(TestCase):
         self.other_company = UserCompany.objects.create(name='선결제API타사회사')
         self.user = make_user('prepayment_api_me', role='salesman', company=self.company)
         self.coworker = make_user('prepayment_api_coworker', role='salesman', company=self.company)
+        self.manager = make_user('prepayment_api_manager', role='manager', company=self.company)
         self.other_user = make_user('prepayment_api_other', role='salesman', company=self.other_company)
         self.url = reverse('reporting:prepayment_api_list')
 
@@ -6437,6 +6438,32 @@ class PrepaymentsSummaryApiTests(TestCase):
         self.assertEqual(payload['metrics']['totalAmount'], 150000)
         self.assertEqual(payload['links']['create'], '')
 
+    def test_manager_prepayment_summary_defaults_to_company_scope_read_only(self):
+        own = self._create_prepayment(self.user, '매니저회사내선결제', amount=100000, balance=70000, payer='내입금')
+        coworker = self._create_prepayment(self.coworker, '매니저동료선결제', amount=200000, balance=50000, payer='동료입금')
+        manager_owned = self._create_prepayment(self.manager, '매니저과거선결제', amount=300000, balance=300000, payer='매니저입금')
+        other = self._create_prepayment(self.other_user, '매니저타사선결제', amount=999000, balance=999000, payer='타사입금')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['scope']['dataFilter'], 'all')
+        self.assertTrue(payload['scope']['isViewingOthers'])
+        ids = {item['id'] for item in payload['prepayments']}
+        self.assertIn(own.id, ids)
+        self.assertIn(coworker.id, ids)
+        self.assertIn(manager_owned.id, ids)
+        self.assertNotIn(other.id, ids)
+        self.assertEqual(payload['links']['create'], '')
+        self.assertEqual(payload['metrics']['totalAmount'], 600000)
+        owners = {item['ownerId']: item['ownerName'] for item in payload['prepayments']}
+        self.assertEqual(owners[self.user.id], self.user.username)
+        self.assertEqual(owners[self.coworker.id], self.coworker.username)
+        self.assertEqual(owners[self.manager.id], self.manager.username)
+        self.assertTrue(all(not item['canManage'] for item in payload['prepayments']))
+
 
 class PrepaymentDetailApiTests(TestCase):
     """React 선결제 상세/등록/수정 API 검증"""
@@ -6447,6 +6474,7 @@ class PrepaymentDetailApiTests(TestCase):
         self.other_company = UserCompany.objects.create(name='선결제상세API타사회사')
         self.user = make_user('prepayment_detail_me', role='salesman', company=self.company)
         self.coworker = make_user('prepayment_detail_coworker', role='salesman', company=self.company)
+        self.manager = make_user('prepayment_detail_manager', role='manager', company=self.company)
         self.other_user = make_user('prepayment_detail_other', role='salesman', company=self.other_company)
 
     def _create_customer(self, owner, name):
@@ -6597,6 +6625,64 @@ class PrepaymentDetailApiTests(TestCase):
         self.assertEqual(created.department, customer.department)
         self.assertEqual(created.customer, customer)
         self.assertEqual(response.json()['prepayment']['departmentId'], customer.department_id)
+
+    def test_manager_cannot_create_or_manage_prepayments_even_when_owner(self):
+        from reporting.models import Prepayment
+
+        customer = self._create_customer(self.user, '매니저등록차단')
+        self.client.force_login(self.manager)
+
+        create_payload = self.client.get(reverse('reporting:prepayment_create_api')).json()
+        self.assertFalse(create_payload['create']['canCreate'])
+        self.assertEqual(create_payload['create']['submitUrl'], '')
+
+        response = self.client.post(reverse('reporting:prepayment_create_api'), {
+            'department': str(customer.department_id),
+            'customer': str(customer.id),
+            'amount': '250000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'transfer',
+            'payer_name': '매니저 입금자',
+        })
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Prepayment.objects.filter(payer_name='매니저 입금자').exists())
+
+        manager_owned = self._create_prepayment(self.manager, name='매니저과거소유')
+        detail = self.client.get(reverse('reporting:prepayment_detail_api', args=[manager_owned.id]))
+        self.assertEqual(detail.status_code, 200)
+        detail_payload = detail.json()
+        self.assertFalse(detail_payload['edit']['canEdit'])
+        self.assertFalse(detail_payload['actions']['canCancel'])
+        self.assertFalse(detail_payload['actions']['canDelete'])
+        self.assertFalse(detail_payload['actions']['canTransfer'])
+        self.assertIn('Manager 계정', detail_payload['edit']['message'])
+
+        denied_update = self.client.post(reverse('reporting:prepayment_update_api', args=[manager_owned.id]), {
+            'department': str(manager_owned.customer.department_id),
+            'customer': str(manager_owned.customer_id),
+            'amount': '100000',
+            'balance': '70000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'transfer',
+            'status': 'active',
+        })
+        self.assertEqual(denied_update.status_code, 403)
+
+        denied_cancel = self.client.post(reverse('reporting:prepayment_cancel_api', args=[manager_owned.id]), {
+            'cancel_reason': '매니저 취소 시도',
+        })
+        self.assertEqual(denied_cancel.status_code, 403)
+
+        denied_delete = self.client.post(reverse('reporting:prepayment_delete_api', args=[manager_owned.id]))
+        self.assertEqual(denied_delete.status_code, 403)
+
+        denied_transfer = self.client.post(reverse('reporting:prepayment_transfer_api', args=[manager_owned.id]), {
+            'target_user': str(self.coworker.id),
+            'reason': '매니저 이관 시도',
+        })
+        self.assertEqual(denied_transfer.status_code, 403)
+        manager_owned.refresh_from_db()
+        self.assertEqual(manager_owned.created_by, self.manager)
 
     def test_prepayment_update_api_only_owner_and_validates_balance(self):
         prepayment = self._create_prepayment(self.user, amount=100000, balance=80000)
@@ -6939,6 +7025,24 @@ class PrepaymentCustomerApiTests(TestCase):
         self.assertEqual(payload['metrics']['totalAmount'], 250000)
         self.assertEqual(len(payload['prepayments']), 1)
         self.assertEqual(payload['prepayments'][0]['ownerId'], self.coworker.id)
+
+    def test_customer_prepayment_api_manager_defaults_to_company_all_users(self):
+        _company, _department, first, _second = self._create_department_customers()
+        self._create_prepayment(self.user, first, amount=100000, balance=100000, payer='내 입금')
+        self._create_prepayment(self.coworker, first, amount=250000, balance=150000, payer='동료 입금')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:prepayment_customer_api', args=[first.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['scope']['canSelectUser'])
+        self.assertTrue(payload['scope']['isAllUsers'])
+        self.assertIsNone(payload['scope']['targetUserId'])
+        self.assertEqual(payload['metrics']['totalAmount'], 350000)
+        owner_ids = {item['ownerId'] for item in payload['prepayments']}
+        self.assertEqual(owner_ids, {self.user.id, self.coworker.id})
+        self.assertTrue(all(not item['canManage'] for item in payload['prepayments']))
 
     def test_customer_prepayment_api_allows_salesman_with_own_prepayment_and_blocks_unrelated(self):
         _company, _department, first, _second = self._create_department_customers(owner=self.coworker)
@@ -15794,6 +15898,7 @@ class ProductManagementReactApiTests(TestCase):
         self.client = Client()
         self.company = UserCompany.objects.create(name='제품React회사')
         self.salesman = make_user('product-react-sales', role='salesman', company=self.company)
+        self.manager = make_user('product-react-manager', role='manager', company=self.company)
         self.client.force_login(self.salesman)
 
     def test_product_bulk_upsert_updates_existing_ecount_overlap_and_disables_promo(self):
@@ -15920,6 +16025,75 @@ class ProductManagementReactApiTests(TestCase):
         self.assertEqual(payload['count'], 2)
         self.assertEqual(payload['totalCount'], 5)
         self.assertTrue(payload['hasMore'])
+
+    def test_product_management_manager_is_read_only_for_company_products(self):
+        import json
+        from reporting.models import Product
+
+        product = Product.objects.create(
+            product_code='MANAGER-READONLY-001',
+            description='manager visible product',
+            standard_price=1000,
+            created_by=self.salesman,
+        )
+        other_company = UserCompany.objects.create(name='제품React타사회사')
+        other_user = make_user('product-react-other-sales', role='salesman', company=other_company)
+        Product.objects.create(
+            product_code='MANAGER-READONLY-OTHER',
+            standard_price=2000,
+            created_by=other_user,
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:products_management_api'), {'q': 'MANAGER-READONLY'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['scope']['canManage'])
+        self.assertEqual(payload['links']['save'], '')
+        self.assertEqual(payload['links']['bulkUpsert'], '')
+        self.assertEqual(payload['links']['bulkDelete'], '')
+        product_codes = {item['productCode'] for item in payload['products']}
+        self.assertIn(product.product_code, product_codes)
+        self.assertNotIn('MANAGER-READONLY-OTHER', product_codes)
+        visible = next(item for item in payload['products'] if item['productCode'] == product.product_code)
+        self.assertEqual(visible['createdBy'], self.salesman.username)
+
+        save_response = self.client.post(
+            reverse('reporting:product_save_api'),
+            data=json.dumps({
+                'productCode': 'MANAGER-READONLY-NEW',
+                'standardPrice': '3000',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(save_response.status_code, 403)
+
+        edit_response = self.client.post(
+            reverse('reporting:product_update_api', args=[product.id]),
+            data=json.dumps({
+                'productCode': product.product_code,
+                'standardPrice': '9999',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(edit_response.status_code, 403)
+
+        bulk_response = self.client.post(
+            reverse('reporting:products_bulk_upsert_api'),
+            data=json.dumps({'products': [{'productCode': 'MANAGER-BULK', 'standardPrice': '100'}]}),
+            content_type='application/json',
+        )
+        self.assertEqual(bulk_response.status_code, 403)
+
+        delete_response = self.client.post(
+            reverse('reporting:products_bulk_delete_api'),
+            data=json.dumps({'productCodes': [product.product_code]}),
+            content_type='application/json',
+        )
+        self.assertEqual(delete_response.status_code, 403)
+        product.refresh_from_db()
+        self.assertEqual(product.standard_price, 1000)
 
     def test_product_bulk_delete_deletes_unused_and_blocks_used_product(self):
         import json
