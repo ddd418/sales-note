@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Homepage speed optimization plan
+
+**Background**:
+
+- User requested homepage optimization with maximum speed improvement and no functional changes as the first rule.
+- Current React production build ships a single large initial JS bundle (`dist/assets/index-Cv-dcE4R.js`, 833,505 bytes) even for `/dashboard/`.
+- `/dashboard/` only needs dashboard data, navigation, shell, and dashboard widgets, but the current static `App.tsx` import parses customer, reports, prepayment, asset, mail, document, product, weekly report, and AI UI code on first load.
+
+**DB change required**: No.
+
+- This task only changes frontend module loading and client API module boundaries.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a dashboard-only API module under `frontend/src/api/dashboard.ts` so `/dashboard/` does not import the large compatibility `frontend/src/api.ts` barrel.
+- Add a dashboard-only React entry component that renders the same shell, top bar, navigation, logout behavior, metrics, lists, quick actions, and loading/error states as the current dashboard.
+- Change `frontend/src/main.tsx` to route `/dashboard/` to the lightweight dashboard entry and lazy-load the existing full CRM `App.tsx` for all other routes.
+- Keep `/reports/`, `/customers/`, `/assets/`, `/prepayments/`, `/ai-workspace/`, and all other routes on the existing app path.
+- Preserve all existing backend API routes and authentication behavior.
+
+**Validation plan**:
+
+- Compare production build asset sizes before/after.
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Browser/E2E smoke for dashboard and a non-dashboard route.
+- `git diff --check`
+
 ## 2026-05-23 Operations and deployment stabilization plan
 
 **Background**:

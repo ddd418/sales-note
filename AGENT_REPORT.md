@@ -1,5 +1,95 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Homepage Dashboard Speed Optimization
+
+### 요약
+
+- `/dashboard/` 전용 경량 React entry를 추가해 홈/대시보드 첫 진입에서 기존 대형 `App.tsx` chunk를 로드하지 않도록 했습니다.
+- 대시보드 전용 API 모듈을 추가해 `/dashboard/`가 기존 대형 `frontend/src/api.ts` 호환 barrel을 import하지 않도록 했습니다.
+- `/reports/`, `/customers/`, `/assets/`, `/prepayments/`, `/ai-workspace/` 등 기존 CRM route는 기존 `App.tsx`를 lazy-load하는 방식으로 그대로 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/DashboardApp.tsx`
+- `frontend/src/api/dashboard.ts`
+- `frontend/src/main.tsx`
+
+### CRM 개선
+
+- Production build 기준 첫 JS가 기존 단일 `index-Cv-dcE4R.js` 833,505 bytes에서 대시보드 경로 기준 `index-u8IYBo2R.js` 143,004 bytes + `DashboardApp-CVat92qW.js` 18,306 bytes + `formatters-B0Q5MOFa.js` 9,698 bytes로 분리되었습니다.
+- `/dashboard/`는 더 이상 `App-*.js` 682,702 bytes full CRM chunk를 첫 로드에서 받지 않습니다.
+- 브라우저 smoke에서 `/dashboard/`는 `DashboardApp-*.js`를 받고, `/reports/`는 기존 full `App-*.js`를 받는 것을 확인했습니다.
+
+### 기존 기능 보존
+
+- DB/model/migration 변경은 없습니다.
+- 대시보드의 navigation, topbar, logout, API 연결 표시, metric cards, schedule/history/customer/pipeline/team panels의 표시 텍스트와 링크 동작을 기존과 맞췄습니다.
+- 비대시보드 route는 기존 `App.tsx` 렌더링 경로를 유지합니다.
+- `/reporting/*` backend route와 인증/권한 로직은 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Before: index-Cv-dcE4R.js 833,505 bytes, index-DjsCYW2i.css 191,109 bytes
+→ After: index-BK1ge3Ef.js 143,004 bytes, DashboardApp-Blzi07D_.js 18,304 bytes, formatters-CYXqqtwr.js 9,698 bytes, App-C-tWDM0S.js 682,702 bytes, index-DjsCYW2i.css 191,109 bytes
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && node --check server.mjs
+→ OK
+
+Local built-server Playwright network smoke
+→ /dashboard/ loaded index-u8IYBo2R.js, DashboardApp-CVat92qW.js, formatters-B0Q5MOFa.js
+→ /reports/ loaded index-u8IYBo2R.js, formatters-B0Q5MOFa.js, App-tiK19DIG.js
+
+Local authenticated dashboard smoke
+→ Logged in as e2e_salesman
+→ /dashboard/ displayed h1=대시보드 and Django API 연결됨
+
+cd frontend && npx playwright test
+→ 7 passed
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- CSS는 아직 공통 `styles.css` 기반이라 `/dashboard/`에서도 191KB CSS를 받습니다. JS 파싱/실행 비용을 먼저 크게 줄였고, CSS route split은 후속 최적화 후보입니다.
+- 첫 bootstrap chunk에는 React/ReactDOM과 dynamic import loader가 남아 있습니다. 더 줄이려면 CSS/critical shell 분리와 vendor caching 전략을 다음 단계로 봐야 합니다.
+
+### 권장 다음 작업
+
+- 대시보드 CSS subset 또는 critical CSS 분리를 검토합니다.
+- `App.tsx` 내부의 고객/장비/메일/AI/상품/문서 화면도 route chunk로 나누면 비홈 route 속도도 더 좋아집니다.
+- production 배포 후 브라우저 devtools Network에서 `/dashboard/`가 `App-*.js`를 받지 않는지 확인합니다.
+
+### 운영 배포 상태
+
+- Runtime behavior change: 있음.
+- Railway deployment: commit/push 후 frontend 배포 예정입니다.
+- Production smoke: 배포 후 `/dashboard/`, `/reports/`, `/healthz/`, anonymous API protection을 확인합니다.
+
+### 운영 수동 확인 절차
+
+1. [대시보드](https://sales-note-frontend-production.up.railway.app/dashboard/)에 로그인 후 접속합니다.
+2. 대시보드 제목, metric cards, 오늘 일정, 지연 후속조치, 우선 고객, 최근 영업노트, 이번 주 예정, 파이프라인 현황이 기존처럼 보이는지 확인합니다.
+3. 좌측 navigation에서 고객/현황/장비/선결제/AI 등 다른 route로 이동되는지 확인합니다.
+4. `/reports/`가 기존처럼 열리고 필터/드릴다운/Excel 권한 동작이 유지되는지 확인합니다.
+
 ## 2026-05-23 — Operations and Deployment Stabilization
 
 ### 요약
@@ -87,10 +177,10 @@ git diff --check
 
 ### 알려진 제한
 
-- 운영 배포는 사용자의 “배포 전 단계” 요청에 맞춰 수행하지 않았습니다.
-- 새 `/healthz/`, `/readyz/` endpoint는 아직 운영 Railway에 배포되지 않았으므로 production smoke는 실행하지 않았습니다.
 - 백업/복구 리허설은 이번 단계에서 dry-run만 수행했습니다. 실제 리허설은 별도 isolated target DB와 `--allow-target-reset`이 필요합니다.
 - `ERROR_ALERT_WEBHOOK_URL`은 선택 설정입니다. 운영 alert destination이 정해지기 전까지는 console log만 사용합니다.
+- 첫 backend 배포 `5e11ec3e-dfed-45d1-bee3-4da511fa34f5`는 Railway healthcheck Host `healthcheck.railway.app`이 `ALLOWED_HOSTS`에 없어 실패했습니다.
+- 후속 commit `1cae60c fix: allow railway healthcheck host`로 `healthcheck.railway.app`을 허용하고 회귀 테스트를 추가한 뒤 재배포했습니다.
 
 ### 권장 다음 작업
 
@@ -101,12 +191,26 @@ git diff --check
 ### 운영 배포 상태
 
 - Runtime behavior change: 있음.
-- Railway deployment: 아직 수행하지 않음. 요청 범위가 배포 전 단계였으므로 로컬 구현/검증/문서화까지만 완료했습니다.
-- Production smoke: 아직 수행하지 않음. 배포 후 실행 대상입니다.
+- GitHub push:
+  - `e8a37d3 chore: add operations deployment checks`
+  - `1cae60c fix: allow railway healthcheck host`
+- Railway backend `web`: `c60ff7fd-e9ad-44ec-8cff-8bb2340a2b47`, SUCCESS.
+- Railway frontend `sales-note-frontend`: `aad31c2c-5425-487b-a3be-a70c2b40ebfc`, SUCCESS.
+- Production smoke:
+  - Backend `/healthz/`: 200 ok.
+  - Backend `/readyz/`: 200 ok.
+  - Backend login page: 200.
+  - Backend reports API anonymous protection: 401.
+  - Frontend `/healthz/`: 200 ok.
+  - Frontend `/dashboard/`: 200.
+  - Frontend reports API anonymous protection: 401.
+- Railway log spot-check:
+  - Backend: migrations ran with no pending migrations, Gunicorn workers booted, no new DisallowedHost after the host fix.
+  - Frontend: Node server started on Railway port and proxies Django to `http://web.railway.internal:8080`.
 
 ### 운영 수동 확인 절차
 
-배포 후 다음 절차로 확인합니다.
+다음 절차로 사용자가 운영 화면을 확인합니다.
 
 1. Backend `/healthz/`가 200과 `status=ok`를 반환하는지 확인합니다.
 2. Backend `/readyz/`가 200과 DB/migration `status=ok`, `pending=0`을 반환하는지 확인합니다.
