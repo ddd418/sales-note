@@ -333,6 +333,7 @@ const navIconMap: Record<string, typeof LayoutDashboard> = {
   tasks: CheckCircle2,
   tasksManager: Users,
   employees: ShieldCheck,
+  userAdmin: ShieldCheck,
   mail: Mail,
   businessCards: ImagePlus,
   weeklyReports: ListChecks,

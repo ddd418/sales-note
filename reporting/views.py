@@ -2241,6 +2241,8 @@ def navigation_api(request):
     if profile.role == 'manager':
         items.append({'id': 'tasksManager', 'label': '업무하달', 'href': '/tasks/manager/'})
         items.append({'id': 'employees', 'label': '직원관리', 'href': '/employees/'})
+    if profile.role == 'admin':
+        items.append({'id': 'userAdmin', 'label': '사용자관리', 'href': reverse('reporting:user_list')})
     if profile.role != 'manager':
         items.append({'id': 'mail', 'label': '메일', 'href': '/mailbox/'})
     items.append({'id': 'businessCards', 'label': '명함', 'href': '/mailbox/business-cards/'})
@@ -2270,6 +2272,7 @@ def navigation_api(request):
         'capabilities': {
             'canManageTasks': profile.role == 'manager',
             'canManageEmployees': profile.role == 'manager',
+            'canManageUsers': profile.role == 'admin',
             'canUseAi': bool(profile.can_use_ai),
             'canUseMailbox': profile.role != 'manager',
             'canViewAllUsers': bool(profile.can_view_all_users()),

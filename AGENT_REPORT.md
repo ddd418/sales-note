@@ -1,5 +1,82 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Admin 사용자관리 메뉴 복구
+
+### 요약
+
+- Admin 계정의 React CRM navigation에 기존 `사용자관리` 메뉴를 복구했습니다.
+- 메뉴는 새 화면을 만들지 않고 기존 admin 전용 Django 사용자관리(`/reporting/users/`)로 연결합니다.
+- Manager `직원관리`(`/employees/`)와 admin `사용자관리`(`/reporting/users/`)를 분리해 권한 의미가 섞이지 않게 했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- Admin이 사이드바에서 사용자관리로 다시 바로 이동할 수 있습니다.
+- Salesman은 사용자관리/직원관리 메뉴를 볼 수 없습니다.
+- Manager는 기존처럼 같은 회사 직원관리만 볼 수 있고, admin 전체 사용자관리 메뉴는 보이지 않습니다.
+
+### 기존 기능 보존
+
+- DB/model/migration 변경은 없습니다.
+- 기존 `/reporting/users/` admin 사용자관리 route와 권한 흐름을 그대로 재사용했습니다.
+- Manager 전용 `/employees/` 화면과 `/reporting/api/employees/` API는 변경하지 않았습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting/views.py
+→ OK
+
+python manage.py test reporting.tests.ReactNavigationApiTests --verbosity=2
+→ OK, 3 tests
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite warning only: App chunk is larger than 500 kB
+
+git diff --check
+→ OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- Admin 사용자관리 화면 자체는 기존 Django template 화면입니다. React 화면 전환은 별도 후속 작업입니다.
+
+### 권장 다음 작업
+
+- Admin 사용자관리도 React CRM 화면으로 옮기되, 기존 권한/비활성화/AI/엑셀 권한 설정 기능의 parity를 먼저 검수합니다.
+
+### 운영 배포 상태
+
+- 배포 전 로컬 검증 완료.
+- Commit/push 후 Railway 배포와 smoke test를 진행할 예정입니다.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. Admin 계정으로 로그인 후 사이드바에 `사용자관리` 메뉴가 보이는지 확인합니다.
+2. `사용자관리` 클릭 시 `/reporting/users/`로 이동하는지 확인합니다.
+3. Manager 계정에서는 `직원관리`만 보이고 `사용자관리`는 보이지 않는지 확인합니다.
+4. Salesman 계정에서는 `직원관리`, `사용자관리`가 모두 보이지 않는지 확인합니다.
+
 ## 2026-05-23 — Manager 전용 직원관리 메뉴 추가
 
 ### 요약

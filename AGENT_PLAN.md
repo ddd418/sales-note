@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Admin user management menu restore plan
+
+**Background**:
+
+- User reported that the admin account's user management menu is missing.
+- Manager-only `직원관리` was added as a separate same-company employee workflow, but admin still needs access to the existing full user management workflow.
+- Legacy admin user management already exists at `/reporting/users/` and remains protected by admin role checks.
+
+**DB change required**: No.
+
+- This task only restores a navigation entry and capability flag.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add admin-only `사용자관리` item to `/reporting/api/navigation/`.
+- Point the menu to the existing `/reporting/users/` route instead of creating a duplicate React screen.
+- Keep manager `직원관리` and admin `사용자관리` separate.
+- Keep salesman from seeing either management menu.
+
+**Validation plan**:
+
+- Focused Django navigation API tests for salesman, manager, and admin menu visibility.
+- `python -m py_compile reporting/views.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+
 ## 2026-05-23 Manager-only employee management menu plan
 
 **Background**:

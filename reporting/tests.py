@@ -251,6 +251,8 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
         self.assertEqual(items_by_id['profile']['label'], '프로필')
         self.assertNotIn('employees', items_by_id)
+        self.assertNotIn('userAdmin', items_by_id)
+        self.assertFalse(payload['capabilities']['canManageUsers'])
 
     def test_navigation_api_includes_employee_management_for_manager_only(self):
         company = UserCompany.objects.create(name='직원관리메뉴회사')
@@ -265,12 +267,18 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(manager_items['employees']['label'], '직원관리')
         self.assertEqual(manager_items['employees']['href'], '/employees/')
         self.assertTrue(manager_response.json()['capabilities']['canManageEmployees'])
+        self.assertNotIn('userAdmin', manager_items)
+        self.assertFalse(manager_response.json()['capabilities']['canManageUsers'])
 
         self.client.force_login(admin)
         admin_response = self.client.get(reverse('reporting:navigation_api'))
         admin_items = {item['id']: item for item in admin_response.json()['items']}
         self.assertNotIn('employees', admin_items)
         self.assertFalse(admin_response.json()['capabilities']['canManageEmployees'])
+        self.assertIn('userAdmin', admin_items)
+        self.assertEqual(admin_items['userAdmin']['label'], '사용자관리')
+        self.assertEqual(admin_items['userAdmin']['href'], reverse('reporting:user_list'))
+        self.assertTrue(admin_response.json()['capabilities']['canManageUsers'])
 
 
 class EmployeeManagementApiTests(TestCase):
