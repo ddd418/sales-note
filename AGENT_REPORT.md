@@ -51,6 +51,20 @@ git diff --check
 
 cd frontend && npm run e2e
 → 7 passed
+
+git push origin main
+→ Pushed runtime commit a95758b to main
+
+railway deployment list --service sales-note-frontend --limit 2 --json
+→ sales-note-frontend deployment c7fb2ca3-3af1-4a8c-ad65-4bd6850655df SUCCESS
+
+railway deployment list --service web --limit 2 --json
+→ web deployment f06fa59e-9666-44cb-82b3-94ffad8a364d SUCCESS
+
+python scripts/post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+→ backend healthz 200, readyz 200, login 200, reports API protected 401
+→ frontend healthz 200, dashboard shell 200, reports API protected 401
 ```
 
 ### 알려진 제한
@@ -64,8 +78,10 @@ cd frontend && npm run e2e
 
 ### 운영 배포 상태
 
-- 배포 전 로컬 검증 완료.
-- commit/push 후 Railway frontend 배포 확인 예정.
+- Runtime commit `a95758b` 배포 완료.
+- `sales-note-frontend`: `c7fb2ca3-3af1-4a8c-ad65-4bd6850655df` SUCCESS.
+- `web`: `f06fa59e-9666-44cb-82b3-94ffad8a364d` SUCCESS.
+- 운영 smoke test 통과.
 
 ### 사용자가 운영 서버에서 확인할 절차
 
