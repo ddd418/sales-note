@@ -41,6 +41,7 @@ emergency_backup*.json
 
 # Local validation artifacts
 output/playwright/
+output/e2e/
 
 # Static files (will be collected in production)
 staticfiles/

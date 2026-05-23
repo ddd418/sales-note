@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 E2E and QA expansion plan
+
+**Background**:
+
+- User requested task `4-4. 테스트/QA 확대`.
+- Current CRM has focused backend/unit coverage, but no persistent browser-level regression checks for the React CRM workflows.
+- The target flows are customer detail, account detail, reports, prepayments, account cleanup impact preview, Excel download, and role-specific behavior for `salesman`, `manager`, and `admin`.
+
+**DB change required**: No.
+
+- Add a deterministic local/CI E2E seed command only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a Playwright test harness under `frontend/` with a Django + Vite web server setup.
+- Add a safe `seed_e2e_data` management command that creates isolated `e2e_*` users, account ledger data, and IDs/credentials consumed by browser tests.
+- Cover these browser flows:
+  - customer detail account ledger and prepayment sections
+  - account detail account-scoped ledger
+  - reports filters, drilldown, data cleanup linkage, and Excel action visibility
+  - account prepayment drilldown and account Excel link
+  - account cleanup impact preview
+  - Excel export allowed for manager/admin and blocked for salesman
+- Keep seeded data names clearly prefixed and refuse production-like environments by default.
+
+**Validation plan**:
+
+- `python -m py_compile reporting/management/commands/seed_e2e_data.py`
+- `python manage.py seed_e2e_data --output output/e2e/seed.json`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npx playwright test`
+- `git diff --check`
+
 ## 2026-05-23 Documentation and root cleanup plan
 
 **Background**:

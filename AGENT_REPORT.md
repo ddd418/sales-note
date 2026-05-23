@@ -1,5 +1,109 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — E2E and QA Expansion
+
+### 요약
+
+- Playwright 기반 E2E 테스트 하네스를 `frontend/`에 추가했습니다.
+- 테스트 전용 `e2e_*` 사용자와 계정 원장 데이터를 생성하는 Django management command를 추가했습니다.
+- 고객 상세, 계정 상세, 리포트, 선결제, 계정 정리 영향 미리보기, Excel 다운로드, `salesman`/`manager`/`admin` 권한 차이를 브라우저 테스트로 검증했습니다.
+
+### 변경된 파일
+
+- `.gitignore`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `frontend/playwright.config.ts`
+- `frontend/vite.config.ts`
+- `frontend/e2e/helpers.ts`
+- `frontend/e2e/crm-core.spec.ts`
+- `frontend/e2e/permissions-and-downloads.spec.ts`
+- `reporting/management/commands/seed_e2e_data.py`
+
+### CRM 개선
+
+- React CRM 주요 운영 화면의 로그인 후 실제 표시/드릴다운/다운로드 흐름을 자동 검증합니다.
+- E2E seed는 `salesman`, `manager`, `admin` 역할을 모두 만들고, 계정 원장/선결제 차감/정리 후보 데이터를 함께 생성합니다.
+- `salesman`은 리포트 Excel을 볼 수 없고 직접 호출도 403인지, `manager`/`admin`은 Excel을 받을 수 있는지 검증합니다.
+- Vite dev proxy는 `DJANGO_BASE_URL`을 받을 수 있어 기존 8000/5173 포트가 사용 중이어도 E2E가 별도 포트에서 실행됩니다.
+
+### 기존 기능 보존
+
+- 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*`, React CRM route, 인증/권한 로직은 변경하지 않았습니다.
+- Vite proxy 기본값은 기존 `http://127.0.0.1:8000` 그대로 유지했습니다.
+- E2E seed command는 production-like 환경에서 기본 실행을 거부합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+npm install --save-dev @playwright/test
+→ OK
+
+npm install --save-dev @types/node
+→ OK
+
+npx playwright install chromium
+→ OK
+
+python -m py_compile reporting\management\commands\seed_e2e_data.py
+→ OK
+
+python manage.py seed_e2e_data --output output/e2e/seed.json
+→ E2E seed data written
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite chunk-size warning only
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npx playwright test
+→ 7 passed
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 E2E는 읽기/다운로드 중심입니다. 생성/수정/삭제 mutation E2E는 아직 포함하지 않았습니다.
+- Playwright는 로컬/CI용 QA 하네스이며 운영 Railway 배포 검증을 대체하지 않습니다.
+- 테스트 실행 시 `output/e2e/`에 seed JSON과 Playwright artifacts가 생성되며 `.gitignore`에 추가했습니다.
+
+### 권장 다음 작업
+
+- 장비/A/S/교정 운영 검수 E2E를 추가합니다.
+- 선결제 등록/수정 같은 mutation 흐름은 별도 테스트 DB 또는 더 강한 cleanup 전략을 붙인 뒤 추가합니다.
+- CI에서 `npm run e2e`를 실행할 수 있도록 GitHub Actions 또는 Railway preview 환경과 연결합니다.
+
+### 운영 배포 상태
+
+- Runtime production behavior change: 없음.
+- Railway deployment: 불필요. 변경 범위는 테스트 하네스, 테스트 seed command, local dev proxy 설정입니다.
+- Production smoke는 수행하지 않았습니다.
+
+### 운영 수동 확인 절차
+
+1. 로컬에서 `cd frontend && npm run e2e`를 실행해 7개 브라우저 테스트가 통과하는지 확인합니다.
+2. 운영에서는 기존처럼 로그인 후 고객 상세, 리포트, 선결제 화면을 열어 표시가 유지되는지 확인합니다.
+3. manager/admin 계정으로 리포트 Excel 다운로드가 되는지, salesman 계정으로는 Excel 버튼이 보이지 않는지 확인합니다.
+
 ## 2026-05-23 — Documentation and Root Cleanup
 
 ### 요약
