@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Manager-only employee management menu plan
+
+**Background**:
+
+- User requested an employee management menu available only to manager accounts.
+- Legacy Django manager user management already exists at `/reporting/manager/users/` and is protected by `role_required(['manager'])`.
+- React CRM navigation currently does not expose this manager-only function.
+
+**DB change required**: No.
+
+- This task adds a manager-only navigation item and a read/list React API surface.
+- Existing legacy create/edit user flows are reused.
+
+**Implementation scope**:
+
+- Add manager-only `employees` item to `/reporting/api/navigation/`.
+- Add `/reporting/api/employees/` that returns same-company manager/salesman accounts for managers only.
+- Add React `/employees/` route with employee list, search, role filter, and links to legacy create/edit screens.
+- Keep salesman/admin users from seeing the menu or accessing the employee API.
+- Preserve existing legacy `/reporting/manager/users/*` routes.
+
+**Validation plan**:
+
+- Focused Django tests for navigation item visibility and employee API permissions/scope.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+
 ## 2026-05-23 Manager read-only company-wide access plan
 
 **Background**:

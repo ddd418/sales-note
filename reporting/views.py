@@ -2240,6 +2240,7 @@ def navigation_api(request):
     ]
     if profile.role == 'manager':
         items.append({'id': 'tasksManager', 'label': '업무하달', 'href': '/tasks/manager/'})
+        items.append({'id': 'employees', 'label': '직원관리', 'href': '/employees/'})
     if profile.role != 'manager':
         items.append({'id': 'mail', 'label': '메일', 'href': '/mailbox/'})
     items.append({'id': 'businessCards', 'label': '명함', 'href': '/mailbox/business-cards/'})
@@ -2268,11 +2269,120 @@ def navigation_api(request):
         },
         'capabilities': {
             'canManageTasks': profile.role == 'manager',
+            'canManageEmployees': profile.role == 'manager',
             'canUseAi': bool(profile.can_use_ai),
             'canUseMailbox': profile.role != 'manager',
             'canViewAllUsers': bool(profile.can_view_all_users()),
         },
         'items': items,
+    })
+
+
+@never_cache
+@require_http_methods(["GET"])
+def employees_management_api(request):
+    """Manager-only React employee management list API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    profile = get_user_profile(request.user)
+    if not profile.is_manager():
+        return JsonResponse({
+            'success': False,
+            'source': 'django',
+            'error': 'manager_required',
+            'message': '직원관리는 Manager 계정만 사용할 수 있습니다.',
+        }, status=403)
+    if not profile.company_id:
+        return JsonResponse({
+            'success': False,
+            'source': 'django',
+            'error': 'company_required',
+            'message': '소속 회사 정보가 없어 직원관리를 사용할 수 없습니다.',
+        }, status=400)
+
+    search_query = (request.GET.get('q') or request.GET.get('search') or '').strip()
+    role_filter = (request.GET.get('role') or '').strip()
+    valid_roles = {'manager', 'salesman'}
+
+    users = User.objects.select_related('userprofile', 'userprofile__created_by').filter(
+        userprofile__company=profile.company,
+        userprofile__role__in=valid_roles,
+    )
+    if search_query:
+        users = users.filter(
+            Q(username__icontains=search_query)
+            | Q(first_name__icontains=search_query)
+            | Q(last_name__icontains=search_query)
+            | Q(email__icontains=search_query)
+        )
+    if role_filter in valid_roles:
+        users = users.filter(userprofile__role=role_filter)
+    else:
+        role_filter = ''
+
+    total_count = users.count()
+    active_count = users.filter(is_active=True).count()
+    manager_count = users.filter(userprofile__role='manager').count()
+    salesman_count = users.filter(userprofile__role='salesman').count()
+    users = users.order_by('userprofile__role', 'last_name', 'first_name', 'username')
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'canManage': True,
+            'companyId': profile.company_id,
+            'companyName': profile.company.name,
+            'label': f'{profile.company.name} 직원관리',
+        },
+        'filters': {
+            'q': search_query,
+            'role': role_filter,
+        },
+        'metrics': {
+            'totalEmployees': total_count,
+            'activeEmployees': active_count,
+            'inactiveEmployees': max(total_count - active_count, 0),
+            'managerCount': manager_count,
+            'salesmanCount': salesman_count,
+        },
+        'options': {
+            'roles': [
+                {'value': '', 'label': '전체 권한'},
+                {'value': 'manager', 'label': 'Manager'},
+                {'value': 'salesman', 'label': 'SalesMan'},
+            ],
+        },
+        'links': {
+            'djangoList': reverse('reporting:manager_user_list'),
+            'create': reverse('reporting:manager_user_create'),
+        },
+        'employees': [
+            {
+                'id': user.id,
+                'username': user.username,
+                'name': _user_display_name(user),
+                'firstName': user.first_name,
+                'lastName': user.last_name,
+                'email': user.email,
+                'role': user.userprofile.role,
+                'roleLabel': user.userprofile.get_role_display(),
+                'company': profile.company.name,
+                'isActive': bool(user.is_active),
+                'canDownloadExcel': bool(user.userprofile.can_download_excel),
+                'canUseAi': bool(user.userprofile.can_use_ai),
+                'lastLogin': _datetime_or_none(user.last_login),
+                'dateJoined': _datetime_or_none(user.date_joined),
+                'createdByName': _user_display_name(user.userprofile.created_by) if user.userprofile.created_by_id else '',
+                'createdAt': _datetime_or_none(user.userprofile.created_at),
+                'editHref': reverse('reporting:manager_user_edit', args=[user.id]) if user.id != request.user.id else '',
+                'isCurrentUser': user.id == request.user.id,
+            }
+            for user in users
+        ],
     })
 
 

@@ -250,6 +250,101 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['services']['label'], '서비스')
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
         self.assertEqual(items_by_id['profile']['label'], '프로필')
+        self.assertNotIn('employees', items_by_id)
+
+    def test_navigation_api_includes_employee_management_for_manager_only(self):
+        company = UserCompany.objects.create(name='직원관리메뉴회사')
+        manager = make_user('nav-manager', role='manager', company=company)
+        admin = make_user('nav-admin', role='admin', company=company)
+
+        self.client.force_login(manager)
+        manager_response = self.client.get(reverse('reporting:navigation_api'))
+        self.assertEqual(manager_response.status_code, 200)
+        manager_items = {item['id']: item for item in manager_response.json()['items']}
+        self.assertIn('employees', manager_items)
+        self.assertEqual(manager_items['employees']['label'], '직원관리')
+        self.assertEqual(manager_items['employees']['href'], '/employees/')
+        self.assertTrue(manager_response.json()['capabilities']['canManageEmployees'])
+
+        self.client.force_login(admin)
+        admin_response = self.client.get(reverse('reporting:navigation_api'))
+        admin_items = {item['id']: item for item in admin_response.json()['items']}
+        self.assertNotIn('employees', admin_items)
+        self.assertFalse(admin_response.json()['capabilities']['canManageEmployees'])
+
+
+class EmployeeManagementApiTests(TestCase):
+    """Manager-only employee management API tests."""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='직원관리API회사')
+        self.other_company = UserCompany.objects.create(name='직원관리API타사회사')
+        self.manager = make_user('employee-api-manager', role='manager', company=self.company)
+        self.salesman = make_user('employee-api-sales', role='salesman', company=self.company)
+        self.coworker = make_user('employee-api-coworker', role='salesman', company=self.company)
+        self.other_user = make_user('employee-api-other', role='salesman', company=self.other_company)
+        self.url = reverse('reporting:employees_management_api')
+
+    def test_employee_management_api_requires_manager(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+
+        self.client.force_login(self.salesman)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'manager_required')
+
+    def test_employee_management_api_lists_same_company_people(self):
+        self.coworker.first_name = '길동'
+        self.coworker.last_name = '홍'
+        self.coworker.email = 'coworker@example.com'
+        self.coworker.save(update_fields=['first_name', 'last_name', 'email'])
+        profile = self.coworker.userprofile
+        profile.can_download_excel = True
+        profile.can_use_ai = True
+        profile.created_by = self.manager
+        profile.save(update_fields=['can_download_excel', 'can_use_ai', 'created_by'])
+        self.salesman.is_active = False
+        self.salesman.save(update_fields=['is_active'])
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['scope']['canManage'])
+        self.assertEqual(payload['scope']['companyName'], self.company.name)
+        ids = {item['id'] for item in payload['employees']}
+        self.assertIn(self.manager.id, ids)
+        self.assertIn(self.salesman.id, ids)
+        self.assertIn(self.coworker.id, ids)
+        self.assertNotIn(self.other_user.id, ids)
+        self.assertEqual(payload['metrics']['totalEmployees'], 3)
+        self.assertEqual(payload['metrics']['inactiveEmployees'], 1)
+        coworker_payload = next(item for item in payload['employees'] if item['id'] == self.coworker.id)
+        self.assertEqual(coworker_payload['name'], '길동 홍')
+        self.assertTrue(coworker_payload['canDownloadExcel'])
+        self.assertTrue(coworker_payload['canUseAi'])
+        self.assertEqual(coworker_payload['createdByName'], self.manager.username)
+        self.assertEqual(coworker_payload['editHref'], reverse('reporting:manager_user_edit', args=[self.coworker.id]))
+        manager_payload = next(item for item in payload['employees'] if item['id'] == self.manager.id)
+        self.assertEqual(manager_payload['editHref'], '')
+        self.assertTrue(manager_payload['isCurrentUser'])
+
+    def test_employee_management_api_filters_by_search_and_role(self):
+        self.coworker.first_name = '필터'
+        self.coworker.last_name = '대상'
+        self.coworker.save(update_fields=['first_name', 'last_name'])
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url, {'q': '필터', 'role': 'salesman'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['filters']['q'], '필터')
+        self.assertEqual(payload['filters']['role'], 'salesman')
+        self.assertEqual([item['id'] for item in payload['employees']], [self.coworker.id])
 
 
 class SalesNoteReadonlyBearerApiTests(TestCase):

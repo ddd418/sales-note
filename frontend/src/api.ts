@@ -4026,11 +4026,66 @@ export type NavigationData = {
   };
   capabilities: {
     canManageTasks: boolean;
+    canManageEmployees: boolean;
     canUseAi: boolean;
     canUseMailbox: boolean;
     canViewAllUsers: boolean;
   };
   items: NavigationItem[];
+};
+
+export type EmployeeManagementItem = {
+  id: number;
+  username: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  roleLabel: string;
+  company: string;
+  isActive: boolean;
+  canDownloadExcel: boolean;
+  canUseAi: boolean;
+  lastLogin: string | null;
+  dateJoined: string | null;
+  createdByName: string;
+  createdAt: string | null;
+  editHref: string;
+  isCurrentUser: boolean;
+};
+
+export type EmployeesData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    canManage: boolean;
+    companyId: number | null;
+    companyName: string;
+    label: string;
+  };
+  filters: {
+    q: string;
+    role: string;
+  };
+  metrics: {
+    totalEmployees: number;
+    activeEmployees: number;
+    inactiveEmployees: number;
+    managerCount: number;
+    salesmanCount: number;
+  };
+  options: {
+    roles: Array<{ value: string; label: string }>;
+  };
+  links: {
+    djangoList: string;
+    create: string;
+  };
+  employees: EmployeeManagementItem[];
 };
 
 export type TaskUser = {
@@ -5621,11 +5676,47 @@ const emptyNavigationData: NavigationData = {
   },
   capabilities: {
     canManageTasks: false,
+    canManageEmployees: false,
     canUseAi: false,
     canUseMailbox: true,
     canViewAllUsers: false,
   },
   items: [],
+};
+
+const emptyEmployeesData: EmployeesData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    canManage: false,
+    companyId: null,
+    companyName: '',
+    label: '',
+  },
+  filters: {
+    q: '',
+    role: '',
+  },
+  metrics: {
+    totalEmployees: 0,
+    activeEmployees: 0,
+    inactiveEmployees: 0,
+    managerCount: 0,
+    salesmanCount: 0,
+  },
+  options: {
+    roles: [
+      { value: '', label: '전체 권한' },
+      { value: 'manager', label: 'Manager' },
+      { value: 'salesman', label: 'SalesMan' },
+    ],
+  },
+  links: {
+    djangoList: '/reporting/manager/users/',
+    create: '/reporting/manager/users/create/',
+  },
+  employees: [],
 };
 
 const emptyTasksLinks: TasksData['links'] = {
@@ -9459,6 +9550,61 @@ export async function loadNavigationData(): Promise<NavigationData> {
       ...emptyNavigationData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Navigation API unavailable',
+    };
+  }
+}
+
+export async function loadEmployeesData(params: { q?: string; role?: string } = {}): Promise<EmployeesData> {
+  const query = new URLSearchParams();
+  if (params.q?.trim()) query.set('q', params.q.trim());
+  if (params.role) query.set('role', params.role);
+  try {
+    const response = await fetch(`/reporting/api/employees/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Employees API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as Partial<EmployeesData>;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Employees API unavailable: ${response.status}`);
+    }
+    return {
+      ...emptyEmployeesData,
+      ...payload,
+      scope: {
+        ...emptyEmployeesData.scope,
+        ...(payload.scope ?? {}),
+      },
+      filters: {
+        ...emptyEmployeesData.filters,
+        ...(payload.filters ?? {}),
+      },
+      metrics: {
+        ...emptyEmployeesData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      options: {
+        ...emptyEmployeesData.options,
+        ...(payload.options ?? {}),
+      },
+      links: {
+        ...emptyEmployeesData.links,
+        ...(payload.links ?? {}),
+      },
+      employees: payload.employees ?? [],
+    };
+  } catch (error) {
+    return {
+      ...emptyEmployeesData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Employees API unavailable',
     };
   }
 }

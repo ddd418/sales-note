@@ -83,6 +83,7 @@ import {
   DocumentTemplateItem,
   DocumentTemplateMutationPayload,
   DocumentTemplatesData,
+  EmployeesData,
   FollowupQuoteItem,
   FollowupQuoteItemsData,
   FollowupQuoteOption,
@@ -213,6 +214,7 @@ import {
   loadAccountCleanupPreviewData,
   loadBusinessCardsData,
   loadDocumentTemplatesData,
+  loadEmployeesData,
   loadAccountDetailData,
   loadCustomerAssetDirectoryData,
   loadCustomerDetailData,
@@ -330,6 +332,7 @@ const navIconMap: Record<string, typeof LayoutDashboard> = {
   schedules: CalendarDays,
   tasks: CheckCircle2,
   tasksManager: Users,
+  employees: ShieldCheck,
   mail: Mail,
   businessCards: ImagePlus,
   weeklyReports: ListChecks,
@@ -343,7 +346,7 @@ const navIconMap: Record<string, typeof LayoutDashboard> = {
 const scheduleCalendarUrl = '/schedules/calendar/';
 
 type SavedView = 'priority' | 'thisWeek' | 'quoteDelay' | 'managerReview';
-type MainView = 'dashboard' | 'analytics' | 'customers' | 'assets' | 'services' | 'pipeline' | 'notes' | 'schedules' | 'tasks' | 'mail' | 'businessCards' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'profile' | 'ai';
+type MainView = 'dashboard' | 'analytics' | 'customers' | 'assets' | 'services' | 'pipeline' | 'notes' | 'schedules' | 'tasks' | 'employees' | 'mail' | 'businessCards' | 'weeklyReports' | 'documents' | 'products' | 'prepayments' | 'profile' | 'ai';
 
 type RouteAction = {
   label: string;
@@ -1720,6 +1723,18 @@ const routeMeta: Record<
       { label: '고객 목록', href: '/customers/' },
     ],
   },
+  employees: {
+    eyebrow: 'Sales CRM / Employees',
+    title: '직원관리',
+    summary: 'Manager가 같은 회사 직원 계정과 권한 상태를 확인하고 실무자 계정을 관리합니다.',
+    primaryHref: '/employees/',
+    primaryLabel: '직원관리 열기',
+    actions: [
+      { label: '직원 추가', href: '/reporting/manager/users/create/', primary: true },
+      { label: 'Django 직원관리', href: '/reporting/manager/users/' },
+      { label: '업무하달', href: '/tasks/manager/' },
+    ],
+  },
   mail: {
     eyebrow: 'Sales CRM / Mailbox',
     title: '메일',
@@ -1830,6 +1845,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/tasks/')) return 'tasks';
+  if (pathname.startsWith('/employees/')) return 'employees';
   if (pathname.startsWith('/mailbox/business-cards/')) return 'businessCards';
   if (pathname.startsWith('/mailbox/')) return 'mail';
   if (pathname.startsWith('/business-cards/')) return 'businessCards';
@@ -15377,6 +15393,163 @@ function TaskComposer({
   );
 }
 
+function EmployeesPage({
+  data,
+  loading,
+  query,
+  role,
+  onQueryChange,
+  onRoleChange,
+}: {
+  data: EmployeesData | null;
+  loading: boolean;
+  query: string;
+  role: string;
+  onQueryChange: (value: string) => void;
+  onRoleChange: (value: string) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>직원 데이터를 불러오는 중입니다</span>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '전체 직원', value: `${formatNumber(data.metrics.totalEmployees)}명`, detail: data.scope.companyName || '소속 회사', icon: Users, tone: 'blue' as const },
+    { label: '활성 계정', value: `${formatNumber(data.metrics.activeEmployees)}명`, detail: `비활성 ${formatNumber(data.metrics.inactiveEmployees)}명`, icon: CheckCircle2, tone: 'green' as const },
+    { label: 'Manager', value: `${formatNumber(data.metrics.managerCount)}명`, detail: '직원관리 가능', icon: ShieldCheck, tone: 'amber' as const },
+    { label: 'SalesMan', value: `${formatNumber(data.metrics.salesmanCount)}명`, detail: '실무자 계정', icon: ListChecks, tone: 'teal' as const },
+  ];
+
+  return (
+    <section className="employees-page">
+      {data.source !== 'django' ? (
+        <div className="dashboard-api-alert">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>직원관리 API에 연결되지 않았습니다</strong>
+            <span>{data.error === 'manager_required' ? 'Manager 계정만 사용할 수 있습니다.' : data.message || data.error}</span>
+          </div>
+          <a href="/reporting/login/">로그인</a>
+        </div>
+      ) : null}
+
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Employee management</span>
+          <h2>{data.scope.label || '직원관리'}</h2>
+          <p>같은 회사 직원 계정, 권한, 엑셀/AI 사용 상태를 확인합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          <a className="route-secondary-action" href={data.links.djangoList || '/reporting/manager/users/'}>Django</a>
+          {data.scope.canManage ? (
+            <a className="route-primary-action" href={data.links.create || '/reporting/manager/users/create/'}>
+              직원 추가
+              <Plus size={16} />
+            </a>
+          ) : null}
+        </div>
+      </div>
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="직원관리 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="customers-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="이름, 사용자명, 이메일 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onRoleChange(event.target.value)} value={role}>
+          {data.options.roles.map((option) => (
+            <option key={option.value || 'all'} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <section className="dashboard-panel customers-main-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Employees</span>
+            <h2>직원 목록</h2>
+          </div>
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
+        </div>
+        {data.employees.length ? (
+          <div className="customers-table-wrap">
+            <table className="customers-table">
+              <thead>
+                <tr>
+                  <th>직원</th>
+                  <th>권한</th>
+                  <th>상태</th>
+                  <th>권한 옵션</th>
+                  <th>최근 로그인</th>
+                  <th>작업</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.employees.map((employee) => (
+                  <tr key={employee.id}>
+                    <td>
+                      <strong>{employee.name || employee.username}</strong>
+                      <small className="customer-muted-cell">{[employee.username, employee.email].filter(Boolean).join(' · ') || '-'}</small>
+                    </td>
+                    <td>{employee.roleLabel || employee.role}</td>
+                    <td>
+                      <span className={`product-status ${employee.isActive ? 'active' : 'inactive'}`}>
+                        {employee.isActive ? '활성' : '비활성'}
+                      </span>
+                    </td>
+                    <td>
+                      {[
+                        employee.canDownloadExcel ? '엑셀' : '',
+                        employee.canUseAi ? 'AI' : '',
+                      ].filter(Boolean).join(' · ') || '-'}
+                    </td>
+                    <td>{employee.lastLogin ? formatDateTimeLabel(employee.lastLogin) : '-'}</td>
+                    <td>
+                      <div className="product-row-actions">
+                        {employee.editHref ? (
+                          <a className="route-secondary-action" href={employee.editHref}>수정</a>
+                        ) : (
+                          <span className="customer-muted-cell">{employee.isCurrentUser ? '본인 계정' : '읽기 전용'}</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <DashboardEmpty label="조건에 맞는 직원이 없습니다" />
+        )}
+      </section>
+    </section>
+  );
+}
+
 function TasksPage({ managerRoute, routeData }: { managerRoute: boolean; routeData: PipelineData }) {
   return managerRoute ? <TaskManagerPage routeData={routeData} /> : <PersonalTasksPage routeData={routeData} />;
 }
@@ -20734,6 +20907,10 @@ export function App() {
   const [profileEmailDisconnecting, setProfileEmailDisconnecting] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
+  const [employeesData, setEmployeesData] = useState<EmployeesData | null>(null);
+  const [employeesLoading, setEmployeesLoading] = useState(currentView === 'employees');
+  const [employeeQuery, setEmployeeQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [employeeRole, setEmployeeRole] = useState(() => new URLSearchParams(window.location.search).get('role') || '');
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedView, setSelectedView] = useState<SavedView>('priority');
@@ -20778,6 +20955,38 @@ export function App() {
       alive = false;
     };
   }, [currentView]);
+
+  useEffect(() => {
+    if (currentView !== 'employees') {
+      return;
+    }
+    let alive = true;
+    setEmployeesLoading(true);
+    loadEmployeesData({
+      q: employeeQuery,
+      role: employeeRole,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setEmployeesData(data);
+      setEmployeesLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, employeeQuery, employeeRole]);
+
+  useEffect(() => {
+    if (currentView !== 'employees') {
+      return;
+    }
+    const params = new URLSearchParams();
+    if (employeeQuery.trim()) params.set('q', employeeQuery.trim());
+    if (employeeRole) params.set('role', employeeRole);
+    const queryString = params.toString();
+    window.history.replaceState(null, '', `/employees/${queryString ? `?${queryString}` : ''}`);
+  }, [currentView, employeeQuery, employeeRole]);
 
   useEffect(() => {
     if (currentView !== 'analytics') {
@@ -22964,6 +23173,22 @@ export function App() {
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <TasksPage managerRoute={isTaskManagerRoute()} routeData={pipelineData} />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'employees') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <EmployeesPage
+          data={employeesData}
+          loading={employeesLoading}
+          query={employeeQuery}
+          role={employeeRole}
+          onQueryChange={setEmployeeQuery}
+          onRoleChange={setEmployeeRole}
+        />
       </AppShell>
     );
   }

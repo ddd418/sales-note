@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Manager 전용 직원관리 메뉴 추가
+
+### 요약
+
+- React CRM navigation에 manager 전용 `직원관리` 메뉴를 추가했습니다.
+- `/employees/` React 화면에서 같은 회사 직원 목록, 권한, 활성 상태, 엑셀/AI 권한 상태를 확인할 수 있게 했습니다.
+- 직원 추가/수정은 기존 manager 전용 Django 화면(`/reporting/manager/users/*`)으로 연결해 기존 운영 기능을 재사용합니다.
+- `/reporting/api/employees/`는 manager만 접근 가능하며 salesman/admin은 차단됩니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- Manager가 React CRM 사이드바에서 직원관리에 바로 접근할 수 있습니다.
+- 같은 회사 직원만 노출되어 타사 데이터가 섞이지 않습니다.
+- 본인 계정은 목록에서 확인만 가능하고, 다른 직원은 기존 manager 편집 화면으로 이동할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB/model/migration 변경은 없습니다.
+- 기존 `/reporting/manager/users/`, create, edit route는 유지했습니다.
+- salesman/admin에게는 React 직원관리 메뉴를 노출하지 않습니다.
+- 기존 업무하달 navigation/test는 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting/views.py
+→ OK
+
+python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.EmployeeManagementApiTests --verbosity=2
+→ OK, 6 tests
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK
+→ Vite existing warning only: App chunk is larger than 500 kB
+
+python manage.py test todos.tests.ReactTasksApiTests --verbosity=1
+→ OK, 8 tests
+
+git diff --check
+→ OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- React 직원관리 화면은 목록/필터와 legacy create/edit 연결까지입니다. 직원 생성/수정 폼 자체의 React 전환은 후속 작업입니다.
+
+### 권장 다음 작업
+
+- 직원 생성/수정도 React 폼으로 옮기고, manager가 변경 가능한 항목과 불가능한 항목을 더 명확히 분리합니다.
+
+### 운영 배포 상태
+
+- 배포 전 로컬 검증 완료.
+- 커밋/푸시 후 Railway backend/frontend 배포와 smoke test를 진행합니다.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. Manager 계정으로 로그인 후 사이드바에 `직원관리` 메뉴가 보이는지 확인합니다.
+2. `/employees/`에서 같은 회사 직원만 보이는지 확인합니다.
+3. 이름/사용자명/이메일 검색과 권한 필터가 동작하는지 확인합니다.
+4. `직원 추가` 버튼이 `/reporting/manager/users/create/`로 이동하는지 확인합니다.
+5. 다른 직원 row의 `수정`이 `/reporting/manager/users/<id>/edit/`로 이동하는지 확인합니다.
+6. Salesman 계정에서는 `직원관리` 메뉴가 보이지 않고 `/reporting/api/employees/` 직접 접근이 403인지 확인합니다.
+
 ## 2026-05-23 — Manager 회사 전체 조회 + 핵심 데이터 읽기 전용 정책 보강
 
 ### 요약

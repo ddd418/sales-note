@@ -75,6 +75,7 @@ urlpatterns = [
     path('schedules/<int:pk>/delete/', views.schedule_delete_view, name='schedule_delete'),
     path('schedules/<int:schedule_id>/toggle-delivery-tax-invoice/', views.toggle_schedule_delivery_tax_invoice, name='toggle_schedule_delivery_tax_invoice'),
     path('api/navigation/', views.navigation_api, name='navigation_api'),
+    path('api/employees/', views.employees_management_api, name='employees_management_api'),
     path('api/tasks/', lazy_view('todos.views.tasks_api'), name='tasks_api'),
     path('api/tasks/create/', lazy_view('todos.views.tasks_create_api'), name='tasks_create_api'),
     path('api/tasks/request/', lazy_view('todos.views.tasks_request_api'), name='tasks_request_api'),
