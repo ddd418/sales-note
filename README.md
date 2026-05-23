@@ -72,6 +72,16 @@ cd frontend; npm run build
 
 문서/미사용 산출물 삭제처럼 런타임 동작에 영향이 없는 변경은 Railway 재배포 대상이 아닙니다. 그래도 Django 설정 검증과 핵심 smoke 테스트 결과는 `AGENT_REPORT.md`에 기록합니다.
 
+운영 안정화 절차는 [Operations Runbook](docs/OPERATIONS_RUNBOOK.md)에 정리되어 있습니다.
+
+자주 쓰는 운영 점검:
+
+```powershell
+python manage.py audit_runtime_config --json
+python scripts/post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+python scripts/backup_restore_rehearsal.py --dry-run
+```
+
 ## 다음 개발 우선순위
 
 1. 계정/prepayment/asset/AI API를 `reporting/api/` 하위 모듈로 단계적으로 분리합니다.

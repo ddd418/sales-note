@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from django.template.loader import get_template
@@ -15515,6 +15515,65 @@ class ProductionSettingsTests(TestCase):
                 django_settings.SECRET_KEY.startswith('django-insecure-'),
                 "Railway 프로덕션에서 insecure SECRET_KEY(django-insecure- 접두어)를 사용하면 안 됩니다."
             )
+
+
+class OperationsHealthTests(TestCase):
+    """운영 health/readiness endpoint smoke tests."""
+
+    def test_healthz_returns_public_liveness_without_data(self):
+        response = self.client.get('/healthz/')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertEqual(payload['service'], 'sales-note-backend')
+        self.assertNotIn('customers', payload)
+        self.assertIn('no-store', response.headers.get('Cache-Control', ''))
+
+    def test_readyz_returns_database_and_migration_status(self):
+        response = self.client.get('/readyz/')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['status'], 'ok')
+        self.assertEqual(payload['checks']['database']['status'], 'ok')
+        self.assertEqual(payload['checks']['migrations']['pending'], 0)
+
+    def test_backup_status_does_not_require_email_host_setting(self):
+        with patch.object(__import__('django.conf', fromlist=['settings']).settings, 'EMAIL_HOST', None, create=True):
+            response = self.client.get('/reporting/backup/status/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+
+
+class OperationsCommandTests(TestCase):
+    """운영 자동화 management command smoke tests."""
+
+    @override_settings(DEBUG=True)
+    def test_audit_runtime_config_outputs_json_without_secret_values(self):
+        from io import StringIO
+        from django.conf import settings as django_settings
+        from django.core.management import call_command
+
+        output = StringIO()
+        call_command('audit_runtime_config', '--json', stdout=output)
+
+        payload = json.loads(output.getvalue())
+        self.assertIn(payload['status'], ('ok', 'warning'))
+        self.assertNotIn(getattr(django_settings, 'SECRET_KEY', ''), output.getvalue())
+
+    def test_simple_backup_json_writes_retained_artifact(self):
+        from tempfile import TemporaryDirectory
+        from django.core.management import call_command
+
+        with TemporaryDirectory() as temp_dir:
+            call_command('simple_backup', '--format=json', f'--output-dir={temp_dir}', '--keep=1')
+            files = os.listdir(temp_dir)
+
+        self.assertEqual(len(files), 1)
+        self.assertTrue(files[0].startswith('sales_note_backup_'))
+        self.assertTrue(files[0].endswith('.json'))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

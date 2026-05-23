@@ -211,28 +211,54 @@ LOGIN_REDIRECT_URL = '/reporting/dashboard/'
 LOGOUT_REDIRECT_URL = '/reporting/login/'
 
 # Logging configuration
+DJANGO_LOG_LEVEL = os.environ.get('DJANGO_LOG_LEVEL', 'INFO')
+ERROR_ALERT_WEBHOOK_URL = os.environ.get('ERROR_ALERT_WEBHOOK_URL', '')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {name} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'console': {
-            'level': 'INFO',
+            'level': DJANGO_LOG_LEVEL,
             'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
         },
     },
     'loggers': {
         'reporting': {
             'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': True,
+            'level': DJANGO_LOG_LEVEL,
+            'propagate': False,
         },
         'django': {
             'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': True,
+            'level': DJANGO_LOG_LEVEL,
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
         },
     },
 }
+
+if ERROR_ALERT_WEBHOOK_URL:
+    LOGGING['handlers']['error_webhook'] = {
+        'level': 'ERROR',
+        'class': 'sales_project.logging_handlers.WebhookErrorHandler',
+        'webhook_url': ERROR_ALERT_WEBHOOK_URL,
+        'service_name': 'sales-note-backend',
+        'formatter': 'verbose',
+    }
+    for logger_name in ('reporting', 'django', 'django.request'):
+        LOGGING['loggers'][logger_name]['handlers'].append('error_webhook')
 
 # Railway Volume 파일 저장소 설정
 # Mount Path: /data/media (250GB)

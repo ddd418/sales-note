@@ -1,5 +1,52 @@
 # AGENT_PLAN.md
 
+## 2026-05-23 Operations and deployment stabilization plan
+
+**Background**:
+
+- User requested task `4-5. 운영/배포 안정화`.
+- Current Railway backend start command runs migrations before Gunicorn, but there is no explicit Railway healthcheck path.
+- Post-deploy smoke, backup/restore rehearsal, runtime env/security checks, and alerting procedures are partially manual and scattered across old notes/scripts.
+
+**DB change required**: No.
+
+- This task adds health endpoints, operational scripts/commands, logging configuration, and runbook documentation.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Backend/Frontend health:
+  - Add public non-data `/healthz/` for Railway liveness checks.
+  - Add `/readyz/` for post-deploy smoke checks with DB/migration readiness.
+  - Configure Railway backend and frontend healthcheck paths.
+  - Add a frontend `/healthz/` response in the Node static/proxy server.
+- Post-deploy smoke:
+  - Add a script that checks backend health/readiness, login protection, frontend bundle reachability, and optional authenticated API access when credentials are supplied through env/CLI.
+- Backup/restore rehearsal:
+  - Add a safe rehearsal script using `pg_dump`/`pg_restore` with explicit target reset confirmation.
+  - Add a simple backup management command used by the existing backup API, with retention and non-secret output.
+  - Fix backup status checks so missing optional email settings do not break status responses.
+- Logs/error alerts/env checks:
+  - Add optional webhook error logging via `ERROR_ALERT_WEBHOOK_URL`.
+  - Add a runtime config audit management command for session, env, security, backup, and alert variables.
+  - Remove hardcoded superuser/password deployment behavior from legacy `build.sh`.
+- Documentation:
+  - Add an operations runbook for Railway healthcheck, migration deploys, smoke tests, backup/restore rehearsal, logs/alerts, and periodic env/security review.
+  - Link the runbook from README.
+
+**Validation plan**:
+
+- `python -m py_compile sales_project/health.py sales_project/logging_handlers.py reporting/backup_api.py reporting/management/commands/audit_runtime_config.py reporting/management/commands/simple_backup.py`
+- Focused Django tests for health/readiness and ops commands
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py audit_runtime_config --json`
+- `python scripts/post_deploy_smoke.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:4173` when local servers are available, otherwise syntax/dry-run validation
+- `python scripts/backup_restore_rehearsal.py --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+
 ## 2026-05-23 E2E and QA expansion plan
 
 **Background**:

@@ -23,6 +23,8 @@ from django.views.static import serve
 from django.shortcuts import redirect
 from urllib.parse import urljoin
 
+from . import health
+
 
 DEFAULT_FRONTEND_URL = 'https://sales-note-frontend-production.up.railway.app/'
 
@@ -41,6 +43,8 @@ def root_redirect(request):
 
 urlpatterns = [
     path('', root_redirect, name='root'),  # 루트: 인증 여부에 따라 분기
+    path('healthz/', health.healthz, name='healthz'),
+    path('readyz/', health.readyz, name='readyz'),
     path('admin/', admin.site.urls),
     path('reporting/', include('reporting.urls')),
     path('todos/', include('todos.urls')),  # TODOLIST 앱

@@ -43,6 +43,14 @@ function sendStatic(response, filePath) {
   createReadStream(filePath).pipe(response);
 }
 
+function sendJson(response, statusCode, body) {
+  response.writeHead(statusCode, {
+    'Cache-Control': 'no-store',
+    'Content-Type': 'application/json; charset=utf-8',
+  });
+  response.end(JSON.stringify(body));
+}
+
 function resolveStaticPath(urlPath) {
   const decodedPath = decodeURIComponent(urlPath.split('?')[0]);
   const safePath = normalize(decodedPath).replace(/^(\.\.[/\\])+/, '');
@@ -263,6 +271,16 @@ function shouldProxy(requestUrl) {
 
 createServer((request, response) => {
   const requestUrl = request.url || '/';
+  const pathname = getPathname(requestUrl);
+  if (pathname === '/healthz' || pathname === '/healthz/') {
+    sendJson(response, 200, {
+      status: 'ok',
+      service: 'sales-note-frontend',
+      generatedAt: new Date().toISOString(),
+      upstream: djangoBaseUrl.origin,
+    });
+    return;
+  }
   if (shouldRedirectToReactPage(request)) {
     redirectToReact(request, response);
     return;

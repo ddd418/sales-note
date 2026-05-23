@@ -1,5 +1,120 @@
 # AGENT_REPORT.md
 
+## 2026-05-23 — Operations and Deployment Stabilization
+
+### 요약
+
+- Backend `/healthz/` liveness와 `/readyz/` readiness endpoint를 추가했습니다.
+- Railway backend/frontend healthcheck 경로를 `/healthz/`로 명시했습니다.
+- Frontend Node static/proxy server에도 `/healthz/` 응답을 추가했습니다.
+- 배포 후 smoke script, 백업/복구 리허설 dry-run script, 수동 백업 command, runtime config audit command를 추가했습니다.
+- 운영 ERROR webhook logging 옵션을 추가하고, legacy `build.sh`의 하드코딩 superuser/password 생성 흐름을 제거했습니다.
+- 운영 runbook을 추가하고 README에서 연결했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `README.md`
+- `build.sh`
+- `docs/OPERATIONS_RUNBOOK.md`
+- `frontend/railway.toml`
+- `frontend/server.mjs`
+- `railway.toml`
+- `reporting/backup_api.py`
+- `reporting/management/commands/audit_runtime_config.py`
+- `reporting/management/commands/simple_backup.py`
+- `reporting/tests.py`
+- `sales_project/health.py`
+- `sales_project/logging_handlers.py`
+- `sales_project/settings_production.py`
+- `sales_project/urls.py`
+- `scripts/backup_restore_rehearsal.py`
+- `scripts/post_deploy_smoke.py`
+
+### CRM 개선
+
+- Railway가 실제 CRM 데이터에 접근하지 않는 안전한 health endpoint로 배포 생존 여부를 확인할 수 있습니다.
+- `/readyz/`는 DB 연결과 pending migration만 확인해 migration 포함 배포 후 smoke test 기준으로 사용할 수 있습니다.
+- 운영 배포 후 login 보호, reports API 보호, frontend shell, health/readiness를 하나의 script로 확인할 수 있습니다.
+- 백업/복구 리허설은 source/target DB 동일 여부와 target reset 승인 여부를 확인해 사고 가능성을 줄입니다.
+- 세션, env, security variable 점검을 `audit_runtime_config` 명령으로 반복할 수 있습니다.
+
+### 기존 기능 보존
+
+- 모델/마이그레이션 변경은 없습니다.
+- `/reporting/*`, React CRM route, 인증/권한 로직은 변경하지 않았습니다.
+- Health/readiness endpoint는 고객, 납품, 선결제, 메일 등 내부 CRM 데이터를 반환하지 않습니다.
+- 기존 backup status API는 유지하면서 선택적 email setting 누락으로 500이 나지 않도록 보강했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile sales_project\health.py sales_project\logging_handlers.py reporting\backup_api.py reporting\management\commands\audit_runtime_config.py reporting\management\commands\simple_backup.py scripts\post_deploy_smoke.py scripts\backup_restore_rehearsal.py reporting\tests.py
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.OperationsHealthTests reporting.tests.OperationsCommandTests --verbosity=1
+→ Ran 5 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py audit_runtime_config --json
+→ status=warning, errors=[]
+→ Local warnings: EMAIL_ENCRYPTION_KEY, BACKUP_API_TOKEN, ERROR_ALERT_WEBHOOK_URL, FRONTEND_PIPELINE_URL not configured in this local shell
+
+python scripts\backup_restore_rehearsal.py --dry-run
+→ Planned pg_dump/pg_restore/check/audit steps with redacted placeholder DB URLs
+
+python scripts\post_deploy_smoke.py --help
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite chunk-size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 배포는 사용자의 “배포 전 단계” 요청에 맞춰 수행하지 않았습니다.
+- 새 `/healthz/`, `/readyz/` endpoint는 아직 운영 Railway에 배포되지 않았으므로 production smoke는 실행하지 않았습니다.
+- 백업/복구 리허설은 이번 단계에서 dry-run만 수행했습니다. 실제 리허설은 별도 isolated target DB와 `--allow-target-reset`이 필요합니다.
+- `ERROR_ALERT_WEBHOOK_URL`은 선택 설정입니다. 운영 alert destination이 정해지기 전까지는 console log만 사용합니다.
+
+### 권장 다음 작업
+
+- 사용자가 승인하면 Railway backend/frontend 배포를 진행하고 `scripts/post_deploy_smoke.py`로 운영 smoke를 실행합니다.
+- 운영 환경변수에서 `BACKUP_API_TOKEN`, `ERROR_ALERT_WEBHOOK_URL`, `FRONTEND_PIPELINE_URL`, `EMAIL_ENCRYPTION_KEY` 상태를 점검합니다.
+- 실제 restore rehearsal용 별도 PostgreSQL DB를 만들어 `scripts/backup_restore_rehearsal.py --allow-target-reset`를 실행합니다.
+
+### 운영 배포 상태
+
+- Runtime behavior change: 있음.
+- Railway deployment: 아직 수행하지 않음. 요청 범위가 배포 전 단계였으므로 로컬 구현/검증/문서화까지만 완료했습니다.
+- Production smoke: 아직 수행하지 않음. 배포 후 실행 대상입니다.
+
+### 운영 수동 확인 절차
+
+배포 후 다음 절차로 확인합니다.
+
+1. Backend `/healthz/`가 200과 `status=ok`를 반환하는지 확인합니다.
+2. Backend `/readyz/`가 200과 DB/migration `status=ok`, `pending=0`을 반환하는지 확인합니다.
+3. Frontend `/healthz/`가 200과 `service=sales-note-frontend`를 반환하는지 확인합니다.
+4. `python scripts/post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`를 실행합니다.
+5. Railway logs에서 migration, healthcheck failure, 5xx, webhook alert 전송 실패가 없는지 확인합니다.
+6. `python manage.py audit_runtime_config --json` 결과에 error가 없는지 확인합니다.
+
 ## 2026-05-23 — E2E and QA Expansion
 
 ### 요약

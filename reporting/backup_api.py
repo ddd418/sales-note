@@ -3,15 +3,12 @@
 외부 스케줄러에서 호출할 수 있는 백업 웹 엔드포인트
 """
 import os
-import json
 import logging
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.core.management import call_command
 from django.conf import settings
 from django.utils import timezone
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +46,7 @@ def backup_database_api(request):
             'korea_time': korea_time.strftime('%Y년 %m월 %d일 %H시 %M분'),
             'environment': os.environ.get('RAILWAY_ENVIRONMENT', 'development'),
             'database_configured': bool(settings.DATABASES.get('default')),
-            'email_configured': bool(settings.EMAIL_HOST),
+            'email_configured': bool(getattr(settings, 'EMAIL_HOST', '')),
             'total_env_vars': len([k for k in os.environ.keys() if not k.startswith('_')])
         }
         
@@ -64,18 +61,18 @@ def backup_database_api(request):
             }
             
             # 백업 명령어를 비동기적으로 실행 (이메일 포함)
-            from django.core.management import call_command
             import threading
             
             def run_backup():
                 try:
+                    from django.core.management import call_command
                     call_command('simple_backup')
                     logger.info("백업 및 이메일 전송 완료")
                 except Exception as e:
                     logger.error(f"백업 실행 중 오류: {str(e)}")
             
             # 백그라운드에서 백업 실행
-            backup_thread = threading.Thread(target=run_backup)
+            backup_thread = threading.Thread(target=run_backup, daemon=True)
             backup_thread.start()
             
             logger.info("API를 통한 백업 시작 - 이메일 알림 포함")
@@ -110,7 +107,7 @@ def backup_status_api(request):
         status_info = {
             'django_version': '5.2.3',
             'database_configured': bool(settings.DATABASES.get('default')),
-            'email_configured': bool(settings.EMAIL_HOST),
+            'email_configured': bool(getattr(settings, 'EMAIL_HOST', '')),
             'backup_api_configured': bool(os.environ.get('BACKUP_API_TOKEN')),
             'environment': os.environ.get('RAILWAY_ENVIRONMENT', 'development')
         }
