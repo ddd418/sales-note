@@ -54,6 +54,24 @@ python manage.py makemigrations --check --dry-run
 
 python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
 → Ran 20 tests, OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+git commit -m "refactor: centralize account ledger calculations"
+→ 0dc4b2e
+
+git push origin main
+→ main pushed
+
+railway deployment list --service web --limit 5 --json
+→ Blocked: Railway CLI OAuth token expired/invalid_grant; `RAILWAY_TOKEN` not set locally
+
+Production smoke
+→ Backend /reporting/login/ on https://web-production-8a820.up.railway.app returned 200
+→ Backend /reporting/api/reports/ returned expected anonymous 401 login_required JSON
+→ Frontend proxy /reporting/api/reports/ returned expected anonymous 401 login_required JSON
+→ Readonly bearer GET /reporting/api/reports/?date_from=2026-04-23&date_to=2026-05-23 returned 200 with customerOperations metrics shape
 ```
 
 ### 알려진 제한
@@ -70,7 +88,13 @@ python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --
 
 ### 운영 배포 상태
 
-- 배포 전: commit/push 이후 Railway web 배포와 운영 smoke 결과를 갱신합니다.
+- Runtime commit: `0dc4b2e refactor: centralize account ledger calculations`
+- GitHub: `main` pushed.
+- Railway CLI deployment-id verification is blocked because the local OAuth token is expired and no `RAILWAY_TOKEN` is configured.
+- Production backend URL: `https://web-production-8a820.up.railway.app`
+- Production frontend URL: `https://sales-note-frontend-production.up.railway.app`
+- Production smoke passed for login, anonymous reports API protection, frontend proxy protection, and readonly reports JSON shape.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 운영 수동 확인 절차
 
