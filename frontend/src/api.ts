@@ -546,6 +546,34 @@ export type CustomerItem = {
   createScheduleHref: string;
 };
 
+export type CustomerCompanyOption = {
+  id: number;
+  name: string;
+  canManage?: boolean;
+  canDelete?: boolean;
+  manageMessage?: string;
+  deleteMessage?: string;
+  updateUrl?: string;
+  deleteUrl?: string;
+  departmentCount?: number;
+  followupCount?: number;
+};
+
+export type CustomerDepartmentOption = {
+  id: number;
+  name: string;
+  companyId: number;
+  companyName: string;
+  searchText?: string;
+  canManage?: boolean;
+  canDelete?: boolean;
+  manageMessage?: string;
+  deleteMessage?: string;
+  updateUrl?: string;
+  deleteUrl?: string;
+  followupCount?: number;
+};
+
 export type CustomersData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -597,8 +625,8 @@ export type CustomersData = {
     departmentSubmitUrl: string;
     advancedUrl: string;
     priorities: Array<{ value: string; label: string }>;
-    companies: Array<{ id: number; name: string }>;
-    departments: Array<{ id: number; name: string; companyId: number; companyName: string; searchText?: string }>;
+    companies: CustomerCompanyOption[];
+    departments: CustomerDepartmentOption[];
   };
   customers: CustomerItem[];
   accounts: CustomerItem[];
@@ -692,6 +720,8 @@ export type CompanyCreateResponse = {
   };
 };
 
+export type CompanyManageResponse = CompanyCreateResponse;
+
 export type DepartmentCreateResponse = {
   success: boolean;
   error?: string;
@@ -703,6 +733,8 @@ export type DepartmentCreateResponse = {
     company_name: string;
   };
 };
+
+export type DepartmentManageResponse = DepartmentCreateResponse;
 
 export type CustomerPrepaymentSummary = {
   metrics: {
@@ -6984,6 +7016,64 @@ export async function createCompany(name: string, submitUrl = '/reporting/api/co
   return data;
 }
 
+export async function updateCompany(
+  companyId: number,
+  name: string,
+  submitUrl = `/reporting/api/companies/${companyId}/update/`,
+): Promise<CompanyManageResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('name', name);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Company update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CompanyManageResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false || !data.company) {
+    throw new Error(data.error || data.message || `Company update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deleteCompanyRecord(
+  companyId: number,
+  submitUrl = `/reporting/api/companies/${companyId}/delete/`,
+): Promise<CompanyManageResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Company delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CompanyManageResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Company delete failed: ${response.status}`);
+  }
+  return data;
+}
+
 export async function createDepartment(
   companyId: number,
   name: string,
@@ -7013,6 +7103,64 @@ export async function createDepartment(
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false || !data.department) {
     throw new Error(data.error || data.message || `Department create failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function updateDepartment(
+  departmentId: number,
+  name: string,
+  submitUrl = `/reporting/api/departments/${departmentId}/update/`,
+): Promise<DepartmentManageResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const body = new URLSearchParams();
+  body.set('name', name);
+
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Department update API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as DepartmentManageResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false || !data.department) {
+    throw new Error(data.error || data.message || `Department update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deleteDepartmentRecord(
+  departmentId: number,
+  submitUrl = `/reporting/api/departments/${departmentId}/delete/`,
+): Promise<DepartmentManageResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Department delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as DepartmentManageResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Department delete failed: ${response.status}`);
   }
   return data;
 }

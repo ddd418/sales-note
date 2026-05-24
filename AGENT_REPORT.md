@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-05-24 — 실무자 업체/부서 수정·삭제 노출
+
+### 요약
+
+- React 고객 화면의 빠른 등록 패널에 `업체/부서 수정 · 삭제` 영역을 추가했습니다.
+- 실무자는 본인이 등록한 업체/부서를 수정할 수 있고, 연결 데이터가 없을 때만 삭제할 수 있습니다.
+- Manager는 기존 원칙대로 생성/수정/삭제 없이 읽기만 가능합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- `/customers/?create=1`에서 새 업체/부서를 추가한 뒤 같은 화면에서 바로 수정/삭제 버튼을 볼 수 있습니다.
+- 삭제 버튼은 담당자, 부서, 장비, 선결제, 메모, 목표 등 연결 데이터가 있으면 비활성화되고 사유를 표시합니다.
+- 기존 legacy `/reporting/companies/` 전체 관리 화면 링크도 유지했습니다.
+
+### 기존 기능 보존
+
+- DB/model/migration 변경은 없습니다.
+- `/reporting/companies/*`, `/reporting/departments/*` legacy 라우트는 유지했습니다.
+- Manager 읽기 전용 원칙은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting/views.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2
+→ OK, 45 tests
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite warning only: App chunk is larger than 500 kB
+
+git diff --check
+→ OK, CRLF normalization warning only
+
+Local browser smoke
+→ `/customers/?create=1`에서 수정/삭제 패널 표시 확인
+→ 수정 버튼 클릭 시 편집 input/저장/취소 상태 표시 확인
+```
+
+### 알려진 제한
+
+- 삭제는 안전을 위해 연결 데이터가 전혀 없는 업체/부서만 허용합니다. 연결 데이터가 있는 경우에는 정리/이관 후 삭제해야 합니다.
+- 화면 패널은 현재 `App.tsx` 내부에 추가했습니다. 큰 파일 분리는 별도 작업으로 계속 필요합니다.
+
+### 권장 다음 작업
+
+- 업체/부서 병합/이관 워크플로가 완성되면 연결 데이터가 있는 업체/부서도 삭제 대신 이관 경로로 안내합니다.
+
+### 운영 배포 상태
+
+- Runtime commit/push 및 Railway 배포 진행 예정입니다.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. [고객 화면](https://sales-note-frontend-production.up.railway.app/customers/?create=1)에 실무자 계정으로 로그인합니다.
+2. `고객 빠른 등록` 아래 `업체/부서 수정 · 삭제` 영역이 보이는지 확인합니다.
+3. 본인이 등록한 업체/부서의 `수정` 버튼을 눌러 이름 입력칸과 저장/취소 버튼이 나오는지 확인합니다.
+4. 담당자나 부서가 연결된 항목은 `삭제` 버튼이 비활성화되고 삭제 불가 사유가 보이는지 확인합니다.
+5. 연결 데이터가 없는 테스트 업체/부서를 만든 뒤 삭제가 되는지 확인합니다.
+6. Manager 계정에서는 고객 등록/업체·부서 수정·삭제가 보이지 않는지 확인합니다.
+
 ## 2026-05-23 — DashboardApp 지연 후속조치 패널 추가 제거
 
 ### 요약

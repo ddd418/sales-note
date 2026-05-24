@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-24 Salesman company/department management visibility plan
+
+**Background**:
+
+- User reported that salesmen can register 업체/부서 but cannot see edit/delete controls for those records.
+- Legacy Django management routes exist, but the React customers page only exposes inline create controls.
+
+**DB change required**: No.
+
+- Existing `Company` and `Department` ownership fields are enough.
+- Delete is limited to records without linked operational data.
+
+**Implementation scope**:
+
+- Add JSON update/delete APIs for customer company and department records.
+- Allow admin and the original registering salesman to update/delete; keep manager read-only.
+- Expose management capability, delete blockers, and API URLs in `/reporting/api/customers/`.
+- Add a React management panel inside the customer create drawer for visible edit/delete controls.
+- Preserve existing legacy `/reporting/companies/*` and `/reporting/departments/*` routes.
+
+**Validation plan**:
+
+- Focused Django customer API tests for owner update/delete, manager block, other-company block, and delete blockers.
+- `python -m py_compile reporting/views.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+
 ## 2026-05-23 DashboardApp overdue follow-up panel removal follow-up plan
 
 **Background**:

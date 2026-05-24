@@ -190,6 +190,8 @@ import {
   ScheduleCreatePayload,
   createCustomer as createCustomerRecord,
   createDocumentTemplate,
+  deleteCompanyRecord,
+  deleteDepartmentRecord,
   generateAIWorkspaceActionDraft,
   generateScheduleAICoach,
   createPersonalSchedule,
@@ -271,7 +273,9 @@ import {
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateAccountInfo,
+  updateCompany as updateCompanyRecord,
   updateCustomer as updateCustomerRecord,
+  updateDepartment as updateDepartmentRecord,
   updateNote as updateSalesNote,
   updatePrepayment as updateCustomerPrepayment,
   updatePersonalSchedule,
@@ -530,6 +534,9 @@ type CustomerCreateFormState = {
   phoneNumber: string;
   priority: string;
 };
+
+type CustomerCompanyManageOption = CustomersData['create']['companies'][number];
+type CustomerDepartmentManageOption = CustomersData['create']['departments'][number];
 
 type CustomerEditFormState = {
   address: string;
@@ -5218,10 +5225,15 @@ function CustomersPage({
   createOpen,
   creating,
   data,
+  departmentEditId,
+  departmentEditName,
   departmentCreating,
   detailData,
   detailLoading,
+  companyEditId,
+  companyEditName,
   loading,
+  managementSavingKey,
   owner,
   priority,
   query,
@@ -5229,11 +5241,21 @@ function CustomersPage({
   stage,
   onCompanyCreateNameChange,
   onCompanyCreateSubmit,
+  onCompanyDelete,
+  onCompanyEditCancel,
+  onCompanyEditNameChange,
+  onCompanyEditStart,
+  onCompanyEditSubmit,
   onCreateFormChange,
   onCreateOpenChange,
   onCreateSubmit,
+  onDepartmentDelete,
   onDepartmentCreateNameChange,
   onDepartmentCreateSubmit,
+  onDepartmentEditCancel,
+  onDepartmentEditNameChange,
+  onDepartmentEditStart,
+  onDepartmentEditSubmit,
   onDetailRefresh,
   onOwnerChange,
   onPriorityChange,
@@ -5250,10 +5272,15 @@ function CustomersPage({
   createOpen: boolean;
   creating: boolean;
   data: CustomersData | null;
+  departmentEditId: number | null;
+  departmentEditName: string;
   departmentCreating: boolean;
   detailData: CustomerDetailData | null;
   detailLoading: boolean;
+  companyEditId: number | null;
+  companyEditName: string;
   loading: boolean;
+  managementSavingKey: string;
   owner: string;
   priority: string;
   query: string;
@@ -5261,11 +5288,21 @@ function CustomersPage({
   stage: string;
   onCompanyCreateNameChange: (value: string) => void;
   onCompanyCreateSubmit: () => void;
+  onCompanyDelete: (company: CustomerCompanyManageOption) => void;
+  onCompanyEditCancel: () => void;
+  onCompanyEditNameChange: (value: string) => void;
+  onCompanyEditStart: (company: CustomerCompanyManageOption) => void;
+  onCompanyEditSubmit: (company: CustomerCompanyManageOption) => void;
   onCreateFormChange: (field: keyof CustomerCreateFormState, value: string) => void;
   onCreateOpenChange: (open: boolean) => void;
   onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onDepartmentDelete: (department: CustomerDepartmentManageOption) => void;
   onDepartmentCreateNameChange: (value: string) => void;
   onDepartmentCreateSubmit: () => void;
+  onDepartmentEditCancel: () => void;
+  onDepartmentEditNameChange: (value: string) => void;
+  onDepartmentEditStart: (department: CustomerDepartmentManageOption) => void;
+  onDepartmentEditSubmit: (department: CustomerDepartmentManageOption) => void;
   onDetailRefresh: () => Promise<CustomerDetailData | null>;
   onOwnerChange: (value: string) => void;
   onPriorityChange: (value: string) => void;
@@ -5305,6 +5342,8 @@ function CustomersPage({
   const createDepartments = createForm.companyId
     ? createConfig.departments.filter((department) => String(department.companyId) === createForm.companyId)
     : createConfig.departments;
+  const manageableCompanies = createCompanies.filter((company) => company.canManage);
+  const manageableDepartments = createDepartments.filter((department) => department.canManage);
   const departmentCreateDisabled = !createForm.companyId || departmentCreating;
 
   return (
@@ -5396,6 +5435,146 @@ function CustomersPage({
                     </button>
                   </div>
                 </label>
+              </div>
+              <div className="customer-manage-panel">
+                <div className="customer-manage-heading">
+                  <div>
+                    <span className="eyebrow">Manage</span>
+                    <strong>업체/부서 수정 · 삭제</strong>
+                  </div>
+                  <a className="route-secondary-action" href={data.links.companies}>
+                    전체 관리
+                    <MoveUpRight size={14} />
+                  </a>
+                </div>
+                <div className="customer-manage-grid">
+                  <div className="customer-manage-list">
+                    <span className="customer-manage-title">업체/학교</span>
+                    {manageableCompanies.length === 0 ? (
+                      <DashboardEmpty label="수정 가능한 업체/학교가 없습니다" />
+                    ) : (
+                      manageableCompanies.map((company) => {
+                        const isEditing = companyEditId === company.id;
+                        const saving = managementSavingKey === `company-${company.id}`;
+                        return (
+                          <div className="customer-manage-item" key={company.id}>
+                            {isEditing ? (
+                              <input
+                                aria-label="업체/학교명 수정"
+                                onChange={(event) => onCompanyEditNameChange(event.target.value)}
+                                value={companyEditName}
+                              />
+                            ) : (
+                              <div className="customer-manage-label">
+                                <strong>{company.name}</strong>
+                                <span>{formatNumber(company.departmentCount || 0)}개 부서 · {formatNumber(company.followupCount || 0)}명</span>
+                              </div>
+                            )}
+                            <div className="customer-manage-actions">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    className="route-secondary-action"
+                                    disabled={saving || !companyEditName.trim()}
+                                    onClick={() => onCompanyEditSubmit(company)}
+                                    type="button"
+                                  >
+                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
+                                    저장
+                                  </button>
+                                  <button className="route-secondary-action" onClick={onCompanyEditCancel} type="button">
+                                    취소
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button className="route-secondary-action" onClick={() => onCompanyEditStart(company)} type="button">
+                                    <Pencil size={14} />
+                                    수정
+                                  </button>
+                                  <button
+                                    className="route-secondary-action danger"
+                                    disabled={saving || !company.canDelete}
+                                    onClick={() => onCompanyDelete(company)}
+                                    title={company.deleteMessage || company.manageMessage || ''}
+                                    type="button"
+                                  >
+                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
+                                    삭제
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {!company.canDelete && company.deleteMessage ? <small>{company.deleteMessage}</small> : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="customer-manage-list">
+                    <span className="customer-manage-title">부서/연구실</span>
+                    {manageableDepartments.length === 0 ? (
+                      <DashboardEmpty label="수정 가능한 부서/연구실이 없습니다" />
+                    ) : (
+                      manageableDepartments.map((department) => {
+                        const isEditing = departmentEditId === department.id;
+                        const saving = managementSavingKey === `department-${department.id}`;
+                        return (
+                          <div className="customer-manage-item" key={department.id}>
+                            {isEditing ? (
+                              <input
+                                aria-label="부서/연구실명 수정"
+                                onChange={(event) => onDepartmentEditNameChange(event.target.value)}
+                                value={departmentEditName}
+                              />
+                            ) : (
+                              <div className="customer-manage-label">
+                                <strong>{department.name}</strong>
+                                <span>{department.companyName} · 담당자 {formatNumber(department.followupCount || 0)}명</span>
+                              </div>
+                            )}
+                            <div className="customer-manage-actions">
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    className="route-secondary-action"
+                                    disabled={saving || !departmentEditName.trim()}
+                                    onClick={() => onDepartmentEditSubmit(department)}
+                                    type="button"
+                                  >
+                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
+                                    저장
+                                  </button>
+                                  <button className="route-secondary-action" onClick={onDepartmentEditCancel} type="button">
+                                    취소
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button className="route-secondary-action" onClick={() => onDepartmentEditStart(department)} type="button">
+                                    <Pencil size={14} />
+                                    수정
+                                  </button>
+                                  <button
+                                    className="route-secondary-action danger"
+                                    disabled={saving || !department.canDelete}
+                                    onClick={() => onDepartmentDelete(department)}
+                                    title={department.deleteMessage || department.manageMessage || ''}
+                                    type="button"
+                                  >
+                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
+                                    삭제
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {!department.canDelete && department.deleteMessage ? <small>{department.deleteMessage}</small> : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="notes-create-grid customer-create-grid">
                 <div className="form-field">
@@ -20733,6 +20912,11 @@ export function App() {
   const [customerDepartmentCreateName, setCustomerDepartmentCreateName] = useState('');
   const [customerCompanyCreating, setCustomerCompanyCreating] = useState(false);
   const [customerDepartmentCreating, setCustomerDepartmentCreating] = useState(false);
+  const [customerCompanyEditId, setCustomerCompanyEditId] = useState<number | null>(null);
+  const [customerCompanyEditName, setCustomerCompanyEditName] = useState('');
+  const [customerDepartmentEditId, setCustomerDepartmentEditId] = useState<number | null>(null);
+  const [customerDepartmentEditName, setCustomerDepartmentEditName] = useState('');
+  const [customerManagementSavingKey, setCustomerManagementSavingKey] = useState('');
   const [notesData, setNotesData] = useState<NotesData | null>(null);
   const [notesLoading, setNotesLoading] = useState(currentView === 'notes' && !noteDetailId);
   const [noteDetailData, setNoteDetailData] = useState<NoteDetailData | null>(null);
@@ -21769,6 +21953,10 @@ export function App() {
   const handleCustomerCreateOpenChange = (open: boolean) => {
     setCustomerCreateOpen(open);
     setCustomerCreateError('');
+    setCustomerCompanyEditId(null);
+    setCustomerCompanyEditName('');
+    setCustomerDepartmentEditId(null);
+    setCustomerDepartmentEditName('');
     if (open) {
       setCustomerCreateMessage('');
       setCustomerCreatedDetailHref('');
@@ -21856,6 +22044,138 @@ export function App() {
       setCustomerCreateError(error instanceof Error ? error.message : '부서/연구실 추가에 실패했습니다.');
     } finally {
       setCustomerDepartmentCreating(false);
+    }
+  };
+  const handleCustomerCompanyEditStart = (company: CustomerCompanyManageOption) => {
+    setCustomerCompanyEditId(company.id);
+    setCustomerCompanyEditName(company.name);
+    setCustomerDepartmentEditId(null);
+    setCustomerDepartmentEditName('');
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+  };
+  const handleCustomerCompanyEditCancel = () => {
+    setCustomerCompanyEditId(null);
+    setCustomerCompanyEditName('');
+  };
+  const handleUpdateCustomerCompany = async (company: CustomerCompanyManageOption) => {
+    const name = customerCompanyEditName.trim();
+    if (!customersData || customerManagementSavingKey || !company.canManage || !name) {
+      return;
+    }
+    setCustomerManagementSavingKey(`company-${company.id}`);
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+    setCustomerCreatedDetailHref('');
+    try {
+      const result = await updateCompanyRecord(company.id, name, company.updateUrl);
+      await refreshCustomersData();
+      setCustomerCompanyEditId(null);
+      setCustomerCompanyEditName('');
+      setCustomerCreateMessage(result.message || '업체/학교 정보가 수정되었습니다.');
+    } catch (error) {
+      setCustomerCreateError(error instanceof Error ? error.message : '업체/학교 수정에 실패했습니다.');
+    } finally {
+      setCustomerManagementSavingKey('');
+    }
+  };
+  const handleDeleteCustomerCompany = async (company: CustomerCompanyManageOption) => {
+    if (!customersData || customerManagementSavingKey || !company.canManage) {
+      return;
+    }
+    if (!company.canDelete) {
+      setCustomerCreateError(company.deleteMessage || '연결 데이터가 있어 삭제할 수 없습니다.');
+      return;
+    }
+    if (!window.confirm(`"${company.name}" 업체/학교를 삭제할까요?`)) {
+      return;
+    }
+    setCustomerManagementSavingKey(`company-${company.id}`);
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+    setCustomerCreatedDetailHref('');
+    try {
+      const result = await deleteCompanyRecord(company.id, company.deleteUrl);
+      await refreshCustomersData();
+      setCustomerCompanyEditId(null);
+      setCustomerCompanyEditName('');
+      setCustomerDepartmentEditId(null);
+      setCustomerDepartmentEditName('');
+      setCustomerCreateForm((previous) => (
+        previous.companyId === String(company.id)
+          ? { ...previous, companyId: '', departmentId: '' }
+          : previous
+      ));
+      setCustomerCreateMessage(result.message || '업체/학교가 삭제되었습니다.');
+    } catch (error) {
+      setCustomerCreateError(error instanceof Error ? error.message : '업체/학교 삭제에 실패했습니다.');
+    } finally {
+      setCustomerManagementSavingKey('');
+    }
+  };
+  const handleCustomerDepartmentEditStart = (department: CustomerDepartmentManageOption) => {
+    setCustomerDepartmentEditId(department.id);
+    setCustomerDepartmentEditName(department.name);
+    setCustomerCompanyEditId(null);
+    setCustomerCompanyEditName('');
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+  };
+  const handleCustomerDepartmentEditCancel = () => {
+    setCustomerDepartmentEditId(null);
+    setCustomerDepartmentEditName('');
+  };
+  const handleUpdateCustomerDepartment = async (department: CustomerDepartmentManageOption) => {
+    const name = customerDepartmentEditName.trim();
+    if (!customersData || customerManagementSavingKey || !department.canManage || !name) {
+      return;
+    }
+    setCustomerManagementSavingKey(`department-${department.id}`);
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+    setCustomerCreatedDetailHref('');
+    try {
+      const result = await updateDepartmentRecord(department.id, name, department.updateUrl);
+      await refreshCustomersData();
+      setCustomerDepartmentEditId(null);
+      setCustomerDepartmentEditName('');
+      setCustomerCreateMessage(result.message || '부서/연구실 정보가 수정되었습니다.');
+    } catch (error) {
+      setCustomerCreateError(error instanceof Error ? error.message : '부서/연구실 수정에 실패했습니다.');
+    } finally {
+      setCustomerManagementSavingKey('');
+    }
+  };
+  const handleDeleteCustomerDepartment = async (department: CustomerDepartmentManageOption) => {
+    if (!customersData || customerManagementSavingKey || !department.canManage) {
+      return;
+    }
+    if (!department.canDelete) {
+      setCustomerCreateError(department.deleteMessage || '연결 데이터가 있어 삭제할 수 없습니다.');
+      return;
+    }
+    if (!window.confirm(`"${department.companyName} - ${department.name}" 부서/연구실을 삭제할까요?`)) {
+      return;
+    }
+    setCustomerManagementSavingKey(`department-${department.id}`);
+    setCustomerCreateError('');
+    setCustomerCreateMessage('');
+    setCustomerCreatedDetailHref('');
+    try {
+      const result = await deleteDepartmentRecord(department.id, department.deleteUrl);
+      await refreshCustomersData();
+      setCustomerDepartmentEditId(null);
+      setCustomerDepartmentEditName('');
+      setCustomerCreateForm((previous) => (
+        previous.departmentId === String(department.id)
+          ? { ...previous, departmentId: '' }
+          : previous
+      ));
+      setCustomerCreateMessage(result.message || '부서/연구실이 삭제되었습니다.');
+    } catch (error) {
+      setCustomerCreateError(error instanceof Error ? error.message : '부서/연구실 삭제에 실패했습니다.');
+    } finally {
+      setCustomerManagementSavingKey('');
     }
   };
   const resetCustomerCreateForm = (data: CustomersData | null) => {
@@ -22927,10 +23247,15 @@ export function App() {
           createOpen={customerCreateOpen}
           creating={customerCreating}
           data={customersData}
+          departmentEditId={customerDepartmentEditId}
+          departmentEditName={customerDepartmentEditName}
           departmentCreating={customerDepartmentCreating}
           detailData={customerDetailData}
           detailLoading={customerDetailLoading}
+          companyEditId={customerCompanyEditId}
+          companyEditName={customerCompanyEditName}
           loading={customersLoading}
+          managementSavingKey={customerManagementSavingKey}
           owner={customerOwner}
           priority={customerPriority}
           query={customerQuery}
@@ -22938,11 +23263,21 @@ export function App() {
           stage={customerStage}
           onCompanyCreateNameChange={handleCustomerCompanyCreateNameChange}
           onCompanyCreateSubmit={handleCreateCustomerCompany}
+          onCompanyDelete={handleDeleteCustomerCompany}
+          onCompanyEditCancel={handleCustomerCompanyEditCancel}
+          onCompanyEditNameChange={setCustomerCompanyEditName}
+          onCompanyEditStart={handleCustomerCompanyEditStart}
+          onCompanyEditSubmit={handleUpdateCustomerCompany}
           onCreateFormChange={handleCustomerCreateFormChange}
           onCreateOpenChange={handleCustomerCreateOpenChange}
           onCreateSubmit={handleCreateCustomerSubmit}
+          onDepartmentDelete={handleDeleteCustomerDepartment}
           onDepartmentCreateNameChange={handleCustomerDepartmentCreateNameChange}
           onDepartmentCreateSubmit={handleCreateCustomerDepartment}
+          onDepartmentEditCancel={handleCustomerDepartmentEditCancel}
+          onDepartmentEditNameChange={setCustomerDepartmentEditName}
+          onDepartmentEditStart={handleCustomerDepartmentEditStart}
+          onDepartmentEditSubmit={handleUpdateCustomerDepartment}
           onDetailRefresh={refreshCustomerDetailData}
           onOwnerChange={setCustomerOwner}
           onPriorityChange={setCustomerPriority}

@@ -2261,6 +2261,80 @@ h2 {
   white-space: nowrap;
 }
 
+.customer-manage-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-soft);
+}
+
+.customer-manage-heading,
+.customer-manage-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.customer-manage-heading strong,
+.customer-manage-title {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.customer-manage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.customer-manage-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.customer-manage-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--panel);
+  min-width: 0;
+}
+
+.customer-manage-label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.customer-manage-label strong,
+.customer-manage-label span,
+.customer-manage-item small {
+  overflow-wrap: anywhere;
+}
+
+.customer-manage-label span,
+.customer-manage-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.customer-manage-actions {
+  justify-content: flex-start;
+}
+
+.customer-manage-actions .route-secondary-action {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
 .notes-create-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9052,6 +9126,7 @@ tbody tr:hover {
   .assets-work-queue-list,
   .assets-directory-layout.has-drawer,
   .customer-inline-create-grid,
+  .customer-manage-grid,
   .customer-account-ledger-strip,
   .customer-assets-metrics,
   .customer-record-sections,

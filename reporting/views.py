@@ -3232,6 +3232,99 @@ def _can_manage_department_account(request_user, department):
     return FollowUp.objects.filter(department=department, user=request_user).exists() or department.created_by_id == request_user.id
 
 
+def _can_manage_customer_company(request_user, company):
+    user_profile = get_user_profile(request_user)
+    if user_profile.is_admin():
+        return True
+    if user_profile.is_manager():
+        return False
+    return company.created_by_id == request_user.id
+
+
+def _can_manage_customer_department(request_user, department):
+    user_profile = get_user_profile(request_user)
+    if user_profile.is_admin():
+        return True
+    if user_profile.is_manager():
+        return False
+    return department.created_by_id == request_user.id
+
+
+def _customer_delete_message(blockers):
+    active_blockers = [
+        f'{label} {count}건'
+        for label, count in blockers
+        if count
+    ]
+    if not active_blockers:
+        return ''
+    return f"연결된 {'/'.join(active_blockers)}이 있어 삭제할 수 없습니다."
+
+
+def _related_or_annotated_count(instance, annotated_name, related_name):
+    annotated_value = getattr(instance, annotated_name, None)
+    if annotated_value is not None:
+        return annotated_value
+    return getattr(instance, related_name).count()
+
+
+def _company_delete_blockers(company):
+    return [
+        ('부서', _related_or_annotated_count(company, 'department_count', 'departments')),
+        ('담당자', _related_or_annotated_count(company, 'followup_count', 'followup_companies')),
+        ('장비', _related_or_annotated_count(company, 'asset_count', 'customer_assets')),
+        ('선결제', _related_or_annotated_count(company, 'prepayment_count', 'prepayment_set')),
+    ]
+
+
+def _department_delete_blockers(department):
+    return [
+        ('담당자', _related_or_annotated_count(department, 'followup_count', 'followup_departments')),
+        ('장비', _related_or_annotated_count(department, 'asset_count', 'customer_assets')),
+        ('선결제', _related_or_annotated_count(department, 'prepayment_count', 'prepayments')),
+        ('메모', _related_or_annotated_count(department, 'memo_count', 'memos')),
+        ('목표', _related_or_annotated_count(department, 'funnel_target_count', 'funnel_targets')),
+    ]
+
+
+def _customer_company_option_payload(company, request_user):
+    blockers = _company_delete_blockers(company)
+    can_manage = _can_manage_customer_company(request_user, company)
+    delete_message = _customer_delete_message(blockers)
+    return {
+        'id': company.id,
+        'name': company.name,
+        'canManage': can_manage,
+        'canDelete': can_manage and not delete_message,
+        'manageMessage': '' if can_manage else '본인이 등록한 업체/학교만 수정할 수 있습니다.',
+        'deleteMessage': delete_message,
+        'updateUrl': reverse('reporting:company_update_api', args=[company.id]),
+        'deleteUrl': reverse('reporting:company_delete_api', args=[company.id]),
+        'departmentCount': blockers[0][1],
+        'followupCount': blockers[1][1],
+    }
+
+
+def _customer_department_option_payload(department, request_user, search_text=''):
+    blockers = _department_delete_blockers(department)
+    can_manage = _can_manage_customer_department(request_user, department)
+    delete_message = _customer_delete_message(blockers)
+    return {
+        'id': department.id,
+        'name': department.name,
+        'companyId': department.company_id,
+        'companyName': department.company.name,
+        'searchText': search_text,
+        'canManage': can_manage,
+        'canDelete': can_manage and not delete_message,
+        'manageMessage': '' if can_manage else '본인이 등록한 부서/연구실만 수정할 수 있습니다.',
+        'deleteMessage': delete_message,
+        'updateUrl': reverse('reporting:department_update_api', args=[department.id]),
+        'deleteUrl': reverse('reporting:department_delete_api', args=[department.id]),
+        'followupCount': blockers[0][1],
+    }
+
+
 def _account_management_config(request, user_profile, department, can_manage):
     if user_profile.is_admin():
         companies_qs = Company.objects.all()
@@ -3619,30 +3712,36 @@ def customers_summary_api(request):
         else:
             create_companies_qs = Company.objects.filter(created_by=request.user)
 
-        create_companies_qs = create_companies_qs.distinct().order_by('name')
+        create_companies_qs = create_companies_qs.distinct().annotate(
+            department_count=Count('departments', distinct=True),
+            followup_count=Count('followup_companies', distinct=True),
+            asset_count=Count('customer_assets', distinct=True),
+            prepayment_count=Count('prepayment', distinct=True),
+        ).order_by('name')
         create_departments_qs = Department.objects.filter(
             company__in=create_companies_qs
-        ).select_related('company').order_by('company__name', 'name')
+        ).select_related('company').annotate(
+            followup_count=Count('followup_departments', distinct=True),
+            asset_count=Count('customer_assets', distinct=True),
+            prepayment_count=Count('prepayments', distinct=True),
+            memo_count=Count('memos', distinct=True),
+            funnel_target_count=Count('funnel_targets', distinct=True),
+        ).order_by('company__name', 'name')
         create_departments = list(create_departments_qs)
         create_department_search_map = _customers_department_search_text_map(
             create_departments,
             create_users,
         )
         create_company_options = [
-            {
-                'id': company.id,
-                'name': company.name,
-            }
+            _customer_company_option_payload(company, request.user)
             for company in create_companies_qs
         ]
         create_department_options = [
-            {
-                'id': department.id,
-                'name': department.name,
-                'companyId': department.company_id,
-                'companyName': department.company.name,
-                'searchText': create_department_search_map.get(department.id, ''),
-            }
+            _customer_department_option_payload(
+                department,
+                request.user,
+                create_department_search_map.get(department.id, ''),
+            )
             for department in create_departments
         ]
 
@@ -23976,6 +24075,116 @@ def department_create_api(request):
         return JsonResponse({'error': '존재하지 않는 업체/학교입니다.'}, status=400)
     except Exception as e:
         return JsonResponse({'error': f'부서/연구실 생성 중 오류가 발생했습니다: {str(e)}'}, status=500)
+
+
+@login_required
+@require_POST
+def company_update_api(request, company_id):
+    """React 고객 화면용 업체/학교 수정 API."""
+    try:
+        company = Company.objects.get(pk=company_id)
+    except Company.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '존재하지 않는 업체/학교입니다.'}, status=404)
+
+    if not _can_manage_customer_company(request.user, company):
+        return JsonResponse({'success': False, 'error': '이 업체/학교를 수정할 권한이 없습니다.'}, status=403)
+
+    name = request.POST.get('name', '').strip()
+    if not name:
+        return JsonResponse({'success': False, 'error': '업체/학교명을 입력해주세요.'}, status=400)
+    if Company.objects.filter(name=name).exclude(pk=company.pk).exists():
+        return JsonResponse({'success': False, 'error': '이미 존재하는 업체/학교명입니다.'}, status=400)
+
+    company.name = name
+    company.save(update_fields=['name', 'updated_at'])
+    return JsonResponse({
+        'success': True,
+        'company': {
+            'id': company.id,
+            'name': company.name,
+        },
+        'message': f'"{company.name}" 업체/학교 정보가 수정되었습니다.',
+    })
+
+
+@login_required
+@require_POST
+def company_delete_api(request, company_id):
+    """React 고객 화면용 업체/학교 삭제 API."""
+    try:
+        company = Company.objects.get(pk=company_id)
+    except Company.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '존재하지 않는 업체/학교입니다.'}, status=404)
+
+    if not _can_manage_customer_company(request.user, company):
+        return JsonResponse({'success': False, 'error': '이 업체/학교를 삭제할 권한이 없습니다.'}, status=403)
+
+    delete_message = _customer_delete_message(_company_delete_blockers(company))
+    if delete_message:
+        return JsonResponse({'success': False, 'error': delete_message}, status=400)
+
+    company_name = company.name
+    company.delete()
+    return JsonResponse({
+        'success': True,
+        'message': f'"{company_name}" 업체/학교가 삭제되었습니다.',
+    })
+
+
+@login_required
+@require_POST
+def department_update_api(request, department_id):
+    """React 고객 화면용 부서/연구실 수정 API."""
+    try:
+        department = Department.objects.select_related('company').get(pk=department_id)
+    except Department.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '존재하지 않는 부서/연구실입니다.'}, status=404)
+
+    if not _can_manage_customer_department(request.user, department):
+        return JsonResponse({'success': False, 'error': '이 부서/연구실을 수정할 권한이 없습니다.'}, status=403)
+
+    name = request.POST.get('name', '').strip()
+    if not name:
+        return JsonResponse({'success': False, 'error': '부서/연구실명을 입력해주세요.'}, status=400)
+    if Department.objects.filter(company=department.company, name=name).exclude(pk=department.pk).exists():
+        return JsonResponse({'success': False, 'error': f'{department.company.name}에 이미 존재하는 부서/연구실명입니다.'}, status=400)
+
+    department.name = name
+    department.save(update_fields=['name', 'updated_at'])
+    return JsonResponse({
+        'success': True,
+        'department': {
+            'id': department.id,
+            'name': department.name,
+            'company_id': department.company_id,
+            'company_name': department.company.name,
+        },
+        'message': f'"{department.company.name} - {department.name}" 부서/연구실 정보가 수정되었습니다.',
+    })
+
+
+@login_required
+@require_POST
+def department_delete_api(request, department_id):
+    """React 고객 화면용 부서/연구실 삭제 API."""
+    try:
+        department = Department.objects.select_related('company').get(pk=department_id)
+    except Department.DoesNotExist:
+        return JsonResponse({'success': False, 'error': '존재하지 않는 부서/연구실입니다.'}, status=404)
+
+    if not _can_manage_customer_department(request.user, department):
+        return JsonResponse({'success': False, 'error': '이 부서/연구실을 삭제할 권한이 없습니다.'}, status=403)
+
+    delete_message = _customer_delete_message(_department_delete_blockers(department))
+    if delete_message:
+        return JsonResponse({'success': False, 'error': delete_message}, status=400)
+
+    department_label = f'{department.company.name} - {department.name}'
+    department.delete()
+    return JsonResponse({
+        'success': True,
+        'message': f'"{department_label}" 부서/연구실이 삭제되었습니다.',
+    })
 
 
 # ============ 업체/부서 관리 뷰들 ============

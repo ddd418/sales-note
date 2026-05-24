@@ -3581,8 +3581,18 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(payload['create']['submitUrl'], reverse('reporting:followup_create_ajax'))
         self.assertEqual(payload['create']['companySubmitUrl'], reverse('reporting:company_create_api'))
         self.assertEqual(payload['create']['departmentSubmitUrl'], reverse('reporting:department_create_api'))
-        self.assertTrue(any(option['id'] == own.company_id for option in payload['create']['companies']))
+        company_option = next(option for option in payload['create']['companies'] if option['id'] == own.company_id)
+        self.assertTrue(company_option['canManage'])
+        self.assertFalse(company_option['canDelete'])
+        self.assertEqual(company_option['updateUrl'], reverse('reporting:company_update_api', args=[own.company_id]))
+        self.assertEqual(company_option['deleteUrl'], reverse('reporting:company_delete_api', args=[own.company_id]))
+        self.assertIn('부서', company_option['deleteMessage'])
         department_option = next(option for option in payload['create']['departments'] if option['id'] == own.department_id)
+        self.assertTrue(department_option['canManage'])
+        self.assertFalse(department_option['canDelete'])
+        self.assertEqual(department_option['updateUrl'], reverse('reporting:department_update_api', args=[own.department_id]))
+        self.assertEqual(department_option['deleteUrl'], reverse('reporting:department_delete_api', args=[own.department_id]))
+        self.assertIn('담당자', department_option['deleteMessage'])
         self.assertIn('내고객 책임', department_option['searchText'])
 
     def test_customers_summary_api_returns_department_account_rows(self):
@@ -3951,6 +3961,88 @@ class CustomersSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()['error'], '접근 권한이 없는 업체입니다.')
+
+    def test_company_and_department_manage_apis_update_and_delete_owner_records(self):
+        from reporting.models import Company, Department
+
+        company = Company.objects.create(name='수정전 업체', created_by=self.user)
+        department_parent = Company.objects.create(name='부서수정 부모업체', created_by=self.user)
+        department = Department.objects.create(
+            company=department_parent,
+            name='수정전 부서',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        company_update = self.client.post(reverse('reporting:company_update_api', args=[company.id]), {
+            'name': '수정후 업체',
+        })
+        department_update = self.client.post(reverse('reporting:department_update_api', args=[department.id]), {
+            'name': '수정후 부서',
+        })
+
+        self.assertEqual(company_update.status_code, 200)
+        self.assertTrue(company_update.json()['success'])
+        self.assertEqual(Company.objects.get(id=company.id).name, '수정후 업체')
+        self.assertEqual(department_update.status_code, 200)
+        self.assertTrue(department_update.json()['success'])
+        self.assertEqual(Department.objects.get(id=department.id).name, '수정후 부서')
+
+        department_delete = self.client.post(reverse('reporting:department_delete_api', args=[department.id]))
+        company_delete = self.client.post(reverse('reporting:company_delete_api', args=[company.id]))
+
+        self.assertEqual(department_delete.status_code, 200)
+        self.assertTrue(department_delete.json()['success'])
+        self.assertFalse(Department.objects.filter(id=department.id).exists())
+        self.assertEqual(company_delete.status_code, 200)
+        self.assertTrue(company_delete.json()['success'])
+        self.assertFalse(Company.objects.filter(id=company.id).exists())
+
+    def test_company_and_department_manage_apis_block_manager_and_other_user(self):
+        from reporting.models import Company, Department
+
+        company = Company.objects.create(name='수정권한차단 업체', created_by=self.user)
+        department = Department.objects.create(
+            company=company,
+            name='수정권한차단 부서',
+            created_by=self.user,
+        )
+
+        self.client.force_login(self.manager)
+        manager_company_update = self.client.post(reverse('reporting:company_update_api', args=[company.id]), {
+            'name': '매니저수정',
+        })
+        manager_department_delete = self.client.post(reverse('reporting:department_delete_api', args=[department.id]))
+
+        self.assertEqual(manager_company_update.status_code, 403)
+        self.assertFalse(manager_company_update.json()['success'])
+        self.assertEqual(manager_department_delete.status_code, 403)
+        self.assertFalse(manager_department_delete.json()['success'])
+
+        self.client.force_login(self.other_user)
+        other_company_delete = self.client.post(reverse('reporting:company_delete_api', args=[company.id]))
+        other_department_update = self.client.post(reverse('reporting:department_update_api', args=[department.id]), {
+            'name': '타사수정',
+        })
+
+        self.assertEqual(other_company_delete.status_code, 403)
+        self.assertFalse(other_company_delete.json()['success'])
+        self.assertEqual(other_department_update.status_code, 403)
+        self.assertFalse(other_department_update.json()['success'])
+
+    def test_company_and_department_delete_apis_block_records_in_use(self):
+        target = self._create_customer(self.user, '삭제차단')
+        self.client.force_login(self.user)
+
+        company_response = self.client.post(reverse('reporting:company_delete_api', args=[target.company_id]))
+        department_response = self.client.post(reverse('reporting:department_delete_api', args=[target.department_id]))
+
+        self.assertEqual(company_response.status_code, 400)
+        self.assertFalse(company_response.json()['success'])
+        self.assertIn('삭제할 수 없습니다', company_response.json()['error'])
+        self.assertEqual(department_response.status_code, 400)
+        self.assertFalse(department_response.json()['success'])
+        self.assertIn('담당자', department_response.json()['error'])
 
     def test_customer_detail_summary_api_requires_login_json(self):
         target = self._create_customer(self.user, '상세로그인')
