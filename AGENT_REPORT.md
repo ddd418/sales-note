@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-05-24 — React 완전대체 B단계 route 설계 확정
+
+### 요약
+
+- React 완전대체 B단계로 사용자 화면의 canonical React URL, legacy `/reporting/*` redirect 대상, 기존 링크 호환 정책, 공통 오류 화면 정책을 확정했습니다.
+- 실제 redirect/route 코드는 변경하지 않았고, 런타임 동작 변경도 없습니다.
+- 별도 문서는 `D:\projects\해야할일\React_완전대체_B단계_Route_설계.txt`에 저장했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `D:\projects\해야할일\React_완전대체_B단계_Route_설계.txt`
+
+### CRM 개선
+
+- 사용자 화면 진입점을 `/dashboard/`, `/customers/`, `/accounts/`, `/reports/`, `/prepayments/`, `/assets/`, `/services/`, `/schedules/`, `/tasks/`, `/mailbox/`, `/documents/`, `/products/`, `/profile/`, `/ai-workspace/` 중심으로 정리했습니다.
+- 코드에 이미 있는 추가 React 화면인 `/pipeline/`, `/notes/`, `/employees/`, `/mailbox/business-cards/`, `/weekly-reports/`도 canonical route 표에 포함했습니다.
+- legacy URL은 화면 redirect 후보와 backend/API/session 유지 대상으로 나누었습니다.
+
+### 기존 기능 보존
+
+- DB/model/API/frontend runtime 변경 없음.
+- Django template, URL, redirect, React route 코드 삭제 없음.
+- `/reporting/*` 호환과 legacy fallback은 그대로 유지했습니다.
+
+### 설계 결과
+
+- 화면 URL은 React canonical URL을 우선 사용합니다.
+- `/reporting/api/*`, 로그인/로그아웃, OAuth, 파일 다운로드, 엑셀/PDF export, 백업, static/media, admin은 Django가 계속 소유합니다.
+- GET/HEAD legacy 화면은 302 redirect 후보로 두고, POST/PUT/DELETE 성격의 mutation은 React API parity 전까지 legacy로 유지합니다.
+- 현재 `getCurrentView()`의 unknown route fallback이 `pipeline`인 점은 다음 구현 단계에서 공통 404 화면으로 바꾸는 것으로 확정했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+Get-Content frontend\src\App.tsx, frontend\src\DashboardApp.tsx, frontend\src\main.tsx
+→ React route surface reviewed
+
+Get-Content frontend\server.mjs, frontend\src\api\shared.ts
+→ legacy redirect and href normalization policy reviewed
+
+Get-Content reporting\urls.py, reporting\react_redirects.py, sales_project\urls.py
+→ Django route ownership and redirect behavior reviewed
+
+python manage.py check
+→ System check identified no issues
+→ Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set, so IMAP/SMTP password encryption is disabled in this environment
+
+git diff --check
+→ OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- 이번 작업은 설계 문서화입니다. 공통 `NotFound`, `Forbidden`, `LoginRequired` React 컴포넌트와 route registry 구현은 아직 하지 않았습니다.
+- 업체/부서 전체관리, 관리자 사용자관리, 직원관리 create/edit의 최종 React 화면은 다음 단계 구현이 필요합니다.
+
+### 권장 다음 작업
+
+- `C. React route registry 및 공통 404/403/login-required 화면 구현`을 먼저 진행하고, 그 다음 legacy redirect 확대를 진행하는 것이 안전합니다.
+
+### 운영 배포 상태
+
+- Documentation/design only. Railway 배포 불필요.
+
+### 사용자가 확인할 절차
+
+1. `D:\projects\해야할일\React_완전대체_B단계_Route_설계.txt`를 엽니다.
+2. `현재 React route 목록`, `legacy URL에서 React URL로 이동해야 하는 화면`, `공통 화면 정책` 섹션을 확인합니다.
+3. 다음 구현 지시로 route registry/공통 오류 화면 또는 특정 legacy 화면 React 대체 항목을 선택합니다.
+
 ## 2026-05-24 — React 완전대체 A단계 Django template/route 인벤토리
 
 ### 요약

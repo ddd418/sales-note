@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## 2026-05-24 React full replacement B-step route design plan
+
+**Background**:
+
+- User asked to continue React full replacement item B.
+- Goal is to decide the React canonical route surface, legacy-to-React redirects, bookmark compatibility policy, and shared 404/403/login-required screen policy.
+- This follows the A-step Django template/route inventory and should not remove or rewrite legacy screens yet.
+
+**DB change required**: No.
+
+- Documentation/design only.
+- No model, migration, API, redirect, or frontend runtime behavior changes.
+
+**Implementation scope**:
+
+- List the current React route surface for dashboard, customers, accounts, reports, prepayments, assets, services, schedules, tasks, mail, documents, products, profile, and AI.
+- Include current additional React surfaces already present in code: pipeline, notes, employees, business cards, and weekly reports.
+- Define canonical React URLs and legacy `/reporting/*` URLs that should redirect or remain backend/API/session routes.
+- Define compatibility policy for existing bookmarks and document links.
+- Define common 404, permission denied, and login-required screen behavior for the React-only CRM target.
+- Record the result in `AGENT_REPORT.md` and a separate memo under `D:\projects\해야할일`.
+
+**Validation plan**:
+
+- Inspect `frontend/src/App.tsx`, `frontend/src/DashboardApp.tsx`, `frontend/src/main.tsx`, `frontend/server.mjs`, `frontend/src/api/shared.ts`, `reporting/urls.py`, `reporting/react_redirects.py`, and `sales_project/urls.py`.
+- `python manage.py check`
+- `git diff --check`
+
 ## 2026-05-24 React full replacement A-step inventory plan
 
 **Background**:
