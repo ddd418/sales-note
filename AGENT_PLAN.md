@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement I-step sales note replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item I for `/notes/`.
+- Legacy History screens should no longer be required for list/detail/create/edit/delete/comment/file workflows.
+- Existing React notes page already covers list, detail, edit, review toggle, comments, and files, but delete and schedule-linked quick creation need parity tightening.
+
+**DB change required**: No.
+
+- Existing `History`, `HistoryFile`, `Schedule`, `DeliveryItem`, and permission models are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a React notes delete API and expose delete permissions/links in the note detail payload.
+- Redirect authenticated GET requests for the legacy History delete screen to React note detail with a delete intent, while keeping POST fallback for transition compatibility.
+- Add React note deletion UI on `/notes/<id>/` and keep manager/admin read-only mutation restrictions.
+- Add schedule-linked quick-create options so `/notes/?create=1&schedule=<id>` selects the matching customer and preserves delivery schedule context.
+- Keep delayed follow-up removal policy by ensuring React filters do not expose an overdue follow-up filter entry.
+- Remove remaining clickable reply links that send users to Django History detail templates.
+- Tighten direct file delete permissions to match the React note edit permission.
+- Add focused tests for delete API/redirect, schedule-linked note creation, manager read-only, file permissions, and create filter options.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\file_views.py reporting\tests.py`
+- `python manage.py test reporting.tests.NotesSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/notes/`, `/notes/<id>/`, legacy `/reporting/histories/<id>/delete/`, and protected notes APIs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement H-step company/department management plan
 
 **Background**:

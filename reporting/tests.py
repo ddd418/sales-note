@@ -249,6 +249,7 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(reverse('reporting:customer_detail_report', args=[self.followup.id]), f'customers/{self.followup.id}/')
         self.assertReactRedirect(reverse('reporting:history_detail', args=[self.history.id]), f'notes/{self.history.id}/')
         self.assertReactRedirect(reverse('reporting:schedule_detail', args=[self.schedule.id]), f'schedules/{self.schedule.id}/')
+        self.assertReactRedirect(reverse('reporting:history_delete', args=[self.history.id]), f'notes/{self.history.id}/?delete=1')
 
     def test_core_create_page_redirects_preserve_relevant_query(self):
         self.assertReactRedirect(reverse('reporting:followup_create'), 'customers/?create=1')
@@ -6409,6 +6410,39 @@ class NotesSummaryApiTests(TestCase):
         self.assertTrue(any(item['value'] == 'customer_meeting' for item in payload['create']['actionTypes']))
         self.assertFalse(any(item['value'] == 'memo' for item in payload['create']['actionTypes']))
 
+    def test_notes_summary_api_includes_schedule_create_options_without_overdue_filter(self):
+        from datetime import time, timedelta
+        from reporting.models import DeliveryItem, Schedule
+
+        target = self._create_note(self.user, '일정옵션')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            visit_date=timezone.localdate() + timedelta(days=2),
+            visit_time=time(14, 0),
+            activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='PCR kit',
+            quantity=2,
+            unit='EA',
+            unit_price=1000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        schedule_option = next(item for item in payload['create']['schedules'] if item['id'] == schedule.id)
+        self.assertEqual(schedule_option['followupId'], target.followup_id)
+        self.assertEqual(schedule_option['suggestedActionType'], 'delivery_schedule')
+        self.assertIn('PCR kit', schedule_option['deliveryItems'])
+        self.assertEqual(schedule_option['deliveryAmount'], 2200)
+        self.assertFalse(any(option['value'] == 'overdue' for option in payload['options']['nextActionStates']))
+
     def test_notes_summary_api_labels_service_activity_as_memo(self):
         service_note = self._create_note(self.user, '서비스라벨', action_type='service')
         self.client.force_login(self.manager)
@@ -6521,6 +6555,46 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(mismatch_response.status_code, 400)
         self.assertIn('고객이 일치하지 않습니다', mismatch_response.json()['error'])
 
+    def test_notes_create_api_links_delivery_schedule_and_copies_delivery_summary(self):
+        from datetime import time, timedelta
+        from reporting.models import DeliveryItem, History, Schedule
+
+        target = self._create_note(self.user, '납품일정연결')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            visit_date=timezone.localdate() + timedelta(days=3),
+            visit_time=time(15, 0),
+            activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Centrifuge tube',
+            quantity=3,
+            unit='BOX',
+            unit_price=5000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'scheduleId': schedule.id,
+                'actionType': 'delivery_schedule',
+                'content': '납품 일정 완료 보고',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = History.objects.get(pk=response.json()['historyId'])
+        self.assertEqual(created.schedule_id, schedule.id)
+        self.assertEqual(created.delivery_date, schedule.visit_date)
+        self.assertIn('Centrifuge tube', created.delivery_items)
+        self.assertEqual(created.delivery_amount, 16500)
+
     def test_notes_create_api_blocks_manager_and_other_owner_customer(self):
         target = self._create_note(self.coworker, '동료작성차단')
 
@@ -6604,6 +6678,9 @@ class NotesSummaryApiTests(TestCase):
         self.assertTrue(payload['edit']['canEdit'])
         self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:notes_update_api', args=[target.id]))
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:note_file_upload', args=[target.id]))
+        self.assertTrue(payload['note']['canDelete'])
+        self.assertEqual(payload['note']['deleteHref'], reverse('reporting:notes_delete_api', args=[target.id]))
+        self.assertEqual(payload['links']['deleteNote'], reverse('reporting:notes_delete_api', args=[target.id]))
         self.assertEqual(payload['note']['files'][0]['id'], history_file.id)
         self.assertEqual(payload['note']['files'][0]['deleteHref'], reverse('reporting:file_delete', args=[history_file.id]))
         self.assertTrue(payload['comments']['canCreate'])
@@ -6626,6 +6703,7 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(manager_response.status_code, 200)
         manager_payload = manager_response.json()
         self.assertFalse(manager_payload['edit']['canEdit'])
+        self.assertFalse(manager_payload['note']['canDelete'])
         self.assertTrue(manager_payload['scope']['canReview'])
 
         self.client.force_login(self.other_manager)
@@ -6698,6 +6776,42 @@ class NotesSummaryApiTests(TestCase):
         )
         self.assertEqual(other_company_response.status_code, 403)
 
+    def test_notes_delete_api_allows_owner_only_and_blocks_comment_delete(self):
+        from reporting.models import History
+
+        target = self._create_note(self.user, '삭제대상', action_type='quote', content='삭제할 노트')
+        delete_url = reverse('reporting:notes_delete_api', args=[target.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(delete_url)
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertTrue(History.objects.filter(pk=target.id).exists())
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(delete_url)
+        self.assertEqual(coworker_response.status_code, 403)
+        self.assertTrue(History.objects.filter(pk=target.id).exists())
+
+        reply = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            parent_history=target,
+            action_type='memo',
+            content='댓글은 노트 삭제 API 대상 아님',
+        )
+        self.client.force_login(self.user)
+        reply_response = self.client.post(reverse('reporting:notes_delete_api', args=[reply.id]))
+        self.assertEqual(reply_response.status_code, 403)
+        self.assertTrue(History.objects.filter(pk=reply.id).exists())
+
+        response = self.client.post(delete_url)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['redirect'], '/notes/')
+        self.assertFalse(History.objects.filter(pk=target.id).exists())
+
     def test_note_file_upload_api_allows_owner_only(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         from reporting.models import HistoryFile
@@ -6734,7 +6848,7 @@ class NotesSummaryApiTests(TestCase):
 
     def test_note_file_delete_api_allows_owner_only(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
-        from reporting.models import HistoryFile
+        from reporting.models import History, HistoryFile
 
         target = self._create_note(self.user, '파일삭제', action_type='quote', content='삭제 파일')
         history_file = HistoryFile.objects.create(
@@ -6756,7 +6870,27 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(coworker_response.status_code, 403)
         self.assertTrue(HistoryFile.objects.filter(pk=history_file.id).exists())
 
+        memo = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            parent_history=target,
+            action_type='memo',
+            content='첨부 삭제 차단 댓글',
+        )
+        memo_file = HistoryFile.objects.create(
+            history=memo,
+            file=SimpleUploadedFile('memo-file.txt', b'memo file', content_type='text/plain'),
+            original_filename='memo-file.txt',
+            file_size=9,
+            uploaded_by=self.user,
+        )
+        self.addCleanup(memo_file.file.delete, False)
         self.client.force_login(self.user)
+        memo_response = self.client.post(reverse('reporting:file_delete', args=[memo_file.id]))
+        self.assertEqual(memo_response.status_code, 403)
+        self.assertTrue(HistoryFile.objects.filter(pk=memo_file.id).exists())
+
         response = self.client.post(delete_url)
 
         self.assertEqual(response.status_code, 200)

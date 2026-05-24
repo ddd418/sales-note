@@ -192,6 +192,7 @@ import {
   deleteCompanyRecord,
   deleteCustomer as deleteCustomerRecord,
   deleteDepartmentRecord,
+  deleteNote as deleteSalesNote,
   generateAIWorkspaceActionDraft,
   generateScheduleAICoach,
   createPersonalSchedule,
@@ -694,6 +695,10 @@ const scheduleActivityToNoteActionType = (activityType: string) => {
   }
   return 'customer_meeting';
 };
+
+const isNoteActionAllowed = (actionTypes: Array<{ value: string }>, actionType: string) => (
+  Boolean(actionType && actionTypes.some((option) => option.value === actionType))
+);
 
 const scheduleNoteActionTypeOptions = [
   { value: 'customer_meeting', label: '고객 미팅' },
@@ -7792,6 +7797,9 @@ function NoteDetailPage({
   const [replyDeletingId, setReplyDeletingId] = useState<number | null>(null);
   const [replyError, setReplyError] = useState('');
   const [replyMessage, setReplyMessage] = useState('');
+  const [noteDeleting, setNoteDeleting] = useState(false);
+  const [noteDeleteError, setNoteDeleteError] = useState('');
+  const [noteDeleteMessage, setNoteDeleteMessage] = useState('');
 
   useEffect(() => {
     setEditForm(makeNoteEditForm(currentNote));
@@ -7807,6 +7815,9 @@ function NoteDetailPage({
     setReplyMessage('');
     setReplySaving(false);
     setReplyDeletingId(null);
+    setNoteDeleting(false);
+    setNoteDeleteError('');
+    setNoteDeleteMessage('');
     if (noteFileInputRef.current) {
       noteFileInputRef.current.value = '';
     }
@@ -7893,6 +7904,30 @@ function NoteDetailPage({
       setEditError(error instanceof Error ? error.message : '검토 상태 변경에 실패했습니다.');
     } finally {
       setReviewing(false);
+    }
+  };
+
+  const handleDeleteNote = async () => {
+    if (!currentNote?.canDelete || !currentNote.deleteHref || noteDeleting) {
+      setNoteDeleteError('삭제 권한이 없습니다.');
+      setNoteDeleteMessage('');
+      return;
+    }
+    if (!window.confirm('이 영업노트를 삭제할까요? 첨부파일과 댓글도 함께 정리됩니다.')) {
+      return;
+    }
+
+    setNoteDeleting(true);
+    setNoteDeleteError('');
+    setNoteDeleteMessage('');
+    try {
+      const result = await deleteSalesNote(currentNote.deleteHref);
+      setNoteDeleteMessage(result.message || '영업노트를 삭제했습니다.');
+      window.location.assign(result.redirect || '/notes/');
+    } catch (error) {
+      setNoteDeleteError(error instanceof Error ? error.message : '영업노트 삭제에 실패했습니다.');
+    } finally {
+      setNoteDeleting(false);
     }
   };
 
@@ -8048,6 +8083,7 @@ function NoteDetailPage({
   }
 
   const note = data.note;
+  const deleteRequested = new URLSearchParams(window.location.search).get('delete') === '1';
   const metrics = [
     { label: '활동 유형', value: note.actionLabel, detail: note.owner, icon: FileText, tone: 'blue' as const },
     { label: '검토 상태', value: note.reviewed ? '완료' : note.reviewRequired ? '미검토' : '불필요', detail: note.reviewer || data.scope.label, icon: CheckCircle2, tone: note.reviewed ? 'green' as const : 'amber' as const },
@@ -8089,8 +8125,23 @@ function NoteDetailPage({
               <Check size={16} />
             </button>
           ) : null}
+          {note.canDelete && note.deleteHref ? (
+            <button className="route-secondary-action danger" disabled={noteDeleting} onClick={handleDeleteNote} type="button">
+              {noteDeleting ? <Loader2 className="spin-icon" size={15} /> : <Trash2 size={15} />}
+              삭제
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {deleteRequested && note.canDelete ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>삭제 요청으로 들어왔습니다. 상단의 삭제 버튼으로 확정하세요.</span>
+        </div>
+      ) : null}
+      {noteDeleteError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{noteDeleteError}</span></div> : null}
+      {noteDeleteMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{noteDeleteMessage}</span></div> : null}
 
       <section className="dashboard-metric-grid" aria-label="영업노트 상세 지표">
         {metrics.map((metric) => (
@@ -8363,11 +8414,11 @@ function NoteDetailPage({
             <div className="note-reply-list">
               {note.replies.map((reply) => (
                 <div className="note-reply-row" key={reply.id}>
-                  <a className="note-reply-content" href={reply.djangoHref}>
+                  <div className="note-reply-content">
                     <strong>{reply.author}</strong>
                     <span>{[reply.authorRole, reply.createdAt ? formatDateTimeLabel(reply.createdAt) : ''].filter(Boolean).join(' · ')}</span>
                     <p>{reply.content}</p>
-                  </a>
+                  </div>
                   {reply.canDelete && reply.deleteHref ? (
                     <button
                       aria-label={`${reply.author} 댓글 삭제`}
@@ -8475,6 +8526,34 @@ function NotesPage({
   const canCreateNotes = createConfig.canCreate;
   const createCustomers = createConfig.customers;
   const createActionTypes = createConfig.actionTypes;
+  const createSchedules = createConfig.schedules ?? [];
+  const availableCreateSchedules = createSchedules.filter((schedule) => (
+    !createForm.followupId || String(schedule.followupId) === createForm.followupId
+  ));
+  const selectedCreateSchedule = createSchedules.find((schedule) => String(schedule.id) === createForm.scheduleId) ?? null;
+  const handleCreateCustomerChange = (nextValue: string) => {
+    const selectedScheduleBelongsToCustomer = selectedCreateSchedule && String(selectedCreateSchedule.followupId) === nextValue;
+    onCreateFormChange('followupId', nextValue);
+    if (!selectedScheduleBelongsToCustomer) {
+      onCreateFormChange('scheduleId', '');
+    }
+  };
+  const handleCreateScheduleChange = (nextValue: string) => {
+    const nextSchedule = createSchedules.find((schedule) => String(schedule.id) === nextValue);
+    onCreateFormChange('scheduleId', nextValue);
+    if (!nextSchedule) {
+      return;
+    }
+    if (String(nextSchedule.followupId) !== createForm.followupId) {
+      onCreateFormChange('followupId', String(nextSchedule.followupId));
+    }
+    if (nextSchedule.date) {
+      onCreateFormChange('activityDate', nextSchedule.date);
+    }
+    if (isNoteActionAllowed(createActionTypes, nextSchedule.suggestedActionType)) {
+      onCreateFormChange('actionType', nextSchedule.suggestedActionType);
+    }
+  };
 
   return (
     <section className="notes-page">
@@ -8542,12 +8621,26 @@ function NotesPage({
                   <span>고객</span>
                   <SearchableSelect
                     ariaLabel="고객 선택"
-                    onChange={(nextValue) => onCreateFormChange('followupId', nextValue)}
+                    onChange={handleCreateCustomerChange}
                     options={createCustomers.map(makeCustomerSelectOption)}
                     placeholder="고객, 회사, 부서 검색"
                     value={createForm.followupId}
                   />
                 </div>
+                <label>
+                  <span>연결 일정/납품</span>
+                  <select
+                    onChange={(event) => handleCreateScheduleChange(event.target.value)}
+                    value={createForm.scheduleId}
+                  >
+                    <option value="">연결 없음</option>
+                    {availableCreateSchedules.map((schedule) => (
+                      <option key={schedule.id} value={schedule.id}>
+                        {schedule.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label>
                   <span>활동 유형</span>
                   <select
@@ -8577,6 +8670,25 @@ function NotesPage({
                   />
                 </label>
               </div>
+              {selectedCreateSchedule ? (
+                <div className="note-linked-schedule-card">
+                  <div>
+                    <strong>{selectedCreateSchedule.activityLabel}</strong>
+                    <span>
+                      {[
+                        selectedCreateSchedule.date ? formatDateLabel(selectedCreateSchedule.date) : '',
+                        selectedCreateSchedule.time,
+                        selectedCreateSchedule.statusLabel,
+                      ].filter(Boolean).join(' · ')}
+                    </span>
+                    {selectedCreateSchedule.deliveryItems ? <p>{selectedCreateSchedule.deliveryItems}</p> : null}
+                  </div>
+                  <div>
+                    {selectedCreateSchedule.deliveryAmount > 0 ? <strong>{formatWon(selectedCreateSchedule.deliveryAmount)}</strong> : null}
+                    <a className="customer-row-action" href={selectedCreateSchedule.href}>일정 상세</a>
+                  </div>
+                </div>
+              ) : null}
               <label>
                 <span>활동 내용</span>
                 <textarea
@@ -21582,14 +21694,33 @@ export function App() {
     const fallbackCustomerId = notesData.create.customers[0]?.id;
     const firstActionType = notesData.create.actionTypes[0]?.value || 'customer_meeting';
     const requestedScheduleId = getCreateScheduleParam();
-    setNoteCreateForm((previous) => ({
-      ...previous,
-      actionType: previous.actionType || firstActionType,
-      followupId: requestedCustomer
+    const requestedSchedule = notesData.create.schedules.find((schedule) => String(schedule.id) === requestedScheduleId);
+    setNoteCreateForm((previous) => {
+      const nextFollowupId = requestedCustomer
         ? String(requestedCustomer.id)
-        : previous.followupId || (fallbackCustomerId ? String(fallbackCustomerId) : ''),
-      scheduleId: requestedScheduleId || previous.scheduleId,
-    }));
+        : requestedSchedule
+          ? String(requestedSchedule.followupId)
+          : previous.followupId || (fallbackCustomerId ? String(fallbackCustomerId) : '');
+      const existingSchedule = notesData.create.schedules.find((schedule) => String(schedule.id) === previous.scheduleId);
+      const scheduleStillValid = existingSchedule && String(existingSchedule.followupId) === nextFollowupId;
+      const nextScheduleId = requestedSchedule
+        ? String(requestedSchedule.id)
+        : scheduleStillValid
+          ? previous.scheduleId
+          : '';
+      const shouldApplyScheduleAction = requestedSchedule && previous.scheduleId !== String(requestedSchedule.id);
+      const scheduleActionType = requestedSchedule?.suggestedActionType || '';
+      const nextActionType = shouldApplyScheduleAction && isNoteActionAllowed(notesData.create.actionTypes, scheduleActionType)
+        ? scheduleActionType
+        : previous.actionType || firstActionType;
+      return {
+        ...previous,
+        actionType: nextActionType,
+        activityDate: requestedSchedule?.date || previous.activityDate,
+        followupId: nextFollowupId,
+        scheduleId: nextScheduleId,
+      };
+    });
   }, [currentView, noteDetailId, notesData]);
 
   useEffect(() => {
@@ -22526,12 +22657,25 @@ export function App() {
     const requestedCustomerId = getCreateCustomerParam();
     const requestedScheduleId = getCreateScheduleParam();
     const requestedCustomer = data?.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
+    const requestedSchedule = data?.create.schedules.find((schedule) => String(schedule.id) === requestedScheduleId);
     nextForm.followupId = requestedCustomer?.id
       ? String(requestedCustomer.id)
+      : requestedSchedule?.followupId
+        ? String(requestedSchedule.followupId)
       : data?.create.customers[0]?.id
         ? String(data.create.customers[0].id)
         : '';
-    nextForm.scheduleId = requestedScheduleId;
+    nextForm.scheduleId = requestedSchedule ? String(requestedSchedule.id) : '';
+    if (requestedSchedule?.date) {
+      nextForm.activityDate = requestedSchedule.date;
+    }
+    if (
+      requestedSchedule?.suggestedActionType &&
+      data &&
+      isNoteActionAllowed(data.create.actionTypes, requestedSchedule.suggestedActionType)
+    ) {
+      nextForm.actionType = requestedSchedule.suggestedActionType;
+    }
     setNoteCreateForm(nextForm);
   };
   const handleCreateNoteSubmit = async (event: FormEvent<HTMLFormElement>) => {

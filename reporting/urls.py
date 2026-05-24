@@ -110,7 +110,13 @@ urlpatterns = [
         views.history_edit_view,
         id_react_page('notes/{pk}/'),
     ), name='history_edit'),
-    path('histories/<int:pk>/delete/', views.history_delete_view, name='history_delete'),
+    path('histories/<int:pk>/delete/', react_page_redirect(
+        views.history_delete_view,
+        lambda request, pk: frontend_url(
+            f'notes/{pk}/',
+            query_with(request, extra={'delete': '1'}),
+        ),
+    ), name='history_delete'),
     path('histories/<int:pk>/toggle-reviewed/', views.history_toggle_reviewed, name='history_toggle_reviewed'),
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
     path('histories/<int:pk>/update-tax-invoice/', views.history_update_tax_invoice, name='history_update_tax_invoice'),
@@ -318,6 +324,7 @@ urlpatterns = [
     path('api/notes/create/', views.notes_create_api, name='notes_create_api'),
     path('api/notes/<int:history_id>/', views.notes_detail_api, name='notes_detail_api'),
     path('api/notes/<int:history_id>/update/', views.notes_update_api, name='notes_update_api'),
+    path('api/notes/<int:history_id>/delete/', views.notes_delete_api, name='notes_delete_api'),
     path('api/schedules/', views.schedules_summary_api, name='schedules_summary_api'),
     path('api/schedules/create/', views.schedules_create_api, name='schedules_create_api'),
     path('api/schedules/calendar/', views.schedules_calendar_api, name='schedules_calendar_api'),

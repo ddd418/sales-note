@@ -2601,6 +2601,41 @@ h2 {
   gap: 8px;
 }
 
+.note-linked-schedule-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #1e1b4b;
+}
+
+.note-linked-schedule-card > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.note-linked-schedule-card span,
+.note-linked-schedule-card p {
+  margin: 0;
+  color: #4338ca;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.note-linked-schedule-card p {
+  white-space: pre-line;
+}
+
+.note-linked-schedule-card .customer-row-action {
+  width: fit-content;
+  margin-top: 0;
+  background: #fff;
+}
+
 .notes-filter-bar {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) 160px 170px 160px 170px;
@@ -2846,7 +2881,7 @@ h2 {
 }
 
 .note-file-list a,
-.note-reply-list a {
+.note-reply-content {
   display: grid;
   gap: 4px;
   padding: 10px;
@@ -2858,13 +2893,13 @@ h2 {
 }
 
 .note-file-list a:hover,
-.note-reply-list a:hover {
+.note-reply-content:hover {
   border-color: var(--primary);
   color: var(--primary-strong);
 }
 
 .note-file-list span,
-.note-reply-list span {
+.note-reply-content span {
   color: var(--muted);
   font-size: 12px;
 }

@@ -1,5 +1,114 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 I단계 영업노트 완전 대체
+
+### 요약
+
+- `/notes/` React 영업노트 화면에서 목록, 생성, 상세, 수정, 댓글, 검토, 첨부파일에 더해 삭제까지 처리하도록 보강했습니다.
+- 일정/납품에서 들어오는 `/notes/?create=1&schedule=<id>` 흐름이 선택한 일정의 고객을 자동으로 맞추고, 납품 일정의 품목/금액 요약을 영업노트에 반영하도록 했습니다.
+- legacy `/reporting/histories/<id>/delete/` GET 화면은 React 상세 삭제 의도 URL로 이동하게 했고, POST fallback은 유지했습니다.
+- 댓글 행에서 Django History 상세 템플릿으로 이동하던 링크를 제거해 React 상세 안에서 댓글 확인/삭제가 끝나도록 했습니다.
+- manager는 계속 읽기/검토/댓글만 가능하고, 노트 작성/수정/삭제/첨부파일 삭제는 막히도록 테스트했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/file_views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- React 노트 상세에 삭제 버튼과 `/reporting/api/notes/<id>/delete/` API를 추가했습니다.
+- 빠른 작성 폼에 `연결 일정/납품` 선택을 추가했습니다.
+- 일정 선택 시 활동일과 활동 유형이 일정 기준으로 자동 보정됩니다.
+- 납품 일정 연결 노트는 Schedule `DeliveryItem` 기준 납품 품목/금액을 저장합니다.
+- `지연 후속조치` 필터는 React options에 노출하지 않는 정책을 테스트로 고정했습니다.
+- 첨부파일 직접 삭제 API도 React 노트 수정 권한과 동일한 범위로 제한했습니다.
+- 기존 `ScheduleForm` 안쪽의 지역 `Q` import 때문에 legacy POST fallback에서 발생하던 스코프 오류를 함께 수정했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 로그인, API, 파일 다운로드, legacy POST fallback route는 유지했습니다.
+- Django History template 파일은 삭제하지 않았습니다. 운영 검수 후 별도 cleanup 단계에서 삭제 여부를 판단합니다.
+- manager 검토 토글과 manager/작성자 댓글 작성 흐름은 유지했습니다.
+- legacy `history_delete_view` POST 동작은 유지하여 전환 기간 중 기존 AJAX/폼 삭제 fallback이 계속 동작합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\file_views.py reporting\tests.py
+-> OK
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py test reporting.tests.NotesSummaryApiTests reporting.tests.CoreCrmLegacyRedirectTests --verbosity=2
+-> OK, 29 tests
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2
+-> OK, 54 tests
+-> First attempt hit timeout; rerun with longer timeout passed
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py check
+-> System check identified no issues
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py makemigrations --check --dry-run
+-> No changes detected
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+npx tsc --noEmit --pretty false
+-> OK
+
+npm run build
+-> OK
+-> App bundle 722.35 kB, gzip 142.04 kB
+-> Existing Vite large chunk warning remains for the full App bundle
+
+node --check server.mjs
+-> OK
+
+git diff --check
+-> OK, CRLF normalization warning only
+
+Local Browser smoke
+-> http://127.0.0.1:5174/notes/ redirected unauthenticated user to /reporting/login/?next=/notes/
+-> Browser console errors: 0
+```
+
+### 알려진 제한
+
+- 운영 서버에서 실제 로그인 세션으로 노트 삭제, 일정 연결 작성, 첨부 업로드/삭제를 수동 확인해야 합니다.
+- History template 파일은 아직 남아 있습니다. React parity 배포와 사용자 검수 후 삭제 후보로 정리해야 합니다.
+- 노트 quick create의 일정 선택 목록은 작성 가능한 본인 고객의 최근 일정 최대 160건을 내려줍니다.
+
+### 운영 배포 상태
+
+- Pending runtime commit, push, and Railway deployment.
+
+### 권장 다음 작업
+
+- 운영에서 I단계 수동 검수가 끝나면 J단계 또는 남은 React 완전대체 항목으로 넘어가세요.
+
+### 수동 서버 테스트 프로세스
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/`에 접속해 로그인합니다.
+2. salesman 계정으로 노트 목록 검색, 고객/활동 유형/검토 상태/다음 액션 필터가 동작하는지 확인합니다.
+3. `노트 작성`을 열고 고객을 선택한 뒤 일반 노트를 저장하고 목록/상세에 반영되는지 확인합니다.
+4. `/schedules/calendar/` 또는 일정 목록에서 `보고`를 눌러 `/notes/?create=1&schedule=<id>`로 들어간 뒤 고객과 연결 일정이 자동 선택되는지 확인합니다.
+5. 납품 일정 연결 노트를 저장하고 상세에서 납품 품목/금액이 보이는지 확인합니다.
+6. 노트 상세에서 파일 업로드, 다운로드, 삭제가 동작하는지 확인합니다.
+7. 댓글을 추가/삭제하고, 댓글 클릭이 Django History 화면으로 이동하지 않는지 확인합니다.
+8. 삭제 가능한 테스트 노트 상세에서 삭제 버튼으로 삭제한 뒤 `/notes/` 목록으로 돌아오는지 확인합니다.
+9. manager 계정으로 회사 내 직원 노트가 보이고 검토/댓글은 가능하지만 작성/수정/삭제/첨부삭제 버튼은 없는지 확인합니다.
+10. `/reporting/histories/<id>/delete/` 기존 삭제 주소가 React `/notes/<id>/?delete=1`로 이동하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 H단계 업체/부서 관리 완전 대체
 
 ### 요약

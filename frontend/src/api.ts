@@ -1716,6 +1716,26 @@ export type NoteReplyItem = {
   canDelete?: boolean;
 };
 
+export type NoteCreateScheduleOption = {
+  id: number;
+  followupId: number;
+  label: string;
+  customer: string;
+  company: string;
+  department: string;
+  activityType: string;
+  activityLabel: string;
+  date: string | null;
+  time: string;
+  status: string;
+  statusLabel: string;
+  deliveryItems: string;
+  deliveryAmount: number;
+  suggestedActionType: string;
+  href: string;
+  djangoHref?: string;
+};
+
 export type NoteDetailItem = NoteItem & {
   content: string;
   createdBy: string;
@@ -1735,6 +1755,8 @@ export type NoteDetailItem = NoteItem & {
   files: NoteFileItem[];
   replies: NoteReplyItem[];
   canEdit: boolean;
+  canDelete?: boolean;
+  deleteHref?: string;
 };
 
 export type NoteDetailData = {
@@ -1760,6 +1782,7 @@ export type NoteDetailData = {
     schedule: string;
     createNote: string;
     uploadFiles: string;
+    deleteNote: string;
   };
   edit: {
     canEdit: boolean;
@@ -1852,6 +1875,7 @@ export type NotesData = {
       priorityLabel: string;
       href: string;
     }>;
+    schedules: NoteCreateScheduleOption[];
   };
   notes: NoteItem[];
 };
@@ -1892,6 +1916,13 @@ export type NoteEditResponse = NoteDetailData & {
   success: boolean;
   error?: string;
   message?: string;
+};
+
+export type NoteDeleteResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  redirect?: string;
 };
 
 export type NoteFileActionResponse = {
@@ -5232,6 +5263,7 @@ const emptyNotesData: NotesData = {
     submitUrl: '/reporting/api/notes/create/',
     actionTypes: [],
     customers: [],
+    schedules: [],
   },
   notes: [],
 };
@@ -5257,6 +5289,7 @@ const emptyNoteDetailData: NoteDetailData = {
     schedule: '',
     createNote: '/notes/?create=1',
     uploadFiles: '',
+    deleteNote: '',
   },
   edit: {
     canEdit: false,
@@ -6140,6 +6173,8 @@ function normalizeNoteLinks<T extends NoteItem>(item: T): T {
     'customerHref',
     'djangoCustomerHref',
     'scheduleHref',
+    'reviewToggleHref',
+    'deleteHref',
   ]);
 }
 
@@ -7824,6 +7859,9 @@ export async function loadNotesData(params: {
         customers: payload.create?.customers?.map((customer) => (
           normalizeHrefFields(customer, ['href'])
         )) ?? emptyNotesData.create.customers,
+        schedules: payload.create?.schedules?.map((schedule) => (
+          normalizeHrefFields(schedule, ['href', 'djangoHref'])
+        )) ?? emptyNotesData.create.schedules,
       },
       actionCounts: payload.actionCounts ?? emptyNotesData.actionCounts,
       notes: (payload.notes ?? emptyNotesData.notes).map(normalizeNoteLinks),
@@ -7865,7 +7903,7 @@ export async function loadNoteDetailData(noteId: number): Promise<NoteDetailData
       links: normalizeHrefFields({
         ...emptyNoteDetailData.links,
         ...(payload.links ?? {}),
-      }, ['notes', 'djangoDetail', 'djangoEdit', 'customer', 'djangoCustomer', 'schedule', 'createNote']),
+      }, ['notes', 'djangoDetail', 'djangoEdit', 'customer', 'djangoCustomer', 'schedule', 'createNote', 'uploadFiles', 'deleteNote']),
       edit: {
         ...emptyNoteDetailData.edit,
         ...(payload.edit ?? {}),
@@ -7936,6 +7974,29 @@ export async function updateNote(payload: NoteEditPayload, submitUrl: string): P
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Note update failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function deleteNote(deleteUrl: string): Promise<NoteDeleteResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Note delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as NoteDeleteResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Note delete failed: ${response.status}`);
   }
   return data;
 }

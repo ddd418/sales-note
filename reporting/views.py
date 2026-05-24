@@ -582,7 +582,6 @@ class ScheduleForm(forms.ModelForm):
             # 기존 인스턴스가 있는 경우 해당 팔로우업도 포함
             if self.instance.pk and self.instance.followup:
                 # Q 객체를 사용하여 기존 팔로우업과 사용자 팔로우업을 OR 조건으로 결합
-                from django.db.models import Q
                 if user.is_staff or user.is_superuser:
                     queryset_filter = Q()  # 모든 팔로우업
                 else:
@@ -8281,6 +8280,64 @@ def _quote_schedule_actual_delivery_summary(quote_schedule):
     return _delivery_item_entries_summary(delivered_entries)
 
 
+def _notes_schedule_suggested_action_type(schedule):
+    if schedule.activity_type == 'delivery':
+        return 'delivery_schedule'
+    if schedule.activity_type == 'quote':
+        return 'quote'
+    if schedule.activity_type == 'service':
+        return 'service'
+    return 'customer_meeting'
+
+
+def _notes_schedule_delivery_summary(schedule):
+    if not schedule:
+        return '', 0
+    if schedule.activity_type == 'delivery':
+        delivery_items = list(schedule.delivery_items_set.all().order_by('id'))
+        if delivery_items:
+            return _product_delivery_items_summary(delivery_items)
+    if schedule.activity_type == 'quote':
+        return _quote_schedule_actual_delivery_summary(schedule)
+    return '', 0
+
+
+def _notes_create_schedule_payload(schedule):
+    followup = schedule.followup
+    customer = followup.customer_name or followup.manager or '고객명 미정'
+    company = followup.company.name if followup and followup.company else ''
+    department = followup.department.name if followup and followup.department else ''
+    time_label = schedule.visit_time.strftime('%H:%M') if schedule.visit_time else ''
+    delivery_text, delivery_amount = _notes_schedule_delivery_summary(schedule)
+    label_parts = [
+        _date_or_none(schedule.visit_date),
+        time_label,
+        schedule.get_activity_type_display(),
+        company,
+        department,
+        customer,
+    ]
+    return {
+        'id': schedule.id,
+        'followupId': schedule.followup_id,
+        'label': ' · '.join(str(part) for part in label_parts if part) or f'일정 #{schedule.id}',
+        'customer': customer,
+        'company': company,
+        'department': department,
+        'activityType': schedule.activity_type,
+        'activityLabel': schedule.get_activity_type_display(),
+        'date': _date_or_none(schedule.visit_date),
+        'time': time_label,
+        'status': schedule.status,
+        'statusLabel': schedule.get_status_display(),
+        'deliveryItems': delivery_text,
+        'deliveryAmount': delivery_amount,
+        'suggestedActionType': _notes_schedule_suggested_action_type(schedule),
+        'href': f'/schedules/{schedule.id}/',
+        'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
+    }
+
+
 def _can_review_notes(user_profile):
     """영업노트 검토는 각 소속 회사의 manager 계정만 처리한다."""
     return bool(user_profile.is_manager() and user_profile.company_id)
@@ -8412,6 +8469,14 @@ def _notes_can_delete_reply(user, reply):
     return reply.user_id == user.id
 
 
+def _notes_can_delete_history(user, history):
+    return bool(
+        can_modify_user_data(user, history.user) and
+        history.parent_history_id is None and
+        history.action_type != 'memo'
+    )
+
+
 def _notes_reply_payload(request, reply):
     can_delete = _notes_can_delete_reply(request.user, reply)
     is_manager_memo = bool(reply.created_by_id and reply.created_by_id != reply.user_id)
@@ -8432,6 +8497,7 @@ def _notes_detail_payload(request, history, user_profile):
     can_review = _can_review_notes(user_profile)
     can_edit = can_modify_user_data(request.user, history.user)
     detail_can_edit = bool(can_edit and history.parent_history_id is None and history.action_type != 'memo')
+    detail_can_delete = _notes_can_delete_history(request.user, history)
     can_add_reply = _notes_can_add_reply(request.user, history)
     history.reply_count = history.reply_memos.count()
     history.file_count = history.files.count()
@@ -8477,6 +8543,8 @@ def _notes_detail_payload(request, history, user_profile):
         'files': files,
         'replies': replies,
         'canEdit': detail_can_edit,
+        'canDelete': detail_can_delete,
+        'deleteHref': reverse('reporting:notes_delete_api', args=[history.id]) if detail_can_delete else '',
     }
 
     related_notes = []
@@ -8522,6 +8590,7 @@ def _notes_detail_payload(request, history, user_profile):
             'djangoSchedule': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
             'createNote': f'/notes/?create=1&customer={followup.id}' if followup else '/notes/?create=1',
             'uploadFiles': reverse('reporting:note_file_upload', args=[history.id]) if detail_can_edit else '',
+            'deleteNote': reverse('reporting:notes_delete_api', args=[history.id]) if detail_can_delete else '',
         },
         'edit': _notes_edit_config(request, history, can_edit),
         'comments': {
@@ -8704,6 +8773,32 @@ def notes_update_api(request, history_id):
 
 
 @never_cache
+@require_http_methods(["POST"])
+def notes_delete_api(request, history_id):
+    """React notes 상세 화면용 영업노트 삭제 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    history = _notes_get_detail_history(history_id)
+    if not _notes_can_delete_history(request.user, history):
+        return JsonResponse({
+            'success': False,
+            'error': '삭제 권한이 없습니다. Manager는 읽기 전용입니다.',
+        }, status=403)
+
+    customer_name = history.followup.customer_name or '고객명 미정' if history.followup else '일반 메모'
+    action_display = history.get_action_type_display()
+    history.delete()
+
+    return JsonResponse({
+        'success': True,
+        'message': f'{customer_name} ({action_display}) 활동 기록이 삭제되었습니다.',
+        'redirect': '/notes/',
+    })
+
+
+@never_cache
 @ensure_csrf_cookie
 @require_http_methods(["GET"])
 def notes_summary_api(request):
@@ -8797,6 +8892,21 @@ def notes_summary_api(request):
     ]
     can_create_note = not user_profile.is_manager()
     create_targets = _notes_create_targets(request.user) if can_create_note else []
+    create_target_ids = [followup.id for followup in create_targets]
+    create_schedules = []
+    if can_create_note and create_target_ids:
+        create_schedules = list(Schedule.objects.filter(
+            user=request.user,
+            followup_id__in=create_target_ids,
+        ).exclude(
+            status='cancelled',
+        ).select_related(
+            'followup',
+            'followup__company',
+            'followup__department',
+        ).prefetch_related(
+            'delivery_items_set',
+        ).order_by('-visit_date', '-visit_time', '-id')[:160])
 
     scope_label = '전체'
     if selected_user:
@@ -8888,6 +8998,7 @@ def notes_summary_api(request):
             'submitUrl': reverse('reporting:notes_create_api'),
             'actionTypes': _notes_create_action_types(request),
             'customers': [_notes_create_target_payload(followup) for followup in create_targets],
+            'schedules': [_notes_create_schedule_payload(schedule) for schedule in create_schedules],
         },
         'notes': [
             _notes_history_payload(note, today, can_review_notes)
@@ -8938,7 +9049,7 @@ def notes_create_api(request):
         linked_schedule = Schedule.objects.filter(
             id=schedule_id,
             user=request.user,
-        ).select_related('followup').first()
+        ).select_related('followup').prefetch_related('delivery_items_set').first()
         if not linked_schedule:
             return JsonResponse({'success': False, 'error': '연결할 수 있는 일정을 찾을 수 없습니다.'}, status=403)
         if linked_schedule.followup_id != followup.id:
@@ -8974,7 +9085,9 @@ def notes_create_api(request):
         history_kwargs['meeting_date'] = activity_date
     elif action_type == 'delivery_schedule' and activity_date:
         history_kwargs['delivery_date'] = activity_date
-        history_kwargs['delivery_amount'] = 0
+        delivery_text, delivery_amount = _notes_schedule_delivery_summary(linked_schedule)
+        history_kwargs['delivery_items'] = delivery_text
+        history_kwargs['delivery_amount'] = delivery_amount
 
     history = History.objects.create(**history_kwargs)
 

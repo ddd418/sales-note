@@ -84,9 +84,8 @@ def file_delete_view(request, file_id):
     try:
         history_file = get_object_or_404(HistoryFile, id=file_id)
         
-        # 권한 체크: 해당 히스토리를 수정할 수 있는 사용자만 파일 삭제 가능
-        from .views import can_modify_user_data
-        if not can_modify_user_data(request.user, history_file.history.user):
+        # 권한 체크: React 영업노트 수정 가능 범위와 동일하게 삭제 제한
+        if not _can_manage_history_files(request.user, history_file.history):
             return JsonResponse({
                 'success': False,
                 'error': '파일을 삭제할 권한이 없습니다.'
