@@ -74,6 +74,24 @@ Local API/browser smoke
 
 git diff --check
 -> OK, CRLF normalization warning only
+
+git push origin main
+-> Pushed commit 3de296b to main
+
+railway deployment list --service web --environment production --limit 1 --json
+-> web deployment 1a62af23-e34a-4ff6-b6cc-797f80609358 SUCCESS for commit 3de296b
+
+railway deployment list --service sales-note-frontend --environment production --limit 1 --json
+-> sales-note-frontend deployment 53dd9110-21f3-4f4e-9069-478ad313bbfa SUCCESS for commit 3de296b
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+-> PASS backend healthz, readyz, login page, protected reports API
+-> PASS frontend healthz, dashboard shell, protected reports API
+
+Production companies smoke
+-> https://web-production-8a820.up.railway.app/reporting/api/companies/manage/ returned 401 when anonymous
+-> https://sales-note-frontend-production.up.railway.app/companies/ served the protected login flow when anonymous
+-> Browser console errors: 0
 ```
 
 ### 알려진 제한
@@ -84,7 +102,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Commit/push 및 Railway 배포 확인 전입니다. 배포 후 이 섹션을 deployment ID와 smoke 결과로 갱신합니다.
+- Completed.
+- Commit `3de296b feat: complete react company department management` is present on `origin/main`.
+- Railway backend `web` deployment `1a62af23-e34a-4ff6-b6cc-797f80609358` succeeded for commit `3de296b`.
+- Railway frontend `sales-note-frontend` deployment `53dd9110-21f3-4f4e-9069-478ad313bbfa` succeeded for commit `3de296b`.
+- Production anonymous smoke passed: company management API returns `401`, and `/companies/` remains protected behind login without browser console errors.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
