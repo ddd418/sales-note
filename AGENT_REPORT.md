@@ -70,6 +70,23 @@ Local Playwright smoke against http://127.0.0.1:4179
 
 git diff --check
 -> OK, CRLF normalization warning only
+
+git push origin main
+-> Pushed runtime commit 6d0b4d7 to main
+
+railway deployment list --service web --limit 1 --json
+-> web deployment f075943b-6cc3-4c0f-a746-30e363a7811a SUCCESS for commit 6d0b4d7
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+-> sales-note-frontend deployment f0ceee7c-b01a-431d-b1dd-78fad1b32bf3 SUCCESS for commit 6d0b4d7
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+-> Smoke status: ok
+-> backend healthz 200, readyz 200, login page 200, reports API protected 401
+-> frontend healthz 200, dashboard shell 200, reports API protected 401
+
+Invoke-WebRequest /customers/?mode=account, /customers/?mode=contact, /reporting/api/customers/
+-> customers account/contact routes 200, unauthenticated customers API 401
 ```
 
 ### 알려진 제한
@@ -80,8 +97,11 @@ git diff --check
 
 ### Railway 배포 상태
 
-- E단계 runtime 변경은 배포 대상입니다.
-- 배포 후 deployment id와 smoke 결과를 이 섹션에 추가합니다.
+- 배포 완료.
+- `web`: deployment `f075943b-6cc3-4c0f-a746-30e363a7811a`, commit `6d0b4d7`, `SUCCESS`.
+- `sales-note-frontend`: deployment `f0ceee7c-b01a-431d-b1dd-78fad1b32bf3`, commit `6d0b4d7`, `SUCCESS`.
+- Production smoke: `ok`.
+- 추가 확인: `/customers/?mode=account` 200, `/customers/?mode=contact` 200, `/reporting/api/customers/` unauthenticated 401.
 
 ### 사용자 수동 검수 절차
 
