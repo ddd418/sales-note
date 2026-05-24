@@ -56,6 +56,23 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warning only
+
+git push origin main
+→ Pushed runtime commit f0d004e to main
+
+railway deployment list --service web --limit 1 --json
+→ web deployment 90ec4e21-e1e4-46ea-bf7f-a2e2e13069de SUCCESS for commit f0d004e
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+→ sales-note-frontend deployment 8a41f4ed-489e-4af3-9f4d-6c91901f08f8 SUCCESS for commit f0d004e
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+→ backend healthz 200, readyz 200, login page 200, reports API protected 401
+→ frontend healthz 200, dashboard shell 200, reports API protected 401
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/login/?next=/customers/
+→ 200, login page contains hidden next field with value "/customers/"
 ```
 
 ### 알려진 제한
@@ -70,7 +87,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Runtime change. Commit/push 후 Railway 배포 및 smoke test 필요.
+- Runtime commit `f0d004e` 배포 완료.
+- `web`: `90ec4e21-e1e4-46ea-bf7f-a2e2e13069de` SUCCESS.
+- `sales-note-frontend`: `8a41f4ed-489e-4af3-9f4d-6c91901f08f8` SUCCESS.
+- 운영 smoke test 통과.
 
 ### 사용자가 운영 서버에서 확인할 절차
 
