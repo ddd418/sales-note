@@ -270,6 +270,7 @@ import {
   submitAIWorkspaceActionFeedback,
   submitAIWorkspaceQuestionFeedback,
   toggleAIWorkspaceMemory,
+  toggleScheduleTaxInvoice,
   toggleNoteReviewed,
   transferPrepayment as transferCustomerPrepayment,
   updateAccountInfo,
@@ -10820,6 +10821,7 @@ function ScheduleDetailPage({
   const [documentPreviewData, setDocumentPreviewData] = useState<ScheduleDocumentPreviewData | null>(null);
   const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
   const [documentPreviewError, setDocumentPreviewError] = useState('');
+  const [taxInvoiceToggling, setTaxInvoiceToggling] = useState(false);
   const [scheduleNoteOpen, setScheduleNoteOpen] = useState(false);
   const [scheduleNoteForm, setScheduleNoteForm] = useState<NoteCreateFormState>(() => makeScheduleNoteCreateForm(currentSchedule));
   const [scheduleNoteSaving, setScheduleNoteSaving] = useState(false);
@@ -10867,6 +10869,7 @@ function ScheduleDetailPage({
     setDocumentPreviewData(null);
     setDocumentPreviewLoading(false);
     setDocumentPreviewError('');
+    setTaxInvoiceToggling(false);
     setScheduleNoteOpen(false);
     setScheduleNoteForm(makeScheduleNoteCreateForm(data?.schedule ?? null));
     setScheduleNoteSaving(false);
@@ -11810,6 +11813,31 @@ function ScheduleDetailPage({
     }
   };
 
+  const handleTaxInvoiceToggle = async () => {
+    if (taxInvoiceToggling) {
+      return;
+    }
+    const taxInvoice = data?.taxInvoice;
+    const toggleUrl = taxInvoice?.toggleUrl || data?.links.toggleTaxInvoice || '';
+    if (!currentSchedule?.canEdit || !taxInvoice?.canToggle || !toggleUrl) {
+      setDeliveryError('세금계산서 상태 변경 권한이 없습니다.');
+      setDeliveryMessage('');
+      return;
+    }
+    setTaxInvoiceToggling(true);
+    setDeliveryError('');
+    setDeliveryMessage('');
+    try {
+      const result = await toggleScheduleTaxInvoice(toggleUrl);
+      await onRefresh();
+      setDeliveryMessage(result.message || `세금계산서 상태를 ${result.statusText || result.status_text || '변경'}했습니다.`);
+    } catch (error) {
+      setDeliveryError(error instanceof Error ? error.message : '세금계산서 상태 변경에 실패했습니다.');
+    } finally {
+      setTaxInvoiceToggling(false);
+    }
+  };
+
   const handleScheduleDelete = async () => {
     if (scheduleDeleting) {
       return;
@@ -11877,6 +11905,7 @@ function ScheduleDetailPage({
   const deliveryItems = data.deliveryItems;
   const isQuoteSchedule = schedule.activityType === 'quote';
   const itemPanelLabel = isQuoteSchedule ? '견적 품목' : '납품 품목';
+  const taxInvoice = data.taxInvoice;
   const editableQuoteGroups = scheduleQuoteGroupsFromRows(deliveryRows);
   const savedQuoteGroupNotes = schedule.quoteGroupNotes?.filter((item) => item.notes.trim()) ?? [];
   const scheduleMailSubject = isQuoteSchedule
@@ -12061,7 +12090,7 @@ function ScheduleDetailPage({
               <div className="notes-create-actions">
                 {data.links.djangoCreateNote ? (
                   <a className="route-secondary-action" href={data.links.djangoCreateNote}>
-                    Django 작성
+                    노트 페이지
                     <MoveUpRight size={15} />
                   </a>
                 ) : null}
@@ -12405,6 +12434,31 @@ function ScheduleDetailPage({
           </div>
           {deliveryError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{deliveryError}</span></div> : null}
           {deliveryMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{deliveryMessage}</span></div> : null}
+          {!isQuoteSchedule && taxInvoice.applies ? (
+            <div className={`schedule-tax-invoice-panel ${taxInvoice.status}`}>
+              <div>
+                <FileText size={15} />
+                <span>
+                  <strong>세금계산서 {taxInvoice.statusLabel}</strong>
+                  <small>{[
+                    taxInvoice.message,
+                    taxInvoice.totalCount ? `총 ${formatNumber(taxInvoice.totalCount)}개 품목` : '',
+                  ].filter(Boolean).join(' · ')}</small>
+                </span>
+              </div>
+              {taxInvoice.canToggle ? (
+                <button
+                  className="customer-row-action schedule-tax-invoice-toggle"
+                  disabled={taxInvoiceToggling}
+                  onClick={handleTaxInvoiceToggle}
+                  type="button"
+                >
+                  {taxInvoiceToggling ? <Loader2 className="spin-icon" size={14} /> : <CheckCircle2 size={14} />}
+                  <span>{taxInvoice.actionLabel || '상태 변경'}</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {!isQuoteSchedule && quoteImportOpen ? (
             <div className="schedule-quote-import-panel">
               <div className="schedule-quote-import-heading">

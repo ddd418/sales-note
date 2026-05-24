@@ -10465,6 +10465,62 @@ def _schedules_prepayment_usage_payload(usage):
     }
 
 
+def _schedules_tax_invoice_payload(schedule, can_edit):
+    if schedule.activity_type != 'delivery':
+        return {
+            'applies': False,
+            'status': 'not_applicable',
+            'statusLabel': '대상 아님',
+            'issuedCount': 0,
+            'pendingCount': 0,
+            'totalCount': 0,
+            'canToggle': False,
+            'toggleUrl': '',
+            'actionLabel': '',
+            'message': '',
+        }
+
+    items = list(schedule.delivery_items_set.all())
+    total_count = len(items)
+    issued_count = sum(1 for item in items if item.tax_invoice_issued)
+    pending_count = max(total_count - issued_count, 0)
+
+    if total_count <= 0:
+        status = 'empty'
+        status_label = '품목 없음'
+        action_label = ''
+        message = '납품 품목이 등록되면 세금계산서 상태를 관리할 수 있습니다.'
+    elif pending_count == 0:
+        status = 'issued'
+        status_label = '전체 발행'
+        action_label = '전체 미발행 처리'
+        message = f'세금계산서 발행 {issued_count}건'
+    elif issued_count == 0:
+        status = 'pending'
+        status_label = '전체 미발행'
+        action_label = '전체 발행 처리'
+        message = f'세금계산서 미발행 {pending_count}건'
+    else:
+        status = 'partial'
+        status_label = '일부 발행'
+        action_label = '전체 발행 처리'
+        message = f'발행 {issued_count}건 / 미발행 {pending_count}건'
+
+    can_toggle = bool(can_edit and total_count > 0)
+    return {
+        'applies': True,
+        'status': status,
+        'statusLabel': status_label,
+        'issuedCount': issued_count,
+        'pendingCount': pending_count,
+        'totalCount': total_count,
+        'canToggle': can_toggle,
+        'toggleUrl': reverse('reporting:toggle_schedule_delivery_tax_invoice', args=[schedule.id]) if can_toggle else '',
+        'actionLabel': action_label if can_toggle else '',
+        'message': message,
+    }
+
+
 def _schedules_allowed_prepayments_queryset(actor, followup):
     same_company_users = get_same_company_users(actor)
     if followup.department_id:
@@ -12130,6 +12186,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
         documents,
         email_thread_count,
     )
+    tax_invoice = _schedules_tax_invoice_payload(schedule, can_edit)
 
     detail = {
         **schedule_payload,
@@ -12173,6 +12230,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'deleteSchedule': reverse('reporting:schedule_delete', args=[schedule.id]) if can_edit else '',
             'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
             'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
+            'toggleTaxInvoice': tax_invoice['toggleUrl'],
             'prepayments': reverse('reporting:prepayment_api_list') if can_edit else '',
             'sendMail': f'/mailbox/?compose=1&schedule_id={schedule.id}&followup_id={followup.id}',
             'djangoSendMail': reverse('reporting:send_email_from_schedule', args=[schedule.id]),
@@ -12184,6 +12242,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
         },
         'documents': documents,
         'commercialChecks': commercial_checks,
+        'taxInvoice': tax_invoice,
         'relatedNotes': related_notes,
         'deliveryItems': delivery_items,
     }
@@ -27235,8 +27294,12 @@ def toggle_schedule_delivery_tax_invoice(request, schedule_id):
         return JsonResponse({
             'success': True,
             'new_status': new_status,
+            'newStatus': new_status,
             'updated_count': updated_count,
-            'status_text': '발행됨' if new_status else '미발행'
+            'updatedCount': updated_count,
+            'status_text': '발행됨' if new_status else '미발행',
+            'statusText': '발행됨' if new_status else '미발행',
+            'message': f'세금계산서 상태를 {"발행됨" if new_status else "미발행"}으로 변경했습니다.',
         })
         
     except Exception as e:

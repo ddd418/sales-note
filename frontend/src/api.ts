@@ -2774,6 +2774,19 @@ export type ScheduleDocumentsData = {
   items: ScheduleDocumentAction[];
 };
 
+export type ScheduleTaxInvoiceData = {
+  applies: boolean;
+  status: string;
+  statusLabel: string;
+  issuedCount: number;
+  pendingCount: number;
+  totalCount: number;
+  canToggle: boolean;
+  toggleUrl: string;
+  actionLabel: string;
+  message: string;
+};
+
 export type ScheduleCommercialWarning = {
   code: string;
   severity: 'info' | 'warning' | 'error' | string;
@@ -3268,6 +3281,7 @@ export type ScheduleDetailData = {
     deleteSchedule: string;
     uploadFiles: string;
     updateDeliveryItems: string;
+    toggleTaxInvoice: string;
     prepayments: string;
     sendMail: string;
     djangoSendMail: string;
@@ -3298,6 +3312,7 @@ export type ScheduleDetailData = {
   deliveryItems: ScheduleDeliveryItem[];
   documents: ScheduleDocumentsData;
   commercialChecks?: ScheduleCommercialChecks;
+  taxInvoice: ScheduleTaxInvoiceData;
 };
 
 export type ScheduleEditResponse = ScheduleDetailData & {
@@ -3318,6 +3333,18 @@ export type ScheduleFileActionResponse = {
   error?: string;
   message?: string;
   files?: ScheduleFileItem[];
+};
+
+export type ScheduleTaxInvoiceToggleResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  new_status?: boolean;
+  newStatus?: boolean;
+  updated_count?: number;
+  updatedCount?: number;
+  status_text?: string;
+  statusText?: string;
 };
 
 export type ScheduleDeleteResponse = {
@@ -5457,6 +5484,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     deleteSchedule: '',
     uploadFiles: '',
     updateDeliveryItems: '',
+    toggleTaxInvoice: '',
     prepayments: '',
     sendMail: '',
     djangoSendMail: '',
@@ -5486,6 +5514,18 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     registeredQuotationCount: 0,
     autoAttachLabel: '',
     items: [],
+  },
+  taxInvoice: {
+    applies: false,
+    status: 'not_applicable',
+    statusLabel: '대상 아님',
+    issuedCount: 0,
+    pendingCount: 0,
+    totalCount: 0,
+    canToggle: false,
+    toggleUrl: '',
+    actionLabel: '',
+    message: '',
   },
   commercialChecks: {
     applies: false,
@@ -9094,6 +9134,7 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         'djangoCustomer',
         'createNote',
         'djangoCreateNote',
+        'toggleTaxInvoice',
       ]),
       edit: {
         ...emptyScheduleDetailData.edit,
@@ -9121,6 +9162,10 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         autoAttachLabel: payload.documents?.autoAttachLabel ?? emptyScheduleDetailData.documents.autoAttachLabel,
       },
       commercialChecks: payload.commercialChecks ?? emptyScheduleDetailData.commercialChecks,
+      taxInvoice: {
+        ...emptyScheduleDetailData.taxInvoice,
+        ...(payload.taxInvoice ?? {}),
+      },
     };
   } catch (error) {
     return {
@@ -9745,6 +9790,29 @@ export async function deleteScheduleFile(deleteUrl: string): Promise<ScheduleFil
   redirectIfLoginRequired(response, data);
   if (!response.ok || data.success === false) {
     throw new Error(data.error || data.message || `Schedule file delete failed: ${response.status}`);
+  }
+  return data;
+}
+
+export async function toggleScheduleTaxInvoice(toggleUrl: string): Promise<ScheduleTaxInvoiceToggleResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(toggleUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Schedule tax invoice API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ScheduleTaxInvoiceToggleResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Schedule tax invoice update failed: ${response.status}`);
   }
   return data;
 }

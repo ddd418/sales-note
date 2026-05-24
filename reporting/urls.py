@@ -437,10 +437,22 @@ urlpatterns = [
     path('api/documents/<int:pk>/update/', views.document_template_update_api, name='document_template_api_update'),
     path('api/documents/<int:pk>/delete/', views.document_template_delete_api, name='document_template_api_delete'),
     path('api/documents/<int:pk>/toggle-default/', views.document_template_toggle_default_api, name='document_template_api_toggle_default'),
-    path('documents/', views.document_template_list, name='document_template_list'),
-    path('documents/create/', views.document_template_create, name='document_template_create'),
-    path('documents/<int:pk>/edit/', views.document_template_edit, name='document_template_edit'),
-    path('documents/<int:pk>/delete/', views.document_template_delete, name='document_template_delete'),
+    path('documents/', react_page_redirect(
+        views.document_template_list,
+        static_react_page('documents/'),
+    ), name='document_template_list'),
+    path('documents/create/', react_page_redirect(
+        views.document_template_create,
+        static_react_page('documents/', extra={'create': '1'}),
+    ), name='document_template_create'),
+    path('documents/<int:pk>/edit/', react_page_redirect(
+        views.document_template_edit,
+        lambda request, pk: frontend_url('documents/', query_with(request, extra={'template_id': pk, 'edit': '1'})),
+    ), name='document_template_edit'),
+    path('documents/<int:pk>/delete/', react_page_redirect(
+        views.document_template_delete,
+        lambda request, pk: frontend_url('documents/', query_with(request, extra={'template_id': pk, 'delete': '1'})),
+    ), name='document_template_delete'),
     path('documents/<int:pk>/download/', views.document_template_download, name='document_template_download'),
     path('documents/<int:pk>/toggle-default/', views.document_template_toggle_default, name='document_template_toggle_default'),
     path('documents/generated/<int:log_id>/download/', views.generated_document_download, name='generated_document_download'),

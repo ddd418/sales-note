@@ -3943,6 +3943,59 @@ h2 {
   white-space: nowrap;
 }
 
+.schedule-tax-invoice-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.schedule-tax-invoice-panel.issued {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.schedule-tax-invoice-panel.partial,
+.schedule-tax-invoice-panel.pending {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.schedule-tax-invoice-panel > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.schedule-tax-invoice-panel span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.schedule-tax-invoice-panel strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.schedule-tax-invoice-panel small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.schedule-tax-invoice-toggle {
+  gap: 5px;
+  margin-top: 0;
+  border: 1px solid #bfdbfe;
+  white-space: nowrap;
+}
+
 .schedule-delivery-list {
   display: grid;
   gap: 8px;

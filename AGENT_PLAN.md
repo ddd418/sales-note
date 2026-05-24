@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement K-step delivery/quote/document flow plan
+
+**Background**:
+
+- User asked to complete React full replacement item K for delivery, quotation, and document generation flows.
+- React schedule detail already supports delivery/quote item editing, quote item import into delivery schedules, document preview/download buttons, registered generated-document deletion, and protected backend file endpoints.
+- Remaining React parity gaps are explicit tax-invoice status operation from the schedule detail screen and legacy document-template page entry points.
+
+**DB change required**: No.
+
+- Existing `Schedule`, `DeliveryItem`, `History`, `ScheduleQuoteGroupNote`, `DocumentTemplate`, and `DocumentGenerationLog` models are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a schedule-detail tax-invoice summary payload for delivery schedules: total items, issued/pending counts, status label, and owner-only bulk toggle link.
+- Add a React schedule-detail control to change delivery tax-invoice status without opening a Django template screen.
+- Keep per-item tax-invoice checkboxes in the existing delivery/quote item editor.
+- Redirect authenticated GET requests for document template list/create/edit/delete legacy pages to React `/documents/`, while preserving POST/download/backend routes.
+- Keep document preview, PDF/Excel generation, generated document download/delete, template download, and schedule file routes protected by Django auth/permission checks.
+- Add focused tests for tax-invoice payload/toggle behavior, manager read-only blocking, protected document endpoints, and legacy document-template redirects.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/schedules/<id>/`, `/documents/`, schedule document generation links, generated document download, and tax-invoice toggle.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement J-step schedule/calendar replacement plan
 
 **Background**:

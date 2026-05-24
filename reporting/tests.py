@@ -238,6 +238,19 @@ class CoreCrmLegacyRedirectTests(TestCase):
             schedule_date=timezone.localdate(),
             schedule_time=time(10, 0),
         )
+        self.document_template = DocumentTemplate.objects.create(
+            company=self.company_profile,
+            document_type='quotation',
+            name='React 전환 견적서',
+            file=SimpleUploadedFile(
+                'react-template.xlsx',
+                b'react document template',
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ),
+            file_type='xlsx',
+            created_by=self.user,
+        )
+        self.addCleanup(self.document_template.file.delete, False)
         self.client.force_login(self.user)
 
     def assertReactRedirect(self, url, expected):
@@ -272,6 +285,15 @@ class CoreCrmLegacyRedirectTests(TestCase):
             reverse('reporting:personal_schedule_delete', args=[self.personal_schedule.id]),
             f'schedules/calendar/?personal={self.personal_schedule.id}&delete=1',
         )
+        self.assertReactRedirect(reverse('reporting:document_template_list'), 'documents/')
+        self.assertReactRedirect(
+            reverse('reporting:document_template_edit', args=[self.document_template.id]),
+            f'documents/?template_id={self.document_template.id}&edit=1',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:document_template_delete', args=[self.document_template.id]),
+            f'documents/?template_id={self.document_template.id}&delete=1',
+        )
 
     def test_core_create_page_redirects_preserve_relevant_query(self):
         self.assertReactRedirect(reverse('reporting:followup_create'), 'customers/?create=1')
@@ -287,6 +309,7 @@ class CoreCrmLegacyRedirectTests(TestCase):
             f"{reverse('reporting:personal_schedule_create')}?date=2026-05-20&time=10:30",
             'schedules/calendar/?date=2026-05-20&time=10%3A30&create=personal',
         )
+        self.assertReactRedirect(reverse('reporting:document_template_create'), 'documents/?create=1')
 
     def test_core_filter_query_is_translated(self):
         self.assertReactRedirect(
@@ -8569,8 +8592,16 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
+        self.assertEqual(payload['links']['toggleTaxInvoice'], reverse('reporting:toggle_schedule_delivery_tax_invoice', args=[schedule.id]))
         self.assertEqual(payload['links']['prepayments'], reverse('reporting:prepayment_api_list'))
         self.assertEqual(payload['links']['deleteSchedule'], reverse('reporting:schedule_delete', args=[schedule.id]))
+        self.assertTrue(payload['taxInvoice']['applies'])
+        self.assertEqual(payload['taxInvoice']['status'], 'pending')
+        self.assertEqual(payload['taxInvoice']['totalCount'], 1)
+        self.assertEqual(payload['taxInvoice']['issuedCount'], 0)
+        self.assertEqual(payload['taxInvoice']['pendingCount'], 1)
+        self.assertTrue(payload['taxInvoice']['canToggle'])
+        self.assertEqual(payload['taxInvoice']['toggleUrl'], reverse('reporting:toggle_schedule_delivery_tax_invoice', args=[schedule.id]))
         self.assertEqual(payload['schedule']['files'][0]['id'], schedule_file.id)
         self.assertEqual(payload['schedule']['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
         document_types = [item['type'] for item in payload['documents']['items']]
@@ -8831,7 +8862,16 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertFalse(DocumentGenerationLog.objects.filter(pk=log.id).exists())
 
     def test_schedules_detail_api_manager_read_only_and_other_company_blocked(self):
-        schedule = self._create_schedule(self.user, '읽기전용')
+        from reporting.models import DeliveryItem
+
+        schedule = self._create_schedule(self.user, '읽기전용', activity_type='delivery')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Read Only Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+        )
         self.client.force_login(self.manager)
 
         response = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
@@ -8840,10 +8880,71 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertFalse(response.json()['edit']['canEdit'])
         self.assertEqual(response.json()['links']['updateDeliveryItems'], '')
         self.assertEqual(response.json()['links']['deleteSchedule'], '')
+        self.assertEqual(response.json()['links']['toggleTaxInvoice'], '')
+        self.assertTrue(response.json()['taxInvoice']['applies'])
+        self.assertFalse(response.json()['taxInvoice']['canToggle'])
 
         self.client.force_login(self.other_user)
         denied = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
         self.assertEqual(denied.status_code, 403)
+
+    def test_schedule_tax_invoice_toggle_updates_delivery_items_and_history_owner_only(self):
+        from reporting.models import DeliveryItem, History
+
+        schedule = self._create_schedule(self.user, '세금계산서토글', activity_type='delivery')
+        first = DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Tax Kit A',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            tax_invoice_issued=False,
+        )
+        second = DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Tax Kit B',
+            quantity=1,
+            unit='EA',
+            unit_price=1000,
+            tax_invoice_issued=True,
+        )
+        history = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            schedule=schedule,
+            action_type='delivery_schedule',
+            tax_invoice_issued=False,
+        )
+        toggle_url = reverse('reporting:toggle_schedule_delivery_tax_invoice', args=[schedule.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(toggle_url)
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.user)
+        response = self.client.post(toggle_url)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['newStatus'])
+        self.assertEqual(payload['updatedCount'], 2)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        history.refresh_from_db()
+        self.assertTrue(first.tax_invoice_issued)
+        self.assertTrue(second.tax_invoice_issued)
+        self.assertTrue(history.tax_invoice_issued)
+
+        second_response = self.client.post(toggle_url)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertFalse(second_response.json()['newStatus'])
+        first.refresh_from_db()
+        second.refresh_from_db()
+        history.refresh_from_db()
+        self.assertFalse(first.tax_invoice_issued)
+        self.assertFalse(second.tax_invoice_issued)
+        self.assertFalse(history.tax_invoice_issued)
 
     def test_schedule_delete_ajax_allows_owner_and_removes_related_history(self):
         from reporting.models import History, Schedule
@@ -10416,6 +10517,44 @@ class DocumentTemplatesReactApiTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_schedule_document_preview_generate_and_download_are_protected(self):
+        schedule = self._create_schedule(self.manager, name='보호서류', activity_type='quote')
+        self._create_template(self.company, '보호견적서', is_default=True)
+        log = DocumentGenerationLog.objects.create(
+            company=self.company,
+            document_type='quotation',
+            schedule=schedule,
+            user=self.manager,
+            transaction_number='PROTECT-001',
+            output_format='pdf',
+            file=SimpleUploadedFile('protected-quote.pdf', b'%PDF protected', content_type='application/pdf'),
+            filename='protected-quote.pdf',
+            file_size=14,
+        )
+        self.addCleanup(log.file.delete, False)
+
+        preview_url = reverse('reporting:get_document_template_data', args=['quotation', schedule.id])
+        generate_url = reverse('reporting:generate_document_pdf_format', args=['quotation', schedule.id, 'pdf'])
+        download_url = reverse('reporting:generated_document_download', args=[log.id])
+
+        anonymous_preview = self.client.get(preview_url)
+        anonymous_generate = self.client.post(generate_url)
+        anonymous_download = self.client.get(download_url)
+        self.assertEqual(anonymous_preview.status_code, 302)
+        self.assertIn('/reporting/login/', anonymous_preview['Location'])
+        self.assertEqual(anonymous_generate.status_code, 302)
+        self.assertIn('/reporting/login/', anonymous_generate['Location'])
+        self.assertEqual(anonymous_download.status_code, 302)
+        self.assertIn('/reporting/login/', anonymous_download['Location'])
+
+        self.client.force_login(self.other_manager)
+        other_preview = self.client.get(preview_url)
+        other_generate = self.client.post(generate_url)
+        other_download = self.client.get(download_url)
+        self.assertEqual(other_preview.status_code, 403)
+        self.assertEqual(other_generate.status_code, 403)
+        self.assertEqual(other_download.status_code, 403)
 
     def test_document_templates_api_lists_same_company_and_summary(self):
         default_template = self._create_template(self.company, '기본견적서', is_default=True)

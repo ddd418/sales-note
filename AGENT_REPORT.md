@@ -1,5 +1,102 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 K단계 납품/견적/문서 흐름 React화
+
+### 요약
+
+- 일정 상세의 납품/견적 품목 편집, 견적 품목 불러오기, 서류 미리보기/다운로드 흐름을 코드와 테스트 기준으로 재점검했습니다.
+- 납품 일정의 세금계산서 상태 요약과 전체 발행/미발행 토글을 React 일정 상세에서 직접 처리하도록 보강했습니다.
+- `/reporting/documents/`, 생성, 수정, 삭제 legacy GET 화면은 React `/documents/`로 이동하도록 바꿨고, POST fallback과 다운로드/backend route는 유지했습니다.
+- PDF/Excel 생성, 미리보기, 생성 서류 다운로드는 Django 인증/권한 보호가 유지되는지 테스트로 고정했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- React 일정 상세의 납품 품목 영역에 세금계산서 상태 카드가 표시됩니다.
+- 담당자는 납품 품목이 있는 일정에서 `전체 발행 처리` / `전체 미발행 처리`를 React 버튼으로 실행할 수 있습니다.
+- manager는 동일한 상태를 조회할 수 있지만 토글 링크와 버튼은 받지 않습니다.
+- 서류 템플릿 legacy GET 주소가 React 문서 관리 화면으로 연결되어 서류 흐름 때문에 Django template 화면으로 빠질 가능성을 줄였습니다.
+- 기존 품목별 세금계산서 체크박스, 견적서 구분, 견적 기타사항, 선결제 차감, 문서 등록/다운로드 UI는 유지했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` API, 파일 다운로드, 문서 생성, 생성 서류 다운로드/삭제, 템플릿 다운로드 route는 유지했습니다.
+- 문서 템플릿 POST fallback route는 삭제하지 않았습니다.
+- Django template 파일은 삭제하지 않았습니다. 운영 수동 검수 후 cleanup 단계에서 판단합니다.
+- manager read-only 정책을 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --verbosity=1
+→ Ran 83 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+cd frontend; node --check server.mjs
+→ OK
+
+Browser/local smoke
+→ Opened http://127.0.0.1:5174/schedules/1/ and confirmed React schedule detail error state renders without console errors while local backend is not running
+→ Opened http://127.0.0.1:5174/documents/ and confirmed React documents page renders without console errors while local backend is not running
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 인증된 실제 데이터에서 세금계산서 토글, PDF/Excel 다운로드, 생성 서류 다운로드는 배포 후 사용자 세션으로 수동 확인이 필요합니다.
+- 로컬 smoke는 backend runserver가 꺼져 있어 API는 502 상태로 확인했습니다. React shell과 에러 상태/콘솔 오류 여부만 검증했습니다.
+- 문서 템플릿 Django template은 아직 삭제하지 않았습니다.
+
+### 운영 배포 상태
+
+- 배포 전 검증 완료.
+- 커밋/푸시 및 Railway 배포 후 이 섹션을 성공 배포 정보로 갱신합니다.
+
+### 권장 다음 작업
+
+- L단계로 넘어가기 전 운영 서버에서 납품/견적/서류 생성 실제 흐름을 수동 검수하세요.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/`에서 납품 일정 하나를 엽니다.
+2. 납품 품목 영역에서 세금계산서 상태 카드가 보이는지 확인합니다.
+3. 담당자 계정으로 `전체 발행 처리`를 눌러 상태가 발행으로 바뀌는지 확인합니다.
+4. 다시 `전체 미발행 처리`를 눌러 원복되는지 확인합니다.
+5. manager 계정으로 같은 일정을 열고 상태는 보이지만 토글 버튼이 없는지 확인합니다.
+6. 납품 일정에서 거래명세서/납품서 미리보기를 열고 PDF/Excel 다운로드를 확인합니다.
+7. 견적 일정에서 견적서 구분별 미리보기와 PDF/Excel 다운로드를 확인합니다.
+8. `/reporting/documents/`, `/reporting/documents/create/`를 직접 열었을 때 React `/documents/`로 이동하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 J단계 일정/캘린더 완전 대체
 
 ### 요약
