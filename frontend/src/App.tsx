@@ -65,6 +65,7 @@ import {
   AccountContactPayload,
   AccountInfoUpdatePayload,
   CustomerAccountContact,
+  CustomerAttachmentItem,
   CustomerCalibrationRecord,
   CustomerCalibrationPayload,
   CustomerDetailData,
@@ -189,6 +190,7 @@ import {
   createCustomer as createCustomerRecord,
   createDocumentTemplate,
   deleteCompanyRecord,
+  deleteCustomer as deleteCustomerRecord,
   deleteDepartmentRecord,
   generateAIWorkspaceActionDraft,
   generateScheduleAICoach,
@@ -2827,9 +2829,51 @@ function CustomerDetailNoteList({
             <strong>{note.actionLabel}</strong>
             <span>{[note.owner, note.serviceStatusLabel].filter(Boolean).join(' · ')}</span>
             <small>{note.nextAction || note.summary || '내용 없음'}</small>
+            {note.fileCount || note.replyCount ? (
+              <small className="customer-note-submeta">
+                {[note.fileCount ? `첨부 ${formatNumber(note.fileCount)}` : '', note.replyCount ? `댓글 ${formatNumber(note.replyCount)}` : ''].filter(Boolean).join(' · ')}
+              </small>
+            ) : null}
           </div>
           <time>{note.nextActionDate ? formatDateLabel(note.nextActionDate) : formatDateTimeLabel(note.createdAt)}</time>
         </a>
+      ))}
+    </div>
+  );
+}
+
+function CustomerAttachmentList({ files }: { files: CustomerAttachmentItem[] }) {
+  if (files.length === 0) {
+    return <DashboardEmpty label="첨부된 파일이 없습니다" />;
+  }
+
+  return (
+    <div className="customer-attachment-list">
+      {files.map((file) => (
+        <article className="customer-attachment-row" key={`${file.fileType}-${file.id}`}>
+          <div className="dashboard-row-icon">
+            {file.fileType === 'schedule' ? <CalendarDays size={17} /> : <FileText size={17} />}
+          </div>
+          <div className="customer-attachment-main">
+            <strong>{file.filename}</strong>
+            <span>
+              {[file.fileTypeLabel, file.sourceOwner, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}
+            </span>
+            <small>
+              {[file.sourceLabel, file.sourceDate ? formatDateLabel(file.sourceDate) : '', file.sourceDetail].filter(Boolean).join(' · ')}
+            </small>
+          </div>
+          <div className="customer-attachment-actions">
+            <span>{file.size}</span>
+            <a className="customer-row-action" href={file.sourceHref}>
+              원문 <MoveUpRight size={13} />
+            </a>
+            <a className="customer-row-action" href={file.downloadHref}>
+              <Download size={13} />
+              다운로드
+            </a>
+          </div>
+        </article>
       ))}
     </div>
   );
@@ -3305,6 +3349,9 @@ function CustomerDetailPage({
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editMessage, setEditMessage] = useState('');
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteMessage, setDeleteMessage] = useState('');
   const [accountInfoOpen, setAccountInfoOpen] = useState(false);
   const [accountInfoForm, setAccountInfoForm] = useState<AccountInfoFormState>(() => makeAccountInfoForm(data));
   const [accountInfoSaving, setAccountInfoSaving] = useState(false);
@@ -3332,6 +3379,9 @@ function CustomerDetailPage({
     setEditError('');
     setEditMessage('');
     setEditOpen(false);
+    setDeleteSaving(false);
+    setDeleteError('');
+    setDeleteMessage('');
     setAccountInfoOpen(false);
     setAccountInfoForm(makeAccountInfoForm(data));
     setAccountInfoSaving(false);
@@ -3434,6 +3484,34 @@ function CustomerDetailPage({
       setEditError(error instanceof Error ? error.message : '고객 정보 수정에 실패했습니다.');
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  const handleCustomerDelete = async () => {
+    if (!customer || !editConfig || deleteSaving) {
+      return;
+    }
+    if (!editConfig.canDelete || !editConfig.deleteUrl) {
+      setDeleteError(editConfig.message || '삭제 권한이 없습니다.');
+      setDeleteMessage('');
+      return;
+    }
+    const label = customer.customer || '고객';
+    if (!window.confirm(`"${label}" 고객 정보를 삭제할까요?\n연결된 일정, 영업노트, 파일 기록도 함께 삭제될 수 있습니다.`)) {
+      return;
+    }
+
+    setDeleteSaving(true);
+    setDeleteError('');
+    setDeleteMessage('');
+    try {
+      const result = await deleteCustomerRecord(editConfig.deleteUrl);
+      setDeleteMessage(result.message || '고객 정보를 삭제했습니다.');
+      window.location.href = result.href || data?.links.customers || '/customers/';
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : '고객 삭제에 실패했습니다.');
+    } finally {
+      setDeleteSaving(false);
     }
   };
 
@@ -3809,6 +3887,7 @@ function CustomerDetailPage({
   const prepaymentSummary = data.prepaymentSummary;
   const operationalRecords = data.operationalRecords;
   const assetSummary = data.assetSummary;
+  const attachments = data.attachments;
   const account = data.account;
   const accountContacts = account.contacts ?? [];
   const ledgerScopeLabel = account.ledgerScopeLabel || (
@@ -3905,6 +3984,18 @@ function CustomerDetailPage({
           {data.links.accountDetail ? (
             <a className="route-secondary-action" href={data.links.accountDetail}>계정 링크</a>
           ) : null}
+          {data.links.pipeline ? (
+            <a className="route-secondary-action" href={data.links.pipeline}>
+              <Target size={15} />
+              파이프라인
+            </a>
+          ) : null}
+          {data.links.mailCompose ? (
+            <a className="route-secondary-action" href={data.links.mailCompose}>
+              <Mail size={15} />
+              메일
+            </a>
+          ) : null}
           {account.type === 'department' && account.id ? (
             <a className="route-secondary-action" href={`/accounts/${account.id}/cleanup-preview/`}>정리 영향</a>
           ) : null}
@@ -3925,6 +4016,12 @@ function CustomerDetailPage({
               수정
             </button>
           ) : null}
+          {data.edit.canDelete && data.edit.deleteUrl ? (
+            <button className="route-secondary-action danger" disabled={deleteSaving} onClick={handleCustomerDelete} type="button">
+              {deleteSaving ? <Loader2 className="spin-icon" size={15} /> : <Trash2 size={15} />}
+              삭제
+            </button>
+          ) : null}
           <a className="route-secondary-action" href={data.links.createNote}>
             노트 작성
             <FileText size={16} />
@@ -3935,6 +4032,19 @@ function CustomerDetailPage({
           </a>
         </div>
       </div>
+
+      {deleteError ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>{deleteError}</span>
+        </div>
+      ) : null}
+      {deleteMessage ? (
+        <div className="dashboard-api-alert compact success">
+          <CheckCircle2 size={16} />
+          <span>{deleteMessage}</span>
+        </div>
+      ) : null}
 
       <div className="customer-account-ledger-strip">
         {ledgerCards.map((item) => (
@@ -4930,16 +5040,55 @@ function CustomerDetailPage({
       ) : null}
 
       <div className="customer-detail-layout">
-        <section className="dashboard-panel customer-detail-main">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Recent notes</span>
-              <h2>최근 영업노트</h2>
+        <div className="customer-detail-main-stack">
+          <section className="dashboard-panel customer-detail-main">
+            <div className="dashboard-panel-heading">
+              <div>
+                <span className="eyebrow">Recent notes</span>
+                <h2>최근 영업노트</h2>
+              </div>
+              <FileText size={18} />
             </div>
-            <FileText size={18} />
-          </div>
-          <CustomerDetailNoteList emptyLabel="최근 영업노트가 없습니다" notes={data.recentNotes} />
-        </section>
+            <CustomerDetailNoteList emptyLabel="최근 영업노트가 없습니다" notes={data.recentNotes} />
+          </section>
+
+          <section className="dashboard-panel customer-detail-main">
+            <div className="dashboard-panel-heading">
+              <div>
+                <span className="eyebrow">Schedule history</span>
+                <h2>최근 일정</h2>
+              </div>
+              <CalendarDays size={18} />
+            </div>
+            <SchedulesCompactList emptyLabel="최근 일정이 없습니다" items={data.recentSchedules} />
+          </section>
+
+          <section className="dashboard-panel customer-detail-main customer-attachments-panel">
+            <div className="dashboard-panel-heading">
+              <div>
+                <span className="eyebrow">Files</span>
+                <h2>첨부 파일</h2>
+              </div>
+              <Upload size={18} />
+            </div>
+            <div className="customer-attachment-metrics">
+              <span>전체 <strong>{formatNumber(attachments.metrics.totalFiles)}개</strong></span>
+              <span>영업노트 <strong>{formatNumber(attachments.metrics.noteFiles)}개</strong></span>
+              <span>일정 <strong>{formatNumber(attachments.metrics.scheduleFiles)}개</strong></span>
+            </div>
+            <div className="customer-attachment-links">
+              <a className="route-secondary-action" href={attachments.links.notes}>
+                노트 파일
+                <MoveUpRight size={14} />
+              </a>
+              <a className="route-secondary-action" href={attachments.links.schedules}>
+                일정 파일
+                <MoveUpRight size={14} />
+              </a>
+            </div>
+            <CustomerAttachmentList files={attachments.recentFiles} />
+          </section>
+        </div>
 
         <aside className="dashboard-panel customer-detail-side">
           <div className="dashboard-panel-heading">

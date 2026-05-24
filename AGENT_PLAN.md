@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-05-24 React full replacement F-step customer detail replacement plan
+
+**Background**:
+
+- User asked to continue React full replacement item F for `/customers/<id>/`.
+- Legacy `followup_detail` should no longer be needed for day-to-day customer detail work once React detail parity is complete.
+- Customer detail must show basic/contact/address/memo data and connect notes, schedules, quotes, deliveries, prepayments, assets, service cases, calibrations, files, and Excel links.
+
+**DB change required**: No.
+
+- Existing `FollowUp`, `History`, `HistoryFile`, `Schedule`, `ScheduleFile`, `Quote`, `Prepayment`, `CustomerAsset`, `ServiceCase`, and `CalibrationRecord` models are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Compare legacy `followup_detail.html` actions/links against React `CustomerDetailPage`.
+- Extend the customer detail API payload where React lacks detail actions, file attachment summaries, or export links.
+- Add React detail sections/actions so basic info, account/contact info, notes, schedules, quotes, deliveries, prepayments, assets, A/S, calibration, files, and Excel downloads are reachable without opening the Django detail page.
+- Preserve `/reporting/followups/<id>/` as a compatibility redirect/fallback.
+- Add focused customer detail API tests for links, files, exports, and permissions.
+- Record the result in `AGENT_REPORT.md` and a separate memo under `D:\projects\해야할일`.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Local browser smoke for `/customers/<id>/` fallback/detail shell.
+- `git diff --check`
+
 ## 2026-05-24 React full replacement E-step customer/account list replacement plan
 
 **Background**:

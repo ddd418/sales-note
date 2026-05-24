@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
+from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -3665,8 +3665,10 @@ def _customers_edit_config(request, user_profile, followup, can_edit):
 
     return {
         'canEdit': bool(can_edit),
+        'canDelete': bool(can_edit),
         'message': '' if can_edit else '수정 권한이 없습니다.',
         'submitUrl': reverse('reporting:customer_update_api', args=[followup.id]),
+        'deleteUrl': reverse('reporting:customer_delete_api', args=[followup.id]),
         'djangoUrl': reverse('reporting:followup_edit', args=[followup.id]),
         'priorities': [
             {'value': value, 'label': label}
@@ -5726,6 +5728,108 @@ def customer_asset_calibration_certificate_download_api(request, record_id):
     return _customer_asset_file_response(record.certificate_file)
 
 
+def _customer_detail_note_file_payload(file_obj):
+    history = file_obj.history
+    followup = history.followup
+    source_detail = (_history_activity_content(history) or history.content or '').strip()
+    return {
+        '_sortAt': file_obj.uploaded_at,
+        'id': file_obj.id,
+        'fileType': 'note',
+        'fileTypeLabel': '영업노트',
+        'filename': file_obj.original_filename,
+        'size': _file_size_label(file_obj.file_size),
+        'uploadedAt': _datetime_or_none(file_obj.uploaded_at),
+        'uploadedBy': _user_display_name(file_obj.uploaded_by),
+        'sourceId': history.id,
+        'sourceLabel': history.get_action_type_display(),
+        'sourceDetail': source_detail[:180],
+        'sourceOwner': _user_display_name(history.user),
+        'sourceDate': _datetime_or_none(history.created_at),
+        'sourceHref': f'/notes/{history.id}/',
+        'downloadHref': reverse('reporting:file_download', args=[file_obj.id]),
+        'customerName': followup.customer_name or followup.manager or '',
+    }
+
+
+def _customer_detail_schedule_file_payload(file_obj):
+    schedule = file_obj.schedule
+    followup = schedule.followup
+    source_detail = ' · '.join([
+        part for part in [
+            schedule.get_activity_type_display(),
+            schedule.get_status_display(),
+            schedule.location or '',
+        ] if part
+    ])
+    return {
+        '_sortAt': file_obj.uploaded_at,
+        'id': file_obj.id,
+        'fileType': 'schedule',
+        'fileTypeLabel': '일정',
+        'filename': file_obj.original_filename,
+        'size': _file_size_label(file_obj.file_size),
+        'uploadedAt': _datetime_or_none(file_obj.uploaded_at),
+        'uploadedBy': _user_display_name(file_obj.uploaded_by),
+        'sourceId': schedule.id,
+        'sourceLabel': schedule.get_activity_type_display(),
+        'sourceDetail': source_detail[:180],
+        'sourceOwner': _user_display_name(schedule.user),
+        'sourceDate': _date_or_none(schedule.visit_date),
+        'sourceHref': f'/schedules/{schedule.id}/',
+        'downloadHref': reverse('reporting:schedule_file_download', args=[file_obj.id]),
+        'customerName': followup.customer_name or followup.manager or '',
+    }
+
+
+def _customer_detail_attachments_payload(followup, shared_followups, scope_users):
+    """고객 상세에서 노트/일정 첨부를 한 곳에서 드릴다운할 수 있게 묶는다."""
+    note_files_qs = HistoryFile.objects.filter(
+        history__followup__in=shared_followups,
+        history__user__in=scope_users,
+        history__parent_history__isnull=True,
+    ).exclude(
+        history__action_type='memo',
+    ).select_related(
+        'history',
+        'history__followup',
+        'history__user',
+        'uploaded_by',
+    ).order_by('-uploaded_at', '-id')
+    schedule_files_qs = ScheduleFile.objects.filter(
+        schedule__followup__in=shared_followups,
+        schedule__user__in=scope_users,
+    ).select_related(
+        'schedule',
+        'schedule__followup',
+        'schedule__user',
+        'uploaded_by',
+    ).order_by('-uploaded_at', '-id')
+
+    recent_files = [
+        *[_customer_detail_note_file_payload(file_obj) for file_obj in list(note_files_qs[:8])],
+        *[_customer_detail_schedule_file_payload(file_obj) for file_obj in list(schedule_files_qs[:8])],
+    ]
+    recent_files.sort(key=lambda item: item['_sortAt'], reverse=True)
+    for item in recent_files:
+        item.pop('_sortAt', None)
+
+    note_file_count = note_files_qs.count()
+    schedule_file_count = schedule_files_qs.count()
+    return {
+        'metrics': {
+            'totalFiles': note_file_count + schedule_file_count,
+            'noteFiles': note_file_count,
+            'scheduleFiles': schedule_file_count,
+        },
+        'recentFiles': recent_files[:12],
+        'links': {
+            'notes': f'/notes/?customer={followup.id}',
+            'schedules': f'/schedules/?customer={followup.id}',
+        },
+    }
+
+
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
@@ -5858,10 +5962,13 @@ def customer_detail_summary_api(request, followup_id):
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
             'createNote': f'/notes/?create=1&customer={followup.id}',
             'deliveryRecordsXlsx': reverse('reporting:customer_delivery_records_xlsx_export_api', args=[followup.id]),
+            'mailCompose': '' if user_profile.is_manager() else f'/mailbox/?compose=1&followup_id={followup.id}',
+            'pipeline': '/pipeline/',
         },
         'prepaymentSummary': _customer_detail_prepayment_summary_payload(followup, scope_users, request.user),
         'operationalRecords': _customer_operational_records_payload(followup, scope_users, request.user),
         'assetSummary': _customer_asset_summary_payload(request, followup, scope_users, can_edit_customer),
+        'attachments': _customer_detail_attachments_payload(followup, shared_followups, scope_users),
         'edit': _customers_edit_config(request, user_profile, followup, can_edit_customer),
         'recentNotes': [
             _notes_history_payload(note, today, can_review_notes)
@@ -7468,6 +7575,38 @@ def customer_update_api(request, followup_id):
         'href': f'/customers/{followup.id}/',
         'django_href': reverse('reporting:followup_detail', args=[followup.id]),
         'message': '고객 정보가 수정되었습니다.',
+    })
+
+
+@never_cache
+@require_POST
+def customer_delete_api(request, followup_id):
+    """React 고객 상세 화면용 고객 삭제 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    followup = get_object_or_404(
+        FollowUp.objects.select_related('user', 'company', 'department'),
+        pk=followup_id,
+    )
+    if not can_access_followup(request.user, followup):
+        return JsonResponse({
+            'success': False,
+            'error': '접근 권한이 없습니다.',
+        }, status=403)
+    if not can_modify_user_data(request.user, followup.user):
+        return JsonResponse({
+            'success': False,
+            'error': '삭제 권한이 없습니다.',
+        }, status=403)
+
+    customer_label = followup.customer_name or followup.manager or '고객'
+    followup.delete()
+    return JsonResponse({
+        'success': True,
+        'href': '/customers/',
+        'message': f'{customer_label} 고객 정보를 삭제했습니다.',
     })
 
 

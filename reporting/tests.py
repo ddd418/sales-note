@@ -4236,7 +4236,7 @@ class CustomersSummaryApiTests(TestCase):
     def test_customer_detail_summary_api_returns_notes_and_schedules(self):
         from datetime import time, timedelta
         from django.utils import timezone
-        from reporting.models import History, Schedule
+        from reporting.models import History, HistoryFile, Schedule, ScheduleFile
 
         target = self._create_customer(self.user, '상세고객', priority='urgent')
         upcoming = Schedule.objects.create(
@@ -4249,7 +4249,7 @@ class CustomersSummaryApiTests(TestCase):
             status='scheduled',
             location='상세 회의실',
         )
-        History.objects.create(
+        note = History.objects.create(
             user=self.user,
             company=self.company,
             followup=target,
@@ -4257,6 +4257,22 @@ class CustomersSummaryApiTests(TestCase):
             content='상세 견적 메모',
             next_action='상세 후속',
             next_action_date=timezone.localdate() + timedelta(days=1),
+        )
+        note_file_body = b'customer-note'
+        schedule_file_body = b'customer-schedule'
+        note_file = HistoryFile.objects.create(
+            history=note,
+            file=SimpleUploadedFile('customer-note.txt', note_file_body, content_type='text/plain'),
+            original_filename='customer-note.txt',
+            file_size=len(note_file_body),
+            uploaded_by=self.user,
+        )
+        schedule_file = ScheduleFile.objects.create(
+            schedule=upcoming,
+            file=SimpleUploadedFile('customer-schedule.txt', schedule_file_body, content_type='text/plain'),
+            original_filename='customer-schedule.txt',
+            file_size=len(schedule_file_body),
+            uploaded_by=self.user,
         )
         self.client.force_login(self.user)
 
@@ -4267,11 +4283,28 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(payload['customer']['id'], target.id)
         self.assertGreaterEqual(payload['metrics']['recentNotes'], 2)
         self.assertEqual(payload['upcomingSchedules'][0]['id'], upcoming.id)
+        self.assertEqual(payload['recentSchedules'][0]['id'], upcoming.id)
         self.assertTrue(payload['links']['djangoDetail'].endswith(f'/followups/{target.id}/'))
         self.assertTrue(payload['links']['djangoEdit'].endswith(f'/followups/{target.id}/edit/'))
         self.assertEqual(payload['links']['createNote'], f'/notes/?create=1&customer={target.id}')
+        self.assertEqual(payload['links']['mailCompose'], f'/mailbox/?compose=1&followup_id={target.id}')
+        self.assertEqual(payload['links']['pipeline'], '/pipeline/')
+        self.assertEqual(payload['attachments']['metrics']['totalFiles'], 2)
+        self.assertEqual(payload['attachments']['metrics']['noteFiles'], 1)
+        self.assertEqual(payload['attachments']['metrics']['scheduleFiles'], 1)
+        attachment_types = {item['fileType'] for item in payload['attachments']['recentFiles']}
+        self.assertIn('note', attachment_types)
+        self.assertIn('schedule', attachment_types)
+        note_attachment = next(item for item in payload['attachments']['recentFiles'] if item['fileType'] == 'note')
+        schedule_attachment = next(item for item in payload['attachments']['recentFiles'] if item['fileType'] == 'schedule')
+        self.assertEqual(note_attachment['sourceHref'], f'/notes/{note.id}/')
+        self.assertEqual(note_attachment['downloadHref'], reverse('reporting:file_download', args=[note_file.id]))
+        self.assertEqual(schedule_attachment['sourceHref'], f'/schedules/{upcoming.id}/')
+        self.assertEqual(schedule_attachment['downloadHref'], reverse('reporting:schedule_file_download', args=[schedule_file.id]))
         self.assertTrue(payload['edit']['canEdit'])
+        self.assertTrue(payload['edit']['canDelete'])
         self.assertEqual(payload['edit']['submitUrl'], reverse('reporting:customer_update_api', args=[target.id]))
+        self.assertEqual(payload['edit']['deleteUrl'], reverse('reporting:customer_delete_api', args=[target.id]))
         self.assertTrue(any(option['id'] == target.company_id for option in payload['edit']['companies']))
         self.assertTrue(any(option['id'] == target.department_id for option in payload['edit']['departments']))
 
@@ -5525,6 +5558,30 @@ class CustomersSummaryApiTests(TestCase):
         coworker_response = self.client.post(reverse('reporting:customer_update_api', args=[target.id]), payload)
         self.assertEqual(coworker_response.status_code, 403)
         self.assertFalse(coworker_response.json()['success'])
+
+    def test_customer_delete_api_deletes_owner_customer_and_blocks_readonly_users(self):
+        target = self._create_customer(self.user, '삭제대상')
+        blocked = self._create_customer(self.user, '삭제차단대상')
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(reverse('reporting:customer_delete_api', args=[blocked.id]))
+        self.assertEqual(manager_response.status_code, 403)
+        self.assertFalse(manager_response.json()['success'])
+
+        self.client.force_login(self.coworker)
+        coworker_response = self.client.post(reverse('reporting:customer_delete_api', args=[blocked.id]))
+        self.assertEqual(coworker_response.status_code, 403)
+        self.assertFalse(coworker_response.json()['success'])
+
+        self.client.force_login(self.user)
+        response = self.client.post(reverse('reporting:customer_delete_api', args=[target.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['href'], '/customers/')
+        self.assertFalse(FollowUp.objects.filter(id=target.id).exists())
+        self.assertTrue(FollowUp.objects.filter(id=blocked.id).exists())
 
     def test_customer_update_api_blocks_other_company_selection(self):
         from reporting.models import Company, Department

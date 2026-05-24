@@ -276,6 +276,7 @@ urlpatterns = [
     path('api/customers/<int:followup_id>/cleanup-merge/', views.account_cleanup_contact_merge_api, name='account_cleanup_contact_merge_api'),
     path('api/customers/<int:followup_id>/delivery-records.xlsx', views.customer_delivery_records_xlsx_export_api, name='customer_delivery_records_xlsx_export_api'),
     path('api/customers/<int:followup_id>/update/', views.customer_update_api, name='customer_update_api'),
+    path('api/customers/<int:followup_id>/delete/', views.customer_delete_api, name='customer_delete_api'),
     path('api/customers/<int:followup_id>/assets/create/', views.customer_asset_save_api, name='customer_asset_create_api'),
     path('api/customers/<int:followup_id>/assets/<int:asset_id>/update/', views.customer_asset_save_api, name='customer_asset_update_api'),
     path('api/customers/<int:followup_id>/service-cases/create/', views.customer_service_case_save_api, name='customer_service_case_create_api'),

@@ -704,6 +704,13 @@ export type CustomerEditResponse = {
   href?: string;
 };
 
+export type CustomerDeleteResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  href?: string;
+};
+
 export type AccountInfoUpdatePayload = {
   companyId: number;
   departmentName: string;
@@ -1306,6 +1313,37 @@ export type CustomerAccountSummary = {
   djangoRepresentativeHref: string;
 };
 
+export type CustomerAttachmentItem = {
+  id: number;
+  fileType: 'note' | 'schedule' | string;
+  fileTypeLabel: string;
+  filename: string;
+  size: string;
+  uploadedAt: string | null;
+  uploadedBy: string;
+  sourceId: number;
+  sourceLabel: string;
+  sourceDetail: string;
+  sourceOwner: string;
+  sourceDate: string | null;
+  sourceHref: string;
+  downloadHref: string;
+  customerName?: string;
+};
+
+export type CustomerAttachments = {
+  metrics: {
+    totalFiles: number;
+    noteFiles: number;
+    scheduleFiles: number;
+  };
+  recentFiles: CustomerAttachmentItem[];
+  links: {
+    notes: string;
+    schedules: string;
+  };
+};
+
 export type CustomerDetailData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -1335,14 +1373,19 @@ export type CustomerDetailData = {
     deliveryRecordsXlsx: string;
     accountDetail: string;
     accountDeliveryRecordsXlsx: string;
+    mailCompose: string;
+    pipeline: string;
   };
   prepaymentSummary: CustomerPrepaymentSummary;
   operationalRecords: CustomerOperationalRecords;
   assetSummary: CustomerAssetSummary;
+  attachments: CustomerAttachments;
   edit: {
     canEdit: boolean;
+    canDelete: boolean;
     message: string;
     submitUrl: string;
+    deleteUrl: string;
     djangoUrl: string;
     priorities: Array<{ value: string; label: string }>;
     statuses: Array<{ value: string; label: string }>;
@@ -4764,6 +4807,8 @@ const emptyCustomerDetailData: CustomerDetailData = {
     deliveryRecordsXlsx: '',
     accountDetail: '',
     accountDeliveryRecordsXlsx: '',
+    mailCompose: '',
+    pipeline: '',
   },
   prepaymentSummary: {
     metrics: {
@@ -4825,10 +4870,24 @@ const emptyCustomerDetailData: CustomerDetailData = {
     },
     assets: [],
   },
+  attachments: {
+    metrics: {
+      totalFiles: 0,
+      noteFiles: 0,
+      scheduleFiles: 0,
+    },
+    recentFiles: [],
+    links: {
+      notes: '/notes/',
+      schedules: '/schedules/',
+    },
+  },
   edit: {
     canEdit: false,
+    canDelete: false,
     message: '',
     submitUrl: '',
+    deleteUrl: '',
     djangoUrl: '',
     priorities: [],
     statuses: [],
@@ -6708,6 +6767,29 @@ export async function updateCustomer(
   return data;
 }
 
+export async function deleteCustomer(deleteUrl: string): Promise<CustomerDeleteResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(deleteUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Customer delete API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as CustomerDeleteResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Customer delete failed: ${response.status}`);
+  }
+  return data;
+}
+
 export async function updateAccountInfo(
   payload: AccountInfoUpdatePayload,
   submitUrl: string,
@@ -7284,7 +7366,18 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
       links: normalizeHrefFields({
         ...emptyCustomerDetailData.links,
         ...(payload.links ?? {}),
-      }, ['customers', 'djangoDetail', 'djangoEdit', 'createSchedule', 'createNote', 'deliveryRecordsXlsx', 'accountDetail', 'accountDeliveryRecordsXlsx']),
+      }, [
+        'customers',
+        'djangoDetail',
+        'djangoEdit',
+        'createSchedule',
+        'createNote',
+        'deliveryRecordsXlsx',
+        'accountDetail',
+        'accountDeliveryRecordsXlsx',
+        'mailCompose',
+        'pipeline',
+      ]),
       prepaymentSummary: {
         ...emptyCustomerDetailData.prepaymentSummary,
         ...(payload.prepaymentSummary ?? {}),
@@ -7327,9 +7420,25 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
         },
         assets: payload.assetSummary?.assets ?? emptyCustomerDetailData.assetSummary.assets,
       },
+      attachments: {
+        ...emptyCustomerDetailData.attachments,
+        ...(payload.attachments ?? {}),
+        metrics: {
+          ...emptyCustomerDetailData.attachments.metrics,
+          ...(payload.attachments?.metrics ?? {}),
+        },
+        links: normalizeHrefFields({
+          ...emptyCustomerDetailData.attachments.links,
+          ...(payload.attachments?.links ?? {}),
+        }, ['notes', 'schedules']),
+        recentFiles: (payload.attachments?.recentFiles ?? emptyCustomerDetailData.attachments.recentFiles).map((file) => (
+          normalizeHrefFields(file, ['sourceHref', 'downloadHref'])
+        )),
+      },
       edit: {
         ...emptyCustomerDetailData.edit,
         ...(payload.edit ?? {}),
+        deleteUrl: normalizeCoreCrmHref(payload.edit?.deleteUrl ?? emptyCustomerDetailData.edit.deleteUrl),
         djangoUrl: normalizeCoreCrmHref(payload.edit?.djangoUrl ?? emptyCustomerDetailData.edit.djangoUrl),
       },
       recentNotes: (payload.recentNotes ?? emptyCustomerDetailData.recentNotes).map(normalizeNoteLinks),

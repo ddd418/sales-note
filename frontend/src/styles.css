@@ -4763,6 +4763,12 @@ h2 {
   min-width: 0;
 }
 
+.customer-detail-main-stack {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .customer-detail-summary {
   display: grid;
   gap: 12px;
@@ -4885,6 +4891,100 @@ h2 {
 
 .customer-profile-text.empty p {
   color: var(--muted);
+}
+
+.customer-note-submeta {
+  color: var(--primary-strong);
+  font-weight: 800;
+}
+
+.customer-attachments-panel {
+  gap: 12px;
+}
+
+.customer-attachment-metrics,
+.customer-attachment-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.customer-attachment-metrics span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid #d1fae5;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-attachment-metrics strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.customer-attachment-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.customer-attachment-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(150px, auto);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.customer-attachment-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.customer-attachment-main strong,
+.customer-attachment-main span,
+.customer-attachment-main small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.customer-attachment-main strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.customer-attachment-main span,
+.customer-attachment-main small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.customer-attachment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.customer-attachment-actions > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .customer-account-panel {
@@ -9420,7 +9520,8 @@ tbody tr:hover {
 
   .customer-record-metrics,
   .customer-record-row,
-  .customer-record-row.compact {
+  .customer-record-row.compact,
+  .customer-attachment-row {
     grid-template-columns: 1fr;
   }
 
@@ -9430,8 +9531,10 @@ tbody tr:hover {
   }
 
   .customer-record-section-heading span,
-  .customer-record-side {
+  .customer-record-side,
+  .customer-attachment-actions {
     justify-items: start;
+    justify-content: flex-start;
     text-align: left;
   }
 

@@ -28324,3 +28324,102 @@ git diff --check
 7. Confirm A/S lifecycle and report attachment labels appear in `/assets/` and `/services/`.
 8. In the same drawer, add a calibration record with next due date and optional certificate.
 9. Confirm due/overdue/certificate state is visible and the account detail link opens `/accounts/<department_id>/`.
+
+## 2026-05-24 React full replacement F-step customer detail
+
+### 1. Summary
+
+- Advanced `/customers/<id>/` React customer detail toward full replacement of the legacy Django `followup_detail` screen.
+- Added customer-detail API support for React-only customer delete action, mail compose link, pipeline link, recent schedule display, and note/schedule attachment drilldown payload.
+- Kept legacy `/reporting/followups/<id>/` and edit URLs as compatibility links/redirects; no template or route was removed.
+- Kept customer-detail AI out of scope intentionally because AI questions and answers are handled in `/ai-workspace/`.
+
+### 2. Files Changed
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### 3. CRM Improvements
+
+- Customer detail now exposes `파이프라인`, `메일`, and permission-limited `삭제` actions in React.
+- React customer detail now shows recent schedules in addition to upcoming schedules.
+- React customer detail now shows attachment counts and recent files across sales notes and schedules, with direct source and download links.
+- Recent note rows now show attachment/reply counts.
+- Delete flow uses a JSON API and returns users to `/customers/`, avoiding the legacy Django delete confirmation screen.
+- Manager users remain read-only for customer mutations while still able to view same-company customer detail data.
+
+### 4. Existing Functionality Preserved
+
+- No database model fields or migrations were added.
+- Existing customer update, account/contact management, delivery Excel, prepayment, asset, service, calibration, notes, and schedule flows remain intact.
+- Existing `/reporting/followups/<id>/`, `/reporting/followups/<id>/edit/`, and file download routes remain available as backend compatibility routes.
+- Anonymous customer detail API access still returns `401 login_required`.
+- Other-company customer detail access remains blocked.
+
+### 5. Commands Run
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2
+→ Ran 49 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+cd frontend && node --check server.mjs
+→ OK
+
+Browser/local smoke
+→ Opened http://127.0.0.1:5174/customers/1/
+→ React customer detail route rendered an error state instead of a blank page when the local backend was unavailable
+→ Browser console errors: none
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 6. Known Limitations
+
+- Authenticated production verification is still needed for real customer detail data, attachment downloads, mail compose prefill, and customer delete permission behavior.
+- The note/schedule attachment list surfaces recent files and direct source/download links; a separate all-files page was not added in this task.
+- Account-level notes/schedules links still route through existing list pages, while each attachment row has its exact source link.
+
+### 7. Production Deployment Status
+
+- Pending Railway deployment in this task.
+
+### 8. Recommended Next Task
+
+- Continue with G-step style parity for schedule/note detail links or start extracting `frontend/src/App.tsx` customer detail components into `pages/customers`.
+
+### 9. Manual Server Test Process
+
+1. Open `https://sales-note-frontend-production.up.railway.app/customers/` after deployment and login.
+2. Open any customer detail row.
+3. Confirm the top actions include 목록, 계정 링크, 파이프라인, 메일, 노트 작성, 일정 등록, and 수정/삭제 only when the role has permission.
+4. Confirm 기본정보, 계정 담당자, 주소, 메모, 납품, 견적, 선결제, 장비, A/S, 교정 sections still appear.
+5. Confirm `최근 일정` appears under recent notes and opens React schedule detail links.
+6. Confirm `첨부 파일` shows note/schedule file counts and opens both 원문 and 다운로드 links.
+7. Download 납품 엑셀 from the operational records section.
+8. Login as manager and confirm the same-company customer can be viewed, while 수정/삭제/계정관리 mutation buttons are not available.
+9. If testing deletion, create a disposable customer first, delete it from React customer detail, and confirm the page returns to `/customers/`.
