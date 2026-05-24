@@ -70,6 +70,26 @@ Local Playwright shell smoke against http://127.0.0.1:4178
 
 git diff --check
 -> OK, CRLF normalization warning only
+
+git push origin main
+-> Pushed ea1da55 to main
+
+railway deployment list --service web --limit 1 --json
+-> web deployment 8e2a9a83-3003-474d-ad53-605e896fa41b SUCCESS for commit ea1da55
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+-> sales-note-frontend deployment 6ff4a613-0a22-41bb-985b-15035d47919f SUCCESS for commit ea1da55
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+-> Smoke status: ok
+-> backend healthz 200, readyz 200, login page 200, reports API protected 401
+-> frontend healthz 200, dashboard shell 200, reports API protected 401
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/dashboard/
+-> 200
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/healthz/
+-> 200
 ```
 
 ### 로컬 환경 메모
@@ -86,9 +106,10 @@ git diff --check
 
 ### Railway 배포 상태
 
-- 배포 대상: `sales-note-frontend`는 runtime 변경 대상입니다.
-- `web`은 runtime backend 변경은 없고 테스트만 변경했지만, 저장소 push 정책상 배포 상태를 같이 확인합니다.
-- 상태: 커밋/푸시 후 Railway 배포와 production smoke를 진행하고 이 섹션을 갱신합니다.
+- 배포 완료.
+- `web`: deployment `8e2a9a83-3003-474d-ad53-605e896fa41b`, commit `ea1da55`, `SUCCESS`.
+- `sales-note-frontend`: deployment `6ff4a613-0a22-41bb-985b-15035d47919f`, commit `ea1da55`, `SUCCESS`.
+- Production smoke: `ok`.
 
 ### 사용자 수동 검수 절차
 
