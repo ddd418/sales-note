@@ -72,6 +72,20 @@ Browser/local smoke
 → http://127.0.0.1:4175/reports/ rendered the React shell
 → http://127.0.0.1:4175/reporting/analytics/?date_from=2026-05-01&date_to=2026-05-25 redirected to /reports/ with query preserved
 → Browser console error count: 0
+
+Railway deployment list
+→ Backend `web` deployment `27b940e7-c626-49cf-a29c-9f1936bf04b4` succeeded for commit `fa6d1f5`
+→ Frontend `sales-note-frontend` deployment `9a91412c-44bc-42da-a0ea-345598db94b7` succeeded for commit `fa6d1f5`
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz, readyz, login page, protected reports API
+→ PASS frontend healthz, dashboard shell, protected reports API
+
+Production L smoke
+→ GET https://sales-note-frontend-production.up.railway.app/reports/ returned 200 React shell
+→ GET https://sales-note-frontend-production.up.railway.app/reporting/analytics/?date_from=2026-05-01&date_to=2026-05-25 returned 302 to /reports/?date_from=2026-05-01&date_to=2026-05-25
+→ GET https://sales-note-frontend-production.up.railway.app/reporting/api/reports/ returned expected anonymous 401
+→ GET https://sales-note-frontend-production.up.railway.app/reporting/api/reports/customer-operations.xlsx returned login redirect
 ```
 
 ### 알려진 제한
@@ -82,7 +96,12 @@ Browser/local smoke
 
 ### 운영 배포 상태
 
-- 대기 중. 커밋/푸시 후 Railway backend `web`과 frontend `sales-note-frontend` 배포 상태를 확인해야 합니다.
+- 완료.
+- Commit `fa6d1f5 feat: complete react reports replacement` is present on `origin/main`.
+- Railway backend `web` service deployed commit `fa6d1f5` successfully as deployment `27b940e7-c626-49cf-a29c-9f1936bf04b4`.
+- Railway frontend `sales-note-frontend` service deployed commit `fa6d1f5` successfully as deployment `9a91412c-44bc-42da-a0ea-345598db94b7`.
+- Production anonymous smoke passed for health, React reports shell, legacy analytics redirect, protected reports API, and protected reports XLSX login redirect.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
