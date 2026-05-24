@@ -74,6 +74,25 @@ Local Browser smoke
 
 git diff --check
 -> OK, CRLF normalization warning only
+
+git push origin main
+-> Pushed commit 34ae7d0 to main
+
+railway deployment list --service web --environment production --limit 1 --json
+-> web deployment 2fd42451-dc46-46be-83bb-fefa40d94343 SUCCESS for commit 34ae7d0
+
+railway deployment list --service sales-note-frontend --environment production --limit 1 --json
+-> sales-note-frontend deployment 30b73dd4-e8b6-4080-9e60-2df95aaed526 SUCCESS for commit 34ae7d0
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+-> Smoke status: ok
+-> backend healthz 200, readyz 200, login page 200, reports API protected 401
+-> frontend healthz 200, dashboard shell 200, reports API protected 401
+
+Production Browser smoke
+-> https://sales-note-frontend-production.up.railway.app/schedules/calendar/ redirected anonymous user to /reporting/login/?next=/schedules/calendar/
+-> Login page title: 로그인 - 영업 보고 시스템
+-> Browser console errors: 0
 ```
 
 ### 알려진 제한
@@ -84,7 +103,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending: commit, push, Railway deployment, production smoke.
+- Completed.
+- Commit `34ae7d0 feat: complete react schedule calendar replacement` is present on `origin/main`.
+- Railway backend `web` deployment `2fd42451-dc46-46be-83bb-fefa40d94343` succeeded for commit `34ae7d0`.
+- Railway frontend `sales-note-frontend` deployment `30b73dd4-e8b6-4080-9e60-2df95aaed526` succeeded for commit `34ae7d0`.
+- Production anonymous smoke passed: schedule calendar route remains protected behind login without browser console errors, and backend/frontend health checks passed.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
