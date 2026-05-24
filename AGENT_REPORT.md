@@ -59,6 +59,20 @@ git diff --check
 Local browser smoke
 → `/customers/?create=1`에서 수정/삭제 패널 표시 확인
 → 수정 버튼 클릭 시 편집 input/저장/취소 상태 표시 확인
+
+git push origin main
+→ Pushed commit 4c4a85d to main
+
+railway deployment list --service web --limit 1 --json
+→ web deployment 01146ef9-2774-4184-bdac-463d38e0b0e5 SUCCESS for commit 4c4a85d
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+→ sales-note-frontend deployment 4db6c351-266b-4628-8e4e-0c4184247193 SUCCESS for commit 4c4a85d
+
+python scripts/post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+→ backend healthz 200, readyz 200, login 200, reports API protected 401
+→ frontend healthz 200, dashboard shell 200, reports API protected 401
 ```
 
 ### 알려진 제한
@@ -72,7 +86,10 @@ Local browser smoke
 
 ### 운영 배포 상태
 
-- Runtime commit/push 및 Railway 배포 진행 예정입니다.
+- Runtime commit `4c4a85d` 배포 완료.
+- `web`: `01146ef9-2774-4184-bdac-463d38e0b0e5` SUCCESS.
+- `sales-note-frontend`: `4db6c351-266b-4628-8e4e-0c4184247193` SUCCESS.
+- 운영 smoke test 통과.
 
 ### 사용자가 운영 서버에서 확인할 절차
 
