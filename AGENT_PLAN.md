@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement G-step account detail replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item G for `/accounts/<department_id>/`.
+- Account detail should support department/lab account-level operations in React without falling back to Django templates.
+- Existing account APIs already reuse the customer detail payload with department-scoped ledgers, account management, contact management, and cleanup preview APIs.
+
+**DB change required**: No.
+
+- Existing `Company`, `Department`, `FollowUp`, ledger, prepayment, asset, service, calibration, note, and schedule models are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Verify `/accounts/<department_id>/` routes load React account detail through `account_detail_summary_api`.
+- Make account detail mode explicit in React so account pages do not expose representative-contact edit/delete as a primary account action.
+- Add API permission/link signals for account cleanup preview and activity creation availability.
+- Ensure account detail keeps account-level ledger, prepayment, delivery Excel, assets, A/S, calibration, recent notes/schedules, and attachments reachable in React.
+- Preserve Django `/reporting/*` backend/API/file routes and legacy templates until production manual testing is complete.
+- Add focused tests for account detail payload links, manager read-only state, contact management, and account update behavior.
+- Record results in `AGENT_REPORT.md`.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/accounts/<department_id>/` and protected account API.
+- `git diff --check`
+
 ## 2026-05-24 React full replacement F-step customer detail replacement plan
 
 **Background**:

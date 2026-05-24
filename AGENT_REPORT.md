@@ -1,5 +1,101 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 G단계 계정 상세 완전 대체
+
+### 요약
+
+- `/accounts/<department_id>/` React 상세가 고객 상세과 구분되는 계정 상세 모드로 동작하도록 정리했습니다.
+- 계정 상세 상단에서 대표 담당자 수정/삭제를 기본 액션으로 노출하지 않고, 계정 수정/담당자 추가/정리 영향/계정 원장 흐름을 우선하도록 조정했습니다.
+- 계정 상세 API가 정리 영향 미리보기 링크와 권한별 액션 가능 여부를 명시적으로 내려주도록 보강했습니다.
+- manager 계정은 회사 내 데이터를 볼 수 있지만 계정/담당자 수정, 노트 작성, 일정 등록 액션이 읽기 전용 상태로 막히는 것을 테스트했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+
+### CRM 개선
+
+- `/accounts/<department_id>/`는 React 안에서 부서/연구실 계정 기준 상세 화면으로 진입합니다.
+- 계정 상세에서 업체/부서명, 주소, 메모, PI, 대표 담당자 정보를 계정 관리 폼으로 수정할 수 있는 기존 React 흐름을 유지했습니다.
+- 계정 담당자 추가/이동/비활성화 UI는 계정 관리 권한이 있을 때만 보입니다.
+- `정리 영향` 링크는 API payload 기반으로 표시되어 계정 정리 영향 미리보기 화면으로 바로 이동할 수 있습니다.
+- 납품/견적/선결제/차감/장비/A/S/교정 요약은 기존 계정 단위 공유 원장 payload를 계속 사용합니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 로그인, API, 파일, legacy fallback route는 유지했습니다.
+- Django template 계정/고객 화면은 삭제하지 않았습니다. 운영 수동 검수 전까지 fallback으로 남깁니다.
+- 기존 고객 상세 `/customers/<id>/`의 담당자 수정/삭제/노트/일정 액션은 customer mode에서 유지했습니다.
+- 기존 account update/contact management/cleanup preview API 권한 정책은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+-> OK
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py check
+-> System check identified no issues
+-> Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py makemigrations --check --dry-run
+-> No changes detected
+-> Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2
+-> OK, 49 tests
+
+npx tsc --noEmit --pretty false
+-> OK
+
+npm run build
+-> OK
+-> App bundle 702.55 kB gzip 138.34 kB
+-> Existing Vite large chunk warning remains for the full App bundle
+
+node --check server.mjs
+-> OK
+
+Local Browser smoke against http://127.0.0.1:5174/accounts/1/
+-> OK
+-> Unauthenticated direct account route redirects to Django login with next=/accounts/1/
+-> Browser console errors: 0
+
+git diff --check
+-> OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- 실제 데이터가 표시되는 계정 상세 화면은 로그인 세션이 필요하므로 자동 브라우저 smoke에서는 비로그인 보호와 라우트 연결만 확인했습니다.
+- full `App` bundle warning은 남아 있습니다. 다음 큰 파일 분리 단계에서 account page/code splitting으로 줄이는 것이 맞습니다.
+- 계정 상세의 담당자 일괄 이동/역할별 전용 탭은 이번 범위가 아니며, 기존 담당자 단위 조작 UI를 유지했습니다.
+
+### Railway 배포 상태
+
+- 배포 예정: commit/push 후 Railway `web`, `sales-note-frontend` production 배포 상태와 smoke 결과를 확인합니다.
+
+### 사용자 수동 검수 절차
+
+1. salesman 계정으로 `/accounts/<department_id>/`에 접속해 계정 상세가 React 화면으로 열리는지 확인합니다.
+2. 상단 액션에서 `계정 수정`, `담당자 추가`, `정리 영향`이 보이고 `담당자 수정/삭제`가 계정 상세 기본 액션으로 보이지 않는지 확인합니다.
+3. 계정 관리에서 업체/부서명, 주소, 계정 메모를 수정하고 저장 후 다시 열어 반영 여부를 확인합니다.
+4. 계정 담당자를 추가, 역할 변경, 이동 또는 비활성화할 수 있는지 확인합니다.
+5. 납품 기록, 선결제, 견적, 장비, A/S, 교정 요약이 같은 부서/연구실 계정 기준으로 보이는지 확인합니다.
+6. `정리 영향`을 눌러 계정 정리 영향 미리보기로 이동하는지 확인합니다.
+7. manager 계정으로 같은 계정에 접속해 회사 내 데이터는 보이되 수정/등록 액션은 막히고 읽기 전용 안내가 보이는지 확인합니다.
+8. admin 계정으로 계정 상세 접근과 관리자 권한 범위 표시를 확인합니다.
+
+### 추천 다음 단계
+
+- H. 운영 데이터 기준 `/assets/` 계정 검색 autocomplete와 A/S/교정 서비스 흐름을 수동 QA하면서 남은 legacy 진입점을 줄입니다.
+
 ## 2026-05-24 — React 완전대체 E단계 고객/계정 목록 완전 대체
 
 ### 요약

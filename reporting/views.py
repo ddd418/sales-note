@@ -3635,6 +3635,7 @@ def _customer_account_payload(followup, shared_followups, scope_users, request=N
             for contact in contacts
         ],
         'href': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
+        'cleanupPreviewHref': f'/accounts/{followup.department_id}/cleanup-preview/' if followup.department_id else '',
         'djangoRepresentativeHref': reverse('reporting:followup_detail', args=[followup.id]),
     }
 
@@ -5931,6 +5932,8 @@ def customer_detail_summary_api(request, followup_id):
     ).order_by('-visit_date', '-visit_time')
     can_review_notes = _can_review_notes(user_profile)
     can_edit_customer = can_modify_user_data(request.user, followup.user)
+    can_create_activity = bool(request.user.id == followup.user_id and not user_profile.is_manager())
+    can_manage_account = bool(followup.department_id and _can_manage_department_account(request.user, followup.department))
 
     return JsonResponse({
         'success': True,
@@ -5962,8 +5965,17 @@ def customer_detail_summary_api(request, followup_id):
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
             'createNote': f'/notes/?create=1&customer={followup.id}',
             'deliveryRecordsXlsx': reverse('reporting:customer_delivery_records_xlsx_export_api', args=[followup.id]),
+            'accountCleanupPreview': f'/accounts/{followup.department_id}/cleanup-preview/' if followup.department_id else '',
             'mailCompose': '' if user_profile.is_manager() else f'/mailbox/?compose=1&followup_id={followup.id}',
             'pipeline': '/pipeline/',
+        },
+        'permissions': {
+            'canCreateNote': can_create_activity,
+            'canCreateSchedule': can_create_activity,
+            'canManageAccount': can_manage_account,
+            'canEditRepresentative': can_edit_customer,
+            'canDeleteRepresentative': can_edit_customer,
+            'readOnlyMessage': '' if can_manage_account or can_create_activity else '이 계정은 현재 사용자에게 읽기 전용입니다.',
         },
         'prepaymentSummary': _customer_detail_prepayment_summary_payload(followup, scope_users, request.user),
         'operationalRecords': _customer_operational_records_payload(followup, scope_users, request.user),

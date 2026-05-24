@@ -316,6 +316,8 @@ type RouteAction = {
   primary?: boolean;
 };
 
+type CustomerDetailMode = 'customer' | 'account';
+
 type NoteCreateFormState = {
   actionType: string;
   activityDate: string;
@@ -3336,10 +3338,12 @@ function CustomerAiResultPanel({
 
 function CustomerDetailPage({
   data,
+  detailMode = 'customer',
   loading,
   onRefresh,
 }: {
   data: CustomerDetailData | null;
+  detailMode?: CustomerDetailMode;
   loading: boolean;
   onRefresh: () => Promise<CustomerDetailData | null>;
 }) {
@@ -3889,6 +3893,12 @@ function CustomerDetailPage({
   const assetSummary = data.assetSummary;
   const attachments = data.attachments;
   const account = data.account;
+  const isAccountDetail = detailMode === 'account';
+  const cleanupPreviewHref = account.cleanupPreviewHref || data.links.accountCleanupPreview || (account.type === 'department' && account.id ? `/accounts/${account.id}/cleanup-preview/` : '');
+  const canCreateNote = data.permissions.canCreateNote && Boolean(data.links.createNote);
+  const canCreateSchedule = data.permissions.canCreateSchedule && Boolean(data.links.createSchedule);
+  const canEditRepresentative = data.permissions.canEditRepresentative && data.edit.canEdit && !isAccountDetail;
+  const canDeleteRepresentative = data.permissions.canDeleteRepresentative && data.edit.canDelete && !isAccountDetail;
   const accountContacts = account.contacts ?? [];
   const ledgerScopeLabel = account.ledgerScopeLabel || (
     account.type === 'department' ? '부서/연구실 계정 공유 원장' : '담당자 단일 원장'
@@ -3980,8 +3990,8 @@ function CustomerDetailPage({
           <p>{[account.representativeName || customerDetail.customer, account.contactCount ? `담당자 ${formatNumber(account.contactCount)}명` : '', data.scope.label].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="schedules-summary-actions">
-          <a className="route-secondary-action" href="/customers/">목록</a>
-          {data.links.accountDetail ? (
+          <a className="route-secondary-action" href="/customers/">{isAccountDetail ? '계정 목록' : '목록'}</a>
+          {!isAccountDetail && data.links.accountDetail ? (
             <a className="route-secondary-action" href={data.links.accountDetail}>계정 링크</a>
           ) : null}
           {data.links.pipeline ? (
@@ -3996,8 +4006,8 @@ function CustomerDetailPage({
               메일
             </a>
           ) : null}
-          {account.type === 'department' && account.id ? (
-            <a className="route-secondary-action" href={`/accounts/${account.id}/cleanup-preview/`}>정리 영향</a>
+          {cleanupPreviewHref ? (
+            <a className="route-secondary-action" href={cleanupPreviewHref}>정리 영향</a>
           ) : null}
           {accountManagement?.canManage ? (
             <>
@@ -4011,27 +4021,38 @@ function CustomerDetailPage({
               </button>
             </>
           ) : null}
-          {data.edit.canEdit ? (
+          {canEditRepresentative ? (
             <button className="route-secondary-action" onClick={() => setEditOpen((open) => !open)} type="button">
-              수정
+              담당자 수정
             </button>
           ) : null}
-          {data.edit.canDelete && data.edit.deleteUrl ? (
+          {canDeleteRepresentative && data.edit.deleteUrl ? (
             <button className="route-secondary-action danger" disabled={deleteSaving} onClick={handleCustomerDelete} type="button">
               {deleteSaving ? <Loader2 className="spin-icon" size={15} /> : <Trash2 size={15} />}
-              삭제
+              담당자 삭제
             </button>
           ) : null}
-          <a className="route-secondary-action" href={data.links.createNote}>
-            노트 작성
-            <FileText size={16} />
-          </a>
-          <a className="route-primary-action" href={data.links.createSchedule}>
-            일정 등록
-            <Plus size={16} />
-          </a>
+          {canCreateNote ? (
+            <a className="route-secondary-action" href={data.links.createNote}>
+              노트 작성
+              <FileText size={16} />
+            </a>
+          ) : null}
+          {canCreateSchedule ? (
+            <a className="route-primary-action" href={data.links.createSchedule}>
+              일정 등록
+              <Plus size={16} />
+            </a>
+          ) : null}
         </div>
       </div>
+
+      {isAccountDetail && data.permissions.readOnlyMessage && !accountManagement?.canManage ? (
+        <div className="dashboard-api-alert compact">
+          <ShieldCheck size={16} />
+          <span>{data.permissions.readOnlyMessage}</span>
+        </div>
+      ) : null}
 
       {deleteError ? (
         <div className="dashboard-api-alert compact">
@@ -5223,6 +5244,7 @@ function CustomersPage({
   query,
   rowMode,
   selectedCustomerId,
+  selectedDetailMode,
   stage,
   onCompanyCreateNameChange,
   onCompanyCreateSubmit,
@@ -5280,6 +5302,7 @@ function CustomersPage({
   query: string;
   rowMode: CustomerRowMode;
   selectedCustomerId: number | null;
+  selectedDetailMode: CustomerDetailMode;
   stage: string;
   onCompanyCreateNameChange: (value: string) => void;
   onCompanyCreateSubmit: () => void;
@@ -5310,7 +5333,14 @@ function CustomersPage({
   onStageChange: (value: string) => void;
 }) {
   if (selectedCustomerId) {
-    return <CustomerDetailPage data={detailData} loading={detailLoading} onRefresh={onDetailRefresh} />;
+    return (
+      <CustomerDetailPage
+        data={detailData}
+        detailMode={selectedDetailMode}
+        loading={detailLoading}
+        onRefresh={onDetailRefresh}
+      />
+    );
   }
 
   if (loading && !data) {
@@ -23450,6 +23480,7 @@ export function App() {
           query={customerQuery}
           rowMode={customerRowMode}
           selectedCustomerId={customerDetailId || accountDetailId}
+          selectedDetailMode={accountDetailId ? 'account' : 'customer'}
           stage={customerStage}
           onCompanyCreateNameChange={handleCustomerCompanyCreateNameChange}
           onCompanyCreateSubmit={handleCreateCustomerCompany}

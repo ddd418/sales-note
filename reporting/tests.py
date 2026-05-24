@@ -5398,9 +5398,16 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(account['contactCount'], 2)
         self.assertEqual(account['activeContactCount'], 1)
         self.assertEqual(account['inactiveContactCount'], 1)
+        self.assertEqual(account['href'], f'/accounts/{target.department_id}/')
+        self.assertEqual(account['cleanupPreviewHref'], f'/accounts/{target.department_id}/cleanup-preview/')
         self.assertTrue(account['management']['canManage'])
         self.assertEqual(account['management']['accountSubmitUrl'], reverse('reporting:account_update_api', args=[target.department_id]))
         self.assertEqual(account['management']['contactCreateUrl'], reverse('reporting:account_contact_create_api', args=[target.department_id]))
+        self.assertEqual(payload['links']['accountDetail'], f'/accounts/{target.department_id}/')
+        self.assertEqual(payload['links']['accountCleanupPreview'], f'/accounts/{target.department_id}/cleanup-preview/')
+        self.assertTrue(payload['permissions']['canManageAccount'])
+        self.assertTrue(payload['permissions']['canCreateNote'])
+        self.assertTrue(payload['permissions']['canCreateSchedule'])
         role_values = {option['value'] for option in account['management']['contactRoles']}
         self.assertEqual(role_values, {'pi', 'practitioner', 'purchasing', 'tax_invoice'})
         contacts = {contact['id']: contact for contact in account['contacts']}
@@ -5490,11 +5497,22 @@ class CustomersSummaryApiTests(TestCase):
         target = self._create_customer(self.user, '계정관리권한차단', priority='scheduled')
         self.client.force_login(self.manager)
 
+        detail_response = self.client.get(reverse('reporting:account_detail_summary_api', args=[target.department_id]))
         response = self.client.post(reverse('reporting:account_update_api', args=[target.department_id]), {
             'company': str(target.company_id),
             'department_name': target.department.name,
         })
 
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        self.assertFalse(detail_payload['account']['management']['canManage'])
+        self.assertFalse(detail_payload['edit']['canEdit'])
+        self.assertFalse(detail_payload['edit']['canDelete'])
+        self.assertFalse(detail_payload['permissions']['canManageAccount'])
+        self.assertFalse(detail_payload['permissions']['canCreateNote'])
+        self.assertFalse(detail_payload['permissions']['canCreateSchedule'])
+        self.assertTrue(detail_payload['permissions']['readOnlyMessage'])
+        self.assertTrue(all(not contact['canManage'] for contact in detail_payload['account']['contacts']))
         self.assertEqual(response.status_code, 403)
         self.assertFalse(response.json()['success'])
 

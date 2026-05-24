@@ -1310,6 +1310,7 @@ export type CustomerAccountSummary = {
   management: CustomerAccountManagementConfig;
   contacts: CustomerAccountContact[];
   href: string;
+  cleanupPreviewHref: string;
   djangoRepresentativeHref: string;
 };
 
@@ -1373,8 +1374,17 @@ export type CustomerDetailData = {
     deliveryRecordsXlsx: string;
     accountDetail: string;
     accountDeliveryRecordsXlsx: string;
+    accountCleanupPreview: string;
     mailCompose: string;
     pipeline: string;
+  };
+  permissions: {
+    canCreateNote: boolean;
+    canCreateSchedule: boolean;
+    canManageAccount: boolean;
+    canEditRepresentative: boolean;
+    canDeleteRepresentative: boolean;
+    readOnlyMessage: string;
   };
   prepaymentSummary: CustomerPrepaymentSummary;
   operationalRecords: CustomerOperationalRecords;
@@ -4790,6 +4800,7 @@ const emptyCustomerDetailData: CustomerDetailData = {
     },
     contacts: [],
     href: '',
+    cleanupPreviewHref: '',
     djangoRepresentativeHref: '',
   },
   metrics: {
@@ -4807,8 +4818,17 @@ const emptyCustomerDetailData: CustomerDetailData = {
     deliveryRecordsXlsx: '',
     accountDetail: '',
     accountDeliveryRecordsXlsx: '',
+    accountCleanupPreview: '',
     mailCompose: '',
     pipeline: '',
+  },
+  permissions: {
+    canCreateNote: false,
+    canCreateSchedule: false,
+    canManageAccount: false,
+    canEditRepresentative: false,
+    canDeleteRepresentative: false,
+    readOnlyMessage: '',
   },
   prepaymentSummary: {
     metrics: {
@@ -7353,6 +7373,9 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
           ...(payload.account?.management ?? {}),
         },
         href: normalizeCoreCrmHref(payload.account?.href ?? emptyCustomerDetailData.account.href),
+        cleanupPreviewHref: normalizeCoreCrmHref(
+          payload.account?.cleanupPreviewHref ?? emptyCustomerDetailData.account.cleanupPreviewHref,
+        ),
         djangoRepresentativeHref: normalizeCoreCrmHref(
           payload.account?.djangoRepresentativeHref ?? emptyCustomerDetailData.account.djangoRepresentativeHref,
         ),
@@ -7375,9 +7398,14 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
         'deliveryRecordsXlsx',
         'accountDetail',
         'accountDeliveryRecordsXlsx',
+        'accountCleanupPreview',
         'mailCompose',
         'pipeline',
       ]),
+      permissions: {
+        ...emptyCustomerDetailData.permissions,
+        ...(payload.permissions ?? {}),
+      },
       prepaymentSummary: {
         ...emptyCustomerDetailData.prepaymentSummary,
         ...(payload.prepaymentSummary ?? {}),
