@@ -67,6 +67,20 @@ Browser/local smoke
 → Opened http://127.0.0.1:5174/schedules/1/ and confirmed React schedule detail error state renders without console errors while local backend is not running
 → Opened http://127.0.0.1:5174/documents/ and confirmed React documents page renders without console errors while local backend is not running
 
+Railway deployment list
+→ Backend `web` deployment `f78899da-cd04-4843-a566-29a6ed865429` succeeded for commit `9b917e4`
+→ Frontend `sales-note-frontend` deployment `6005c19e-a8f9-495e-b274-063b04766734` succeeded for commit `9b917e4`
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz, readyz, login page, protected reports API
+→ PASS frontend healthz, dashboard shell, protected reports API
+
+Production K smoke
+→ GET https://sales-note-frontend-production.up.railway.app/documents/ returned 200 React shell
+→ GET https://sales-note-frontend-production.up.railway.app/schedules/1/ returned 200 React shell
+→ GET https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/1/ returned expected anonymous 401
+→ Anonymous direct backend GET /reporting/documents/ returned login redirect, preserving auth protection before React redirect
+
 git diff --check
 → OK, CRLF normalization warnings only
 ```
@@ -79,8 +93,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전 검증 완료.
-- 커밋/푸시 및 Railway 배포 후 이 섹션을 성공 배포 정보로 갱신합니다.
+- 완료.
+- Commit `9b917e4 feat: complete react delivery document flow` is present on `origin/main`.
+- Railway backend `web` service deployed commit `9b917e4` successfully as deployment `f78899da-cd04-4843-a566-29a6ed865429`.
+- Railway frontend `sales-note-frontend` service deployed commit `9b917e4` successfully as deployment `6005c19e-a8f9-495e-b274-063b04766734`.
+- Production anonymous smoke passed for health, frontend shell, and protected schedule/report APIs.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
