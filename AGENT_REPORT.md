@@ -69,6 +69,30 @@ Local Browser smoke against http://127.0.0.1:5174/accounts/1/
 
 git diff --check
 -> OK, CRLF normalization warning only
+
+git push origin main
+-> Pushed runtime commit b981128 to main
+
+railway deployment list --service web --limit 1 --json
+-> web deployment 7f57b220-f68e-4364-9e9b-d0766c6e25da SUCCESS for commit b981128
+
+railway deployment list --service sales-note-frontend --limit 1 --json
+-> sales-note-frontend deployment a8d9e2a1-65cc-4a1f-be83-61ba16d80712 SUCCESS for commit b981128
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+-> Smoke status: ok
+-> backend healthz 200, readyz 200, login page 200, reports API protected 401
+-> frontend healthz 200, dashboard shell 200, reports API protected 401
+
+Invoke-WebRequest /accounts/1/, /reporting/api/accounts/1/
+-> frontend /accounts/1/ 200
+-> frontend proxied account API unauthenticated 401
+-> backend account API unauthenticated 401
+
+Production Browser smoke against https://sales-note-frontend-production.up.railway.app/accounts/1/
+-> OK
+-> Login page rendered for unauthenticated user
+-> Browser console errors: 0
 ```
 
 ### 알려진 제한
@@ -79,7 +103,12 @@ git diff --check
 
 ### Railway 배포 상태
 
-- 배포 예정: commit/push 후 Railway `web`, `sales-note-frontend` production 배포 상태와 smoke 결과를 확인합니다.
+- 배포 완료.
+- `web`: deployment `7f57b220-f68e-4364-9e9b-d0766c6e25da`, commit `b981128`, `SUCCESS`.
+- `sales-note-frontend`: deployment `a8d9e2a1-65cc-4a1f-be83-61ba16d80712`, commit `b981128`, `SUCCESS`.
+- Production smoke: `ok`.
+- 추가 확인: `/accounts/1/` 200, `/reporting/api/accounts/1/` unauthenticated 401, production browser console errors 0.
+- 이 보고서 갱신 커밋은 문서 기록용이며 런타임 코드는 `b981128`과 동일합니다.
 
 ### 사용자 수동 검수 절차
 
