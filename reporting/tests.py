@@ -21,6 +21,7 @@ from reporting.models import (
     EmailLog,
     FollowUp,
     History,
+    PersonalSchedule,
     BusinessCard,
     CustomerAsset,
     ServiceCase,
@@ -229,6 +230,14 @@ class CoreCrmLegacyRedirectTests(TestCase):
             action_type='customer_meeting',
             content='React 전환 테스트',
         )
+        self.personal_schedule = PersonalSchedule.objects.create(
+            user=self.user,
+            company=self.company_profile,
+            title='React 개인 일정',
+            content='React 개인 일정 내용',
+            schedule_date=timezone.localdate(),
+            schedule_time=time(10, 0),
+        )
         self.client.force_login(self.user)
 
     def assertReactRedirect(self, url, expected):
@@ -250,6 +259,19 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(reverse('reporting:history_detail', args=[self.history.id]), f'notes/{self.history.id}/')
         self.assertReactRedirect(reverse('reporting:schedule_detail', args=[self.schedule.id]), f'schedules/{self.schedule.id}/')
         self.assertReactRedirect(reverse('reporting:history_delete', args=[self.history.id]), f'notes/{self.history.id}/?delete=1')
+        self.assertReactRedirect(reverse('reporting:schedule_delete', args=[self.schedule.id]), f'schedules/{self.schedule.id}/?delete=1')
+        self.assertReactRedirect(
+            reverse('reporting:personal_schedule_detail', args=[self.personal_schedule.id]),
+            f'schedules/calendar/?personal={self.personal_schedule.id}',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:personal_schedule_edit', args=[self.personal_schedule.id]),
+            f'schedules/calendar/?personal={self.personal_schedule.id}&edit=1',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:personal_schedule_delete', args=[self.personal_schedule.id]),
+            f'schedules/calendar/?personal={self.personal_schedule.id}&delete=1',
+        )
 
     def test_core_create_page_redirects_preserve_relevant_query(self):
         self.assertReactRedirect(reverse('reporting:followup_create'), 'customers/?create=1')
@@ -260,6 +282,10 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(
             reverse('reporting:history_create_from_schedule', args=[self.schedule.id]),
             f'notes/?create=1&schedule={self.schedule.id}',
+        )
+        self.assertReactRedirect(
+            f"{reverse('reporting:personal_schedule_create')}?date=2026-05-20&time=10:30",
+            'schedules/calendar/?date=2026-05-20&time=10%3A30&create=personal',
         )
 
     def test_core_filter_query_is_translated(self):
@@ -8121,6 +8147,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(own_item['reports'][0]['meetingConfirmedFacts'], '예산 담당자 확인')
         self.assertEqual(own_item['reports'][0]['nextAction'], '견적서 송부')
         self.assertTrue(personal_item['canEdit'])
+        self.assertEqual(personal_item['href'], f'/schedules/calendar/?personal={personal.id}&month=2026-05')
         self.assertEqual(personal_item['deleteHref'], reverse('reporting:personal_schedules_delete_api', args=[personal.id]))
         self.assertEqual(personal_item['djangoEditHref'], reverse('reporting:personal_schedule_edit', args=[personal.id]))
         self.assertEqual(personal_item['statusOptions'], [])
@@ -8300,7 +8327,9 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(personal_schedule.title, 'React 개인 일정')
         self.assertEqual(personal_schedule.schedule_date.isoformat(), '2026-05-10')
         self.assertEqual(personal_schedule.schedule_time.strftime('%H:%M'), '10:30')
+        self.assertEqual(payload['href'], f'/schedules/calendar/?personal={personal_schedule.id}&month=2026-05')
         self.assertEqual(payload['schedule']['id'], personal_schedule.id)
+        self.assertEqual(payload['schedule']['href'], f'/schedules/calendar/?personal={personal_schedule.id}&month=2026-05')
         self.assertTrue(payload['edit']['canEdit'])
         self.assertEqual(
             payload['edit']['submitUrl'],
@@ -8330,6 +8359,23 @@ class SchedulesSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(PersonalSchedule.objects.filter(title='매니저 개인 일정').exists())
+
+    def test_personal_schedules_detail_api_manager_reads_same_company_without_edit(self):
+        personal_schedule = self._create_personal_schedule(self.user, '매니저조회 개인 일정')
+        other_schedule = self._create_personal_schedule(self.other_user, '타사 개인 일정')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:personal_schedules_detail_api', args=[personal_schedule.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['schedule']['id'], personal_schedule.id)
+        self.assertEqual(payload['schedule']['href'], f'/schedules/calendar/?personal={personal_schedule.id}&month={personal_schedule.schedule_date:%Y-%m}')
+        self.assertFalse(payload['edit']['canEdit'])
+        self.assertEqual(payload['links']['deleteSchedule'], '')
+
+        denied = self.client.get(reverse('reporting:personal_schedules_detail_api', args=[other_schedule.id]))
+        self.assertEqual(denied.status_code, 403)
 
     def test_personal_schedules_update_and_delete_api_are_owner_only(self):
         import json

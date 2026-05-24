@@ -72,7 +72,13 @@ urlpatterns = [
     path('schedules/<int:schedule_id>/status/', views.schedule_status_update_api, name='schedule_status_update'),
     path('schedules/<int:schedule_id>/add-memo/', views.schedule_add_memo_api, name='schedule_add_memo'),
     path('schedules/<int:schedule_id>/histories/', views.schedule_histories_api, name='schedule_histories_api'),
-    path('schedules/<int:pk>/delete/', views.schedule_delete_view, name='schedule_delete'),
+    path('schedules/<int:pk>/delete/', react_page_redirect(
+        views.schedule_delete_view,
+        lambda request, pk: frontend_url(
+            f'schedules/{pk}/',
+            query_with(request, extra={'delete': '1'}),
+        ),
+    ), name='schedule_delete'),
     path('schedules/<int:schedule_id>/toggle-delivery-tax-invoice/', views.toggle_schedule_delivery_tax_invoice, name='toggle_schedule_delivery_tax_invoice'),
     path('api/navigation/', views.navigation_api, name='navigation_api'),
     path('api/employees/', views.employees_management_api, name='employees_management_api'),
@@ -396,10 +402,31 @@ urlpatterns = [
     path('api/products/export.xlsx', views.products_excel_export_api, name='products_excel_export_api'),
     
     # 개인 일정 URL들
-    path('personal-schedules/create/', personal_schedule_views.personal_schedule_create_view, name='personal_schedule_create'),
-    path('personal-schedules/<int:pk>/', personal_schedule_views.personal_schedule_detail_view, name='personal_schedule_detail'),
-    path('personal-schedules/<int:pk>/edit/', personal_schedule_views.personal_schedule_edit_view, name='personal_schedule_edit'),
-    path('personal-schedules/<int:pk>/delete/', personal_schedule_views.personal_schedule_delete_view, name='personal_schedule_delete'),
+    path('personal-schedules/create/', react_page_redirect(
+        personal_schedule_views.personal_schedule_create_view,
+        static_react_page('schedules/calendar/', extra={'create': 'personal'}),
+    ), name='personal_schedule_create'),
+    path('personal-schedules/<int:pk>/', react_page_redirect(
+        personal_schedule_views.personal_schedule_detail_view,
+        lambda request, pk: frontend_url(
+            'schedules/calendar/',
+            query_with(request, extra={'personal': pk}),
+        ),
+    ), name='personal_schedule_detail'),
+    path('personal-schedules/<int:pk>/edit/', react_page_redirect(
+        personal_schedule_views.personal_schedule_edit_view,
+        lambda request, pk: frontend_url(
+            'schedules/calendar/',
+            query_with(request, extra={'personal': pk, 'edit': '1'}),
+        ),
+    ), name='personal_schedule_edit'),
+    path('personal-schedules/<int:pk>/delete/', react_page_redirect(
+        personal_schedule_views.personal_schedule_delete_view,
+        lambda request, pk: frontend_url(
+            'schedules/calendar/',
+            query_with(request, extra={'personal': pk, 'delete': '1'}),
+        ),
+    ), name='personal_schedule_delete'),
     path('personal-schedules/<int:pk>/add-comment/', personal_schedule_views.personal_schedule_add_comment, name='personal_schedule_add_comment'),
     path('personal-schedules/comments/<int:comment_id>/edit/', personal_schedule_views.personal_schedule_edit_comment, name='personal_schedule_edit_comment'),
     path('personal-schedules/comments/<int:comment_id>/delete/', personal_schedule_views.personal_schedule_delete_comment, name='personal_schedule_delete_comment'),

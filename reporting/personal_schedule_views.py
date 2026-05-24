@@ -73,6 +73,14 @@ def _personal_schedule_can_edit(request_user, personal_schedule):
     return personal_schedule.user_id == request_user.id
 
 
+def _personal_schedule_react_href(personal_schedule):
+    query = f'personal={personal_schedule.id}'
+    date_value = _date_or_none(personal_schedule.schedule_date)
+    if date_value:
+        query = f'{query}&month={date_value[:7]}'
+    return f'/schedules/calendar/?{query}'
+
+
 def _personal_schedule_payload(personal_schedule, request_user=None):
     can_edit = bool(request_user and _personal_schedule_can_edit(request_user, personal_schedule))
     return {
@@ -103,7 +111,7 @@ def _personal_schedule_payload(personal_schedule, request_user=None):
         'overdue': False,
         'historyCount': getattr(personal_schedule, 'history_count', 0),
         'reports': [],
-        'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'href': _personal_schedule_react_href(personal_schedule),
         'djangoHref': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
         'djangoEditHref': reverse('reporting:personal_schedule_edit', args=[personal_schedule.id]) if can_edit else '',
         'statusUpdateHref': '',
@@ -124,7 +132,7 @@ def _personal_schedule_detail_response(request, personal_schedule, message=''):
         'generatedAt': timezone.now().isoformat(),
         'message': message,
         'scheduleId': personal_schedule.id,
-        'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'href': _personal_schedule_react_href(personal_schedule),
         'schedule': _personal_schedule_payload(personal_schedule, request.user),
         'links': {
             'calendar': '/schedules/calendar/',

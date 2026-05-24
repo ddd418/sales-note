@@ -1,5 +1,108 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 J단계 일정/캘린더 완전 대체
+
+### 요약
+
+- `/schedules/`, `/schedules/calendar/`, `/schedules/<id>/` React 일정 흐름을 legacy Django 화면 진입점 기준으로 재점검했습니다.
+- legacy 일정 삭제 GET, 개인 일정 생성/상세/수정/삭제 GET 주소가 Django template 대신 React 일정/캘린더 URL로 이동하도록 했습니다.
+- 개인 일정 payload의 `href`를 React 캘린더 상세 의도 URL로 바꿔 캘린더/목록 링크가 Django 개인일정 상세 템플릿으로 빠지지 않게 했습니다.
+- React 캘린더가 `create=personal`, `date`, `time`, `personal=<id>`, `delete=1` 의도를 받아 개인일정 등록/상세/읽기전용/삭제 확인 흐름을 열 수 있게 했습니다.
+- manager 첫 화면 직원전체 정책, manager read-only, salesman 일정 등록/수정/삭제, 납품 품목, 문서 생성 링크는 기존 동작을 유지했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/personal_schedule_views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api/shared.ts`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 일정 삭제 legacy 주소 `/reporting/schedules/<id>/delete/`는 React `/schedules/<id>/?delete=1`로 이동합니다.
+- 개인 일정 legacy 주소 `/reporting/personal-schedules/*`는 React `/schedules/calendar/`로 이동하며, 상세/수정/삭제 의도를 쿼리로 유지합니다.
+- 캘린더에서 개인 일정 상세를 직접 열면 owner는 수정/삭제 가능, manager는 읽기 전용으로 볼 수 있습니다.
+- 개인 일정 생성 legacy 링크는 React 캘린더의 개인 일정 등록 패널을 바로 열고 날짜/시간을 유지합니다.
+- 월/주/일 보기 결정: 현재 legacy parity 기준은 월간 캘린더 + 선택일 상세 패널입니다. 주/일 보기는 운영 검수 후 필요성이 확인되면 별도 UX 과제로 진행하는 것이 맞습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 로그인, backend API, 파일, POST fallback route는 유지했습니다.
+- Django schedule/personal schedule template 파일은 삭제하지 않았습니다. 운영 검수 후 별도 cleanup 단계에서 삭제 여부를 판단합니다.
+- React schedule detail의 납품 품목 편집, 선결제 차감, 파일, 영업노트 작성, 문서 생성/다운로드 링크는 유지했습니다.
+- manager는 계속 일정 생성/수정/삭제 입력 없이 회사 전체 데이터를 조회합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\personal_schedule_views.py reporting\tests.py
+-> OK
+
+npx tsc --noEmit --pretty false
+-> OK
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.SchedulesSummaryApiTests --verbosity=2
+-> OK, 66 tests
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+node --check server.mjs
+-> OK
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py check
+-> System check identified no issues
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py makemigrations --check --dry-run
+-> No changes detected
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+npm run build
+-> OK
+-> App bundle 725.59 kB, gzip 142.78 kB
+-> Existing Vite large chunk warning remains for the full App bundle
+
+Local Browser smoke
+-> http://127.0.0.1:5176/schedules/calendar/?create=personal&date=2026-05-20&time=10:30 redirected unauthenticated user to /reporting/login/?next=/schedules/calendar/?create=personal&date=2026-05-20&time=10:30
+-> Login page title: 로그인 - 영업 보고 시스템
+-> Browser console errors: 0
+
+git diff --check
+-> OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- 운영 서버에서 실제 로그인 세션으로 일정 등록/수정/삭제, 개인 일정 read-only, 납품 품목 저장, 문서 생성/다운로드를 수동 확인해야 합니다.
+- 주간/일간 캘린더 뷰는 이번 parity 범위에서 추가하지 않았습니다.
+- Django template 파일은 아직 남아 있습니다. React parity 배포와 사용자 검수 후 삭제 후보로 정리해야 합니다.
+
+### 운영 배포 상태
+
+- Pending: commit, push, Railway deployment, production smoke.
+
+### 권장 다음 작업
+
+- 운영에서 J단계 수동 검수가 끝나면 K단계 또는 남은 React 완전대체 항목으로 넘어가세요.
+
+### 수동 서버 테스트 프로세스
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`에 접속해 로그인합니다.
+2. manager 계정으로 첫 화면 필터가 `직원전체`이고, 같은 회사 직원 일정이 보이며, `내 일정` 필터와 등록/수정/삭제 입력이 없는지 확인합니다.
+3. salesman 계정으로 `고객 일정 등록`을 눌러 고객, 일정 유형, 날짜/시간, 장소를 입력하고 저장합니다.
+4. 생성된 고객 일정 카드에서 상태를 예정/완료/취소로 바꿔보고 캘린더와 상세에 반영되는지 확인합니다.
+5. 고객 일정 카드의 수정/삭제 버튼이 본인 일정에서만 보이는지 확인합니다.
+6. `개인 일정 등록`을 눌러 개인 일정을 저장하고, 상세/수정/삭제가 React 캘린더 안에서 끝나는지 확인합니다.
+7. manager 계정으로 같은 개인 일정을 열었을 때 읽기 전용으로 보이고 삭제/수정 버튼이 없는지 확인합니다.
+8. `/schedules/<id>/` 상세에서 납품 일정의 품목 편집/저장, 선결제 차감 표시, 첨부 파일, 영업노트 작성 연결을 확인합니다.
+9. 견적/납품 일정 상세의 서류 생성/미리보기/다운로드 링크가 동작하는지 확인합니다.
+10. 기존 주소 `/reporting/schedules/<id>/delete/`, `/reporting/personal-schedules/<id>/`, `/reporting/personal-schedules/<id>/edit/`가 각각 React 일정/캘린더로 이동하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 I단계 영업노트 완전 대체
 
 ### 요약

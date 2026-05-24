@@ -133,9 +133,28 @@ export function normalizeCoreCrmHref(href?: string | null): string {
   if (pathname === '/reporting/schedules/create/' || pathname === '/reporting/schedules/create') {
     return buildReactHref('/schedules/', params, { rename: { followup: 'customer' }, extra: { create: '1' } });
   }
+  match = pathname.match(/^\/reporting\/schedules\/(\d+)\/delete\/?$/);
+  if (match) {
+    return buildReactHref(`/schedules/${match[1]}/`, params, { extra: { delete: '1' } });
+  }
   match = pathname.match(/^\/reporting\/schedules\/(\d+)\/(?:edit\/?)?$/);
   if (match) {
     return buildReactHref(`/schedules/${match[1]}/`, params);
+  }
+  if (pathname === '/reporting/personal-schedules/create/' || pathname === '/reporting/personal-schedules/create') {
+    return buildReactHref('/schedules/calendar/', params, { extra: { create: 'personal' } });
+  }
+  match = pathname.match(/^\/reporting\/personal-schedules\/(\d+)\/edit\/?$/);
+  if (match) {
+    return buildReactHref('/schedules/calendar/', params, { extra: { personal: match[1], edit: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/personal-schedules\/(\d+)\/delete\/?$/);
+  if (match) {
+    return buildReactHref('/schedules/calendar/', params, { extra: { personal: match[1], delete: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/personal-schedules\/(\d+)\/?$/);
+  if (match) {
+    return buildReactHref('/schedules/calendar/', params, { extra: { personal: match[1] } });
   }
   if (
     pathname === '/reporting/funnel/' ||

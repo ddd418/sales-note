@@ -4917,6 +4917,38 @@ h2 {
   justify-content: flex-start;
 }
 
+.schedule-calendar-readonly-detail {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-calendar-readonly-detail dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.schedule-calendar-readonly-detail dl > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.schedule-calendar-readonly-detail dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.schedule-calendar-readonly-detail dd,
+.schedule-calendar-readonly-detail p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
 .schedule-calendar-editor-loading {
   display: flex;
   align-items: center;

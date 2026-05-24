@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement J-step schedule/calendar replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item J for schedules and calendar.
+- `/schedules/` and `/schedules/calendar/` already have React list/calendar/detail surfaces and JSON APIs, but a few legacy schedule and personal-schedule URLs can still open Django template screens.
+- Manager calendar policy must keep the first view as company-wide 직원전체, while salesman schedule creation must keep working.
+
+**DB change required**: No.
+
+- Existing `Schedule`, `PersonalSchedule`, `History`, `DeliveryItem`, `ScheduleFile`, and document generation models are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Redirect authenticated GET requests for legacy schedule delete and personal schedule create/detail/edit/delete pages into React calendar/detail intents, while keeping POST fallback routes for transition compatibility.
+- Make personal schedule payloads use React calendar hrefs so list/calendar/detail links do not send users to Django templates.
+- Let the React calendar consume `create=personal`, `date`, `time`, and `personal=<id>` URL intents so old bookmarks and redirected URLs open the right calendar panel.
+- Keep manager read-only behavior and company-wide calendar default unchanged.
+- Preserve React customer schedule create/edit/delete/status-change, salesman create flow, schedule detail, delivery item editing, file handling, and document generation links.
+- Document the month/week/day decision: month view plus selected-day detail is current parity; week/day views remain future enhancement unless operations asks for them after production testing.
+- Add focused tests for legacy redirects, personal schedule React hrefs, manager default scope, delete fallback, detail delivery/document payloads, and personal schedule APIs.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\personal_schedule_views.py reporting\tests.py`
+- `python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.SchedulesSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/schedules/`, `/schedules/calendar/`, `/schedules/<id>/`, legacy schedule/personal schedule redirects, and protected schedule APIs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement I-step sales note replacement plan
 
 **Background**:

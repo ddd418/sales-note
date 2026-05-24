@@ -634,6 +634,16 @@ const getScheduleCalendarDataFilterParam = () => {
   return value === 'all' || value === 'user' ? value : 'me';
 };
 
+const getScheduleCalendarCreateParam = () => (
+  new URLSearchParams(window.location.search).get('create') || ''
+);
+
+const getScheduleCalendarPersonalIdParam = () => {
+  const value = new URLSearchParams(window.location.search).get('personal') || '';
+  const id = Number(value);
+  return Number.isFinite(id) && id > 0 ? id : 0;
+};
+
 const shouldOpenCreatePanel = () => new URLSearchParams(window.location.search).get('create') === '1';
 
 const getNoteReviewParam = () => {
@@ -2038,6 +2048,11 @@ function getCreateDateParam(): string {
     return '';
   }
   return localDateInputValue(parseLocalDate(value)) === value ? value : '';
+}
+
+function getCreateTimeParam(): string {
+  const value = new URLSearchParams(window.location.search).get('time') || '';
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : '';
 }
 
 function appendDateQuery(href: string, dateValue: string): string {
@@ -9102,7 +9117,19 @@ function ScheduleCalendarPage({
   onStatusChange: (schedule: ScheduleItem, status: string) => void;
 }) {
   const range = useMemo(() => getScheduleCalendarRange(month), [month]);
+  const initialIntentRef = useRef({
+    create: getScheduleCalendarCreateParam(),
+    date: getCreateDateParam(),
+    time: getCreateTimeParam(),
+    personalId: getScheduleCalendarPersonalIdParam(),
+    createHandled: false,
+    personalHandled: false,
+  });
   const [selectedDate, setSelectedDate] = useState(() => {
+    const intentDate = initialIntentRef.current.date;
+    if (intentDate) {
+      return intentDate;
+    }
     const today = localDateInputValue();
     return today >= range.start && today <= range.end ? today : range.start;
   });
@@ -9136,6 +9163,7 @@ function ScheduleCalendarPage({
   const [calendarActionError, setCalendarActionError] = useState('');
   const [calendarActionMessage, setCalendarActionMessage] = useState('');
   const schedules = data?.schedules ?? [];
+  const personalDeleteRequested = new URLSearchParams(window.location.search).get('delete') === '1';
   const days = useMemo(() => buildScheduleCalendarDays(month, schedules), [month, schedules]);
   const selectedDayItems = useMemo(
     () => schedules.filter((schedule) => schedule.date === selectedDate).sort((a, b) => `${a.time} ${a.type}`.localeCompare(`${b.time} ${b.type}`)),
@@ -9168,6 +9196,106 @@ function ScheduleCalendarPage({
     setPersonalEditError('');
     setPersonalEditMessage('');
   }, [dataFilter, filterUser, month]);
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+    const intent = initialIntentRef.current;
+    if (intent.createHandled || (intent.create !== '1' && intent.create !== 'personal')) {
+      return;
+    }
+    intent.createHandled = true;
+
+    const intentDate = intent.date || selectedDate;
+    if (intent.date && intent.date.slice(0, 7) !== month) {
+      onMonthChange(intent.date.slice(0, 7));
+    }
+    setSelectedDate(intentDate);
+    setCalendarActionError('');
+    setCalendarActionMessage('');
+
+    if (intent.create === 'personal') {
+      setCalendarCreateOpen(false);
+      setCalendarEditOpen(false);
+      setPersonalEditOpen(false);
+      setPersonalCreateOpen(true);
+      setPersonalCreateError('');
+      setPersonalCreateMessage('');
+      setPersonalCreatedDetailHref('');
+      setPersonalCreateForm({
+        ...makeEmptyPersonalScheduleForm(intentDate),
+        scheduleTime: intent.time || '09:00',
+      });
+      return;
+    }
+
+    setCalendarCreateOpen(true);
+    setCalendarEditOpen(false);
+    setPersonalCreateOpen(false);
+    setPersonalEditOpen(false);
+    setCalendarCreateError('');
+    setCalendarCreateMessage('');
+    setCalendarCreatedDetailHref('');
+    setCalendarCreateForm(makeScheduleCalendarCreateForm(data, intentDate));
+  }, [data, month, onMonthChange, selectedDate]);
+
+  useEffect(() => {
+    const intent = initialIntentRef.current;
+    if (!intent.personalId || intent.personalHandled) {
+      return;
+    }
+    intent.personalHandled = true;
+
+    let alive = true;
+    setCalendarCreateOpen(false);
+    setCalendarEditOpen(false);
+    setPersonalCreateOpen(false);
+    setPersonalEditOpen(true);
+    setPersonalEditLoading(true);
+    setPersonalEditData(null);
+    setPersonalEditError('');
+    setPersonalEditMessage('');
+    setCalendarActionError('');
+    setCalendarActionMessage('');
+
+    loadPersonalScheduleDetailData(intent.personalId).then((detail) => {
+      if (!alive) {
+        return;
+      }
+      if (detail.source !== 'django' || !detail.schedule) {
+        throw new Error(detail.error || detail.message || '개인 일정 상세를 불러오지 못했습니다.');
+      }
+      const detailDate = detail.schedule.date || '';
+      if (detailDate) {
+        setSelectedDate(detailDate);
+        if (detailDate.slice(0, 7) !== month) {
+          onMonthChange(detailDate.slice(0, 7));
+        }
+      }
+      setPersonalEditData(detail);
+      setPersonalEditForm(makePersonalScheduleEditForm(detail.schedule));
+      if (!detail.edit.canEdit) {
+        setPersonalEditMessage('읽기 전용으로 개인 일정을 확인 중입니다.');
+      } else if (personalDeleteRequested) {
+        setPersonalEditMessage('삭제 요청으로 들어왔습니다. 아래 삭제 버튼으로 확정하세요.');
+      }
+    }).catch((error_) => {
+      if (!alive) {
+        return;
+      }
+      setPersonalEditData(null);
+      setPersonalEditError(error_ instanceof Error ? error_.message : '개인 일정 상세를 불러오지 못했습니다.');
+    }).finally(() => {
+      if (alive) {
+        setPersonalEditLoading(false);
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [month, onMonthChange, personalDeleteRequested]);
 
   const openCalendarCreatePanel = () => {
     if (!data) {
@@ -10062,12 +10190,50 @@ function ScheduleCalendarPage({
                     <a className="route-secondary-action" href={personalEditData.schedule.href}>
                       상세
                     </a>
+                    {personalEditData.links.deleteSchedule ? (
+                      <button
+                        className="route-secondary-action danger"
+                        disabled={calendarDeletingKey === `personal-${personalEditData.schedule.id}`}
+                        onClick={() => personalEditData.schedule && handleCalendarDelete(personalEditData.schedule)}
+                        type="button"
+                      >
+                        {calendarDeletingKey === `personal-${personalEditData.schedule.id}` ? <Loader2 className="spin-icon" size={15} /> : <Trash2 size={15} />}
+                        삭제
+                      </button>
+                    ) : null}
                     <button className="route-primary-action" disabled={personalEditSaving} type="submit">
                       {personalEditSaving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
                       저장
                     </button>
                   </div>
                 </form>
+              ) : personalEditOpen && personalEditData?.schedule ? (
+                <div className="schedule-calendar-readonly-detail">
+                  <dl>
+                    <div>
+                      <dt>제목</dt>
+                      <dd>{personalEditData.schedule.title || '제목 없음'}</dd>
+                    </div>
+                    <div>
+                      <dt>담당자</dt>
+                      <dd>{personalEditData.schedule.owner || '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>날짜</dt>
+                      <dd>{personalEditData.schedule.date ? formatDateLabel(personalEditData.schedule.date) : '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>시간</dt>
+                      <dd>{personalEditData.schedule.time || '-'}</dd>
+                    </div>
+                  </dl>
+                  <p>{personalEditData.schedule.notesFull || personalEditData.schedule.notes || '내용이 없습니다.'}</p>
+                  <div className="notes-create-actions">
+                    <a className="route-secondary-action" href={personalEditData.links.calendar || '/schedules/calendar/'}>
+                      캘린더
+                    </a>
+                  </div>
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -11734,6 +11900,7 @@ function ScheduleDetailPage({
     return !deliveryPrepaymentNeedsItems && row.selected && Number.isFinite(amount) && amount > 0 ? total + amount : total;
   }, 0);
   const deliveryPayableAfterPrepayment = Math.max(deliveryPrepaymentBaseAmount - selectedDeliveryPrepaymentAmount, 0);
+  const deleteRequested = new URLSearchParams(window.location.search).get('delete') === '1';
   const metrics = [
     { label: '일정 상태', value: schedule.statusLabel, detail: schedule.activityLabel, icon: CalendarDays, tone: schedule.overdue ? 'red' as const : 'blue' as const },
     { label: '방문 일시', value: schedule.date ? formatDateLabel(schedule.date) : '날짜 없음', detail: schedule.time || '시간 없음', icon: Clock, tone: 'green' as const },
@@ -11796,6 +11963,12 @@ function ScheduleDetailPage({
         <div className="dashboard-api-alert compact">
           <AlertTriangle size={16} />
           <span>{scheduleDeleteError}</span>
+        </div>
+      ) : null}
+      {deleteRequested && schedule.canEdit ? (
+        <div className="dashboard-api-alert compact">
+          <AlertTriangle size={16} />
+          <span>삭제 요청으로 들어왔습니다. 상단의 삭제 버튼으로 확정하세요.</span>
         </div>
       ) : null}
 

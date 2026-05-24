@@ -9215,6 +9215,14 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
     }
 
 
+def _schedules_personal_react_href(personal_schedule):
+    query = f'personal={personal_schedule.id}'
+    date_value = _date_or_none(personal_schedule.schedule_date)
+    if date_value:
+        query = f'{query}&month={date_value[:7]}'
+    return f'/schedules/calendar/?{query}'
+
+
 def _schedules_personal_payload(personal_schedule, today, can_edit=False):
     return {
         'id': personal_schedule.id,
@@ -9244,7 +9252,7 @@ def _schedules_personal_payload(personal_schedule, today, can_edit=False):
         'historyCount': getattr(personal_schedule, 'history_count', 0),
         'reports': [],
         'followupId': None,
-        'href': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
+        'href': _schedules_personal_react_href(personal_schedule),
         'djangoHref': reverse('reporting:personal_schedule_detail', args=[personal_schedule.id]),
         'djangoEditHref': reverse('reporting:personal_schedule_edit', args=[personal_schedule.id]) if can_edit else '',
         'statusUpdateHref': '',
