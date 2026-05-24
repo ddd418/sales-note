@@ -576,6 +576,93 @@ export type CustomerDepartmentOption = {
   followupCount?: number;
 };
 
+export type CompanyManagementBlocker = {
+  label: string;
+  count: number;
+};
+
+export type CompanyManagementSalesman = {
+  id: number;
+  name: string;
+  username: string;
+  role: string;
+  contactCount: number;
+};
+
+export type CompanyManagementDepartment = CustomerDepartmentOption & {
+  deleteGuidance: string;
+  deleteBlockers: CompanyManagementBlocker[];
+  href: string;
+  cleanupPreviewHref: string;
+  djangoEditHref: string;
+  createdById: number | null;
+  createdByName: string;
+  assetCount: number;
+  prepaymentCount: number;
+  memoCount: number;
+  funnelTargetCount: number;
+};
+
+export type CompanyManagementCompany = CustomerCompanyOption & {
+  deleteGuidance: string;
+  deleteBlockers: CompanyManagementBlocker[];
+  href: string;
+  djangoHref: string;
+  departmentsUrl: string;
+  customersUrl: string;
+  createdById: number | null;
+  createdByName: string;
+  assetCount: number;
+  prepaymentCount: number;
+  salesmen: CompanyManagementSalesman[];
+  departments: CompanyManagementDepartment[];
+};
+
+export type CompanyManagementData = {
+  success?: boolean;
+  source: 'django' | 'unavailable';
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  scope: {
+    label: string;
+    role: string;
+    roleLabel: string;
+    companyName: string;
+    canViewAll: boolean;
+  };
+  permissions: {
+    canCreateCompany: boolean;
+    canCreateDepartment: boolean;
+    readOnly: boolean;
+    readOnlyMessage: string;
+  };
+  filters: {
+    q: string;
+    companyId: string;
+    departmentId: string;
+  };
+  metrics: {
+    totalCompanies: number;
+    filteredCompanies: number;
+    totalDepartments: number;
+    filteredDepartments: number;
+    totalContacts: number;
+    blockedCompanies: number;
+    blockedDepartments: number;
+  };
+  links: {
+    companies: string;
+    customers: string;
+    createCompany: string;
+    createDepartment: string;
+    legacyCompanies: string;
+    legacyManagerCompanies: string;
+  };
+  companies: CompanyManagementCompany[];
+  departments: CompanyManagementDepartment[];
+};
+
 export type CustomersData = {
   success?: boolean;
   source: 'django' | 'unavailable';
@@ -4688,7 +4775,7 @@ const emptyCustomersData: CustomersData = {
   links: {
     createCustomer: '/customers/?create=1',
     customers: '/customers/',
-    companies: '/reporting/companies/',
+    companies: '/companies/',
     customerReport: '/customers/',
     createNote: '/notes/?create=1',
   },
@@ -4707,6 +4794,49 @@ const emptyCustomersData: CustomersData = {
   accounts: [],
   priorityCustomers: [],
   priorityAccounts: [],
+};
+
+const emptyCompanyManagementData: CompanyManagementData = {
+  success: false,
+  source: 'unavailable',
+  generatedAt: new Date().toISOString(),
+  scope: {
+    label: '',
+    role: '',
+    roleLabel: '',
+    companyName: '',
+    canViewAll: false,
+  },
+  permissions: {
+    canCreateCompany: false,
+    canCreateDepartment: false,
+    readOnly: true,
+    readOnlyMessage: '',
+  },
+  filters: {
+    q: '',
+    companyId: '',
+    departmentId: '',
+  },
+  metrics: {
+    totalCompanies: 0,
+    filteredCompanies: 0,
+    totalDepartments: 0,
+    filteredDepartments: 0,
+    totalContacts: 0,
+    blockedCompanies: 0,
+    blockedDepartments: 0,
+  },
+  links: {
+    companies: '/companies/',
+    customers: '/customers/',
+    createCompany: '/reporting/api/companies/create/',
+    createDepartment: '/reporting/api/departments/create/',
+    legacyCompanies: '/reporting/companies/',
+    legacyManagerCompanies: '/reporting/manager/companies/',
+  },
+  companies: [],
+  departments: [],
 };
 
 const emptyCustomerAiDepartment: CustomerAiDepartment = {
@@ -6689,7 +6819,7 @@ export async function loadCustomersData(params: {
       links: normalizeHrefFields({
         ...emptyCustomersData.links,
         ...(payload.links ?? {}),
-      }, ['createCustomer', 'customers', 'customerReport', 'createNote']),
+      }, ['createCustomer', 'customers', 'companies', 'customerReport', 'createNote']),
       customers: (payload.customers ?? emptyCustomersData.customers).map(normalizeCustomerLinks),
       accounts: (payload.accounts ?? emptyCustomersData.accounts).map(normalizeCustomerLinks),
       priorityCustomers: (payload.priorityCustomers ?? emptyCustomersData.priorityCustomers).map(normalizeCustomerLinks),
@@ -6700,6 +6830,92 @@ export async function loadCustomersData(params: {
       ...emptyCustomersData,
       generatedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : 'Customers API unavailable',
+    };
+  }
+}
+
+function normalizeCompanyManagementDepartment(department: CompanyManagementDepartment): CompanyManagementDepartment {
+  return {
+    ...department,
+    updateUrl: normalizeCoreCrmHref(department.updateUrl || ''),
+    deleteUrl: normalizeCoreCrmHref(department.deleteUrl || ''),
+    href: normalizeCoreCrmHref(department.href || ''),
+    cleanupPreviewHref: normalizeCoreCrmHref(department.cleanupPreviewHref || ''),
+    djangoEditHref: normalizeCoreCrmHref(department.djangoEditHref || ''),
+  };
+}
+
+function normalizeCompanyManagementCompany(company: CompanyManagementCompany): CompanyManagementCompany {
+  return {
+    ...company,
+    updateUrl: normalizeCoreCrmHref(company.updateUrl || ''),
+    deleteUrl: normalizeCoreCrmHref(company.deleteUrl || ''),
+    href: normalizeCoreCrmHref(company.href || ''),
+    djangoHref: normalizeCoreCrmHref(company.djangoHref || ''),
+    departmentsUrl: normalizeCoreCrmHref(company.departmentsUrl || ''),
+    customersUrl: normalizeCoreCrmHref(company.customersUrl || ''),
+    departments: (company.departments ?? []).map(normalizeCompanyManagementDepartment),
+  };
+}
+
+export async function loadCompanyManagementData(params: {
+  q?: string;
+  companyId?: string;
+  departmentId?: string;
+} = {}): Promise<CompanyManagementData> {
+  const query = new URLSearchParams();
+  if (params.q) query.set('q', params.q);
+  if (params.companyId) query.set('company_id', params.companyId);
+  if (params.departmentId) query.set('department_id', params.departmentId);
+  try {
+    const response = await fetch(`/reporting/api/companies/manage/${query.toString() ? `?${query.toString()}` : ''}`, {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    redirectIfLoginRequired(response);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Companies API unavailable: ${response.status}`);
+    }
+    const payload = (await response.json()) as CompanyManagementData;
+    redirectIfLoginRequired(response, payload);
+    if (!response.ok || payload.success === false || payload.source !== 'django') {
+      throw new Error(payload.error || payload.message || `Companies API unavailable: ${response.status}`);
+    }
+    const companies = (payload.companies ?? []).map(normalizeCompanyManagementCompany);
+    return {
+      ...emptyCompanyManagementData,
+      ...payload,
+      scope: {
+        ...emptyCompanyManagementData.scope,
+        ...(payload.scope ?? {}),
+      },
+      permissions: {
+        ...emptyCompanyManagementData.permissions,
+        ...(payload.permissions ?? {}),
+      },
+      filters: {
+        ...emptyCompanyManagementData.filters,
+        ...(payload.filters ?? {}),
+      },
+      metrics: {
+        ...emptyCompanyManagementData.metrics,
+        ...(payload.metrics ?? {}),
+      },
+      links: normalizeHrefFields({
+        ...emptyCompanyManagementData.links,
+        ...(payload.links ?? {}),
+      }, ['companies', 'customers', 'createCompany', 'createDepartment', 'legacyCompanies', 'legacyManagerCompanies']),
+      companies,
+      departments: (payload.departments ?? companies.flatMap((company) => company.departments)).map(normalizeCompanyManagementDepartment),
+    };
+  } catch (error) {
+    return {
+      ...emptyCompanyManagementData,
+      generatedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Companies API unavailable',
     };
   }
 }

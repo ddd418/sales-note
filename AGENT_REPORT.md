@@ -1,5 +1,106 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 H단계 업체/부서 관리 완전 대체
+
+### 요약
+
+- `/reporting/companies/` legacy 업체/부서 관리 기능을 인벤토리하고, React 전용 `/companies/` 화면으로 대체하는 흐름을 구현했습니다.
+- 업체/학교와 부서/연구실을 검색, 생성, 수정, 삭제 검토할 수 있는 React 관리 화면을 추가했습니다.
+- 삭제가 차단되는 사유를 담당자/부서/장비/선결제/메모/목표 기준으로 표시하고, 계정 상세/정리 영향 미리보기로 이어지는 안내를 추가했습니다.
+- salesman은 같은 회사 범위 데이터 조회와 본인 생성 업체/부서 수정이 가능하고, manager는 회사 내 전체 업체/부서 데이터를 읽기 전용으로 볼 수 있으며, admin은 전체 범위를 관리할 수 있도록 API 테스트를 추가했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/pages/companies/CompanyManagementPage.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 새 React 진입점은 `/companies/`입니다.
+- 공통 사이드바와 navigation API에 `업체/부서` 메뉴를 추가했습니다.
+- legacy GET URL은 React `/companies/`로 redirect되며, POST fallback과 기존 backend API는 유지했습니다.
+- 업체/부서 관리 화면에서 owner, 담당자 수, 부서 수, 장비/선결제 연결 수, 담당 영업사원 정보를 확인할 수 있습니다.
+- manager 계정은 수정/생성/삭제 버튼 없이 같은 회사의 전체 업체/부서와 담당자 맥락을 조회합니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 로그인, API, 파일, legacy fallback route는 유지했습니다.
+- 기존 `company_create_api`, `department_create_api`, update/delete API를 재사용해 mutation 경로를 늘리지 않았습니다.
+- Django template 파일은 삭제하지 않았고, 운영 수동 검수 전까지 fallback으로 남깁니다.
+- 기존 고객 quick-create 안의 업체/부서 생성/수정 흐름은 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+-> OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2
+-> OK, 54 tests
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+python manage.py check
+-> System check identified no issues
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+python manage.py makemigrations --check --dry-run
+-> No changes detected
+-> Existing local warning only: EMAIL_ENCRYPTION_KEY is not set
+
+npx tsc --noEmit --pretty false
+-> OK
+
+npm run build
+-> OK
+-> App bundle 718.52 kB, gzip 141.09 kB
+-> Existing Vite large chunk warning remains for the full App bundle
+
+node --check server.mjs
+-> OK
+
+Local API/browser smoke
+-> http://127.0.0.1:8000/reporting/api/companies/manage/ returned 401 login_required when anonymous
+-> http://127.0.0.1:5175/companies/ redirected to /reporting/login/?next=/companies/ when anonymous
+-> Browser console errors: 0
+
+git diff --check
+-> OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- 운영 서버에서 실제 로그인 세션으로 생성/수정/삭제 버튼과 manager read-only UI를 수동 확인해야 합니다.
+- legacy template은 아직 삭제하지 않았습니다. React parity 배포와 사용자 검수 후 별도 cleanup 단계에서 삭제 여부를 판단해야 합니다.
+- 업체/부서 삭제 차단 해소 자체는 기존 계정 정리/이관 흐름으로 안내하며, 자동 이관 실행은 별도 병합/정리 작업 범위입니다.
+
+### 운영 배포 상태
+
+- Commit/push 및 Railway 배포 확인 전입니다. 배포 후 이 섹션을 deployment ID와 smoke 결과로 갱신합니다.
+
+### 권장 다음 작업
+
+- I단계 또는 다음 React 완전대체 항목으로 넘어가기 전, 운영 서버에서 `/companies/`를 salesman/manager/admin 계정으로 수동 검수하세요.
+
+### 수동 서버 테스트 프로세스
+
+1. `https://sales-note-frontend-production.up.railway.app/companies/`에 접속해 로그인합니다.
+2. salesman 계정으로 업체 검색, 새 업체 생성, 새 부서 생성, 본인이 만든 업체/부서 수정이 가능한지 확인합니다.
+3. 담당자/장비/선결제 등이 연결된 업체/부서에서 삭제 버튼이 비활성화되고 차단 사유가 보이는지 확인합니다.
+4. 삭제 가능한 테스트 업체/부서를 만든 뒤 삭제하고 목록에서 사라지는지 확인합니다.
+5. manager 계정으로 같은 URL에 접속해 회사 내 업체/부서 전체가 보이고, 수정/생성/삭제 입력이 보이지 않는지 확인합니다.
+6. admin 계정으로 타 사용자/타 회사 업체까지 조회되고 관리 버튼이 활성화되는지 확인합니다.
+7. `/reporting/companies/`, `/reporting/companies/<id>/`, `/reporting/departments/<id>/edit/` 기존 주소가 `/companies/`로 이동하는지 확인합니다.
+8. 부서 행의 `계정` 링크와 `정리 영향` 링크가 각각 계정 상세와 cleanup preview로 열리는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 G단계 계정 상세 완전 대체
 
 ### 요약

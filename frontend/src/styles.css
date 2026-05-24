@@ -2409,6 +2409,146 @@ h2 {
   padding: 0 10px;
 }
 
+.companies-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.company-management-toolbar,
+.company-management-department-tools {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(280px, auto);
+  gap: 12px;
+  align-items: center;
+}
+
+.company-management-search {
+  width: 100%;
+}
+
+.company-management-create {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.company-management-create input,
+.company-management-row-main input,
+.company-management-department-main input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 11px;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.company-management-create input {
+  width: min(260px, 100%);
+}
+
+.company-management-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.company-management-list,
+.company-management-department-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.company-management-row,
+.company-management-department-row {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 13px;
+  background: var(--panel);
+}
+
+.company-management-row.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.company-management-row-main,
+.company-management-department-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+.company-management-row-main > span,
+.company-management-department-main > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.company-management-row-main strong,
+.company-management-department-main strong {
+  color: var(--text);
+  font-size: 0.96rem;
+}
+
+.company-management-row-main small,
+.company-management-department-main small,
+.company-management-guidance {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.company-management-blockers,
+.company-management-salesmen,
+.company-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.company-management-blockers span,
+.company-management-salesmen span,
+.company-management-clear {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.company-management-blockers span {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.company-management-salesmen span,
+.company-management-clear {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.company-management-guidance {
+  margin: 0;
+}
+
+.company-management-detail-panel {
+  min-height: 420px;
+}
+
 .notes-create-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9296,6 +9436,9 @@ tbody tr:hover {
 
   .customers-layout,
   .customers-filter-bar,
+  .company-management-layout,
+  .company-management-toolbar,
+  .company-management-department-tools,
   .assets-filter-bar,
   .assets-work-queue-list,
   .assets-directory-layout.has-drawer,
@@ -9346,6 +9489,14 @@ tbody tr:hover {
   .asset-directory-drawer {
     position: static;
     max-height: none;
+  }
+
+  .company-management-create {
+    justify-content: stretch;
+  }
+
+  .company-management-create input {
+    width: 100%;
   }
 }
 

@@ -302,6 +302,7 @@ import {
 } from './api';
 import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 import { AccountCleanupPreviewPage } from './pages/accounts/AccountCleanupPreviewPage';
+import { CompanyManagementPage } from './pages/companies/CompanyManagementPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
 import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from './components/shared/FeedbackStates';
@@ -1618,6 +1619,18 @@ const routeMeta: Record<
       { label: '파이프라인', href: '/pipeline/' },
     ],
   },
+  companies: {
+    eyebrow: 'Sales CRM / Companies',
+    title: '업체/부서',
+    summary: '업체와 부서/연구실 계정을 React에서 검색, 생성, 수정, 삭제 검토합니다.',
+    primaryHref: '/companies/',
+    primaryLabel: '업체/부서 관리 열기',
+    actions: [
+      { label: '업체/부서 관리', href: '/companies/', primary: true },
+      { label: '고객 목록', href: '/customers/' },
+      { label: '현황표', href: '/reports/' },
+    ],
+  },
   assets: {
     eyebrow: 'Sales CRM / Assets',
     title: '장비',
@@ -1805,6 +1818,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
   if (pathname.startsWith('/reports/')) return 'analytics';
   if (pathname.startsWith('/analytics/')) return 'analytics';
+  if (pathname.startsWith('/companies/')) return 'companies';
   if (pathname.startsWith('/accounts/')) return 'customers';
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/assets/')) return 'assets';
@@ -23510,6 +23524,15 @@ export function App() {
           onRowModeChange={handleCustomerRowModeChange}
           onStageChange={handleCustomerStageChange}
         />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'companies') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <CompanyManagementPage />
       </AppShell>
     );
   }

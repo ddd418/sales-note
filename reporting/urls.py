@@ -173,6 +173,7 @@ urlpatterns = [
     path('api/followups/autocomplete/', views.followup_autocomplete, name='followup_autocomplete'),
     path('api/followups/<int:followup_id>/quote-items/', views.followup_quote_items_api, name='followup_quote_items_api'),
     path('api/followups/<int:followup_id>/records/', views.customer_records_api, name='customer_records_api'),
+    path('api/companies/manage/', views.companies_management_api, name='companies_management_api'),
     path('api/companies/create/', views.company_create_api, name='company_create_api'),
     path('api/departments/create/', views.department_create_api, name='department_create_api'),
     path('api/companies/<int:company_id>/update/', views.company_update_api, name='company_update_api'),
@@ -190,18 +191,48 @@ urlpatterns = [
     path('api/departments/<int:pk>/', views.api_department_detail, name='api_department_detail'),
     
     # 업체/부서 관리 URL들
-    path('companies/', views.company_list_view, name='company_list'),
-    path('companies/create/', views.company_create_view, name='company_create'),
-    path('companies/<int:pk>/', views.company_detail_view, name='company_detail'),
-    path('companies/<int:pk>/edit/', views.company_edit_view, name='company_edit'),
-    path('companies/<int:pk>/delete/', views.company_delete_view, name='company_delete'),
-    path('companies/<int:company_pk>/departments/create/', views.department_create_view, name='department_create'),
-    path('departments/<int:pk>/edit/', views.department_edit_view, name='department_edit'),
-    path('departments/<int:pk>/delete/', views.department_delete_view, name='department_delete'),
+    path('companies/', react_page_redirect(
+        views.company_list_view,
+        static_react_page('companies/', rename={'search': 'q'}),
+    ), name='company_list'),
+    path('companies/create/', react_page_redirect(
+        views.company_create_view,
+        static_react_page('companies/', extra={'create': 'company'}),
+    ), name='company_create'),
+    path('companies/<int:pk>/', react_page_redirect(
+        views.company_detail_view,
+        lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk})),
+    ), name='company_detail'),
+    path('companies/<int:pk>/edit/', react_page_redirect(
+        views.company_edit_view,
+        lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk, 'edit': 'company'})),
+    ), name='company_edit'),
+    path('companies/<int:pk>/delete/', react_page_redirect(
+        views.company_delete_view,
+        lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk, 'delete': 'company'})),
+    ), name='company_delete'),
+    path('companies/<int:company_pk>/departments/create/', react_page_redirect(
+        views.department_create_view,
+        lambda request, company_pk: frontend_url('companies/', query_with(request, extra={'company_id': company_pk, 'create': 'department'})),
+    ), name='department_create'),
+    path('departments/<int:pk>/edit/', react_page_redirect(
+        views.department_edit_view,
+        lambda request, pk: frontend_url('companies/', query_with(request, extra={'department_id': pk, 'edit': 'department'})),
+    ), name='department_edit'),
+    path('departments/<int:pk>/delete/', react_page_redirect(
+        views.department_delete_view,
+        lambda request, pk: frontend_url('companies/', query_with(request, extra={'department_id': pk, 'delete': 'department'})),
+    ), name='department_delete'),
 
     # 매니저용 읽기 전용 업체 관리 URL들
-    path('manager/companies/', views.manager_company_list_view, name='manager_company_list'),
-    path('manager/companies/<int:pk>/', views.manager_company_detail_view, name='manager_company_detail'),    # 사용자 관리 URL들 (Admin 전용)
+    path('manager/companies/', react_page_redirect(
+        views.manager_company_list_view,
+        static_react_page('companies/', rename={'search': 'q'}),
+    ), name='manager_company_list'),
+    path('manager/companies/<int:pk>/', react_page_redirect(
+        views.manager_company_detail_view,
+        lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk})),
+    ), name='manager_company_detail'),    # 사용자 관리 URL들 (Admin 전용)
     path('users/', views.user_list, name='user_list'),
     path('users/create/', views.user_create, name='user_create'),
     path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),

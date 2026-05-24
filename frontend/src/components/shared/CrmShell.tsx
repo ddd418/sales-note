@@ -2,6 +2,7 @@ import {
   Activity,
   Archive,
   Bell,
+  Building2,
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
@@ -29,6 +30,7 @@ export type MainView =
   | 'dashboard'
   | 'analytics'
   | 'customers'
+  | 'companies'
   | 'assets'
   | 'services'
   | 'pipeline'
@@ -51,6 +53,7 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
   { id: 'analytics', label: '현황', icon: Activity, href: '/reports/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
+  { id: 'companies', label: '업체/부서', icon: Building2, href: '/companies/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
   { id: 'services', label: '서비스', icon: Wrench, href: '/services/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
@@ -71,6 +74,7 @@ const navIconMap: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   analytics: Activity,
   customers: Users,
+  companies: Building2,
   assets: Wrench,
   services: Wrench,
   pipeline: Columns3,
@@ -94,6 +98,7 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   dashboard: { eyebrow: 'Sales CRM / Dashboard', title: '대시보드' },
   analytics: { eyebrow: 'Sales CRM / Reports', title: '분석' },
   customers: { eyebrow: 'Sales CRM / Customers', title: '고객' },
+  companies: { eyebrow: 'Sales CRM / Companies', title: '업체/부서' },
   assets: { eyebrow: 'Sales CRM / Assets', title: '장비' },
   services: { eyebrow: 'Sales CRM / Services', title: '서비스' },
   pipeline: { eyebrow: 'Sales CRM / Pipeline', title: '파이프라인' },

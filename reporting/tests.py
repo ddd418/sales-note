@@ -4224,6 +4224,103 @@ class CustomersSummaryApiTests(TestCase):
         self.assertFalse(department_response.json()['success'])
         self.assertIn('담당자', department_response.json()['error'])
 
+    def test_companies_management_api_requires_login_json(self):
+        response = self.client.get(reverse('reporting:companies_management_api'))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_companies_management_api_salesman_owner_permissions_and_search(self):
+        from reporting.models import Company
+
+        own = self._create_customer(self.user, '업체관리내고객')
+        coworker = self._create_customer(self.coworker, '업체관리동료고객')
+        other = self._create_customer(self.other_user, '업체관리타사고객')
+        free_company = Company.objects.create(name='업체관리 삭제가능', created_by=self.user)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:companies_management_api'), {'q': '업체관리'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['permissions']['canCreateCompany'])
+        self.assertFalse(payload['permissions']['readOnly'])
+        company_ids = {company['id'] for company in payload['companies']}
+        self.assertIn(own.company_id, company_ids)
+        self.assertIn(coworker.company_id, company_ids)
+        self.assertIn(free_company.id, company_ids)
+        self.assertNotIn(other.company_id, company_ids)
+
+        own_company = next(company for company in payload['companies'] if company['id'] == own.company_id)
+        coworker_company = next(company for company in payload['companies'] if company['id'] == coworker.company_id)
+        free_company_payload = next(company for company in payload['companies'] if company['id'] == free_company.id)
+        self.assertTrue(own_company['canManage'])
+        self.assertFalse(own_company['canDelete'])
+        self.assertIn('부서', own_company['deleteMessage'])
+        self.assertTrue(own_company['departments'][0]['canManage'])
+        self.assertIn('담당자', own_company['departments'][0]['deleteMessage'])
+        self.assertTrue(own_company['departments'][0]['cleanupPreviewHref'].endswith('/cleanup-preview/'))
+        self.assertFalse(coworker_company['canManage'])
+        self.assertFalse(coworker_company['departments'][0]['canManage'])
+        self.assertTrue(free_company_payload['canDelete'])
+        self.assertEqual(free_company_payload['deleteMessage'], '')
+
+    def test_companies_management_api_manager_readonly_same_company(self):
+        own = self._create_customer(self.user, '매니저업체조회내고객')
+        coworker = self._create_customer(self.coworker, '매니저업체조회동료고객')
+        other = self._create_customer(self.other_user, '매니저업체조회타사고객')
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:companies_management_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['permissions']['canCreateCompany'])
+        self.assertTrue(payload['permissions']['readOnly'])
+        self.assertTrue(payload['permissions']['readOnlyMessage'])
+        company_ids = {company['id'] for company in payload['companies']}
+        self.assertIn(own.company_id, company_ids)
+        self.assertIn(coworker.company_id, company_ids)
+        self.assertNotIn(other.company_id, company_ids)
+        own_company = next(company for company in payload['companies'] if company['id'] == own.company_id)
+        self.assertFalse(own_company['canManage'])
+        self.assertFalse(own_company['departments'][0]['canManage'])
+        self.assertTrue(any(salesman['username'] == self.user.username for salesman in own_company['salesmen']))
+
+    def test_companies_management_api_admin_sees_all_and_can_manage(self):
+        own = self._create_customer(self.user, '관리자업체조회내고객')
+        other = self._create_customer(self.other_user, '관리자업체조회타사고객')
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse('reporting:companies_management_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        company_ids = {company['id'] for company in payload['companies']}
+        self.assertIn(own.company_id, company_ids)
+        self.assertIn(other.company_id, company_ids)
+        self.assertTrue(payload['scope']['canViewAll'])
+        self.assertTrue(payload['permissions']['canCreateCompany'])
+        self.assertTrue(all(company['canManage'] for company in payload['companies']))
+        self.assertTrue(all(department['canManage'] for department in payload['departments']))
+
+    def test_company_legacy_get_routes_redirect_to_react_management(self):
+        target = self._create_customer(self.user, '업체레거시리다이렉트')
+        self.client.force_login(self.user)
+
+        list_response = self.client.get(reverse('reporting:company_list'))
+        detail_response = self.client.get(reverse('reporting:company_detail', args=[target.company_id]))
+        department_response = self.client.get(reverse('reporting:department_edit', args=[target.department_id]))
+
+        self.assertEqual(list_response.status_code, 302)
+        self.assertIn('/companies/', list_response['Location'])
+        self.assertEqual(detail_response.status_code, 302)
+        self.assertIn('/companies/', detail_response['Location'])
+        self.assertIn(f'company_id={target.company_id}', detail_response['Location'])
+        self.assertEqual(department_response.status_code, 302)
+        self.assertIn('/companies/', department_response['Location'])
+        self.assertIn(f'department_id={target.department_id}', department_response['Location'])
+
     def test_customer_detail_summary_api_requires_login_json(self):
         target = self._create_customer(self.user, '상세로그인')
         url = reverse('reporting:customer_detail_summary_api', args=[target.id])

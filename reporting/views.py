@@ -2231,6 +2231,7 @@ def navigation_api(request):
         {'id': 'dashboard', 'label': '대시보드', 'href': '/dashboard/'},
         {'id': 'analytics', 'label': '분석', 'href': '/reports/'},
         {'id': 'customers', 'label': '고객', 'href': '/customers/'},
+        {'id': 'companies', 'label': '업체/부서', 'href': '/companies/'},
         {'id': 'assets', 'label': '장비', 'href': '/assets/'},
         {'id': 'services', 'label': '서비스', 'href': '/services/'},
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
@@ -2273,6 +2274,7 @@ def navigation_api(request):
             'canManageTasks': profile.role == 'manager',
             'canManageEmployees': profile.role == 'manager',
             'canManageUsers': profile.role == 'admin',
+            'canManageCompanies': profile.role != 'manager',
             'canUseAi': bool(profile.can_use_ai),
             'canUseMailbox': profile.role != 'manager',
             'canViewAllUsers': bool(profile.can_view_all_users()),
@@ -3404,6 +3406,26 @@ def _customer_delete_message(blockers):
     return f"연결된 {'/'.join(active_blockers)}이 있어 삭제할 수 없습니다."
 
 
+def _delete_blocker_payload(blockers):
+    return [
+        {
+            'label': label,
+            'count': count,
+        }
+        for label, count in blockers
+        if count
+    ]
+
+
+def _delete_guidance(blockers, *, target_label):
+    active_labels = [label for label, count in blockers if count]
+    if not active_labels:
+        return ''
+    if '담당자' in active_labels or '부서' in active_labels:
+        return f'{target_label}에 연결된 담당자/계정이 있습니다. 계정 상세 또는 정리 영향 미리보기에서 이관 대상을 확인한 뒤 삭제하세요.'
+    return f'{target_label}에 연결된 운영 기록이 있습니다. 관련 기록을 이관하거나 정리한 뒤 삭제하세요.'
+
+
 def _related_or_annotated_count(instance, annotated_name, related_name):
     annotated_value = getattr(instance, annotated_name, None)
     if annotated_value is not None:
@@ -3466,6 +3488,237 @@ def _customer_department_option_payload(department, request_user, search_text=''
         'deleteUrl': reverse('reporting:department_delete_api', args=[department.id]),
         'followupCount': blockers[0][1],
     }
+
+
+def _company_management_scope(request, user_profile):
+    if user_profile.is_admin():
+        scope_users = get_accessible_users(request.user, request)
+        if scope_users.count() == User.objects.count():
+            companies_qs = Company.objects.all()
+            scope_label = '전체 업체/부서'
+        else:
+            companies_qs = Company.objects.filter(
+                Q(created_by__in=scope_users) |
+                Q(followup_companies__user__in=scope_users) |
+                Q(departments__followup_departments__user__in=scope_users)
+            )
+            scope_label = '선택된 사용자 범위'
+    elif user_profile.company:
+        scope_users = User.objects.filter(userprofile__company=user_profile.company)
+        companies_qs = Company.objects.filter(
+            Q(created_by__in=scope_users) |
+            Q(followup_companies__user__in=scope_users) |
+            Q(departments__followup_departments__user__in=scope_users)
+        )
+        scope_label = f'{user_profile.company.name} 팀'
+    else:
+        scope_users = User.objects.filter(id=request.user.id)
+        companies_qs = Company.objects.filter(created_by=request.user)
+        scope_label = _user_display_name(request.user)
+    return scope_users, companies_qs.distinct(), scope_label
+
+
+def _company_salesmen_payload(company, scope_users):
+    salesmen = list(
+        FollowUp.objects.filter(
+            Q(company=company) | Q(department__company=company),
+            user__in=scope_users,
+        ).values(
+            'user_id',
+            'user__username',
+            'user__first_name',
+            'user__last_name',
+            'user__userprofile__role',
+        ).annotate(
+            contact_count=Count('id', distinct=True),
+        ).order_by('user__username')
+    )
+    return [
+        {
+            'id': row['user_id'],
+            'name': (
+                f"{row['user__last_name']}{row['user__first_name']}".strip()
+                or row['user__username']
+            ),
+            'username': row['user__username'],
+            'role': row['user__userprofile__role'] or '',
+            'contactCount': row['contact_count'] or 0,
+        }
+        for row in salesmen
+    ]
+
+
+def _company_management_department_payload(department, request_user):
+    blockers = _department_delete_blockers(department)
+    can_manage = _can_manage_customer_department(request_user, department)
+    delete_message = _customer_delete_message(blockers)
+    return {
+        'id': department.id,
+        'name': department.name,
+        'companyId': department.company_id,
+        'companyName': department.company.name,
+        'canManage': can_manage,
+        'canDelete': can_manage and not delete_message,
+        'manageMessage': '' if can_manage else '본인이 등록한 부서/연구실만 수정할 수 있습니다.',
+        'deleteMessage': delete_message,
+        'deleteGuidance': _delete_guidance(blockers, target_label='부서/연구실') if delete_message else '',
+        'deleteBlockers': _delete_blocker_payload(blockers),
+        'updateUrl': reverse('reporting:department_update_api', args=[department.id]),
+        'deleteUrl': reverse('reporting:department_delete_api', args=[department.id]),
+        'href': f'/accounts/{department.id}/',
+        'cleanupPreviewHref': f'/accounts/{department.id}/cleanup-preview/',
+        'djangoEditHref': reverse('reporting:department_edit', args=[department.id]),
+        'createdById': department.created_by_id,
+        'createdByName': _user_display_name(department.created_by) if department.created_by else '',
+        'followupCount': blockers[0][1],
+        'assetCount': blockers[1][1],
+        'prepaymentCount': blockers[2][1],
+        'memoCount': blockers[3][1],
+        'funnelTargetCount': blockers[4][1],
+    }
+
+
+def _company_management_company_payload(company, request_user, scope_users, departments):
+    blockers = _company_delete_blockers(company)
+    can_manage = _can_manage_customer_company(request_user, company)
+    delete_message = _customer_delete_message(blockers)
+    return {
+        'id': company.id,
+        'name': company.name,
+        'canManage': can_manage,
+        'canDelete': can_manage and not delete_message,
+        'manageMessage': '' if can_manage else '본인이 등록한 업체/학교만 수정할 수 있습니다.',
+        'deleteMessage': delete_message,
+        'deleteGuidance': _delete_guidance(blockers, target_label='업체/학교') if delete_message else '',
+        'deleteBlockers': _delete_blocker_payload(blockers),
+        'updateUrl': reverse('reporting:company_update_api', args=[company.id]),
+        'deleteUrl': reverse('reporting:company_delete_api', args=[company.id]),
+        'href': f'/companies/?company_id={company.id}',
+        'djangoHref': reverse('reporting:company_detail', args=[company.id]),
+        'departmentsUrl': reverse('reporting:api_company_departments', args=[company.id]),
+        'customersUrl': reverse('reporting:api_company_customers', args=[company.id]),
+        'createdById': company.created_by_id,
+        'createdByName': _user_display_name(company.created_by) if company.created_by else '',
+        'departmentCount': blockers[0][1],
+        'followupCount': blockers[1][1],
+        'assetCount': blockers[2][1],
+        'prepaymentCount': blockers[3][1],
+        'salesmen': _company_salesmen_payload(company, scope_users),
+        'departments': departments,
+    }
+
+
+@ensure_csrf_cookie
+@never_cache
+@require_http_methods(["GET"])
+def companies_management_api(request):
+    """React 업체/부서 관리 전용 API."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    user_profile = get_user_profile(request.user)
+    scope_users, base_companies_qs, scope_label = _company_management_scope(request, user_profile)
+    q = (request.GET.get('q') or request.GET.get('search') or '').strip()
+    selected_company_id = request.GET.get('company_id') or ''
+    selected_department_id = request.GET.get('department_id') or ''
+
+    total_companies_qs = base_companies_qs.distinct()
+    total_company_count = total_companies_qs.count()
+    total_department_count = Department.objects.filter(company__in=total_companies_qs).count()
+
+    companies_qs = total_companies_qs
+    if q:
+        companies_qs = companies_qs.filter(
+            Q(name__icontains=q) |
+            Q(departments__name__icontains=q) |
+            Q(followup_companies__customer_name__icontains=q) |
+            Q(followup_companies__manager__icontains=q) |
+            Q(departments__followup_departments__customer_name__icontains=q) |
+            Q(departments__followup_departments__manager__icontains=q)
+        ).distinct()
+
+    companies = list(
+        companies_qs.select_related('created_by').annotate(
+            department_count=Count('departments', distinct=True),
+            followup_count=Count('followup_companies', distinct=True),
+            asset_count=Count('customer_assets', distinct=True),
+            prepayment_count=Count('prepayment', distinct=True),
+        ).order_by('name')
+    )
+    departments = list(
+        Department.objects.filter(company__in=companies).select_related(
+            'company', 'created_by',
+        ).annotate(
+            followup_count=Count('followup_departments', distinct=True),
+            asset_count=Count('customer_assets', distinct=True),
+            prepayment_count=Count('prepayments', distinct=True),
+            memo_count=Count('memos', distinct=True),
+            funnel_target_count=Count('funnel_targets', distinct=True),
+        ).order_by('company__name', 'name')
+    )
+    departments_by_company = {}
+    for department in departments:
+        departments_by_company.setdefault(department.company_id, []).append(
+            _company_management_department_payload(department, request.user)
+        )
+    company_payloads = [
+        _company_management_company_payload(
+            company,
+            request.user,
+            scope_users,
+            departments_by_company.get(company.id, []),
+        )
+        for company in companies
+    ]
+    department_payloads = [
+        department
+        for company in company_payloads
+        for department in company['departments']
+    ]
+
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': scope_label,
+            'role': user_profile.role,
+            'roleLabel': user_profile.get_role_display(),
+            'companyName': user_profile.company.name if user_profile.company else '',
+            'canViewAll': bool(user_profile.can_view_all_users()),
+        },
+        'permissions': {
+            'canCreateCompany': not user_profile.is_manager(),
+            'canCreateDepartment': not user_profile.is_manager(),
+            'readOnly': user_profile.is_manager(),
+            'readOnlyMessage': 'Manager는 회사 내 업체/부서 데이터를 조회만 할 수 있습니다.' if user_profile.is_manager() else '',
+        },
+        'filters': {
+            'q': q,
+            'companyId': selected_company_id,
+            'departmentId': selected_department_id,
+        },
+        'metrics': {
+            'totalCompanies': total_company_count,
+            'filteredCompanies': len(company_payloads),
+            'totalDepartments': total_department_count,
+            'filteredDepartments': len(department_payloads),
+            'totalContacts': sum(company['followupCount'] for company in company_payloads),
+            'blockedCompanies': sum(1 for company in company_payloads if company['deleteMessage']),
+            'blockedDepartments': sum(1 for department in department_payloads if department['deleteMessage']),
+        },
+        'links': {
+            'companies': '/companies/',
+            'customers': '/customers/',
+            'createCompany': reverse('reporting:company_create_api'),
+            'createDepartment': reverse('reporting:department_create_api'),
+            'legacyCompanies': reverse('reporting:company_list'),
+            'legacyManagerCompanies': reverse('reporting:manager_company_list'),
+        },
+        'companies': company_payloads,
+        'departments': department_payloads,
+    })
 
 
 def _account_management_config(request, user_profile, department, can_manage):

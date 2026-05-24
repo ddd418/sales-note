@@ -1,5 +1,45 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement H-step company/department management plan
+
+**Background**:
+
+- User asked to complete React full replacement item H for company and department management.
+- Legacy `/reporting/companies/` includes company list/detail/create/edit/delete, department create/edit/delete, search, delete blocking, and manager read-only views.
+- Existing React customer quick-create panel has partial company/department inline management, but it is hidden inside customer creation and does not replace the dedicated legacy workflow.
+
+**Decision**: A dedicated React screen is required.
+
+- New canonical route: `/companies/`.
+- Django keeps `/reporting/*` routes for compatibility, but authenticated GET requests for company/department legacy screens should redirect to `/companies/`.
+- Django remains responsible for auth, permissions, blockers, JSON APIs, and transition-period POST fallback.
+
+**DB change required**: No.
+
+- Existing `Company`, `Department`, `FollowUp`, `CustomerAsset`, `Prepayment`, `DepartmentMemo`, and `FunnelTarget` relations are enough.
+- No migration is planned.
+
+**Implementation scope**:
+
+- Add a company/department management summary API with search, counts, owner/salesperson context, delete blockers, cleanup guidance links, and permission flags.
+- Reuse existing create/update/delete APIs for mutations.
+- Add React `/companies/` page with company search, company create/edit/delete, selected-company department search, department create/edit/delete, read-only manager state, and delete-blocker guidance.
+- Add navigation entry and route metadata for `companies`.
+- Redirect legacy company/department GET routes to React while preserving POST fallback.
+- Add focused tests for salesman owner permissions, manager read-only visibility, admin global visibility, and login protection.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/companies/` and protected company management API.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement G-step account detail replacement plan
 
 **Background**:
