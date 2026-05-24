@@ -314,6 +314,11 @@ html, body {
 
     <form method="post" action="{% url 'reporting:login' %}" id="loginForm">
       {% csrf_token %}
+      {% if redirect_field_value %}
+      <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+      {% elif next %}
+      <input type="hidden" name="next" value="{{ next }}">
+      {% endif %}
       
       <div class="login-form-group">
         <label for="id_username" class="login-form-label">

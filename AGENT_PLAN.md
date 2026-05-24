@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-24 React full replacement C-step auth/session flow plan
+
+**Background**:
+
+- User asked to continue React full replacement item C for authentication/session flow.
+- The current login page is still a Django `LoginView` template at `/reporting/login/`.
+- React API clients already redirect `login_required` responses to `/reporting/login/?next=<current React path>`, but the Django login form must preserve that `next` value on POST.
+
+**DB change required**: No.
+
+- Authentication/session compatibility only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Confirm current `/reporting/login/` template dependency and session/CSRF settings.
+- Decide whether to replace the login page with React now or intentionally keep Django login during migration.
+- Document the future React auth API design for session status, login, logout, CSRF, and safe `next` redirects.
+- Preserve `next` from the Django login page through form POST.
+- Allow absolute frontend `next` URLs that match `FRONTEND_PIPELINE_URL`, while still relying on Django safe redirect validation.
+- Update focused auth smoke tests.
+- Record the result in `AGENT_REPORT.md` and a separate memo under `D:\projects\해야할일`.
+
+**Validation plan**:
+
+- `python -m py_compile reporting/views.py`
+- `python manage.py test reporting.tests.AuthenticationSmoke --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## 2026-05-24 React full replacement B-step route design plan
 
 **Background**:

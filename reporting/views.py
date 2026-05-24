@@ -21939,6 +21939,16 @@ class CustomLoginView(LoginView):
             'https://sales-note-frontend-production.up.railway.app/',
         )
         return urljoin(f"{frontend_base_url.rstrip('/')}/", 'dashboard/')
+
+    def get_success_url_allowed_hosts(self):
+        from urllib.parse import urlparse
+
+        allowed_hosts = super().get_success_url_allowed_hosts()
+        frontend_base_url = getattr(settings, 'FRONTEND_PIPELINE_URL', '')
+        frontend_host = urlparse(frontend_base_url).netloc
+        if frontend_host:
+            allowed_hosts.add(frontend_host)
+        return allowed_hosts
     
     def form_valid(self, form):
         return super().form_valid(form)

@@ -99,6 +99,63 @@ class AuthenticationSmoke(TestCase):
         )
         self.assertEqual(str(self.client.session.get('_auth_user_id')), str(self.user.id))
 
+    def test_login_page_preserves_next_hidden_field(self):
+        """React 직접 URL에서 온 next 값은 로그인 form POST까지 유지"""
+        response = self.client.get(reverse('reporting:login'), {'next': '/customers/42/'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="next"', html=False)
+        self.assertContains(response, 'value="/customers/42/"', html=False)
+
+    def test_login_success_redirects_to_next_react_path(self):
+        """로그인 성공 후 상대 React next 경로로 복귀"""
+        response = self.client.post(
+            reverse('reporting:login'),
+            {
+                'username': 'testuser',
+                'password': 'TestPass123!',
+                'next': '/customers/42/',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/customers/42/')
+        self.assertEqual(str(self.client.session.get('_auth_user_id')), str(self.user.id))
+
+    @override_settings(FRONTEND_PIPELINE_URL=FRONTEND_BASE_URL)
+    def test_login_success_allows_configured_frontend_absolute_next(self):
+        """프론트 운영 도메인의 absolute next URL은 허용"""
+        next_url = frontend_url('reports/?date_from=2026-05-01')
+
+        response = self.client.post(
+            reverse('reporting:login'),
+            {
+                'username': 'testuser',
+                'password': 'TestPass123!',
+                'next': next_url,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], next_url)
+
+    def test_login_success_rejects_external_next(self):
+        """외부 도메인 next는 Django safe redirect 검증으로 차단"""
+        response = self.client.post(
+            reverse('reporting:login'),
+            {
+                'username': 'testuser',
+                'password': 'TestPass123!',
+                'next': 'https://example.com/steal',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response['Location'],
+            'https://sales-note-frontend-production.up.railway.app/dashboard/',
+        )
+
     def test_login_fail_wrong_password(self):
         """잘못된 비밀번호로 로그인 실패"""
         response = self.client.post(

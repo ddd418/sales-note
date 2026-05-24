@@ -1,5 +1,86 @@
 # AGENT_REPORT.md
 
+## 2026-05-24 — React 완전대체 C단계 인증/세션 흐름 정리
+
+### 요약
+
+- `/reporting/login/`의 Django template/LoginView 의존을 확인했습니다.
+- 이번 단계에서는 로그인 화면을 즉시 React로 옮기지 않고, Django login을 의도적으로 남기는 것으로 결정했습니다.
+- 대신 React 직접 URL 진입 후 로그인하면 원래 React URL로 복귀하도록 `next` 유지 호환성을 보강했습니다.
+- 별도 문서는 `D:\projects\해야할일\React_완전대체_C단계_인증_세션_흐름.txt`에 저장했습니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/templates/reporting/login.html`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `D:\projects\해야할일\React_완전대체_C단계_인증_세션_흐름.txt`
+
+### CRM 개선
+
+- 로그아웃/세션 만료 후 `/customers/`, `/reports/`, `/schedules/calendar/` 같은 React 직접 URL에 들어가도 로그인 후 원래 경로로 돌아갈 수 있게 했습니다.
+- 설정된 React frontend 도메인의 absolute `next` URL을 허용하고, 외부 도메인 `next`는 차단되도록 테스트했습니다.
+- 향후 React 로그인 화면을 구현할 때 필요한 `/reporting/api/auth/session/`, `/reporting/api/auth/login/`, `/reporting/api/auth/logout/` 설계를 문서화했습니다.
+
+### 기존 기능 보존
+
+- 기존 `/reporting/login/` Django 로그인 화면은 유지했습니다.
+- Django session, CSRF, password validation, optimized auth backend 흐름은 유지했습니다.
+- DB/model/migration 변경 없음.
+- 기존 기본 로그인 성공 redirect는 React `/dashboard/`로 유지했습니다.
+
+### 결정 사항
+
+- 로그인 화면은 이번 단계에서 React로 대체하지 않습니다.
+- 이유: 인증은 보안 경계에 가깝고, 현재 Django `LoginView`가 CSRF/session을 안정적으로 처리하고 있습니다.
+- React login은 route registry, 공통 오류 화면, auth API, E2E 테스트가 준비된 뒤 전환합니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting/views.py
+→ OK
+
+python manage.py test reporting.tests.AuthenticationSmoke --verbosity=2
+→ OK, 13 tests
+
+python manage.py check
+→ System check identified no issues
+→ Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set, so IMAP/SMTP password encryption is disabled in this environment
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set, so IMAP/SMTP password encryption is disabled in this environment
+
+git diff --check
+→ OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- React `/login/` 화면과 auth API는 아직 구현하지 않았습니다. 이번 단계는 Django login을 의도적으로 유지하는 결정과 `next` 호환 보강입니다.
+- 운영 로그인 수동 검수는 배포 후 실제 계정으로 확인해야 합니다.
+
+### 권장 다음 작업
+
+- `C-2. frontend/src/api/auth.ts 공통화`로 logout/401/login URL helper 중복을 줄입니다.
+- 그 다음 `D. 공통 NotFound/Forbidden/LoginRequired 화면 구현`을 진행합니다.
+
+### 운영 배포 상태
+
+- Runtime change. Commit/push 후 Railway 배포 및 smoke test 필요.
+
+### 사용자가 운영 서버에서 확인할 절차
+
+1. 시크릿 창에서 `https://sales-note-frontend-production.up.railway.app/customers/`를 엽니다.
+2. 로그인 화면으로 이동하고 주소에 `next=/customers/`가 유지되는지 봅니다.
+3. 로그인 후 `/dashboard/`가 아니라 `/customers/`로 돌아오는지 확인합니다.
+4. `/reports/`, `/prepayments/`, `/schedules/calendar/`도 같은 방식으로 직접 URL 진입 후 로그인 복귀를 확인합니다.
+5. 로그인 상태에서 새로고침해도 화면이 유지되는지 확인합니다.
+6. 로그아웃 후 뒤로가기/새로고침으로 내부 데이터가 다시 보이지 않는지 확인합니다.
+
 ## 2026-05-24 — React 완전대체 B단계 route 설계 확정
 
 ### 요약
