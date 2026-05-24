@@ -546,6 +546,8 @@ export type CustomerItem = {
   createScheduleHref: string;
 };
 
+export type CustomerRowMode = 'account' | 'contact';
+
 export type CustomerCompanyOption = {
   id: number;
   name: string;
@@ -591,11 +593,36 @@ export type CustomersData = {
     owner: string;
     priority: string;
     stage: string;
+    company: string;
+    grade: string;
+    level: string;
+    mode: CustomerRowMode;
   };
   options: {
     owners: Array<{ id: number; name: string }>;
+    companies: Array<{ id: number; name: string; count: number }>;
     priorities: Array<{ value: string; label: string }>;
     stages: Array<{ value: string; label: string }>;
+    grades: Array<{ value: string; label: string }>;
+    scoreLevels: Array<{ value: string; label: string; description?: string }>;
+    rowModes: Array<{ value: CustomerRowMode; label: string }>;
+  };
+  pagination: {
+    rowMode: CustomerRowMode;
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    totalPages: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+    accountRows: number;
+    contactRows: number;
+  };
+  export: {
+    canDownload: boolean;
+    message: string;
+    fullUrl: string;
+    basicUrl: string;
   };
   metrics: {
     totalCustomers: number;
@@ -4558,11 +4585,39 @@ const emptyCustomersData: CustomersData = {
     owner: '',
     priority: '',
     stage: '',
+    company: '',
+    grade: '',
+    level: '',
+    mode: 'account',
   },
   options: {
     owners: [],
+    companies: [],
     priorities: [],
     stages: [],
+    grades: [],
+    scoreLevels: [],
+    rowModes: [
+      { value: 'account', label: '계정 기준' },
+      { value: 'contact', label: '담당자 기준' },
+    ],
+  },
+  pagination: {
+    rowMode: 'account',
+    page: 1,
+    pageSize: 20,
+    totalRows: 0,
+    totalPages: 1,
+    hasPrevious: false,
+    hasNext: false,
+    accountRows: 0,
+    contactRows: 0,
+  },
+  export: {
+    canDownload: false,
+    message: '',
+    fullUrl: '',
+    basicUrl: '',
   },
   metrics: {
     totalCustomers: 0,
@@ -6490,11 +6545,17 @@ export async function loadCustomersData(params: {
   owner?: string;
   priority?: string;
   stage?: string;
+  company?: string;
+  grade?: string;
+  level?: string;
+  mode?: CustomerRowMode;
+  page?: number;
+  pageSize?: number;
 } = {}): Promise<CustomersData> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value) {
-      query.set(key, value);
+      query.set(key, String(value));
     }
   });
   try {
@@ -6528,6 +6589,14 @@ export async function loadCustomersData(params: {
       options: {
         ...emptyCustomersData.options,
         ...(payload.options ?? {}),
+      },
+      pagination: {
+        ...emptyCustomersData.pagination,
+        ...(payload.pagination ?? {}),
+      },
+      export: {
+        ...emptyCustomersData.export,
+        ...(payload.export ?? {}),
       },
       metrics: {
         ...emptyCustomersData.metrics,

@@ -3205,7 +3205,150 @@ def _customers_account_payloads(followups, today, limit=60):
         ),
         reverse=True,
     )
-    return rows[:limit]
+    return rows if limit is None else rows[:limit]
+
+
+def _customer_score_level_options():
+    return [
+        {'value': 'critical', 'label': '최우선', 'description': '85점 이상'},
+        {'value': 'high', 'label': '높음', 'description': '70-84점'},
+        {'value': 'medium', 'label': '중간', 'description': '50-69점'},
+        {'value': 'low', 'label': '낮음', 'description': '30-49점'},
+        {'value': 'minimal', 'label': '최소', 'description': '30점 미만'},
+    ]
+
+
+def _customer_score_level_match(score, level):
+    if level == 'critical':
+        return score >= 85
+    if level == 'high':
+        return 70 <= score < 85
+    if level == 'medium':
+        return 50 <= score < 70
+    if level == 'low':
+        return 30 <= score < 50
+    if level == 'minimal':
+        return score < 30
+    return True
+
+
+def _customer_request_filters(request):
+    return {
+        'q': (request.GET.get('q') or request.GET.get('search') or '').strip(),
+        'owner': (request.GET.get('owner') or request.GET.get('user') or '').strip(),
+        'priority': (request.GET.get('priority') or '').strip(),
+        'stage': (request.GET.get('stage') or request.GET.get('pipeline_stage') or '').strip(),
+        'company': (request.GET.get('company') or request.GET.get('company_id') or '').strip(),
+        'grade': (request.GET.get('grade') or request.GET.get('customer_grade') or '').strip(),
+        'level': (request.GET.get('level') or request.GET.get('score_level') or '').strip(),
+    }
+
+
+def _apply_customer_followup_filters(followups, filters, scope_users=None):
+    q = filters.get('q') or ''
+    owner = filters.get('owner') or ''
+    priority = filters.get('priority') or ''
+    stage = filters.get('stage') or ''
+    company = filters.get('company') or ''
+    grade = filters.get('grade') or ''
+    level = filters.get('level') or ''
+
+    if q:
+        search_terms = [term.strip() for term in q.split(',') if term.strip()]
+        if search_terms:
+            combined_q = Q()
+            for term in search_terms:
+                combined_q |= (
+                    Q(customer_name__icontains=term) |
+                    Q(manager__icontains=term) |
+                    Q(company__name__icontains=term) |
+                    Q(department__name__icontains=term) |
+                    Q(email__icontains=term) |
+                    Q(phone_number__icontains=term) |
+                    Q(notes__icontains=term)
+                )
+            followups = followups.filter(combined_q).distinct()
+
+    if owner:
+        try:
+            owner_id = int(owner)
+        except ValueError:
+            owner_id = None
+        if owner_id and (scope_users is None or scope_users.filter(id=owner_id).exists()):
+            followups = followups.filter(user_id=owner_id)
+
+    valid_priorities = {value for value, _label in FollowUp.PRIORITY_CHOICES}
+    if priority in valid_priorities:
+        followups = followups.filter(priority=priority)
+
+    valid_stages = {value for value, _label in FollowUp.PIPELINE_STAGE_CHOICES}
+    if stage in valid_stages:
+        followups = followups.filter(pipeline_stage=stage)
+
+    if company:
+        try:
+            company_id = int(company)
+        except ValueError:
+            company_id = None
+        if company_id:
+            followups = followups.filter(
+                Q(company_id=company_id) | Q(department__company_id=company_id)
+            )
+
+    valid_grades = {value for value, _label in FollowUp.CUSTOMER_GRADE_CHOICES}
+    if grade in valid_grades:
+        followups = followups.filter(customer_grade=grade)
+
+    valid_levels = {option['value'] for option in _customer_score_level_options()}
+    if level in valid_levels:
+        matching_ids = [
+            followup.id
+            for followup in followups
+            if _customer_score_level_match(float(followup.get_combined_score()), level)
+        ]
+        followups = followups.filter(id__in=matching_ids)
+
+    return followups
+
+
+def _customer_company_filter_options(base_followups):
+    return [
+        {
+            'id': row['company_id'],
+            'name': row['company__name'],
+            'count': row['count'],
+        }
+        for row in base_followups.exclude(company_id__isnull=True).values(
+            'company_id', 'company__name'
+        ).annotate(
+            count=Count('id', distinct=True)
+        ).order_by('company__name')
+    ]
+
+
+def _customer_export_urls(filters):
+    from urllib.parse import urlencode
+
+    query = {}
+    key_map = {
+        'q': 'search',
+        'owner': 'user',
+        'priority': 'priority',
+        'stage': 'pipeline_stage',
+        'company': 'company',
+        'grade': 'grade',
+        'level': 'level',
+    }
+    for source_key, target_key in key_map.items():
+        value = (filters.get(source_key) or '').strip()
+        if value:
+            query[target_key] = value
+    encoded_query = urlencode(query)
+    suffix = f'?{encoded_query}' if encoded_query else ''
+    return {
+        'fullUrl': f"{reverse('reporting:followup_excel_download')}{suffix}",
+        'basicUrl': f"{reverse('reporting:followup_basic_excel_download')}{suffix}",
+    }
 
 
 def _account_contact_role_options():
@@ -3569,40 +3712,29 @@ def customers_summary_api(request):
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
     today = timezone.localdate()
 
-    q = request.GET.get('q', '').strip()
-    owner = request.GET.get('owner', '').strip()
-    priority = request.GET.get('priority', '').strip()
-    stage = request.GET.get('stage', '').strip()
-
+    filters = _customer_request_filters(request)
+    q = filters['q']
+    owner = filters['owner']
+    priority = filters['priority']
+    stage = filters['stage']
+    company = filters['company']
+    grade = filters['grade']
+    level = filters['level']
+    row_mode = request.GET.get('mode', 'account').strip()
+    if row_mode not in {'account', 'contact'}:
+        row_mode = 'account'
+    try:
+        page = int(request.GET.get('page') or 1)
+    except (TypeError, ValueError):
+        page = 1
+    page = max(page, 1)
+    try:
+        page_size = int(request.GET.get('page_size') or request.GET.get('pageSize') or 20)
+    except (TypeError, ValueError):
+        page_size = 20
+    page_size = min(max(page_size, 10), 100)
     base_followups = FollowUp.objects.filter(user__in=scope_users)
-    followups = base_followups
-
-    if q:
-        followups = followups.filter(
-            Q(customer_name__icontains=q) |
-            Q(manager__icontains=q) |
-            Q(company__name__icontains=q) |
-            Q(department__name__icontains=q) |
-            Q(email__icontains=q) |
-            Q(phone_number__icontains=q) |
-            Q(notes__icontains=q)
-        )
-
-    if owner:
-        try:
-            owner_id = int(owner)
-            if scope_users.filter(id=owner_id).exists():
-                followups = followups.filter(user_id=owner_id)
-        except ValueError:
-            pass
-
-    valid_priorities = {value for value, _label in FollowUp.PRIORITY_CHOICES}
-    if priority in valid_priorities:
-        followups = followups.filter(priority=priority)
-
-    valid_stages = {value for value, _label in FollowUp.PIPELINE_STAGE_CHOICES}
-    if stage in valid_stages:
-        followups = followups.filter(pipeline_stage=stage)
+    followups = _apply_customer_followup_filters(base_followups, filters, scope_users=scope_users)
 
     priority_order = Case(
         When(priority='urgent', then=Value(0)),
@@ -3630,8 +3762,33 @@ def customers_summary_api(request):
         '-updated_at', '-created_at', '-id'
     )
 
-    customers = list(followups[:60])
-    accounts = _customers_account_payloads(list(followups[:200]), today, limit=60)
+    filtered_count = followups.count()
+    filtered_account_count = (
+        followups.filter(department_id__isnull=False).values('department_id').distinct().count()
+        + followups.filter(department_id__isnull=True).count()
+    )
+    total_account_count = (
+        base_followups.filter(department_id__isnull=False).values('department_id').distinct().count()
+        + base_followups.filter(department_id__isnull=True).count()
+    )
+
+    if row_mode == 'account':
+        account_rows_all = _customers_account_payloads(list(followups), today, limit=None)
+        total_rows = len(account_rows_all)
+        total_pages = max((total_rows + page_size - 1) // page_size, 1)
+        page = min(page, total_pages)
+        page_start = (page - 1) * page_size
+        page_end = page_start + page_size
+        accounts = account_rows_all[page_start:page_end]
+        customers = list(followups[:page_size])
+    else:
+        total_rows = filtered_count
+        total_pages = max((total_rows + page_size - 1) // page_size, 1)
+        page = min(page, total_pages)
+        page_start = (page - 1) * page_size
+        page_end = page_start + page_size
+        customers = list(followups[page_start:page_end])
+        accounts = _customers_account_payloads(list(followups[:200]), today, limit=page_size)
 
     overdue_followup_histories = _histories_excluding_stale_quote_submission(list(
         History.objects.filter(
@@ -3680,15 +3837,6 @@ def customers_summary_api(request):
     elif user_profile.company:
         scope_label = f'{user_profile.company.name} 팀'
 
-    filtered_count = followups.count()
-    filtered_account_count = (
-        followups.filter(department_id__isnull=False).values('department_id').distinct().count()
-        + followups.filter(department_id__isnull=True).count()
-    )
-    total_account_count = (
-        base_followups.filter(department_id__isnull=False).values('department_id').distinct().count()
-        + base_followups.filter(department_id__isnull=True).count()
-    )
     active_count = base_followups.filter(status='active').count()
     urgent_count = base_followups.filter(priority='urgent').count()
     followup_count = base_followups.filter(priority='followup').count()
@@ -3760,9 +3908,14 @@ def customers_summary_api(request):
             'owner': owner,
             'priority': priority,
             'stage': stage,
+            'company': company,
+            'grade': grade,
+            'level': level,
+            'mode': row_mode,
         },
         'options': {
             'owners': owner_options,
+            'companies': _customer_company_filter_options(base_followups),
             'priorities': [
                 {'value': value, 'label': label}
                 for value, label in FollowUp.PRIORITY_CHOICES
@@ -3771,6 +3924,31 @@ def customers_summary_api(request):
                 {'value': value, 'label': label}
                 for value, label in FollowUp.PIPELINE_STAGE_CHOICES
             ],
+            'grades': [
+                {'value': value, 'label': label}
+                for value, label in FollowUp.CUSTOMER_GRADE_CHOICES
+            ],
+            'scoreLevels': _customer_score_level_options(),
+            'rowModes': [
+                {'value': 'account', 'label': '계정 기준'},
+                {'value': 'contact', 'label': '담당자 기준'},
+            ],
+        },
+        'pagination': {
+            'rowMode': row_mode,
+            'page': min(page, total_pages),
+            'pageSize': page_size,
+            'totalRows': total_rows,
+            'totalPages': total_pages,
+            'hasPrevious': page > 1,
+            'hasNext': page < total_pages,
+            'accountRows': filtered_account_count,
+            'contactRows': filtered_count,
+        },
+        'export': {
+            'canDownload': user_profile.can_excel_download(),
+            'message': '' if user_profile.can_excel_download() else '엑셀 다운로드 권한이 없습니다.',
+            **_customer_export_urls(filters),
         },
         'metrics': {
             'totalCustomers': base_followups.count(),
@@ -25179,25 +25357,16 @@ def followup_excel_download(request):
             'user', 'company', 'department'
         ).prefetch_related('schedules', 'histories')
     else:
+        accessible_users = User.objects.filter(id=request.user.id)
         followups = FollowUp.objects.filter(user=request.user).select_related(
             'user', 'company', 'department'
         ).prefetch_related('schedules', 'histories')
-    
-    # 검색 필터 적용
-    search_query = request.GET.get('search')
-    if search_query:
-        followups = followups.filter(
-            Q(customer_name__icontains=search_query) |
-            Q(company__name__icontains=search_query) |
-            Q(department__name__icontains=search_query) |
-            Q(manager__icontains=search_query) |
-            Q(notes__icontains=search_query)
-        )
-    
-    # 우선순위 필터 적용
-    priority_filter = request.GET.get('priority')
-    if priority_filter:
-        followups = followups.filter(priority=priority_filter)
+
+    followups = _apply_customer_followup_filters(
+        followups,
+        _customer_request_filters(request),
+        scope_users=accessible_users,
+    )
     
     # 우선순위 정렬을 위한 순서 정의 (낮을수록 높은 우선순위)
     PRIORITY_ORDER = {
@@ -25574,25 +25743,16 @@ def followup_basic_excel_download(request):
             'user', 'company', 'department'
         )
     else:
+        accessible_users = User.objects.filter(id=request.user.id)
         followups = FollowUp.objects.filter(user=request.user).select_related(
             'user', 'company', 'department'
         )
-    
-    # 검색 필터 적용
-    search_query = request.GET.get('search')
-    if search_query:
-        followups = followups.filter(
-            Q(customer_name__icontains=search_query) |
-            Q(company__name__icontains=search_query) |
-            Q(department__name__icontains=search_query) |
-            Q(manager__icontains=search_query) |
-            Q(notes__icontains=search_query)
-        )
-    
-    # 우선순위 필터 적용
-    priority_filter = request.GET.get('priority')
-    if priority_filter:
-        followups = followups.filter(priority=priority_filter)
+
+    followups = _apply_customer_followup_filters(
+        followups,
+        _customer_request_filters(request),
+        scope_users=accessible_users,
+    )
     
     # 엑셀 파일 생성
     wb = Workbook()

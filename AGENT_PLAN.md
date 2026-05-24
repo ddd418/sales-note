@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-05-24 React full replacement E-step customer/account list replacement plan
+
+**Background**:
+
+- User asked to continue React full replacement item E for `/customers/`.
+- Legacy Django customer list still has filter/export/list behaviors that the React customers page only partially covers.
+- The React direction is account-first rows with a contact/person row mode available as supporting workflow.
+
+**DB change required**: No.
+
+- Existing `FollowUp`, `Company`, `Department`, and permission model are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add React customer list parity for search, owner scope, priority, pipeline stage, company, customer grade, score-level filters, row mode, and pagination.
+- Expose row policy, filter options, pagination metadata, and Excel download URLs from `/reporting/api/customers/`.
+- Make legacy customer Excel downloads honor the same React filter set where possible.
+- Remove reliance on the legacy Django company list as the main customer-list management path.
+- Add focused role/filter/pagination/export tests for salesman, manager, and admin data scope.
+- Record the result in `AGENT_REPORT.md` and a separate memo under `D:\projects\해야할일`.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Local browser smoke for `/customers/` account/contact row modes.
+- `git diff --check`
+
 ## 2026-05-24 React full replacement D-step common shell/layout plan
 
 **Background**:

@@ -930,6 +930,10 @@ h2 {
   gap: 16px;
 }
 
+.customers-page > * {
+  min-width: 0;
+}
+
 .prepayments-page {
   display: grid;
   gap: 16px;
@@ -939,9 +943,59 @@ h2 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.customers-filter-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.customer-row-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.customer-row-mode button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.customer-row-mode button.active {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.customer-export-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.customer-export-actions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .customers-filter-bar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 180px 180px 190px;
+  grid-template-columns: minmax(240px, 1.4fr) repeat(6, minmax(126px, 1fr));
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -1023,6 +1077,20 @@ h2 {
 
 .customers-table tbody tr {
   cursor: default;
+}
+
+.customers-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.customers-pagination span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .prepayments-main-panel {
@@ -2282,6 +2350,12 @@ h2 {
 .customer-manage-heading strong,
 .customer-manage-title {
   color: var(--text);
+  font-weight: 800;
+}
+
+.customer-manage-count {
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 800;
 }
 

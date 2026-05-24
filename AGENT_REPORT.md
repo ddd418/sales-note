@@ -1,5 +1,103 @@
 # AGENT_REPORT.md
 
+## 2026-05-24 — React 완전대체 E단계 고객/계정 목록 완전 대체
+
+### 요약
+
+- `/customers/` React 목록을 계정 기준 기본 화면으로 확정하고, 담당자 기준 목록을 보조 모드로 추가했습니다.
+- React 목록에서 검색, 업체, 담당자, 우선순위, 파이프라인, 고객등급, 종합점수 필터를 사용할 수 있게 했습니다.
+- 고객 목록 API가 row mode, pagination, filter options, Excel download URL, 권한별 scope 정보를 함께 내려주도록 확장했습니다.
+- 기존 고객 엑셀 다운로드가 React 목록과 같은 필터 범위를 최대한 반영하도록 맞췄습니다.
+- 별도 문서는 `D:\projects\해야할일\React_완전대체_E단계_고객_계정_목록.txt`에 저장합니다.
+
+### 변경된 파일
+
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/styles.css`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `D:\projects\해야할일\React_완전대체_E단계_고객_계정_목록.txt`
+
+### CRM 개선
+
+- 실무자는 `/customers/`에서 Django 고객 목록 화면 없이 계정 목록 업무를 진행할 수 있습니다.
+- 기본 row는 부서/연구실 계정 기준이며, 필요 시 담당자 기준으로 전환할 수 있습니다.
+- manager는 회사 내 전체 담당자의 고객 데이터를 볼 수 있고, row에는 영업 담당자 정보가 유지됩니다.
+- salesman/admin 생성 권한과 manager 읽기 전용 정책은 유지했습니다.
+- 업체/부서 수정/삭제는 React 빠른 등록 패널 안의 inline 관리 UI를 사용하며, legacy `전체 관리` 링크 의존을 제거했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` backend/API/login/legacy fallback 경로는 유지했습니다.
+- DB/model/migration 변경 없음.
+- 기존 고객 상세, 계정 상세, 업체/부서 생성/수정/삭제 API는 유지했습니다.
+- 기존 legacy 고객 엑셀 다운로드 URL은 유지하되 React 필터 query와 호환되게 했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+-> OK
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py test reporting.tests.CustomersSummaryApiTests --verbosity=2
+-> OK, 48 tests
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py check
+-> System check identified no issues
+-> Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py makemigrations --check --dry-run
+-> No changes detected
+-> Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set
+
+npx tsc --noEmit --pretty false
+-> OK
+
+npm run build
+-> OK
+-> App bundle 696.16 kB gzip 137.09 kB
+-> Existing Vite large chunk warning remains for the full App bundle
+
+Local Playwright smoke against http://127.0.0.1:4179
+-> OK
+-> /customers/?mode=account checked at 1440x900
+-> /customers/?mode=contact checked at 390x844
+-> account/contact mode labels and company/grade/score filters rendered
+-> horizontal overflow 0 on both viewports
+
+git diff --check
+-> OK, CRLF normalization warning only
+```
+
+### 알려진 제한
+
+- 로그인하지 않은 로컬 static preview에서는 Django API가 없어서 빈 목록 fallback으로 렌더링됩니다. 운영에서는 Django API와 세션으로 실제 데이터가 표시됩니다.
+- full `App` bundle warning은 남아 있습니다. 이 경고는 다음 큰 파일 분리 단계에서 pages/api module 단위 code splitting으로 줄이는 것이 맞습니다.
+- Django template 고객 목록을 삭제하지 않았습니다. 운영 수동 검수 전까지 legacy fallback으로 유지합니다.
+
+### Railway 배포 상태
+
+- E단계 runtime 변경은 배포 대상입니다.
+- 배포 후 deployment id와 smoke 결과를 이 섹션에 추가합니다.
+
+### 사용자 수동 검수 절차
+
+1. salesman 계정으로 `/customers/`에 들어가 기본 화면이 `계정 기준`인지 확인합니다.
+2. 검색어, 업체, 우선순위, 파이프라인, 고객등급, 종합점수 필터를 하나씩 적용해 목록이 갱신되는지 확인합니다.
+3. `담당자 기준`으로 전환해 담당자 row가 표시되는지 확인합니다.
+4. 고객 row의 영업 담당자명이 표시되는지 확인합니다.
+5. manager 계정으로 로그인해 회사 내 다른 직원의 고객 데이터까지 보이는지 확인합니다.
+6. manager 계정에서 고객 등록/수정 입력이 막히고 읽기 중심으로 동작하는지 확인합니다.
+7. admin 또는 엑셀 권한 계정에서 `기본 엑셀`, `전체 엑셀` 다운로드가 현재 필터 범위대로 내려오는지 확인합니다.
+8. 빠른 등록 패널에서 업체/부서 수정/삭제 UI가 React 화면 안에서 보이는지 확인합니다.
+
+### 추천 다음 단계
+
+- F. 고객 상세/계정 상세 parity를 운영 데이터로 수동 검수하고, 남은 legacy 링크를 React canonical URL로 줄이기.
+
 ## 2026-05-24 — React 완전대체 D단계 공통 Shell/Layout 정리
 
 ### 요약

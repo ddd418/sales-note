@@ -74,6 +74,7 @@ import {
   CustomerEditPayload,
   CustomerCreatePayload,
   CustomerQuoteRecord,
+  CustomerRowMode,
   CustomerServiceCase,
   CustomerServiceCasePayload,
   CustomerServiceRecord,
@@ -1865,6 +1866,11 @@ function getAccountCleanupTargetParam(): string {
   return new URLSearchParams(window.location.search).get('target') || '';
 }
 
+function getCustomerRowModeParam(): CustomerRowMode {
+  const value = new URLSearchParams(window.location.search).get('mode');
+  return value === 'contact' ? 'contact' : 'account';
+}
+
 function getNoteDetailId(): number | null {
   const match = window.location.pathname.match(/^\/notes\/(\d+)\/?$/);
   if (!match) {
@@ -2716,9 +2722,9 @@ function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
   );
 }
 
-function CustomersTable({ customers }: { customers: CustomerItem[] }) {
+function CustomersTable({ customers, emptyLabel = '조건에 맞는 계정이 없습니다' }: { customers: CustomerItem[]; emptyLabel?: string }) {
   if (customers.length === 0) {
-    return <DashboardEmpty label="조건에 맞는 계정이 없습니다" />;
+    return <DashboardEmpty label={emptyLabel} />;
   }
 
   return (
@@ -5059,9 +5065,14 @@ function CustomersPage({
   companyEditName,
   loading,
   managementSavingKey,
+  company,
+  grade,
+  level,
   owner,
+  page,
   priority,
   query,
+  rowMode,
   selectedCustomerId,
   stage,
   onCompanyCreateNameChange,
@@ -5082,9 +5093,14 @@ function CustomersPage({
   onDepartmentEditStart,
   onDepartmentEditSubmit,
   onDetailRefresh,
+  onCompanyFilterChange,
+  onGradeChange,
+  onLevelChange,
   onOwnerChange,
+  onPageChange,
   onPriorityChange,
   onQueryChange,
+  onRowModeChange,
   onStageChange,
 }: {
   companyCreateName: string;
@@ -5106,9 +5122,14 @@ function CustomersPage({
   companyEditName: string;
   loading: boolean;
   managementSavingKey: string;
+  company: string;
+  grade: string;
+  level: string;
   owner: string;
+  page: number;
   priority: string;
   query: string;
+  rowMode: CustomerRowMode;
   selectedCustomerId: number | null;
   stage: string;
   onCompanyCreateNameChange: (value: string) => void;
@@ -5129,9 +5150,14 @@ function CustomersPage({
   onDepartmentEditStart: (department: CustomerDepartmentManageOption) => void;
   onDepartmentEditSubmit: (department: CustomerDepartmentManageOption) => void;
   onDetailRefresh: () => Promise<CustomerDetailData | null>;
+  onCompanyFilterChange: (value: string) => void;
+  onGradeChange: (value: string) => void;
+  onLevelChange: (value: string) => void;
   onOwnerChange: (value: string) => void;
+  onPageChange: (value: number) => void;
   onPriorityChange: (value: string) => void;
   onQueryChange: (value: string) => void;
+  onRowModeChange: (value: CustomerRowMode) => void;
   onStageChange: (value: string) => void;
 }) {
   if (selectedCustomerId) {
@@ -5151,13 +5177,20 @@ function CustomersPage({
     return null;
   }
 
-  const accountRows = data.accounts.length > 0 ? data.accounts : data.customers;
+  const listRows = rowMode === 'contact' ? data.customers : (data.accounts.length > 0 ? data.accounts : data.customers);
   const priorityRows = data.priorityAccounts.length > 0 ? data.priorityAccounts : data.priorityCustomers;
   const totalAccountCount = data.metrics.totalAccounts || data.metrics.totalCustomers;
   const filteredAccountCount = data.metrics.filteredAccounts || data.metrics.filteredCustomers;
+  const rowModeLabel = rowMode === 'contact' ? '담당자 목록' : '계정 목록';
+  const rowModeDetail = rowMode === 'contact'
+    ? `${formatNumber(data.pagination.contactRows || data.metrics.filteredCustomers)}명`
+    : `${formatNumber(data.pagination.accountRows || filteredAccountCount)}개 계정`;
+  const pagination = data.pagination;
+  const currentPage = pagination.page || page || 1;
   const metrics = [
     { label: '계정', value: `${formatNumber(totalAccountCount)}개`, detail: data.scope.label, icon: Users, tone: 'blue' as const },
     { label: '검색 결과', value: `${formatNumber(filteredAccountCount)}개`, detail: '부서/연구실 계정', icon: Search, tone: 'teal' as const },
+    { label: '담당자', value: `${formatNumber(data.metrics.totalCustomers)}명`, detail: rowModeDetail, icon: Building2, tone: 'amber' as const },
     { label: '예정 일정 고객', value: `${formatNumber(data.metrics.scheduledCustomers)}건`, detail: '미래 일정 보유', icon: CalendarDays, tone: 'green' as const },
   ];
   const createConfig = data.create;
@@ -5267,10 +5300,9 @@ function CustomersPage({
                     <span className="eyebrow">Manage</span>
                     <strong>업체/부서 수정 · 삭제</strong>
                   </div>
-                  <a className="route-secondary-action" href={data.links.companies}>
-                    전체 관리
-                    <MoveUpRight size={14} />
-                  </a>
+                  <span className="customer-manage-count">
+                    업체 {formatNumber(manageableCompanies.length)} · 부서 {formatNumber(manageableDepartments.length)}
+                  </span>
                 </div>
                 <div className="customer-manage-grid">
                   <div className="customer-manage-list">
@@ -5515,6 +5547,42 @@ function CustomersPage({
         ))}
       </section>
 
+      <div className="customers-filter-tools">
+        <div className="customer-row-mode" role="tablist" aria-label="고객 목록 표시 기준">
+          {(data.options.rowModes.length > 0 ? data.options.rowModes : [
+            { value: 'account' as CustomerRowMode, label: '계정 기준' },
+            { value: 'contact' as CustomerRowMode, label: '담당자 기준' },
+          ]).map((option) => (
+            <button
+              aria-selected={rowMode === option.value}
+              className={rowMode === option.value ? 'active' : ''}
+              key={option.value}
+              onClick={() => onRowModeChange(option.value)}
+              role="tab"
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="customer-export-actions">
+          {data.export.canDownload ? (
+            <>
+              <a className="route-secondary-action" href={data.export.basicUrl}>
+                <Download size={15} />
+                기본 엑셀
+              </a>
+              <a className="route-secondary-action" href={data.export.fullUrl}>
+                <FileSpreadsheet size={15} />
+                전체 엑셀
+              </a>
+            </>
+          ) : (
+            <span>{data.export.message || '엑셀 권한 없음'}</span>
+          )}
+        </div>
+      </div>
+
       <div className="customers-filter-bar">
         <label className="customers-search">
           <Search size={17} />
@@ -5524,6 +5592,14 @@ function CustomersPage({
             value={query}
           />
         </label>
+        <select onChange={(event) => onCompanyFilterChange(event.target.value)} value={company}>
+          <option value="">업체 전체</option>
+          {data.options.companies.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name} ({formatNumber(option.count)})
+            </option>
+          ))}
+        </select>
         <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
           <option value="">담당자 전체</option>
           {data.options.owners.map((option) => (
@@ -5542,6 +5618,20 @@ function CustomersPage({
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
+        <select onChange={(event) => onGradeChange(event.target.value)} value={grade}>
+          <option value="">고객등급 전체</option>
+          {data.options.grades.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onLevelChange(event.target.value)} value={level}>
+          <option value="">종합점수 전체</option>
+          {data.options.scoreLevels.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.description ? `${option.label} (${option.description})` : option.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="customers-layout">
@@ -5549,11 +5639,36 @@ function CustomersPage({
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Customer list</span>
-              <h2>계정 목록</h2>
+              <h2>{rowModeLabel}</h2>
             </div>
             {loading ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
           </div>
-          <CustomersTable customers={accountRows} />
+          <CustomersTable customers={listRows} emptyLabel={rowMode === 'contact' ? '조건에 맞는 담당자가 없습니다' : '조건에 맞는 계정이 없습니다'} />
+          <div className="customers-pagination">
+            <button
+              className="route-secondary-action"
+              disabled={!pagination.hasPrevious || loading}
+              onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+              type="button"
+            >
+              <ChevronLeft size={15} />
+              이전
+            </button>
+            <span>
+              {formatNumber(currentPage)} / {formatNumber(pagination.totalPages || 1)}
+              {' · '}
+              {formatNumber(pagination.totalRows)}건
+            </span>
+            <button
+              className="route-secondary-action"
+              disabled={!pagination.hasNext || loading}
+              onClick={() => onPageChange(currentPage + 1)}
+              type="button"
+            >
+              다음
+              <ChevronRight size={15} />
+            </button>
+          </div>
         </section>
 
         <aside className="dashboard-panel customers-side-panel">
@@ -20698,6 +20813,16 @@ export function App() {
   const [customerStage, setCustomerStage] = useState(
     () => new URLSearchParams(window.location.search).get('stage') || new URLSearchParams(window.location.search).get('pipeline_stage') || '',
   );
+  const [customerCompany, setCustomerCompany] = useState(
+    () => new URLSearchParams(window.location.search).get('company') || new URLSearchParams(window.location.search).get('company_id') || '',
+  );
+  const [customerGrade, setCustomerGrade] = useState(() => new URLSearchParams(window.location.search).get('grade') || '');
+  const [customerLevel, setCustomerLevel] = useState(
+    () => new URLSearchParams(window.location.search).get('level') || new URLSearchParams(window.location.search).get('score_level') || '',
+  );
+  const [customerRowMode, setCustomerRowMode] = useState<CustomerRowMode>(() => getCustomerRowModeParam());
+  const [customerPage, setCustomerPage] = useState(() => Math.max(Number(new URLSearchParams(window.location.search).get('page') || '1') || 1, 1));
+  const customerPageSize = 20;
   const [assetsData, setAssetsData] = useState<CustomerAssetDirectoryData | null>(null);
   const [assetsLoading, setAssetsLoading] = useState(currentView === 'assets');
   const [assetDirectoryQuery, setAssetDirectoryQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
@@ -20993,6 +21118,12 @@ export function App() {
       owner: customerOwner,
       priority: customerPriority,
       stage: customerStage,
+      company: customerCompany,
+      grade: customerGrade,
+      level: customerLevel,
+      mode: customerRowMode,
+      page: customerPage,
+      pageSize: customerPageSize,
     }).then((data) => {
       if (!alive) {
         return;
@@ -21003,7 +21134,55 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [accountCleanupPreviewId, accountDetailId, currentView, customerDetailId, customerOwner, customerPriority, customerQuery, customerStage]);
+  }, [
+    accountCleanupPreviewId,
+    accountDetailId,
+    currentView,
+    customerCompany,
+    customerDetailId,
+    customerGrade,
+    customerLevel,
+    customerOwner,
+    customerPage,
+    customerPriority,
+    customerQuery,
+    customerRowMode,
+    customerStage,
+  ]);
+
+  useEffect(() => {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId) {
+      return;
+    }
+    const params = new URLSearchParams();
+    if (customerQuery.trim()) params.set('q', customerQuery.trim());
+    if (customerCompany) params.set('company', customerCompany);
+    if (customerOwner) params.set('owner', customerOwner);
+    if (customerPriority) params.set('priority', customerPriority);
+    if (customerStage) params.set('stage', customerStage);
+    if (customerGrade) params.set('grade', customerGrade);
+    if (customerLevel) params.set('level', customerLevel);
+    if (customerRowMode !== 'account') params.set('mode', customerRowMode);
+    if (customerPage > 1) params.set('page', String(customerPage));
+    if (customerCreateOpen) params.set('create', '1');
+    const queryString = params.toString();
+    window.history.replaceState(null, '', `/customers/${queryString ? `?${queryString}` : ''}`);
+  }, [
+    accountCleanupPreviewId,
+    accountDetailId,
+    currentView,
+    customerCompany,
+    customerCreateOpen,
+    customerDetailId,
+    customerGrade,
+    customerLevel,
+    customerOwner,
+    customerPage,
+    customerPriority,
+    customerQuery,
+    customerRowMode,
+    customerStage,
+  ]);
 
   useEffect(() => {
     if (currentView !== 'assets') {
@@ -21729,9 +21908,50 @@ export function App() {
       owner: customerOwner,
       priority: customerPriority,
       stage: customerStage,
+      company: customerCompany,
+      grade: customerGrade,
+      level: customerLevel,
+      mode: customerRowMode,
+      page: customerPage,
+      pageSize: customerPageSize,
     });
     setCustomersData(data);
     return data;
+  };
+  const handleCustomerQueryChange = (value: string) => {
+    setCustomerQuery(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerCompanyFilterChange = (value: string) => {
+    setCustomerCompany(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerOwnerChange = (value: string) => {
+    setCustomerOwner(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerPriorityChange = (value: string) => {
+    setCustomerPriority(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerStageChange = (value: string) => {
+    setCustomerStage(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerGradeChange = (value: string) => {
+    setCustomerGrade(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerLevelChange = (value: string) => {
+    setCustomerLevel(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerRowModeChange = (value: CustomerRowMode) => {
+    setCustomerRowMode(value);
+    setCustomerPage(1);
+  };
+  const handleCustomerPageChange = (value: number) => {
+    setCustomerPage(Math.max(1, value));
   };
   const refreshAssetsData = async () => {
     const data = await loadCustomerAssetDirectoryData({
@@ -23070,11 +23290,16 @@ export function App() {
           detailLoading={customerDetailLoading}
           companyEditId={customerCompanyEditId}
           companyEditName={customerCompanyEditName}
+          company={customerCompany}
+          grade={customerGrade}
+          level={customerLevel}
           loading={customersLoading}
           managementSavingKey={customerManagementSavingKey}
           owner={customerOwner}
+          page={customerPage}
           priority={customerPriority}
           query={customerQuery}
+          rowMode={customerRowMode}
           selectedCustomerId={customerDetailId || accountDetailId}
           stage={customerStage}
           onCompanyCreateNameChange={handleCustomerCompanyCreateNameChange}
@@ -23095,10 +23320,15 @@ export function App() {
           onDepartmentEditStart={handleCustomerDepartmentEditStart}
           onDepartmentEditSubmit={handleUpdateCustomerDepartment}
           onDetailRefresh={refreshCustomerDetailData}
-          onOwnerChange={setCustomerOwner}
-          onPriorityChange={setCustomerPriority}
-          onQueryChange={setCustomerQuery}
-          onStageChange={setCustomerStage}
+          onCompanyFilterChange={handleCustomerCompanyFilterChange}
+          onGradeChange={handleCustomerGradeChange}
+          onLevelChange={handleCustomerLevelChange}
+          onOwnerChange={handleCustomerOwnerChange}
+          onPageChange={handleCustomerPageChange}
+          onPriorityChange={handleCustomerPriorityChange}
+          onQueryChange={handleCustomerQueryChange}
+          onRowModeChange={handleCustomerRowModeChange}
+          onStageChange={handleCustomerStageChange}
         />
       </AppShell>
     );

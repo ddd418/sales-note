@@ -3617,6 +3617,7 @@ class CustomersSummaryApiTests(TestCase):
         self.user = make_user('customers_api_me', role='salesman', company=self.company)
         self.coworker = make_user('customers_api_coworker', role='salesman', company=self.company)
         self.manager = make_user('customers_api_manager', role='manager', company=self.company)
+        self.admin = make_user('customers_api_admin', role='admin', company=self.company)
         self.other_user = make_user('customers_api_other', role='salesman', company=self.other_company)
         self.url = reverse('reporting:customers_summary_api')
 
@@ -3804,6 +3805,73 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(payload['filters']['q'], 'PCR')
         self.assertTrue(any(option['id'] == self.user.id for option in payload['options']['owners']))
 
+    def test_customers_summary_api_filters_company_grade_stage_and_score_level(self):
+        target = self._create_customer(self.user, '정밀필터', priority='urgent', stage='quote')
+        target.customer_grade = 'VIP'
+        target.ai_score = 95
+        target.save(update_fields=['customer_grade', 'ai_score'])
+        other = self._create_customer(self.user, '정밀제외', priority='scheduled', stage='potential')
+        other.customer_grade = 'C'
+        other.ai_score = 15
+        other.save(update_fields=['customer_grade', 'ai_score'])
+        self.client.force_login(self.manager)
+
+        response = self.client.get(self.url, {
+            'company': str(target.company_id),
+            'grade': 'VIP',
+            'stage': 'quote',
+            'level': 'critical',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = [item['id'] for item in payload['customers']]
+        self.assertEqual(ids, [target.id])
+        self.assertEqual(payload['filters']['company'], str(target.company_id))
+        self.assertEqual(payload['filters']['grade'], 'VIP')
+        self.assertEqual(payload['filters']['stage'], 'quote')
+        self.assertEqual(payload['filters']['level'], 'critical')
+        company_option = next(option for option in payload['options']['companies'] if option['id'] == target.company_id)
+        self.assertEqual(company_option['name'], target.company.name)
+        self.assertTrue(any(option['value'] == 'VIP' for option in payload['options']['grades']))
+        self.assertTrue(any(option['value'] == 'critical' for option in payload['options']['scoreLevels']))
+
+    def test_customers_summary_api_returns_row_policy_pagination_and_export_links(self):
+        from urllib.parse import parse_qs, urlparse
+
+        profile = self.user.userprofile
+        profile.can_download_excel = True
+        profile.save(update_fields=['can_download_excel'])
+        for index in range(12):
+            self._create_customer(self.user, f'페이징{index:02d}', priority='scheduled')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {
+            'mode': 'contact',
+            'page': '2',
+            'page_size': '10',
+            'q': '페이징',
+            'priority': 'scheduled',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['filters']['mode'], 'contact')
+        self.assertEqual(payload['pagination']['rowMode'], 'contact')
+        self.assertEqual(payload['pagination']['page'], 2)
+        self.assertEqual(payload['pagination']['pageSize'], 10)
+        self.assertEqual(payload['pagination']['totalRows'], 12)
+        self.assertEqual(payload['pagination']['totalPages'], 2)
+        self.assertEqual(len(payload['customers']), 2)
+        self.assertTrue(any(option['value'] == 'account' for option in payload['options']['rowModes']))
+        self.assertTrue(any(option['value'] == 'contact' for option in payload['options']['rowModes']))
+        self.assertTrue(payload['export']['canDownload'])
+        full_query = parse_qs(urlparse(payload['export']['fullUrl']).query)
+        basic_query = parse_qs(urlparse(payload['export']['basicUrl']).query)
+        self.assertEqual(full_query['search'], ['페이징'])
+        self.assertEqual(full_query['priority'], ['scheduled'])
+        self.assertEqual(basic_query['search'], ['페이징'])
+
     def test_customers_summary_api_manager_sees_same_company_only(self):
         own = self._create_customer(self.user, '회사내고객')
         coworker = self._create_customer(self.coworker, '회사내동료')
@@ -3822,6 +3890,21 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn(own.id, priority_ids)
         self.assertTrue(payload['scope']['canViewAll'])
         self.assertFalse(payload['create']['canCreate'])
+
+    def test_customers_summary_api_admin_sees_all_company_data(self):
+        own = self._create_customer(self.user, '관리자회사내')
+        other = self._create_customer(self.other_user, '관리자타사')
+        self.client.force_login(self.admin)
+
+        response = self.client.get(self.url, {'mode': 'contact'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['customers']}
+        self.assertIn(own.id, ids)
+        self.assertIn(other.id, ids)
+        self.assertTrue(payload['scope']['canViewAll'])
+        self.assertTrue(payload['create']['canCreate'])
 
     def test_customers_summary_api_includes_activity_and_schedule_snapshot(self):
         from datetime import time, timedelta
