@@ -37324,32 +37324,28 @@ def _analytics_api_date_range(request, today):
 
 def _analytics_api_scope_users(request, user_profile):
     selected_user_id = (request.GET.get('user_id') or '').strip()
-    salesperson_list = User.objects.none()
+    user_list = User.objects.none()
     selected_user = None
 
     if user_profile.is_admin() or user_profile.is_manager():
         if user_profile.company:
-            salesperson_list = User.objects.filter(
+            user_list = User.objects.filter(
                 userprofile__company=user_profile.company,
-                userprofile__role='salesman',
                 is_active=True,
             )
         else:
-            salesperson_list = User.objects.filter(
-                userprofile__role='salesman',
-                is_active=True,
-            )
-        salesperson_list = salesperson_list.select_related('userprofile').order_by('last_name', 'first_name', 'username')
+            user_list = User.objects.filter(is_active=True)
+        user_list = user_list.select_related('userprofile').order_by('last_name', 'first_name', 'username')
         if selected_user_id:
             try:
-                selected_user = salesperson_list.get(pk=int(selected_user_id))
+                selected_user = user_list.get(pk=int(selected_user_id))
             except (User.DoesNotExist, ValueError):
                 selected_user = None
         if selected_user:
-            return User.objects.filter(pk=selected_user.pk), salesperson_list, selected_user
-        return salesperson_list, salesperson_list, None
+            return User.objects.filter(pk=selected_user.pk), user_list, selected_user
+        return user_list, user_list, None
 
-    return User.objects.filter(pk=request.user.pk), salesperson_list, request.user
+    return User.objects.filter(pk=request.user.pk), user_list, request.user
 
 
 def _analytics_user_payload(user):

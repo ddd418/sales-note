@@ -173,6 +173,7 @@ def _reports_latest_date(current_value, candidate_value):
 
 
 def _reports_customer_row_base(followup):
+    account_key = account_key_for_followup(followup)
     account_id = followup.department_id or followup.id
     account_href = f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/'
     account_label = followup.department.name if followup.department else (followup.customer_name or followup.manager or '고객명 미정')
@@ -182,6 +183,7 @@ def _reports_customer_row_base(followup):
         if followup.department_id else f'/prepayments/customer/{followup.id}/'
     )
     return {
+        'accountKey': account_key,
         'id': account_id,
         'accountId': followup.department_id,
         'representativeCustomerId': followup.id,
@@ -681,6 +683,10 @@ def _reports_operations_comparison(current_metrics, previous_metrics, previous_f
         'quoteAmount',
         'serviceCount',
         'openServiceCount',
+        'prepaymentCount',
+        'prepaymentAmount',
+        'prepaymentBalance',
+        'prepaymentUsedTotal',
     ]
     deltas = {}
     change_rates = {}

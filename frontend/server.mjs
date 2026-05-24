@@ -208,6 +208,9 @@ function getCoreCrmReactLocation(requestUrl) {
   if (/^\/reporting\/funnel\/\d+\/?$/.test(pathname)) {
     return buildReactLocation('/pipeline/', params);
   }
+  if (pathname === '/reporting/analytics/' || pathname === '/reporting/analytics') {
+    return buildReactLocation('/reports/', params);
+  }
 
   return '';
 }

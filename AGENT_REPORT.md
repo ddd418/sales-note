@@ -1,5 +1,106 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 L단계 리포트 /reports/ 완전 대체
+
+### 요약
+
+- `/reports/`의 고객/계정별 운영 현황표, 계정별 드릴다운, 기간 비교, 업체/부서/담당자 필터, 선결제 잔액 필터, 납품 있음/없음 필터, 엑셀 범위 선택, 데이터 정리 후보 연결 상태를 점검했습니다.
+- legacy `/reporting/analytics/` GET 화면은 React `/reports/`로 이동하도록 Django route와 frontend server redirect map을 모두 보강했습니다.
+- manager/admin의 reports 범위를 같은 회사의 모든 활성 사용자 데이터로 맞췄습니다. salesman은 계속 본인 데이터만 봅니다.
+- 계정 운영 row에 `accountKey`를 추가해 부서 ID와 담당자 ID가 우연히 같은 경우에도 드릴다운 펼침 상태가 섞이지 않게 했습니다.
+- 기간 비교 payload에 선결제 금액/잔액/사용액 키를 포함해 React reports와 엑셀/AI가 같은 계정 원장 지표를 볼 수 있게 했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/api/reports.py`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/server.mjs`
+- `frontend/src/api/reports.ts`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+
+### CRM 개선
+
+- 영업 현황 확인의 canonical 화면은 React `/reports/`입니다.
+- 기존 `/reporting/analytics/` 북마크도 로그인 후 React reports로 이동합니다.
+- manager는 회사 내 salesman뿐 아니라 manager/admin 등 모든 활성 사용자의 데이터를 조회할 수 있고, 담당자 필터로 특정 사용자를 좁힐 수 있습니다.
+- 계정별 운영 현황표의 드릴다운, 선결제 현황, 정리 영향 미리보기 링크가 React 계정/선결제/정리 화면으로 연결됩니다.
+- 현황 엑셀은 현재 필터, 전체 계정, 납품 있는 계정, 선결제 잔액 계정, 정리 후보 계정 범위로 내려받을 수 있습니다.
+
+### 기존 기능 보존
+
+- `/reporting/api/reports/`와 `/reporting/api/reports/customer-operations.xlsx`는 인증/권한 보호를 유지합니다.
+- 활동/파이프라인 CSV/XLSX export route는 backend 다운로드 route로 유지했습니다.
+- Django analytics template 파일은 삭제하지 않았습니다. 운영 수동 검수 후 cleanup 단계에서 판단합니다.
+- salesman의 엑셀 직접 다운로드 차단과 manager/admin 다운로드 권한은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\api\reports.py reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+node --check frontend\server.mjs
+→ OK
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 26 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Browser/local smoke
+→ http://127.0.0.1:4175/reports/ rendered the React shell
+→ http://127.0.0.1:4175/reporting/analytics/?date_from=2026-05-01&date_to=2026-05-25 redirected to /reports/ with query preserved
+→ Browser console error count: 0
+```
+
+### 알려진 제한
+
+- 인증된 실제 데이터에서 계정별 드릴다운 행, 엑셀 다운로드 파일 내용, 정리 후보 링크는 운영 서버에서 사용자 세션으로 수동 확인이 필요합니다.
+- 활동/파이프라인 legacy export route는 아직 별도 backend route입니다. 현재 L 완료 기준의 주 엑셀은 React reports의 계정별 운영 현황 XLSX입니다.
+- Django analytics template은 아직 삭제하지 않았습니다.
+
+### 운영 배포 상태
+
+- 대기 중. 커밋/푸시 후 Railway backend `web`과 frontend `sales-note-frontend` 배포 상태를 확인해야 합니다.
+
+### 권장 다음 작업
+
+- 운영 `/reports/` 수동 검수 완료 후 M 단계 또는 남은 legacy 화면 정리 작업으로 넘어가세요.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/reports/`에 로그인해서 접속합니다.
+2. 계정별 운영 현황표가 표시되고 계정, 납품, 견적, 선결제 차감, 선결제 잔액, 서비스 지표가 보이는지 확인합니다.
+3. 기간을 바꾸면 직전 기간 비교 값이 바뀌는지 확인합니다.
+4. 업체, 부서/연구실, 담당자, 납품 있음/없음, 선결제 잔액 필터를 각각 적용해 rows가 좁혀지는지 확인합니다.
+5. 계정 row의 `드릴다운`을 눌러 담당자, 납품, 견적, 선결제, 서비스 기록 링크가 보이는지 확인합니다.
+6. `현황 엑셀`에서 현재 필터와 납품 있는 계정/선결제 잔액 계정/정리 후보 계정 범위를 내려받아 파일이 열리는지 확인합니다.
+7. 정리 후보 배지가 있는 계정에서 정리 영향 미리보기 링크가 `/accounts/<id>/cleanup-preview/`로 열리는지 확인합니다.
+8. `/reporting/analytics/`를 직접 열었을 때 `/reports/`로 이동하는지 확인합니다.
+9. manager 계정에서 같은 회사 전체 사용자 데이터가 보이고, 특정 담당자 필터가 동작하는지 확인합니다.
+10. salesman 계정에서는 본인 데이터만 보이고 엑셀 버튼이 숨겨지는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 K단계 납품/견적/문서 흐름 React화
 
 ### 요약

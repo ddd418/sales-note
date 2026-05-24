@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement L-step reports replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item L for `/reports/`.
+- Current React reports already provides the account/customer operations table, date/user filters, account drilldown rows, previous-period comparison, delivery/prepayment-balance filters, account operations XLSX export, and data cleanup candidate cards.
+- Remaining full-replacement gaps are legacy `/reporting/analytics/` page entry, manager/admin company-wide user scope consistency, stable account row identity for drilldown, and explicit export/report parity documentation.
+
+**DB change required**: No.
+
+- Existing `FollowUp`, `Department`, `Schedule`, `DeliveryItem`, `Quote`, `Prepayment`, `PrepaymentUsage`, `CustomerAsset`, `ServiceCase`, and account-cleanup models are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Redirect authenticated GET requests for legacy `/reporting/analytics/` to React `/reports/`, preserving date/user/filter query parameters and keeping CSV/XLSX export endpoints as protected backend routes.
+- Add the same legacy reports redirect to the production frontend server's migrated-route map so frontend-domain bookmarks do not proxy to a Django template.
+- Make reports manager/admin scope use all active users in the same company, not only `salesman`, while keeping salesman users scoped to themselves.
+- Keep the React 담당자 filter backed by the same company-wide user list and preserve selected-user scoping.
+- Add a stable `accountKey` to account operation rows so account/contact ID collisions cannot break row expansion.
+- Extend period comparison payloads for prepayment amount/balance/usage metrics and surface that in React comparison cards.
+- Keep current account drilldown, delivery presence filter, prepayment balance filter, Excel export scope, and data cleanup-to-account links intact.
+- Add focused tests for the reports legacy redirect, manager company-wide scope, stable account keys, comparison payload, and scoped XLSX export behavior.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\api\reports.py reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/reports/`, `/reporting/analytics/`, protected reports API, and account operations XLSX.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement K-step delivery/quote/document flow plan
 
 **Background**:

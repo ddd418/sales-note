@@ -265,6 +265,7 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(reverse('reporting:schedule_list'), 'schedules/')
         self.assertReactRedirect(reverse('reporting:schedule_calendar'), 'schedules/calendar/')
         self.assertReactRedirect(reverse('reporting:funnel_pipeline'), 'pipeline/')
+        self.assertReactRedirect(reverse('reporting:analytics_dashboard'), 'reports/')
 
     def test_core_detail_page_redirects(self):
         self.assertReactRedirect(reverse('reporting:followup_detail', args=[self.followup.id]), f'customers/{self.followup.id}/')
@@ -315,6 +316,10 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(
             f"{reverse('reporting:followup_list')}?pipeline_stage=quote&q=Kim",
             'customers/?stage=quote&q=Kim',
+        )
+        self.assertReactRedirect(
+            f"{reverse('reporting:analytics_dashboard')}?date_from=2026-05-01&date_to=2026-05-25&user_id={self.user.id}",
+            f'reports/?date_from=2026-05-01&date_to=2026-05-25&user_id={self.user.id}',
         )
 
     def test_non_get_legacy_create_action_is_not_redirected_to_react(self):
@@ -754,7 +759,8 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         operations = payload['customerOperations']
-        row = next(item for item in operations['rows'] if item['id'] == self.followup.id)
+        row = next(item for item in operations['rows'] if item['accountKey'] == f'department:{self.department.id}')
+        self.assertEqual(row['accountKey'], f'department:{self.department.id}')
         self.assertEqual(row['deliveryCount'], 2)
         self.assertEqual(row['normalDeliveryCount'], 1)
         self.assertEqual(row['prepaymentDeliveryCount'], 1)
@@ -778,6 +784,7 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(operations['metrics']['normalDeliveryCount'], 1)
         comparison = payload['comparison']['customerOperations']
         self.assertIn('deliveryCount', comparison['deltas'])
+        self.assertIn('prepaymentBalance', comparison['deltas'])
         self.assertIn('dateFrom', comparison)
 
     def test_common_account_ledger_feeds_reports_customer_detail_and_ai(self):
@@ -1708,6 +1715,54 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(payload['filters']['selectedUserId'], self.user.id)
         self.assertIn('customer-operations.xlsx', payload['links']['customerOperationsXlsx'])
         self.assertIn(f'user_id={self.user.id}', payload['links']['customerOperationsXlsx'])
+
+    def test_reports_api_manager_scope_includes_all_same_company_users(self):
+        admin_user = make_user('react-api-visible-admin', role='admin', company=self.company)
+        outside_company = UserCompany.objects.create(name='다른 회사')
+        outside_user = make_user('react-api-outside-manager', role='manager', company=outside_company)
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            action_type='customer_meeting',
+            content='실무자 활동',
+        )
+        History.objects.create(
+            user=self.manager,
+            company=self.company,
+            action_type='memo',
+            content='매니저 기록',
+        )
+        History.objects.create(
+            user=admin_user,
+            company=self.company,
+            action_type='memo',
+            content='관리자 기록',
+        )
+        History.objects.create(
+            user=outside_user,
+            company=outside_company,
+            action_type='memo',
+            content='타사 기록',
+        )
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['metrics']['totalHistories'], 3)
+        visible_usernames = {item['username'] for item in payload['scope']['salespeople']}
+        self.assertIn(self.user.username, visible_usernames)
+        self.assertIn(self.manager.username, visible_usernames)
+        self.assertIn(admin_user.username, visible_usernames)
+        self.assertNotIn(outside_user.username, visible_usernames)
+
+        selected_response = self.client.get(reverse('reporting:reports_summary_api'), {'user_id': self.manager.id})
+        self.assertEqual(selected_response.status_code, 200)
+        selected_payload = selected_response.json()
+        self.assertEqual(selected_payload['metrics']['totalHistories'], 1)
+        self.assertEqual(selected_payload['filters']['selectedUserId'], self.manager.id)
 
     def test_reports_customer_operations_xlsx_export_downloads_table(self):
         from io import BytesIO

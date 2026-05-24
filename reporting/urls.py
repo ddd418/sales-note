@@ -262,7 +262,10 @@ urlpatterns = [
     path('manager/salesman/<int:user_id>/', views.salesman_detail, name='salesman_detail'),
 
     # Phase 6: 분석 보고서 URL들
-    path('analytics/', views.analytics_dashboard_view, name='analytics_dashboard'),
+    path('analytics/', react_page_redirect(
+        views.analytics_dashboard_view,
+        static_react_page('reports/'),
+    ), name='analytics_dashboard'),
     path('analytics/export/activity.csv', views.analytics_activity_csv_export, name='analytics_activity_csv'),
     path('analytics/export/pipeline.csv', views.analytics_pipeline_csv_export, name='analytics_pipeline_csv'),
     path('analytics/export/activity.xlsx', views.analytics_activity_xlsx_export, name='analytics_activity_xlsx'),

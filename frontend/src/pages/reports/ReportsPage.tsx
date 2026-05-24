@@ -69,7 +69,7 @@ export function ReportsPage({
   onRefresh: () => void;
   onUserChange: (value: string) => void;
 }) {
-  const [expandedAccountId, setExpandedAccountId] = useState<number | null>(null);
+  const [expandedAccountKey, setExpandedAccountKey] = useState<string | null>(null);
   const [cleanupActionLoadingKey, setCleanupActionLoadingKey] = useState('');
   const [cleanupActionMessage, setCleanupActionMessage] = useState('');
   const [quickFixContactId, setQuickFixContactId] = useState('');
@@ -703,7 +703,7 @@ export function ReportsPage({
             </thead>
             <tbody>
               {rows.length > 0 ? rows.map((customer) => (
-                <Fragment key={customer.id}>
+                <Fragment key={customer.accountKey || customer.id}>
                 <tr>
                   <td className="reports-account-cell">
                     <a href={customer.href}>
@@ -774,14 +774,14 @@ export function ReportsPage({
                     </a>
                     <button
                       className="customer-row-action reports-row-toggle"
-                      onClick={() => setExpandedAccountId((current) => (current === customer.id ? null : customer.id))}
+                      onClick={() => setExpandedAccountKey((current) => (current === customer.accountKey ? null : customer.accountKey))}
                       type="button"
                     >
-                      {expandedAccountId === customer.id ? '접기' : '드릴다운'} <Eye size={13} />
+                      {expandedAccountKey === customer.accountKey ? '접기' : '드릴다운'} <Eye size={13} />
                     </button>
                   </td>
                 </tr>
-                {expandedAccountId === customer.id ? (
+                {expandedAccountKey === customer.accountKey ? (
                   <tr className="reports-drilldown-row">
                     <td colSpan={10}>
                       <ReportsAccountDrilldown customer={customer} />

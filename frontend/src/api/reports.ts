@@ -40,6 +40,7 @@ export type ReportsOperationDrilldownRecord = {
 };
 
 export type ReportsCustomerOperationRow = {
+  accountKey: string;
   id: number;
   accountId?: number | null;
   representativeCustomerId?: number;
@@ -506,6 +507,7 @@ export async function loadReportsData(params: {
           const normalized = normalizeHrefFields(customer, ['href', 'customerHref', 'djangoHref', 'cleanupPreviewHref']);
           return {
             ...normalized,
+            accountKey: customer.accountKey ?? (customer.accountId ? `department:${customer.accountId}` : `followup:${customer.representativeCustomerId ?? normalized.id}`),
             links: {
               account: normalizeCoreCrmHref(customer.links?.account ?? normalized.href),
               prepayments: normalizeCoreCrmHref(customer.links?.prepayments ?? ''),
