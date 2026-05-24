@@ -28394,6 +28394,22 @@ Browser/local smoke
 → React customer detail route rendered an error state instead of a blank page when the local backend was unavailable
 → Browser console errors: none
 
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend GitHub deployment a05641cd-4474-4d4f-a719-39ac17f74e16 succeeded for commit 229a94d
+→ Two manual railway up retries were interrupted by network resets and remained listed as INITIALIZING; production smoke still passed on the successful GitHub deployment
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ Frontend GitHub deployment 63bdcbc9-e2aa-4266-8b85-8486650fa5da succeeded for commit 229a94d
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz, readyz, login page, protected reports API
+→ PASS frontend healthz, dashboard shell, protected reports API
+
+Production customer detail smoke
+→ https://sales-note-frontend-production.up.railway.app/customers/1/ served the login page when anonymous
+→ Frontend-proxied and direct backend /reporting/api/customers/1/ returned 401 login_required when anonymous
+→ Browser console errors: none
+
 git diff --check
 → OK, CRLF normalization warnings only
 ```
@@ -28406,7 +28422,13 @@ git diff --check
 
 ### 7. Production Deployment Status
 
-- Pending Railway deployment in this task.
+- Completed.
+- Commit `229a94d feat: complete react customer detail parity` is present on `origin/main`.
+- Railway backend `web` GitHub deployment `a05641cd-4474-4d4f-a719-39ac17f74e16` succeeded for commit `229a94d`.
+- Railway frontend `sales-note-frontend` GitHub deployment `63bdcbc9-e2aa-4266-8b85-8486650fa5da` succeeded for commit `229a94d`.
+- Production anonymous access smoke passed: `/customers/1/` serves the login page, and customer detail APIs return `401 login_required`.
+- Two manual `railway up` retries for backend were interrupted by network resets and remained listed as `INITIALIZING`; the successful GitHub deployment is the verified production deployment.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 8. Recommended Next Task
 
