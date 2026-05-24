@@ -1,5 +1,31 @@
 # AGENT_PLAN.md
 
+## 2026-05-24 React full replacement A-step inventory plan
+
+**Background**:
+
+- User asked to start item A from the React full replacement checklist.
+- Goal is to inventory Django templates, reporting URLs, render-based views, and React/legacy mapping before removing any legacy surface.
+
+**DB change required**: No.
+
+- Documentation/inventory only.
+- No runtime behavior changes.
+
+**Implementation scope**:
+
+- List all `reporting/templates` files.
+- Classify every `reporting/urls.py` route group as React replaced, API/backend keep, legacy fallback, or deletion candidate.
+- List Django views that still call `render()` or declare a Django template.
+- Map React routes/screens to existing Django API and legacy fallback routes.
+- Record results in `AGENT_REPORT.md` and a separate memo under `D:\projects\해야할일`.
+
+**Validation plan**:
+
+- `rg` and PowerShell inventory commands over templates, URLs, views, and React routes.
+- `python manage.py check`
+- `git diff --check`
+
 ## 2026-05-24 Salesman company/department management visibility plan
 
 **Background**:

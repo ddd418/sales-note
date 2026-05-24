@@ -1,5 +1,83 @@
 # AGENT_REPORT.md
 
+## 2026-05-24 — React 완전대체 A단계 Django template/route 인벤토리
+
+### 요약
+
+- React 완전대체 A단계로 Django template, `reporting/urls.py`, `render()` 기반 view, React route 매핑을 정리했습니다.
+- 실제 삭제나 런타임 동작 변경은 하지 않았습니다.
+- 별도 문서는 `D:\projects\해야할일\React_완전대체_A단계_Django_템플릿_URL_인벤토리.txt`에 저장했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `D:\projects\해야할일\React_완전대체_A단계_Django_템플릿_URL_인벤토리.txt`
+
+### CRM 개선
+
+- 남아 있는 Django 화면을 `React 대체 완료`, `API/백엔드 유지`, `legacy fallback 유지`, `삭제 후보`로 구분했습니다.
+- 다음 React 완전대체 작업에서 어떤 legacy 화면부터 걷어낼지 판단 가능한 기준을 만들었습니다.
+
+### 기존 기능 보존
+
+- DB/model/API/frontend runtime 변경 없음.
+- Django template와 route 삭제 없음.
+- `/reporting/*` 호환 route와 React redirect 동작은 그대로 유지했습니다.
+
+### 조사 결과
+
+- `reporting/templates` 파일 수: 74개.
+- `reporting/urls.py` path 선언: 331개.
+- `react_page_redirect` 적용 route: 19개.
+- `/reporting/api/` 계열 API route: 168개.
+- 즉시 삭제 가능한 route/template는 없음. 삭제는 React parity, 권한 테스트, 운영 수동 확인 후 진행해야 합니다.
+
+### 핵심 분류
+
+- React 대체 완료 후보: followups, schedules, histories, customer-report, dashboard, funnel 계열 GET 화면.
+- API/백엔드 유지: `/reporting/api/*`, 파일/엑셀/PDF/문서 생성, OAuth callback, backup, session 관련 route.
+- Legacy fallback 유지: 업체/부서 전체관리, admin 사용자관리, manager 직원관리, manager dashboard, analytics legacy, prepayment/product/document/weekly-report/gmail/business-card/profile 일부 legacy 화면.
+- 삭제 후보: React redirect가 이미 적용된 template부터 운영 참조와 non-GET fallback 미사용 여부 확인 후 단계적 삭제.
+
+### 실행한 명령어 및 결과
+
+```text
+git status --short
+→ clean before inventory work
+
+Get-ChildItem reporting\templates -Recurse -File
+→ 74 templates listed
+
+rg -n "path\(" reporting\urls.py
+→ reporting URL path declarations reviewed
+
+rg -n "return render\(|render\(request|TemplateView|template_name" reporting -g "*.py"
+→ render/template_name based Django screens listed
+
+rg -n "function getCurrentView|currentView ===|href: '|id: '" frontend\src
+→ React route surface and navigation links reviewed
+```
+
+### 알려진 제한
+
+- 이번 인벤토리는 정적 코드 기준입니다. 실제 운영 접속 로그 기반 미사용 route 판정은 아직 하지 않았습니다.
+- `todos` 앱과 `ai_chat` 앱의 Django template/route는 A단계 핵심 범위 밖으로 별도 확인이 필요합니다.
+
+### 권장 다음 작업
+
+- `H. 업체/부서 관리 완전 대체` 또는 `P. 사용자/직원 관리 완전 대체`부터 진행하는 것이 가장 효과적입니다.
+
+### 운영 배포 상태
+
+- Documentation/inventory only. Railway 배포 불필요.
+
+### 사용자가 확인할 절차
+
+1. `D:\projects\해야할일\React_완전대체_A단계_Django_템플릿_URL_인벤토리.txt`를 열어봅니다.
+2. `삭제 후보 우선순위`와 `다음 작업 제안` 섹션을 확인합니다.
+3. 다음 지시로 `H`, `P`, `C`, 또는 `삭제 후보 1차 bundle QA` 중 하나를 선택합니다.
+
 ## 2026-05-24 — 실무자 업체/부서 수정·삭제 노출
 
 ### 요약
