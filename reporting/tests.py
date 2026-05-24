@@ -337,6 +337,46 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(admin_items['userAdmin']['href'], reverse('reporting:user_list'))
         self.assertTrue(admin_response.json()['capabilities']['canManageUsers'])
 
+    def test_navigation_api_role_menu_differences(self):
+        company = UserCompany.objects.create(name='권한별메뉴회사')
+        salesman = make_user('nav-role-salesman', role='salesman', company=company)
+        manager = make_user('nav-role-manager', role='manager', company=company)
+        admin = make_user('nav-role-admin', role='admin', company=company)
+
+        self.client.force_login(salesman)
+        salesman_payload = self.client.get(reverse('reporting:navigation_api')).json()
+        salesman_ids = {item['id'] for item in salesman_payload['items']}
+        self.assertIn('tasks', salesman_ids)
+        self.assertIn('mail', salesman_ids)
+        self.assertNotIn('tasksManager', salesman_ids)
+        self.assertNotIn('employees', salesman_ids)
+        self.assertNotIn('userAdmin', salesman_ids)
+        self.assertFalse(salesman_payload['capabilities']['canManageTasks'])
+        self.assertFalse(salesman_payload['capabilities']['canManageUsers'])
+
+        self.client.force_login(manager)
+        manager_payload = self.client.get(reverse('reporting:navigation_api')).json()
+        manager_ids = {item['id'] for item in manager_payload['items']}
+        self.assertIn('tasks', manager_ids)
+        self.assertIn('tasksManager', manager_ids)
+        self.assertIn('employees', manager_ids)
+        self.assertNotIn('mail', manager_ids)
+        self.assertNotIn('userAdmin', manager_ids)
+        self.assertTrue(manager_payload['capabilities']['canManageTasks'])
+        self.assertTrue(manager_payload['capabilities']['canManageEmployees'])
+        self.assertFalse(manager_payload['capabilities']['canUseMailbox'])
+
+        self.client.force_login(admin)
+        admin_payload = self.client.get(reverse('reporting:navigation_api')).json()
+        admin_ids = {item['id'] for item in admin_payload['items']}
+        self.assertIn('tasks', admin_ids)
+        self.assertIn('mail', admin_ids)
+        self.assertIn('userAdmin', admin_ids)
+        self.assertNotIn('tasksManager', admin_ids)
+        self.assertNotIn('employees', admin_ids)
+        self.assertTrue(admin_payload['capabilities']['canManageUsers'])
+        self.assertTrue(admin_payload['capabilities']['canUseMailbox'])
+
 
 class EmployeeManagementApiTests(TestCase):
     """Manager-only employee management API tests."""

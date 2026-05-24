@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-24 React full replacement D-step common shell/layout plan
+
+**Background**:
+
+- User asked to continue React full replacement item D.
+- The CRM React shell exists in both `App.tsx` and the optimized `/dashboard/` bundle `DashboardApp.tsx`, but it is duplicated.
+- Loading/empty/error state UI also has repeated local implementations.
+
+**DB change required**: No.
+
+- Frontend shell/component consolidation and navigation permission tests only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Extract a shared CRM `AppShell`, `TopBar`, and navigation icon map into `components/shared`.
+- Use the shared shell in both the full CRM app and dashboard-only app.
+- Add shared loading, empty, and API alert state components and use them in the dashboard/full app entry points.
+- Tighten navigation API role tests for salesman, manager, and admin menu differences.
+- Verify mobile/tablet shell layout with a local React browser check.
+- Record the result in `AGENT_REPORT.md` and a separate memo under `D:\projects\해야할일`.
+
+**Validation plan**:
+
+- `python manage.py test reporting.tests.ReactNavigationApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Local browser/Playwright check for desktop, tablet, and mobile shell widths.
+- `git diff --check`
+
 ## 2026-05-24 React full replacement C-step auth/session flow plan
 
 **Background**:

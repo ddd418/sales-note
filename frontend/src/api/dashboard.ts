@@ -158,6 +158,8 @@ export type NavigationData = {
   };
   capabilities: {
     canManageTasks: boolean;
+    canManageEmployees: boolean;
+    canManageUsers: boolean;
     canUseAi: boolean;
     canUseMailbox: boolean;
     canViewAllUsers: boolean;
@@ -247,6 +249,8 @@ const emptyNavigationData: NavigationData = {
   },
   capabilities: {
     canManageTasks: false,
+    canManageEmployees: false,
+    canManageUsers: false,
     canUseAi: false,
     canUseMailbox: true,
     canViewAllUsers: false,

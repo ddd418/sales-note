@@ -1,5 +1,108 @@
 # AGENT_REPORT.md
 
+## 2026-05-24 — React 완전대체 D단계 공통 Shell/Layout 정리
+
+### 요약
+
+- `App.tsx`와 dashboard 전용 번들 `DashboardApp.tsx`에 중복으로 있던 CRM Shell, TopBar, navigation icon/active 처리, logout 처리를 공통 컴포넌트로 분리했습니다.
+- dashboard loading, empty, API alert 상태를 공통 컴포넌트로 분리하고 두 React entry에서 사용하도록 정리했습니다.
+- `/reporting/api/navigation/`의 salesman, manager, admin 메뉴 차이를 회귀 테스트로 고정했습니다.
+- 별도 문서는 `D:\projects\해야할일\React_완전대체_D단계_공통_Shell_Layout.txt`에 저장했습니다.
+
+### 변경된 파일
+
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/components/shared/FeedbackStates.tsx`
+- `frontend/src/App.tsx`
+- `frontend/src/DashboardApp.tsx`
+- `frontend/src/api/dashboard.ts`
+- `reporting/tests.py`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `D:\projects\해야할일\React_완전대체_D단계_공통_Shell_Layout.txt`
+
+### CRM 개선
+
+- React CRM의 주요 화면이 같은 `AppShell`, `TopBar`, `Sidebar` 기준으로 렌더링됩니다.
+- navigation API가 내려주는 권한별 메뉴를 공통 Shell이 사용하므로 manager/admin/salesman 메뉴 차이가 한곳에서 반영됩니다.
+- manager의 `업무하달`, `직원관리`, admin의 `사용자관리`, salesman/admin의 `메일` 노출 차이를 테스트로 검증했습니다.
+- navigation API를 못 받는 fallback 상황에서도 `/tasks/manager/`는 `업무` 메뉴를 활성화해 화면 이동 상태가 비지 않게 했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` backend/API/login/legacy fallback 경로는 유지했습니다.
+- DB/model/migration 변경 없음.
+- 기존 React route surface와 dashboard 전용 경량 entry 구조는 유지했습니다.
+- manager/admin/salesman 권한 정책은 backend navigation API 기준으로 유지했습니다.
+
+### 실행한 명령어 및 결과
+
+```text
+npx tsc --noEmit --pretty false
+-> OK
+
+npm run build
+-> OK
+-> DashboardApp 8.94 kB, FeedbackStates shared chunk 19.38 kB, App 691.39 kB
+-> Vite large chunk warning remains for the full App bundle; this D-step did not change functionality or route splitting beyond shared shell reuse
+
+node --check server.mjs
+-> OK
+
+python -m py_compile reporting\tests.py sales_project\urls.py reporting\views.py
+-> OK
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py check
+-> System check identified no issues
+-> Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py makemigrations --check --dry-run
+-> No changes detected
+-> Existing local warning printed: EMAIL_ENCRYPTION_KEY is not set
+
+$env:RAILWAY_ENVIRONMENT='localtest'; $env:SECRET_KEY='local-test-secret'; python manage.py test reporting.tests.ReactNavigationApiTests --verbosity=2
+-> OK, 4 tests
+
+Local Playwright shell smoke against http://127.0.0.1:4178
+-> OK
+-> /dashboard/, /customers/, /tasks/manager/ checked at 1440x900, 900x1100, 390x844
+-> Shell/sidebar/topbar rendered, active nav present, horizontal overflow 0
+
+git diff --check
+-> OK, CRLF normalization warning only
+```
+
+### 로컬 환경 메모
+
+- 중간에 작업이 끊긴 뒤 현재 PC의 Python 환경에서 `celery`, `python-dotenv`, `cloudinary_storage`, `dj_database_url`, `whitenoise`가 누락되어 Django 검증이 처음 실패했습니다.
+- `requirements.txt` 전체 설치는 이 PC의 Python 3.9와 `Django==5.2.3` 요구사항이 맞지 않아 중단되었습니다.
+- 운영 settings 기준 검증을 위해 필요한 누락 의존성만 로컬에 보강하고 `RAILWAY_ENVIRONMENT=localtest`, 임시 `SECRET_KEY`로 검사했습니다.
+
+### 알려진 제한
+
+- 이 단계는 Shell/Layout 공통화가 범위입니다. 모든 개별 페이지 내부의 로딩/빈/에러 블록을 전부 교체하지는 않았습니다.
+- full `App` 번들의 큰 chunk warning은 남아 있습니다. 다음 분리 단계에서 pages/accounts, pages/prepayments, pages/assets, api modules 쪽으로 계속 줄여야 합니다.
+- Django template `base.html` 자체를 삭제하지 않았습니다. React feature parity와 운영 수동 검수 전까지 유지합니다.
+
+### Railway 배포 상태
+
+- 배포 대상: `sales-note-frontend`는 runtime 변경 대상입니다.
+- `web`은 runtime backend 변경은 없고 테스트만 변경했지만, 저장소 push 정책상 배포 상태를 같이 확인합니다.
+- 상태: 커밋/푸시 후 Railway 배포와 production smoke를 진행하고 이 섹션을 갱신합니다.
+
+### 사용자 수동 검수 절차
+
+1. manager 계정으로 로그인 후 `/dashboard/`에 들어가 사이드바 첫 화면이 공통 Shell로 보이는지 확인합니다.
+2. manager 계정에서 메뉴에 `업무`, `업무하달`, `직원관리`가 보이고 `메일`, `사용자관리`는 보이지 않는지 확인합니다.
+3. admin 계정에서 메뉴에 `사용자관리`, `메일`이 보이고 `직원관리`, `업무하달`은 보이지 않는지 확인합니다.
+4. salesman 계정에서 `업무`, `메일`은 보이고 `직원관리`, `사용자관리`, `업무하달`은 보이지 않는지 확인합니다.
+5. PC, 태블릿 폭, 휴대폰 폭에서 `/dashboard/`, `/customers/`, `/tasks/` 화면의 sidebar/topbar가 겹치거나 가로 스크롤을 만들지 않는지 확인합니다.
+
+### 추천 다음 단계
+
+- E. Django template base layout 의존이 남은 실제 사용자 화면을 React replacement map에 맞춰 줄이기.
+- 이후 큰 파일 분리 작업에서 `frontend/src/App.tsx`를 pages 단위로 계속 나누기.
+
 ## 2026-05-24 — React 완전대체 C단계 인증/세션 흐름 정리
 
 ### 요약
