@@ -81,7 +81,12 @@ Browser/local smoke on frontend server :4177
 
 ### 운영 배포 상태
 
-- 배포 예정. 코드 검증 완료 후 commit/push와 Railway 배포 확인을 진행합니다.
+- 완료.
+- Commit `4008304 feat: complete react assets replacement` is present on `origin/main`.
+- Railway backend `web` service deployed commit `4008304` successfully as deployment `3c078f44-a45f-48d7-a6a3-b1241e20ab55`.
+- Railway frontend `sales-note-frontend` service deployed commit `4008304` successfully as deployment `1e9d91aa-537a-4522-87d3-dfe5acba6807`.
+- Production anonymous smoke passed for health, React `/assets/` shell, React `/assets/?asset=<id>` shell, React `/services/` shell, protected customer-assets API, and protected services API.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
