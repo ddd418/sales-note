@@ -1,5 +1,103 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — AI nano 전환 및 브리핑 전용화
+
+### 요약
+
+- CRM AI 기본 모델을 `gpt-5.4-mini`에서 `gpt-5.4-nano`로 변경했습니다.
+- AI Workspace 질문 모델 선택도 `GPT-5.4 nano` 단일 선택으로 바꿨습니다.
+- AI Workspace 시스템 프롬프트를 전략/창작/프롬프트/메일 작성 도구가 아니라 CRM 데이터 브리핑 작성자로 바꿨습니다.
+- AI 답변에서 `decision`, `perspective`, `actionItems` 전략 카드가 생성·표시되지 않도록 정리했습니다.
+- 일정 상세 AI는 실행 코치/초안 생성이 아니라 일정 브리핑으로 표시하고, 보고/메일 초안 버튼과 payload를 비웠습니다.
+- 주간보고 AI 초안 API와 AI Workspace 액션 초안 API는 `410 Gone`으로 차단했습니다.
+- legacy `/ai/` 프롬프트 허브는 React `/ai-workspace/` 브리핑 화면으로 redirect합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/services.py`
+- `ai_chat/tests.py`
+- `ai_chat/views.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/components/shared/CrmShell.tsx`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- AI 사용 목적을 브리핑으로 좁혀 운영자가 AI에 전략/창작/메일/보고 초안 생성을 맡기는 흐름을 제거했습니다.
+- 잘못된 초안 생성이나 외부 AI 프롬프트 복사 흐름 대신, CRM 원장·메일·노트·일정 근거를 확인하는 방향으로 화면 문구를 맞췄습니다.
+- 기존 AI 권한 체크와 로그인 보호는 유지했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 인증, 권한, AI Workspace summary/question/history/memory APIs는 유지했습니다.
+- 기존 질문/브리핑 기록 저장 구조는 유지해 과거 기록 조회와 검수 기억 흐름이 깨지지 않도록 했습니다.
+- 주간보고와 일정 노트는 수동 작성 기능을 유지하고, AI 초안 생성만 차단했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\tests.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.AIPermissionTests --verbosity=1
+→ Ran 4 tests, OK
+
+python manage.py test ai_chat.tests.AIDepartmentPromptHubViewTests --verbosity=1
+→ Ran 8 tests, OK
+
+Focused AI Workspace briefing tests
+→ Ran 22 selected tests across model choices, prompt rules, fallback briefing, schedule briefing, memory/feedback messages, and disabled draft APIs, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing App chunk still reports Vite >500 kB warning
+
+Local browser smoke
+→ Opened http://127.0.0.1:5175/ai-workspace/
+→ Page title: AI 브리핑 - 영업 보고 시스템
+→ `AI 브리핑` text visible
+→ Old positive labels `AI 업무도구`, `AI Workspace 열기`, `AI에게 질문`, `메일 초안 복사`, `보고 초안 적용` not visible
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- legacy AI 분석 결과 상세 화면과 내부 분석 데이터 구조에는 과거 “전략” 계열 용어가 일부 남아 있습니다. 이번 작업에서는 사용자가 진입하는 `/ai/` 프롬프트 허브를 React 브리핑 화면으로 redirect하고, React/주요 API의 생성 기능을 차단하는 데 범위를 맞췄습니다.
+- AI Workspace 전체 테스트 클래스는 매우 커서 시간 제한 내 전체 실행은 끝나지 않았고, 변경 지점 중심의 집중 테스트를 실행했습니다.
+
+### Production Deployment Status
+
+- Pending commit, push, Railway deployment, and production smoke.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/ai-workspace/`를 엽니다.
+2. 상단 제목과 메뉴가 `AI 브리핑`으로 보이는지 확인합니다.
+3. 모델 선택이 `GPT-5.4 nano`만 보이는지 확인합니다.
+4. “메일 써줘”, “전략 짜줘”, “외부 AI 프롬프트 만들어줘” 같은 요청을 넣고 산출물 대신 CRM 브리핑만 나오는지 확인합니다.
+5. 일정 상세에서 AI 영역이 `일정 브리핑`으로 보이고 보고/메일 초안 적용 버튼이 없는지 확인합니다.
+6. 주간보고 작성 화면에 AI 초안 버튼이 없는지 확인합니다.
+7. `/ai/`로 직접 접근했을 때 `/ai-workspace/`로 이동하는지 확인합니다.
+
 ## 2026-05-25 — 외상고객 메뉴와 품목별 외상/카드/수금 관리
 
 ### 요약

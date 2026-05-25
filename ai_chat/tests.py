@@ -614,48 +614,37 @@ class AIDepartmentPromptHubViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
 
-    def test_ai_main_lists_departments_for_ai_user(self):
+    def test_ai_main_redirects_ai_user_to_react_briefing(self):
         user = make_ai_user('ai_main_user', can_use_ai=True)
-        _, department = make_department_with_followup(user, department_name='마케팅팀')
+        make_department_with_followup(user, department_name='마케팅팀')
         self.client.force_login(user)
 
         response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'AI 업무 프롬프트 생성')
-        self.assertContains(response, department.name)
-        self.assertNotContains(response, '수동 프롬프트 생성기')
-        self.assertNotContains(response, '/ai/prompt-builder/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/ai-workspace/')
 
-    def test_ai_main_only_marks_ai_sidebar_item_active(self):
+    def test_ai_main_redirect_preserves_department_selection(self):
         user = make_ai_user('ai_sidebar_user', can_use_ai=True)
-        make_department_with_followup(user)
+        _, department = make_department_with_followup(user)
         self.client.force_login(user)
 
-        response = self.client.get(self.url)
-        html = response.content.decode('utf-8')
+        response = self.client.get(f'{self.url}?department={department.id}')
 
-        self.assertRegex(
-            html,
-            r'href="/ai/" class="nav-link\s+active"',
-        )
-        self.assertNotRegex(
-            html,
-            r'href="/reporting/companies/" class="nav-link\s+active"',
-        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f'/ai-workspace/?department_id={department.id}')
 
-    def test_ai_main_shows_empty_analysis_state(self):
+    def test_ai_main_empty_analysis_redirects_to_react_briefing(self):
         user = make_ai_user('ai_empty_analysis_user', can_use_ai=True)
         _, department = make_department_with_followup(user)
         self.client.force_login(user)
 
         response = self.client.get(f'{self.url}?department={department.id}')
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '아직 이 부서의 AI 분석 결과가 없습니다.')
-        self.assertContains(response, 'AI 분석 실행')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f'/ai-workspace/?department_id={department.id}')
 
-    def test_ai_main_shows_analysis_summary_and_goal_cards(self):
+    def test_ai_main_analysis_summary_redirects_to_react_briefing(self):
         user = make_ai_user('ai_analysis_summary_user', can_use_ai=True)
         _, department = make_department_with_followup(user)
         make_department_analysis(user, department)
@@ -663,12 +652,10 @@ class AIDepartmentPromptHubViewTests(TestCase):
 
         response = self.client.get(f'{self.url}?department={department.id}')
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '최근 견적 문의가 늘었지만 후속 연락이 지연되고 있습니다.')
-        self.assertContains(response, '견적 후속 연락 전략 작성')
-        self.assertContains(response, '참고 조건')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f'/ai-workspace/?department_id={department.id}')
 
-    def test_ai_main_post_builds_prompt_without_openai_call(self):
+    def test_ai_main_post_redirects_without_openai_call(self):
         user = make_ai_user('ai_main_post_user', can_use_ai=True)
         _, department = make_department_with_followup(user)
         make_department_analysis(user, department)
@@ -686,13 +673,11 @@ class AIDepartmentPromptHubViewTests(TestCase):
             if previous_services_module is not None:
                 sys.modules['ai_chat.services'] = previous_services_module
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f'/ai-workspace/?department_id={department.id}')
         self.assertFalse(services_imported_during_request)
-        self.assertContains(response, '# 역할')
-        self.assertContains(response, '견적 후속 연락 전략 작성')
-        self.assertIn('견적 후속 연락 전략 작성', response.context['generated_prompt'])
 
-    def test_ai_main_post_custom_goal_overrides_selected_goal(self):
+    def test_ai_main_post_custom_goal_redirects_to_react_briefing(self):
         user = make_ai_user('ai_main_custom_goal_user', can_use_ai=True)
         _, department = make_department_with_followup(user)
         make_department_analysis(user, department)
@@ -704,10 +689,8 @@ class AIDepartmentPromptHubViewTests(TestCase):
             'custom_goal': '이번 주 팀장 보고용 요약을 만들고 싶다',
         })
 
-        self.assertEqual(response.status_code, 200)
-        prompt = response.context['generated_prompt']
-        self.assertIn('이번 주 팀장 보고용 요약을 만들고 싶다', prompt)
-        self.assertIn('보고서 목차', prompt)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], f'/ai-workspace/?department_id={department.id}')
 
     def test_manual_prompt_builder_url_is_removed(self):
         user = make_ai_user('removed_manual_prompt_user', can_use_ai=True)

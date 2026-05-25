@@ -13,7 +13,7 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FAST_OPENAI_MODEL = 'gpt-5.4-mini'
+DEFAULT_FAST_OPENAI_MODEL = 'gpt-5.4-nano'
 
 
 def get_openai_client():
@@ -25,9 +25,9 @@ def get_openai_client():
 
 
 def get_standard_openai_model():
-    """Return the default model for CRM AI calls while preserving env overrides."""
+    """Return the briefing-first default model for CRM AI calls."""
     return (
-        os.environ.get('OPENAI_MODEL_STANDARD')
+        os.environ.get('OPENAI_MODEL_NANO')
         or os.environ.get('OPENAI_MODEL_AI_WORKSPACE')
         or DEFAULT_FAST_OPENAI_MODEL
     )
@@ -2765,7 +2765,7 @@ other_notes 작성 기준
 
 def generate_weekly_report_draft(user, week_start, week_end):
     """
-    주간보고 AI 초안 생성
+    주간보고 AI 초안 생성은 브리핑 전용 정책으로 중단됨
     Args:
         user: Django User 인스턴스
         week_start: datetime.date
@@ -2774,6 +2774,8 @@ def generate_weekly_report_draft(user, week_start, week_end):
         dict: {activity_notes, quote_delivery_notes, other_notes, summary}
         또는 None (데이터 없음)
     """
+    raise ValueError('AI는 브리핑 전용입니다. 주간보고 초안 생성은 지원하지 않습니다.')
+
     import datetime as _dt
     from django.utils import timezone as _tz
     from reporting.models import History, Schedule, Quote

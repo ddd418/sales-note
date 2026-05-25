@@ -144,7 +144,7 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   receivables: { eyebrow: 'Sales CRM / Receivables', title: '외상고객' },
   prepayments: { eyebrow: 'Sales CRM / Prepayment', title: '선결제' },
   profile: { eyebrow: 'Sales CRM / Profile', title: '프로필' },
-  ai: { eyebrow: 'Sales CRM / AI', title: 'AI 업무도구' },
+  ai: { eyebrow: 'Sales CRM / AI', title: 'AI 브리핑' },
   notFound: { eyebrow: 'Sales CRM', title: '페이지 없음' },
 };
 

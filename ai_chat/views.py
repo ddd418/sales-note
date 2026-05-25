@@ -43,7 +43,16 @@ def ai_permission_required(view_func):
 @login_required
 @ai_permission_required
 def department_list(request):
-    """AI 부서분석 기반 프롬프트 생성 허브"""
+    """Legacy AI hub now redirects to the React briefing workspace."""
+    selected_department_id = request.POST.get('department_id') or request.GET.get('department')
+    target = '/ai-workspace/'
+    if selected_department_id:
+        try:
+            target = f"/ai-workspace/?department_id={int(selected_department_id)}"
+        except (TypeError, ValueError):
+            target = '/ai-workspace/'
+    return redirect(target)
+
     # 사용자의 팔로우업에서 부서 목록과 검색용 고객명을 한 번에 추출한다.
     followup_rows = list(FollowUp.objects.filter(
         user=request.user,

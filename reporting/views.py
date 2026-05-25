@@ -16359,39 +16359,26 @@ AI_WORKSPACE_MEMORY_CONTENT_MAX_LENGTH = 1600
 AI_WORKSPACE_MEMORY_LIMIT = 12
 AI_WORKSPACE_MEMORY_PAGE_SIZE = 8
 AI_WORKSPACE_RECENT_CONVERSATION_LIMIT = 5
-AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT = """
-Act like a CRM strategy architect, senior growth consultant, and “Zhuge Liang”-level tactician who analyzes CRM programs, customer data, operational constraints, and business goals to recommend the most effective CRM strategy.
+AI_WORKSPACE_BRIEFING_SYSTEM_PROMPT = """
+너는 내부 영업 CRM의 브리핑 작성자다.
 
-Your goal is to help the user diagnose their CRM situation, identify the highest-leverage opportunities, and recommend optimal conditions, priorities, execution directions, and decision criteria.
+역할:
+- 제공된 CRM 데이터만 읽고 현재 상태, 근거, 누락된 정보, 확인 필요 사항을 간결하게 브리핑한다.
+- 창작, 전략 수립, 메일/문자/스크립트/프롬프트 작성, 설득 문안, 보고서 초안 작성은 하지 않는다.
+- 사용자가 전략, 문안, 초안, 프롬프트를 요청해도 산출물을 만들어 주지 말고, CRM에 기록된 사실과 확인해야 할 데이터만 브리핑한다.
 
-Task: When the user asks a question or provides CRM-related variables, analyze the CRM context and produce a practical strategic recommendation.
-
-Follow this step-by-step process:
-1) Identify the user’s CRM objective: acquisition, retention, reactivation, upsell, cross-sell, churn reduction, automation, segmentation, personalization, campaign performance, customer lifecycle design, or operational efficiency.
-2) Extract all available variables, including industry, target customers, customer journey stage, CRM tool, available data, campaign history, budget, team capacity, KPIs, constraints, and timeline.
-3) If key information is missing, state your assumptions clearly and proceed with a best-effort recommendation rather than stopping.
-4) Investigate the CRM problem from multiple angles: customer behavior, data quality, segmentation, channel strategy, automation flow, content strategy, sales process, retention loop, measurement system, and implementation feasibility.
-5) Recommend the optimal strategy, explaining why it fits the user’s variables and what trade-offs exist.
-6) Provide specific next actions, prioritized by expected impact, difficulty, speed, and risk.
-7) Include measurement guidance: KPIs, success criteria, tracking setup, testing plan, and review cadence.
-
-Output style:
-- Match the user's requested deliverable. If they ask for a prompt, email, script, memo, checklist, or one-page summary, produce that artifact directly.
-- Use sections, tables, cards, or prioritized actions only when they make the answer clearer for that exact request.
-- Do not force the same headings or decision template into every answer.
-- For choice questions, make a clear recommendation first, then explain only the useful caveats.
-
-Style:
-Use clear, practical Korean. Be strategic but concrete. Avoid vague advice. Use tables when comparing options. Do not over-explain theory unless it directly supports the recommendation.
-
-Before finalizing, check whether the answer is specific, actionable, logically prioritized, and tailored to the variables provided.
-
-Take a deep breath and work on this problem step-by-step.
+출력 원칙:
+- 한국어로 답한다.
+- 데이터에 없는 고객 의도, 구매 확정, 다음 행동을 만들어내지 않는다.
+- 추정이 필요하면 추정이라고 표시하고 근거를 분리한다.
+- 답변은 JSON 객체만 반환한다.
+- 기본 형태는 {"answer": string, "bullets": string[], "evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"} 이다.
+- decision, perspective, actionItems 같은 전략/실행 카드 필드는 만들지 않는다.
 """.strip()
 AI_WORKSPACE_QUESTION_MODELS = {
-    'gpt-5.4-mini': 'GPT-5.4 mini',
+    'gpt-5.4-nano': 'GPT-5.4 nano',
 }
-AI_WORKSPACE_DEFAULT_QUESTION_MODEL = 'gpt-5.4-mini'
+AI_WORKSPACE_DEFAULT_QUESTION_MODEL = 'gpt-5.4-nano'
 
 
 def _ai_workspace_question_department_for_user(user, department_id):
@@ -16508,7 +16495,7 @@ def _ai_workspace_memory_type_label(memory_type):
     return {
         'fact': '검수 사실',
         'correction': '정정',
-        'preference': '답변 선호',
+        'preference': '브리핑 선호',
     }.get(memory_type, memory_type or '')
 
 
@@ -19020,9 +19007,16 @@ def _ai_workspace_question_fallback(question, context):
 
 
 def _ai_workspace_normalize_department_question_answer(data, fallback, context=None):
+    def briefing_only(payload):
+        result = dict(payload or {})
+        result.pop('decision', None)
+        result.pop('perspective', None)
+        result['actionItems'] = []
+        return result
+
     if not isinstance(data, dict):
         fallback.setdefault('actionItems', [])
-        return _ai_workspace_apply_product_fact_guard(fallback, context or {})
+        return _ai_workspace_apply_product_fact_guard(briefing_only(fallback), context or {})
     answer_text = (
         data.get('answer')
         or data.get('summary')
@@ -19082,18 +19076,14 @@ def _ai_workspace_normalize_department_question_answer(data, fallback, context=N
 
     if not answer:
         fallback.setdefault('actionItems', [])
-        return _ai_workspace_apply_product_fact_guard(fallback, context or {})
+        return _ai_workspace_apply_product_fact_guard(briefing_only(fallback), context or {})
     result = {
         'summary': answer,
         'bullets': bullets,
         'evidence': evidence,
-        'actionItems': action_items,
+        'actionItems': [],
         'confidence': confidence,
     }
-    if decision:
-        result['decision'] = decision
-    if perspective:
-        result['perspective'] = perspective
     return _ai_workspace_apply_product_fact_guard(result, context or {})
 
 
@@ -19113,8 +19103,8 @@ def _ai_workspace_question_response_guidance(question):
     compact = re.sub(r'\s+', '', text.lower())
     if not compact:
         return {
-            'intent': 'general_crm_answer',
-            'instruction': '질문 의도에 맞는 자연스러운 답변 형식을 선택한다.',
+            'intent': 'crm_briefing',
+            'instruction': 'CRM 데이터 기준의 간결한 브리핑만 작성한다.',
         }
 
     if _ai_workspace_question_is_delivery_payment_split(question):
@@ -19135,11 +19125,10 @@ def _ai_workspace_question_response_guidance(question):
     )
     if wants_prompt:
         return {
-            'intent': 'external_ai_prompt',
+            'intent': 'briefing_only_refusal',
             'instruction': (
-                '외부 AI에게 보낼 완성형 프롬프트 자체를 answer에 바로 제공한다. '
-                '추천 판단/버릴 선택/예외 조건/고객별 actionItems 같은 CRM 전략 카드로 풀지 않는다. '
-                '필요하면 앞에 한 문장 설명만 붙이고, 대부분은 사용자가 그대로 복사할 수 있는 프롬프트 본문에 집중한다.'
+                '외부 AI용 프롬프트는 작성하지 않는다. '
+                '대신 질문 범위의 CRM 사실, 근거, 확인 필요 정보만 브리핑한다.'
             ),
         }
 
@@ -19149,10 +19138,10 @@ def _ai_workspace_question_response_guidance(question):
     )
     if wants_email_or_script:
         return {
-            'intent': 'draft_message',
+            'intent': 'briefing_only_refusal',
             'instruction': (
-                '고객에게 보낼 문안/메일/스크립트 자체를 answer에 완성형으로 쓴다. '
-                '분석 카드보다 바로 보낼 수 있는 문장, 제목, 본문 구조를 우선한다.'
+                '메일, 문자, 카톡, 말문, 스크립트, 회신 초안은 작성하지 않는다. '
+                '대신 최근 메일/노트/일정에 기록된 사실과 확인해야 할 항목만 브리핑한다.'
             ),
         }
 
@@ -19162,18 +19151,18 @@ def _ai_workspace_question_response_guidance(question):
     )
     if wants_artifact:
         return {
-            'intent': 'business_artifact',
+            'intent': 'crm_briefing',
             'instruction': (
-                '사용자가 요청한 정리본/비교표/체크리스트 형식으로 바로 쓸 수 있게 작성한다. '
-                '필요한 경우에만 간단한 판단 근거를 붙인다.'
+                '사용자가 요청한 형식의 산출물은 만들지 않는다. '
+                'CRM 데이터 기반 핵심 사실, 근거, 누락 정보만 브리핑한다.'
             ),
         }
 
     return {
-        'intent': 'strategy_answer',
+        'intent': 'crm_briefing',
         'instruction': (
-            '질문 성격에 맞춰 자유롭게 답변한다. 선택 판단이나 우선순위 질문이면 구조화해도 되지만, '
-            '불필요한 고정 항목을 채우지 않는다.'
+            '질문 성격과 무관하게 CRM 사실 브리핑으로 답한다. '
+            '전략 추천, 창작 산출물, 영업 문안, 초안 생성은 하지 않는다.'
         ),
     }
 
@@ -19217,7 +19206,7 @@ def _ai_workspace_generate_department_question_answer(
         fallback.setdefault('actionItems', [])
         return _ai_workspace_apply_product_fact_guard(fallback, context), 'ledger', False
 
-    use_web_search = bool(allow_web_search and _ai_workspace_question_needs_web_search(question))
+    use_web_search = False
     try:
         from ai_chat.services import (
             create_openai_chat_completion,
@@ -19228,7 +19217,13 @@ def _ai_workspace_generate_department_question_answer(
         )
 
         client = get_openai_client()
-        model = model or os.environ.get('OPENAI_MODEL_AI_WORKSPACE') or get_standard_openai_model() or AI_WORKSPACE_DEFAULT_QUESTION_MODEL
+        model = (
+            model
+            or os.environ.get('OPENAI_MODEL_NANO')
+            or os.environ.get('OPENAI_MODEL_AI_WORKSPACE')
+            or get_standard_openai_model()
+            or AI_WORKSPACE_DEFAULT_QUESTION_MODEL
+        )
         response_guidance = _ai_workspace_question_response_guidance(question)
         prompt_payload = {
             'question': question,
@@ -19259,29 +19254,23 @@ def _ai_workspace_generate_department_question_answer(
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 실행할 작업/다음 액션을 묻는다면 범위가 전체 부서든 선택 부서든 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
                 '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
-                'webSearchAllowed가 true이고 최신 외부 정보가 필요한 질문에서만 웹 검색 결과를 보조 근거로 사용한다. 내부 CRM 고객명/영업내용을 웹 검색어로 노출하지 않는다.',
+                '웹 검색은 사용하지 않는다. 내부 CRM 고객명/영업내용을 외부 검색어로 노출하지 않는다.',
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',
-                '단, CRM 근거가 있는 고객 심리/구매 의도 해석은 answer 또는 perspective에 "고객 입장에서는", "가능성이 있습니다"처럼 추정임을 표시해 쓴다.',
-                '고객 마음을 단정하지 말고, CRM 사실과 추정을 분리한다.',
+                'CRM 근거가 있는 해석도 추정임을 표시하고, 고객 마음을 단정하지 않는다.',
                 'responseGuidance.intent와 responseGuidance.instruction을 우선 적용한다.',
-                '질문이 프롬프트/메일/문안/정리본 생성을 요구하면 answer에 그 산출물 자체를 완성형으로 쓴다.',
-                '프롬프트 생성 요청에서는 추천 판단, 버릴 선택, 예외 조건, 고객별 actionItems를 만들지 않는다.',
-                '답변 형식은 질문 의도에 맞게 자유롭게 선택한다. 모든 답변에 같은 제목이나 카드 구조를 반복하지 않는다.',
+                '질문이 프롬프트/메일/문안/정리본/전략/초안 생성을 요구해도 산출물 자체를 만들지 않는다.',
+                'AI는 브리핑 전용이다. answer에는 CRM 현황, 근거, 누락 정보, 확인 필요 사항만 쓴다.',
+                '답변 형식은 간결한 브리핑으로 유지한다. 모든 답변에 같은 제목이나 카드 구조를 반복하지 않는다.',
                 'answer가 4문장 이상이거나 번호/비교/품목 목록을 포함하면 문단 사이에 줄바꿈을 넣는다. 1), 2), 3) 같은 번호 항목과 - 항목은 각각 새 줄에서 시작한다.',
-                '질문이 "할까/말까", "A가 좋을까 B가 좋을까", "아니면", "굳이"처럼 선택지형이면 answer 첫 문장에 추천 선택을 먼저 말한다.',
-                'decision은 선택지가 분명하고 별도 판단 카드가 유용할 때만 넣는다. 단순 산출물 작성 요청에는 decision을 비운다.',
-                'perspective는 고객 심리 추정이나 영업 관점 분리가 실제로 도움이 될 때만 넣는다. 단순 산출물 작성 요청에는 perspective를 비운다.',
-                '실행해야 할 작업 목록 자체가 질문의 목적이면 actionItems에 최대 5개를 우선순위 순서로 넣는다.',
-                '단순 설명, 프롬프트 작성, 메일 초안, 문안 작성 요청에는 actionItems를 비우거나 생략한다.',
-                '각 actionItems 항목은 title, customer, company, department, priority, reason, nextAction, timing, crmEvidence를 채운다.',
-                'reason, nextAction, timing은 짧은 단어 조각이 아니라 실행자가 바로 이해할 수 있는 한 문장 이상으로 쓴다.',
-                'bullets는 보조 요약만 넣고, 고객별 실행 상세는 actionItems에 넣는다.',
+                '질문이 "할까/말까", "A가 좋을까 B가 좋을까", "아니면", "굳이"처럼 선택지형이어도 추천 선택을 만들지 말고 현재 CRM 근거와 리스크만 브리핑한다.',
+                'decision, perspective, actionItems 필드는 사용하지 않는다.',
+                'bullets는 보조 요약만 넣는다.',
                 '이 애플리케이션은 JSON 객체만 파싱한다. JSON 바깥의 Markdown 본문은 쓰지 않는다.',
                 '반드시 JSON 객체만 반환한다. 기본 형태는 {"answer": string, "bullets": string[], "evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"} 이다.',
-                '필요할 때만 선택적으로 "decision", "perspective", "actionItems"를 추가한다.',
+                '"decision", "perspective", "actionItems"는 추가하지 않는다.',
             ],
         }
-        system_prompt = AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT
+        system_prompt = AI_WORKSPACE_BRIEFING_SYSTEM_PROMPT
         data = None
         if use_web_search and hasattr(client, 'responses'):
             response_kwargs = {
@@ -19338,6 +19327,9 @@ def _ai_workspace_generate_department_question_answer(
     except Exception as exc:
         logger.warning('AI workspace department question fallback used: %s', exc)
         fallback.setdefault('actionItems', [])
+        fallback.pop('decision', None)
+        fallback.pop('perspective', None)
+        fallback['actionItems'] = []
         return _ai_workspace_apply_product_fact_guard(fallback, context), 'fallback', False
 
 
@@ -19572,15 +19564,12 @@ def _schedule_ai_coach_fallback(context):
         'recommendedNextAction': recommended_next_action,
         'afterMeetingNoteDraft': {
             'actionType': _schedule_ai_report_action_type(activity_type),
-            'content': _ai_workspace_question_text(note_content, 1600),
-            'nextAction': recommended_next_action,
+            'content': '',
+            'nextAction': '',
         },
         'mailDraft': {
-            'subject': f"{customer_label} {activity_label} 후속 확인",
-            'body': (
-                f"안녕하세요.\n\n{activity_label} 관련해 오늘 확인한 내용을 기준으로 필요한 조건을 정리해드리겠습니다.\n"
-                f"{recommended_next_action}\n\n확인 후 회신드리겠습니다."
-            ),
+            'subject': '',
+            'body': '',
         },
         'evidence': _schedule_ai_evidence_from_context(context),
         'confidence': 'medium' if context.get('recentNotes') or context.get('deliveryItems') else 'low',
@@ -19647,15 +19636,12 @@ def _normalize_schedule_ai_coach(data, fallback):
             'actionType': _schedule_ai_report_action_type(
                 note_draft.get('actionType') or fallback_note.get('actionType') or 'customer_meeting'
             ),
-            'content': _ai_workspace_question_text(note_draft.get('content'), 1800) or fallback_note.get('content', ''),
-            'nextAction': _ai_workspace_question_text(
-                note_draft.get('nextAction') or note_draft.get('next_action'),
-                760,
-            ) or fallback_note.get('nextAction', ''),
+            'content': '',
+            'nextAction': '',
         },
         'mailDraft': {
-            'subject': _ai_workspace_question_text(mail_draft.get('subject'), 220) or fallback_mail.get('subject', ''),
-            'body': _ai_workspace_question_text(mail_draft.get('body') or mail_draft.get('content'), 1800) or fallback_mail.get('body', ''),
+            'subject': '',
+            'body': '',
         },
         'evidence': _ai_workspace_question_evidence_payload(data.get('evidence'), limit=6, value_limit=700) or fallback.get('evidence', []),
         'confidence': confidence,
@@ -19671,6 +19657,7 @@ def _generate_schedule_ai_coach(context, model=None):
 
         selected_model = (
             model
+            or os.environ.get('OPENAI_MODEL_NANO')
             or os.environ.get('OPENAI_MODEL_SCHEDULE_COACH')
             or os.environ.get('OPENAI_MODEL_AI_WORKSPACE')
             or get_standard_openai_model()
@@ -19681,12 +19668,12 @@ def _generate_schedule_ai_coach(context, model=None):
             'crmContext': context,
             'rules': [
                 '제공된 crmContext에 있는 CRM 사실만 사용한다.',
-                '일정 상세 화면에서 바로 행동할 수 있는 실행 추천을 만든다.',
-                '질문을 기다리는 Q&A가 아니라 이 일정에서 어떻게 말하고 확인하고 기록할지 추천한다.',
-                '일정 유형이 견적이면 견적 조건, 회신 기한, 의사결정 일정을 우선한다.',
-                '일정 유형이 납품이면 품목, 수량, 세금계산서, 선결제, 다음 재주문 가능성을 우선한다.',
-                '일정 유형이 서비스이면 증상, 근거 확보, 처리 예정일을 우선한다.',
-                'afterMeetingNoteDraft는 저장하지 않을 초안이므로 사실과 확인 필요를 분리해 쓴다.',
+                '일정 상세 화면의 CRM 브리핑만 만든다.',
+                '어떻게 말할지, 어떻게 설득할지, 메일/노트 초안은 만들지 않는다.',
+                '일정 유형이 견적이면 견적 조건, 금액, 유효기간, 확인되지 않은 정보를 브리핑한다.',
+                '일정 유형이 납품이면 품목, 수량, 외상/카드/선결제 등 확인된 결제 맥락만 브리핑한다.',
+                '일정 유형이 서비스이면 증상, 근거, 처리 예정일 등 기록된 사실만 브리핑한다.',
+                'afterMeetingNoteDraft와 mailDraft는 빈 값으로 둔다.',
                 '없는 구매 의사, 납품 완료, 고객 마음을 만들어내지 않는다.',
                 '웹 검색은 사용하지 않는다.',
                 'JSON 객체만 반환한다.',
@@ -19704,8 +19691,8 @@ def _generate_schedule_ai_coach(context, model=None):
                     'nextAction': 'string',
                 },
                 'mailDraft': {'subject': 'string', 'body': 'string'},
-                'evidence': [{'label': 'string', 'value': 'string'}],
-                'confidence': 'high|medium|low',
+                    'evidence': [{'label': 'string', 'value': 'string'}],
+                    'confidence': 'high|medium|low',
             },
         }
         response = create_openai_chat_completion(
@@ -19716,8 +19703,9 @@ def _generate_schedule_ai_coach(context, model=None):
                 {
                     'role': 'system',
                     'content': (
-                        '너는 B2B 영업 CRM의 일정 실행 코치다. '
-                        '현재 일정과 연결 고객 기록만 보고, 담당자가 이 일정에서 어떻게 행동해야 하는지 한국어로 구체적으로 추천한다. '
+                        '너는 B2B 영업 CRM의 일정 브리핑 작성자다. '
+                        '현재 일정과 연결 고객 기록만 보고, 확인된 사실과 누락 정보를 한국어로 간결하게 브리핑한다. '
+                        '메일, 말문, 노트 초안, 전략 추천은 작성하지 않는다. '
                         '반드시 JSON 객체만 반환한다.'
                     ),
                 },
@@ -20257,7 +20245,7 @@ def ai_workspace_summary_api(request):
 @never_cache
 @require_http_methods(["GET"])
 def ai_workspace_question_log_detail_api(request, question_log_id):
-    """Return one AI Workspace question/answer history item for the current user."""
+    """Return one AI briefing history item for the current user."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -20281,7 +20269,7 @@ def ai_workspace_question_log_detail_api(request, question_log_id):
         return JsonResponse({
             'success': False,
             'error': 'question_log_not_found',
-            'message': '질문/답변 기록을 찾을 수 없습니다.',
+            'message': '브리핑 기록을 찾을 수 없습니다.',
         }, status=404)
 
     return JsonResponse({
@@ -20298,7 +20286,7 @@ def ai_workspace_question_log_detail_api(request, question_log_id):
 @never_cache
 @require_POST
 def ai_workspace_question_log_delete_api(request, question_log_id):
-    """Delete one AI Workspace question/answer history item owned by the current user."""
+    """Delete one AI briefing history item owned by the current user."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -20321,7 +20309,7 @@ def ai_workspace_question_log_delete_api(request, question_log_id):
         return JsonResponse({
             'success': False,
             'error': 'question_log_not_found',
-            'message': '질문/답변 기록을 찾을 수 없습니다.',
+            'message': '브리핑 기록을 찾을 수 없습니다.',
         }, status=404)
 
     deleted_id = question_log.id
@@ -20331,7 +20319,7 @@ def ai_workspace_question_log_delete_api(request, question_log_id):
         'success': True,
         'source': 'django',
         'deletedId': deleted_id,
-        'message': '질문/답변 기록을 삭제했습니다.',
+        'message': '브리핑 기록을 삭제했습니다.',
         'links': {
             'aiWorkspace': ai_workspace_link,
         },
@@ -20449,7 +20437,7 @@ def ai_workspace_department_question_api(request):
 @never_cache
 @require_POST
 def ai_workspace_question_feedback_api(request):
-    """Record user's quality feedback for an AI Workspace question answer."""
+    """Record user's quality feedback for an AI briefing answer."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -20503,7 +20491,7 @@ def ai_workspace_question_feedback_api(request):
         return JsonResponse({
             'success': False,
             'error': 'missing_answer',
-            'message': '저장할 AI 답변 정보가 없습니다.',
+            'message': '저장할 AI 브리핑 정보가 없습니다.',
         }, status=400)
 
     scope_type = str(payload.get('scopeType') or payload.get('scope_type') or '').strip()
@@ -20542,7 +20530,7 @@ def ai_workspace_question_feedback_api(request):
         'success': True,
         'generatedAt': timezone.now().isoformat(),
         'feedback': _ai_workspace_question_feedback_payload(feedback),
-        'message': 'AI 답변 피드백을 저장했습니다. 다음 질문 답변에 반영됩니다.',
+        'message': 'AI 브리핑 피드백을 저장했습니다. 다음 브리핑에 반영됩니다.',
     })
 
 
@@ -20598,7 +20586,7 @@ def ai_workspace_memories_api(request):
 @never_cache
 @require_POST
 def ai_workspace_memory_create_api(request):
-    """Persist user-approved AI Workspace memory/correction for future answers."""
+    """Persist user-approved AI Workspace memory/correction for future briefings."""
     permission_response = _ai_workspace_memory_permission_response(request)
     if permission_response:
         return permission_response
@@ -20701,7 +20689,7 @@ def ai_workspace_memory_create_api(request):
         title = {
             'fact': '검수 사실',
             'correction': '정정 기억',
-            'preference': '답변 선호',
+            'preference': '브리핑 선호',
         }[memory_type]
 
     memory = AIWorkspaceMemory.objects.create(
@@ -20719,7 +20707,7 @@ def ai_workspace_memory_create_api(request):
         'success': True,
         'generatedAt': timezone.now().isoformat(),
         'memory': _ai_workspace_memory_payload(memory),
-        'message': '검수한 내용을 AI 기억에 저장했습니다. 다음 질문부터 우선 반영됩니다.',
+        'message': '검수한 내용을 AI 기억에 저장했습니다. 다음 브리핑부터 우선 반영됩니다.',
     })
 
 
@@ -20816,9 +20804,7 @@ def ai_workspace_memory_toggle_active_api(request, memory_id):
 @never_cache
 @require_POST
 def ai_workspace_action_draft_api(request):
-    """React AI workspace action queue draft API. Returns a non-persistent draft only."""
-    from datetime import timedelta
-
+    """AI draft generation is disabled because AI is briefing-only."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -20830,6 +20816,13 @@ def ai_workspace_action_draft_api(request):
             'error': 'permission_denied',
             'message': 'AI 기능 사용 권한이 없습니다.',
         }, status=403)
+
+    return JsonResponse({
+        'success': False,
+        'source': 'django',
+        'error': 'briefing_only',
+        'message': 'AI는 브리핑 전용입니다. 메일/노트/질문/보고 초안 생성은 지원하지 않습니다.',
+    }, status=410)
 
     try:
         payload = json.loads(request.body.decode('utf-8') or '{}')
@@ -35589,11 +35582,16 @@ def weekly_report_load_schedules(request):
 
 @login_required
 def weekly_report_ai_draft(request):
-    """AJAX GET: 해당 주 활동 기반 AI 주간보고 초안 생성"""
+    """AI weekly report draft generation is disabled because AI is briefing-only."""
     import datetime as _dt
     profile = getattr(request.user, 'userprofile', None)
     if not (profile and profile.can_use_ai):
         return JsonResponse({'error': 'AI 기능 사용 권한이 없습니다.'}, status=403)
+
+    return JsonResponse({
+        'error': 'briefing_only',
+        'message': 'AI는 브리핑 전용입니다. 주간보고 초안 생성은 지원하지 않습니다.',
+    }, status=410)
 
     week_start_str = request.GET.get('week_start')
     week_end_str = request.GET.get('week_end')
@@ -35613,7 +35611,7 @@ def weekly_report_ai_draft(request):
         return JsonResponse({'error': str(e)}, status=400)
     except Exception as e:
         logger.error(f"weekly_report_ai_draft error: {e}")
-        return JsonResponse({'error': 'AI 초안 생성 중 오류가 발생했습니다.'}, status=500)
+        return JsonResponse({'error': 'AI 브리핑 처리 중 오류가 발생했습니다.'}, status=500)
 
 
 @login_required

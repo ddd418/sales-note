@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 AI nano briefing-only conversion plan
+
+**Background**:
+
+- User asked to change the current AI mini usage to nano.
+- User clarified that AI should now be a briefing-only tool, not a creative, strategy, email/script, or draft-generation tool.
+- Existing AI Workspace question prompts still present AI as a CRM strategy architect and allow prompt/email/artifact generation.
+- Schedule detail and weekly-report screens still expose AI draft-style actions.
+
+**DB change required**: No.
+
+- This task changes model defaults, API behavior, prompts, React copy/controls, tests, and docs only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Change shared CRM AI model defaults and React question choices from `gpt-5.4-mini` to `gpt-5.4-nano`.
+- Replace AI Workspace strategy prompt/rules with CRM-data briefing-only rules.
+- Disable creative/action draft APIs and remove user-visible AI draft controls where the React screen exposes them.
+- Convert schedule AI wording/output to a CRM briefing and stop providing note/mail drafts from that flow.
+- Keep authentication, `can_use_ai` permission checks, `/reporting/*` API routes, and stored AI question history compatibility intact.
+- Keep weekly report manual editing and schedule note creation available without AI drafting.
+
+**Validation plan**:
+
+- `python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py`
+- Focused Django tests for AI permissions, AI Workspace summary/question, schedule AI briefing, and disabled draft APIs.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && node --check server.mjs`
+- `cd frontend && npm run build`
+- Local browser smoke for `/ai-workspace/` where feasible.
+- Production smoke after Railway deployment for protected AI APIs and React route.
+- `git diff --check`
+
 ## 2026-05-25 Credit customer receivables menu plan
 
 **Background**:

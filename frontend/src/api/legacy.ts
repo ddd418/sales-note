@@ -3669,7 +3669,7 @@ export type AIWorkspaceActionFeedbackResponse = {
   message?: string;
 };
 
-export type AIWorkspaceQuestionModel = 'gpt-5.4-mini';
+export type AIWorkspaceQuestionModel = 'gpt-5.4-nano';
 
 export type AIWorkspaceQuestionScope = 'department' | 'all';
 
@@ -6034,9 +6034,9 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     items: [],
   },
   questionModelChoices: [
-    { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
+    { id: 'gpt-5.4-nano', label: 'GPT-5.4 nano' },
   ],
-  defaultQuestionModel: 'gpt-5.4-mini',
+  defaultQuestionModel: 'gpt-5.4-nano',
   recentDepartmentAnalyses: [],
   painpoints: [],
   followupTargets: [],

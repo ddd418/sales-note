@@ -1978,12 +1978,12 @@ const routeMeta: Record<
   },
   ai: {
     eyebrow: 'Sales CRM / AI',
-    title: 'AI 업무도구',
-    summary: '부서 분석 결과와 목표를 조합해 외부 AI용 업무 프롬프트를 생성합니다.',
+    title: 'AI 브리핑',
+    summary: 'CRM 데이터 근거만 바탕으로 현재 상황을 짧게 브리핑합니다.',
     primaryHref: '/ai-workspace/',
-    primaryLabel: 'AI Workspace 열기',
+    primaryLabel: 'AI 브리핑 열기',
     actions: [
-      { label: 'AI Workspace', href: '/ai-workspace/', primary: true },
+      { label: 'AI 브리핑', href: '/ai-workspace/', primary: true },
       { label: '영업노트', href: '/notes/' },
       { label: '주간보고', href: '/weekly-reports/' },
     ],
@@ -10925,19 +10925,17 @@ function ScheduleAICoachPanel({
   const coach = result?.coach ?? null;
   const risks = coach?.risks ?? [];
   const evidence = coach?.evidence ?? [];
-  const canApplyDraft = Boolean(coach?.afterMeetingNoteDraft?.content);
-  const canCopyMail = Boolean(coach?.mailDraft?.body || coach?.mailDraft?.subject);
 
   return (
-    <section className="schedule-ai-coach-panel" aria-label="일정 AI 실행 코치">
+    <section className="schedule-ai-coach-panel" aria-label="일정 AI 브리핑">
       <div className="schedule-ai-coach-heading">
         <div>
-          <span className="eyebrow">Execution AI</span>
-          <h3>일정 실행 코치</h3>
+          <span className="eyebrow">Schedule brief</span>
+          <h3>일정 브리핑</h3>
         </div>
         <button className="customer-row-action schedule-ai-coach-run" disabled={!canUseAi || loading} onClick={onGenerate} type="button">
           {loading ? <Loader2 className="spin-icon" size={14} /> : <Sparkles size={14} />}
-          <span>{loading ? '분석 중' : coach ? '다시 생성' : '추천 생성'}</span>
+          <span>{loading ? '분석 중' : coach ? '다시 보기' : '브리핑 보기'}</span>
         </button>
       </div>
       {!canUseAi ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{permissionMessage || 'AI 기능 사용 권한이 없습니다.'}</span></div> : null}
@@ -10947,17 +10945,17 @@ function ScheduleAICoachPanel({
         <div className="schedule-ai-coach-body">
           <div className="schedule-ai-coach-summary">
             <p>{coach.summary}</p>
-            <span>{result?.source === 'openai' ? `${result.modelLabel || 'AI'} 추천` : 'CRM 기반 추천'} · {coach.confidence}</span>
+            <span>{result?.source === 'openai' ? `${result.modelLabel || 'AI'} 브리핑` : 'CRM 기반 브리핑'} · {coach.confidence}</span>
           </div>
           {coach.recommendedNextAction ? (
             <div className="schedule-ai-coach-next">
-              <span>다음 액션</span>
+              <span>확인 필요</span>
               <strong>{coach.recommendedNextAction}</strong>
             </div>
           ) : null}
           {coach.talkTrack.length > 0 ? (
             <div className="schedule-ai-coach-list">
-              <h4>말문</h4>
+              <h4>브리핑 메모</h4>
               {coach.talkTrack.map((item) => <p key={item}>{item}</p>)}
             </div>
           ) : null}
@@ -10988,19 +10986,9 @@ function ScheduleAICoachPanel({
               ))}
             </div>
           ) : null}
-          <div className="schedule-ai-coach-actions">
-            <button className="route-secondary-action" disabled={!canApplyDraft} onClick={onApplyDraft} type="button">
-              <FileText size={14} />
-              보고 초안 적용
-            </button>
-            <button className="route-secondary-action" disabled={!canCopyMail} onClick={onCopyMail} type="button">
-              <Copy size={14} />
-              메일 초안 복사
-            </button>
-          </div>
         </div>
       ) : (
-        <DashboardEmpty label="현재 일정 기준 추천을 생성하세요" />
+        <DashboardEmpty label="현재 일정 기준 브리핑을 확인하세요" />
       )}
     </section>
   );
@@ -11322,10 +11310,10 @@ function ScheduleDetailPage({
     try {
       const result = await generateScheduleAICoach(currentSchedule.id);
       setScheduleCoachResult(result);
-      setScheduleCoachMessage(result.context?.stored === false ? '추천은 저장되지 않았습니다.' : '');
+      setScheduleCoachMessage(result.context?.stored === false ? '브리핑은 저장되지 않았습니다.' : '');
     } catch (error) {
       setScheduleCoachResult(null);
-      setScheduleCoachError(error instanceof Error ? error.message : '일정 AI 추천 생성에 실패했습니다.');
+      setScheduleCoachError(error instanceof Error ? error.message : '일정 AI 브리핑 생성에 실패했습니다.');
     } finally {
       setScheduleCoachLoading(false);
     }
@@ -11337,7 +11325,7 @@ function ScheduleDetailPage({
     }
     const draft = scheduleCoachResult?.coach.afterMeetingNoteDraft;
     if (!draft?.content) {
-      setScheduleCoachError('적용할 보고 초안이 없습니다.');
+      setScheduleCoachError('AI는 브리핑 전용입니다. 보고 초안 적용은 지원하지 않습니다.');
       setScheduleCoachMessage('');
       return;
     }
@@ -11349,25 +11337,25 @@ function ScheduleDetailPage({
     });
     setScheduleNoteOpen(true);
     setScheduleNoteError('');
-    setScheduleNoteMessage('AI 초안을 보고 작성 폼에 불러왔습니다.');
+    setScheduleNoteMessage('브리핑 내용을 확인했습니다.');
     setScheduleNoteHref('');
     setScheduleCoachError('');
-    setScheduleCoachMessage('보고 초안을 작성 폼에 적용했습니다.');
+    setScheduleCoachMessage('AI는 브리핑 전용입니다.');
   };
 
   const handleScheduleCoachCopyMail = async () => {
     const draft = scheduleCoachResult?.coach.mailDraft;
     if (!draft?.subject && !draft?.body) {
-      setScheduleCoachError('복사할 메일 초안이 없습니다.');
+      setScheduleCoachError('AI는 브리핑 전용입니다. 메일 작성은 지원하지 않습니다.');
       setScheduleCoachMessage('');
       return;
     }
     try {
       await navigator.clipboard.writeText([draft.subject, draft.body].filter(Boolean).join('\n\n'));
       setScheduleCoachError('');
-      setScheduleCoachMessage('메일 초안을 복사했습니다.');
+      setScheduleCoachMessage('브리핑 내용을 확인했습니다.');
     } catch {
-      setScheduleCoachError('메일 초안을 복사하지 못했습니다.');
+      setScheduleCoachError('메일 작성은 지원하지 않습니다.');
       setScheduleCoachMessage('');
     }
   };
@@ -17661,26 +17649,8 @@ function WeeklyReportEditorPage({
   };
 
   const handleAiDraft = async () => {
-    if (!form.weekStart || !form.weekEnd || aiLoading) return;
-    setAiLoading(true);
-    setFormError('');
+    setFormError('AI는 브리핑 전용입니다. 주간보고 초안 생성은 지원하지 않습니다.');
     setFormMessage('');
-    try {
-      const draft = await generateWeeklyReportAiDraft(form.weekStart, form.weekEnd);
-      const record = draft as Record<string, unknown>;
-      setForm((previous) => ({
-        ...previous,
-        title: weeklyDraftValue(record, ['title']) || previous.title,
-        activityNotes: weeklyDraftValue(record, ['activityNotes', 'activity_notes', 'activity', 'summary']) || previous.activityNotes,
-        quoteDeliveryNotes: weeklyDraftValue(record, ['quoteDeliveryNotes', 'quote_delivery_notes', 'quoteDelivery']) || previous.quoteDeliveryNotes,
-        otherNotes: weeklyDraftValue(record, ['otherNotes', 'other_notes', 'other']) || previous.otherNotes,
-      }));
-      setFormMessage('AI 초안을 적용했습니다.');
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'AI 초안 생성에 실패했습니다.');
-    } finally {
-      setAiLoading(false);
-    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -17761,11 +17731,6 @@ function WeeklyReportEditorPage({
           {formError ? <p className="form-error">{formError}</p> : null}
           {formMessage ? <p className="form-success">{formMessage}</p> : null}
           <div className="form-actions">
-            {canUseAi ? (
-              <button type="button" className="secondary-button" onClick={handleAiDraft} disabled={aiLoading || !form.weekStart || !form.weekEnd}>
-                {aiLoading ? 'AI 생성 중' : 'AI 초안'}
-              </button>
-            ) : null}
             <button type="submit" className="primary-button" disabled={saving}>
               {saving ? '저장 중' : '저장'}
             </button>
@@ -19077,10 +19042,10 @@ const aiDraftTypeLabels: Record<AIWorkspaceDraftType, string> = {
 };
 
 const aiDraftButtonLabels: Record<AIWorkspaceDraftType, string> = {
-  email: '메일 초안',
-  note: '노트 초안',
-  questions: '질문 초안',
-  weekly_report: '보고 초안',
+  email: '메일 작성 중단',
+  note: '노트 작성 중단',
+  questions: '질문 작성 중단',
+  weekly_report: '보고 작성 중단',
 };
 
 function formatAIActionDate(value: string | null) {
@@ -19098,7 +19063,7 @@ function AIWorkspaceDailyBriefPanel({ data }: { data: AIWorkspaceData }) {
   const brief = data.dailyBrief;
   const counts = brief.counts;
   const briefCards = [
-    { label: '추천 액션', value: `${formatNumber(counts.totalActions)}건`, icon: Sparkles },
+    { label: '후속 후보', value: `${formatNumber(counts.totalActions)}건`, icon: Sparkles },
     { label: '긴급', value: `${formatNumber(counts.urgentActions)}건`, icon: AlertTriangle },
     { label: '견적 후속', value: `${formatNumber(counts.quoteFollowups)}건`, icon: CircleDollarSign },
     { label: '서비스', value: `${formatNumber(counts.serviceCases || 0)}건`, icon: Wrench },
@@ -19111,11 +19076,11 @@ function AIWorkspaceDailyBriefPanel({ data }: { data: AIWorkspaceData }) {
       <div className="dashboard-panel-heading">
         <div>
           <span className="eyebrow">Daily sales brief</span>
-          <h2>오늘의 AI 영업 지휘석</h2>
+          <h2>오늘의 CRM 브리핑</h2>
         </div>
         <Sparkles size={18} />
       </div>
-      <p className="ai-brief-summary">{brief.summary || 'AI 추천 액션을 계산하는 중입니다.'}</p>
+      <p className="ai-brief-summary">{brief.summary || 'CRM 브리핑을 계산하는 중입니다.'}</p>
       <div className="ai-brief-grid">
         {briefCards.map((card) => {
           const Icon = card.icon;
@@ -19315,20 +19280,6 @@ function AIWorkspaceDepartmentQuestionPanel({
   const trimmedQuestion = question.trim();
   const canSubmit = canUseQuestionScope && trimmedQuestion.length >= 2 && !loading;
   const answer = result?.answer;
-  const actionItems = answer?.actionItems ?? [];
-  const decision = answer?.decision;
-  const decisionDetailRows = decision ? [
-    { label: '버릴 선택', value: decision.rejectedChoice },
-    { label: '판단 이유', value: decision.reason },
-    { label: '예외 조건', value: decision.exception },
-  ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
-  const perspectiveRows = answer?.perspective ? [
-    { label: '고객 입장 추정', value: answer.perspective.customerPerspective },
-    { label: '영업 판단', value: answer.perspective.salesJudgment },
-    { label: '추천 접근', value: answer.perspective.recommendedApproach },
-    { label: '말문 예시', value: answer.perspective.talkTrack },
-    { label: '주의점', value: answer.perspective.caution },
-  ].filter((item): item is { label: string; value: string } => Boolean(item.value)) : [];
   const lastDelivery = result?.context?.lastDelivery;
   const customerCount = result?.context?.customerCount ?? data.featuredDepartment?.customerCount ?? 0;
   const departmentCount = result?.context?.departmentCount ?? data.metrics.departmentsWithCustomers ?? 0;
@@ -19340,13 +19291,13 @@ function AIWorkspaceDepartmentQuestionPanel({
   const modelChoices = data.questionModelChoices.length > 0
     ? data.questionModelChoices
     : [
-      { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
+      { id: 'gpt-5.4-nano', label: 'GPT-5.4 nano' },
     ];
   const answerSourceLabel = result?.source === 'openai'
-    ? `${result.modelLabel || 'AI'} 답변${result.webSearchUsed ? ' · 웹 검색' : ''}`
+    ? `${result.modelLabel || 'AI'} 브리핑`
     : result?.source === 'ledger'
-      ? 'CRM 원장 답변'
-      : 'CRM 기반 답변';
+      ? 'CRM 원장 브리핑'
+      : 'CRM 기반 브리핑';
 
   useEffect(() => {
     setReviewMode('');
@@ -19396,8 +19347,8 @@ function AIWorkspaceDepartmentQuestionPanel({
     <section className="dashboard-panel ai-department-question-panel">
       <div className="dashboard-panel-heading">
         <div>
-          <span className="eyebrow">Department Q&A</span>
-          <h2>부서 상황 질문</h2>
+          <span className="eyebrow">CRM briefing</span>
+          <h2>부서 상황 브리핑</h2>
         </div>
         <MessageSquareText size={18} />
       </div>
@@ -19406,7 +19357,7 @@ function AIWorkspaceDepartmentQuestionPanel({
         <small>{scopeMetaLabel}</small>
         {result?.webSearchUsed ? <small>웹 검색 사용</small> : null}
       </div>
-      <div className="segmented-control ai-question-scope-toggle" aria-label="AI 질문 범위">
+      <div className="segmented-control ai-question-scope-toggle" aria-label="AI 브리핑 범위">
         <button
           className={questionScope === 'department' ? 'active' : ''}
           disabled={!departmentId}
@@ -19423,7 +19374,7 @@ function AIWorkspaceDepartmentQuestionPanel({
           전체 부서
         </button>
       </div>
-      <div className="segmented-control ai-question-model-toggle" aria-label="AI 질문 모델">
+      <div className="segmented-control ai-question-model-toggle" aria-label="AI 브리핑 모델">
         {modelChoices.map((choice) => (
           <button
             className={model === choice.id ? 'active' : ''}
@@ -19439,7 +19390,7 @@ function AIWorkspaceDepartmentQuestionPanel({
         <textarea
           maxLength={600}
           onChange={(event) => onQuestionChange(event.target.value)}
-          placeholder={allScopeSelected ? '예: 전체 부서에서 이번 주 먼저 챙길 고객은?' : '예: 재견적 줄 때 샘플 피드백을 다시 물어볼까?'}
+          placeholder={allScopeSelected ? '예: 전체 부서의 이번 주 미완료 후속 현황 브리핑' : '예: 이 부서의 최근 납품, 미수금, 미완료 후속 브리핑'}
           rows={3}
           value={question}
         />
@@ -19447,7 +19398,7 @@ function AIWorkspaceDepartmentQuestionPanel({
           <span>{formatNumber(trimmedQuestion.length)} / 600</span>
           <button disabled={!canSubmit} type="submit">
             {loading ? <Loader2 className="spin-icon" size={14} /> : <Send size={14} />}
-            {loading ? '분석 중' : 'AI에게 질문'}
+            {loading ? '분석 중' : '브리핑 생성'}
           </button>
         </div>
       </form>
@@ -19458,82 +19409,6 @@ function AIWorkspaceDepartmentQuestionPanel({
             <p>{answer.summary}</p>
             <span>{answerSourceLabel}</span>
           </div>
-          {decision?.recommendedChoice ? (
-            <section className="ai-department-question-decision">
-              <span>추천 판단</span>
-              <strong>{decision.recommendedChoice}</strong>
-              {decisionDetailRows.length > 0 ? (
-                <dl>
-                  {decisionDetailRows.map((item) => (
-                    <div key={item.label}>
-                      <dt>{item.label}</dt>
-                      <dd>{item.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-            </section>
-          ) : null}
-          {perspectiveRows.length > 0 ? (
-            <dl className="ai-department-question-perspective">
-              {perspectiveRows.map((item) => (
-                <div key={item.label}>
-                  <dt>{item.label}</dt>
-                  <dd>{item.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {actionItems.length > 0 ? (
-            <div className="ai-department-question-actions">
-              {actionItems.map((item, index) => {
-                const meta = [item.customer, item.department, item.company].filter(Boolean).join(' · ');
-                const evidence = item.crmEvidence ?? [];
-                return (
-                  <section className="ai-department-question-action-item" key={`${item.rank || index}-${item.title}-${item.customer}`}>
-                    <div className="ai-department-question-action-head">
-                      <div>
-                        <span>{item.priority || '추천 작업'}</span>
-                        <strong>{item.title || `추천 작업 ${index + 1}`}</strong>
-                      </div>
-                      <small>{formatNumber(item.rank || index + 1)}</small>
-                    </div>
-                    {meta ? <p className="ai-department-question-action-meta">{meta}</p> : null}
-                    <dl className="ai-department-question-action-detail">
-                      {item.reason ? (
-                        <div>
-                          <dt>판단 이유</dt>
-                          <dd>{item.reason}</dd>
-                        </div>
-                      ) : null}
-                      {item.nextAction ? (
-                        <div>
-                          <dt>다음 액션</dt>
-                          <dd>{item.nextAction}</dd>
-                        </div>
-                      ) : null}
-                      {item.timing ? (
-                        <div>
-                          <dt>확인 시점</dt>
-                          <dd>{item.timing}</dd>
-                        </div>
-                      ) : null}
-                    </dl>
-                    {evidence.length > 0 ? (
-                      <div className="ai-department-question-action-evidence">
-                        {evidence.slice(0, 4).map((evidenceItem) => (
-                          <span key={`${item.rank}-${evidenceItem.label}-${evidenceItem.value}`}>
-                            <b>{evidenceItem.label}</b>
-                            {evidenceItem.value}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </section>
-                );
-              })}
-            </div>
-          ) : null}
           {answer.bullets.length > 0 ? (
             <ul>
               {answer.bullets.map((item) => (
@@ -19562,8 +19437,8 @@ function AIWorkspaceDepartmentQuestionPanel({
           ) : null}
           <section className="ai-question-feedback-box">
             <div className="ai-question-feedback-head">
-              <strong>답변 검수</strong>
-              <span>검수된 내용만 다음 답변에 강하게 반영됩니다</span>
+              <strong>브리핑 검수</strong>
+              <span>검수된 내용만 다음 브리핑에 강하게 반영됩니다</span>
             </div>
             <div className="ai-question-feedback-options">
               <button disabled={Boolean(reviewSaving)} onClick={handleHelpfulReview} type="button">
@@ -19639,7 +19514,7 @@ function AIWorkspaceDepartmentQuestionPanel({
                 <textarea
                   maxLength={1600}
                   onChange={(event) => setMemoryContent(event.target.value)}
-                  placeholder={reviewMode === 'correction' ? '정정할 사실을 적어주세요. 예: P4345N00은 튜브가 아니라 팁이다.' : '다음 답변에 계속 반영할 검수 내용을 적어주세요.'}
+                  placeholder={reviewMode === 'correction' ? '정정할 사실을 적어주세요. 예: P4345N00은 튜브가 아니라 팁이다.' : '다음 브리핑에 계속 반영할 검수 내용을 적어주세요.'}
                   rows={4}
                   value={memoryContent}
                 />
@@ -19659,7 +19534,7 @@ function AIWorkspaceDepartmentQuestionPanel({
       ) : null}
       <section className="ai-question-history">
         <div className="ai-question-history-head">
-          <strong>질문/답변 기록</strong>
+          <strong>브리핑 기록</strong>
           <span>{formatNumber(history.total)}건</span>
         </div>
         {deleteHistoryMessage ? <div className="ai-question-history-message success">{deleteHistoryMessage}</div> : null}
@@ -19677,7 +19552,7 @@ function AIWorkspaceDepartmentQuestionPanel({
                   <strong>{item.question}</strong>
                 </a>
                 <button
-                  aria-label="질문/답변 기록 삭제"
+                  aria-label="브리핑 기록 삭제"
                   className="ai-question-history-delete"
                   disabled={deletingHistoryId === item.id}
                   onClick={(event) => {
@@ -19694,7 +19569,7 @@ function AIWorkspaceDepartmentQuestionPanel({
             ))}
           </div>
         ) : (
-          <DashboardEmpty label={history.scopeType === 'all' ? '전체 부서 질문 기록이 없습니다' : '선택 부서의 질문 기록이 없습니다'} />
+          <DashboardEmpty label={history.scopeType === 'all' ? '전체 부서 브리핑 기록이 없습니다' : '선택 부서의 브리핑 기록이 없습니다'} />
         )}
         {history.totalPages > 1 ? (
           <div className="ai-question-history-pagination">
@@ -19761,53 +19636,6 @@ function makeAIQuestionDetailAnswer(log: AIWorkspaceQuestionLog): { lead: string
     blocks.push({ title: '핵심 포인트', lines: bullets });
   }
 
-  const decision = aiQuestionRecord(answer.decision);
-  const decisionLines = [
-    ['추천 판단', decision.recommendedChoice],
-    ['버릴 선택', decision.rejectedChoice],
-    ['판단 이유', decision.reason],
-    ['예외 조건', decision.exception],
-  ].map(([label, value]) => {
-    const text = aiQuestionText(value);
-    return text ? `${label}: ${text}` : '';
-  }).filter(Boolean);
-  if (decisionLines.length > 0) {
-    blocks.push({ title: '추천 판단', lines: decisionLines });
-  }
-
-  const perspective = aiQuestionRecord(answer.perspective);
-  const perspectiveLines = [
-    ['고객 입장 추정', perspective.customerPerspective],
-    ['영업 판단', perspective.salesJudgment],
-    ['추천 접근', perspective.recommendedApproach],
-    ['말문 예시', perspective.talkTrack],
-    ['주의점', perspective.caution],
-  ].map(([label, value]) => {
-    const text = aiQuestionText(value);
-    return text ? `${label}: ${text}` : '';
-  }).filter(Boolean);
-  if (perspectiveLines.length > 0) {
-    blocks.push({ title: '고객/영업 관점', lines: perspectiveLines });
-  }
-
-  const actionLines = aiQuestionRecordList(answer.actionItems).map((item, index) => {
-    const rank = aiQuestionText(item.rank) || String(index + 1);
-    const title = aiQuestionText(item.title) || `추천 액션 ${rank}`;
-    const ownerContext = [item.company, item.department, item.customer].map(aiQuestionText).filter(Boolean).join(' · ');
-    const detailParts = [
-      ownerContext,
-      aiQuestionText(item.priority) ? `우선순위: ${aiQuestionText(item.priority)}` : '',
-      aiQuestionText(item.reason) ? `이유: ${aiQuestionText(item.reason)}` : '',
-      aiQuestionText(item.nextAction) ? `다음 액션: ${aiQuestionText(item.nextAction)}` : '',
-      aiQuestionText(item.timing) ? `시점: ${aiQuestionText(item.timing)}` : '',
-      aiQuestionEvidenceLine(item.crmEvidence),
-    ].filter(Boolean);
-    return `${rank}. ${title}${detailParts.length > 0 ? `\n${detailParts.join('\n')}` : ''}`;
-  });
-  if (actionLines.length > 0) {
-    blocks.push({ title: '추천 액션', lines: actionLines });
-  }
-
   const evidenceLines = aiQuestionRecordList(answer.evidence).map((item) => {
     const label = aiQuestionText(item.label) || '근거';
     const value = aiQuestionText(item.value);
@@ -19836,7 +19664,7 @@ function AIWorkspaceQuestionDetailPage({
     return (
       <section className="dashboard-loading">
         <Loader2 className="spin-icon" size={24} />
-        <span>질문/답변 기록을 불러오는 중입니다</span>
+        <span>브리핑 기록을 불러오는 중입니다</span>
       </section>
     );
   }
@@ -19847,10 +19675,10 @@ function AIWorkspaceQuestionDetailPage({
         <div className="dashboard-api-alert">
           <AlertTriangle size={18} />
           <div>
-            <strong>질문/답변 기록을 불러오지 못했습니다</strong>
+            <strong>브리핑 기록을 불러오지 못했습니다</strong>
             <span>{data?.error || data?.message || '기록이 없거나 접근 권한이 없습니다.'}</span>
           </div>
-          <a href="/ai-workspace/">AI Workspace</a>
+          <a href="/ai-workspace/">AI 브리핑</a>
         </div>
       </section>
     );
@@ -19861,7 +19689,7 @@ function AIWorkspaceQuestionDetailPage({
   const departmentLabel = [
     log.department?.company,
     log.department?.name,
-  ].filter(Boolean).join(' · ') || (log.scopeType === 'all' ? '전체 부서' : 'AI Workspace');
+  ].filter(Boolean).join(' · ') || (log.scopeType === 'all' ? '전체 부서' : 'AI 브리핑');
   const meta = [
     log.createdAt ? formatDateTimeLabel(log.createdAt) : '',
     log.modelLabel,
@@ -19872,8 +19700,8 @@ function AIWorkspaceQuestionDetailPage({
     <section className="ai-question-detail-page">
       <div className="dashboard-summary-band">
         <div>
-          <span className="eyebrow">Question detail</span>
-          <h2>질문/답변 기록</h2>
+          <span className="eyebrow">Brief detail</span>
+          <h2>브리핑 기록</h2>
           <p>{departmentLabel}{meta ? ` · ${meta}` : ''}</p>
         </div>
         <div className="schedules-summary-actions">
@@ -19886,15 +19714,15 @@ function AIWorkspaceQuestionDetailPage({
 
       <div className="ai-question-detail-chat">
         <article className="ai-question-detail-block">
-          <span className="eyebrow">Question</span>
-          <h3>질문</h3>
+          <span className="eyebrow">Request</span>
+          <h3>요청</h3>
           <p>{log.question}</p>
         </article>
 
         <article className="ai-question-detail-block">
-          <span className="eyebrow">Answer</span>
-          <h3>답변</h3>
-          {answer.lead ? <p className="ai-question-detail-answer-lead">{answer.lead}</p> : <DashboardEmpty label="저장된 답변 내용이 없습니다" />}
+          <span className="eyebrow">Briefing</span>
+          <h3>브리핑</h3>
+          {answer.lead ? <p className="ai-question-detail-answer-lead">{answer.lead}</p> : <DashboardEmpty label="저장된 브리핑 내용이 없습니다" />}
           {answer.blocks.map((block) => (
             <section className="ai-question-detail-answer-section" key={block.title}>
               <strong>{block.title}</strong>
@@ -20006,20 +19834,6 @@ function AIWorkspaceActionQueue({
               </div>
             </div>
             <div className="ai-action-buttons">
-              {action.draftTypes.map((draftType) => {
-                const loadingKey = `${action.id}:${draftType}`;
-                return (
-                  <button
-                    disabled={draftLoadingKey === loadingKey}
-                    key={draftType}
-                    onClick={() => onGenerateDraft(action, draftType)}
-                    type="button"
-                  >
-                    {draftLoadingKey === loadingKey ? <Loader2 className="spin-icon" size={14} /> : <Sparkles size={14} />}
-                    {aiDraftButtonLabels[draftType]}
-                  </button>
-                );
-              })}
               {action.hrefs.customer ? <a href={action.hrefs.customer}>고객 보기</a> : null}
               {action.hrefs.assets ? <a href={action.hrefs.assets}>장비 보기</a> : null}
               {action.hrefs.schedule ? <a href={action.hrefs.schedule}>일정 보기</a> : null}
@@ -20049,14 +19863,14 @@ function AIWorkspaceDraftPreview({
     <section className="dashboard-panel ai-draft-panel">
       <div className="dashboard-panel-heading">
         <div>
-          <span className="eyebrow">Draft copilot</span>
-          <h2>{aiDraftTypeLabels[result.draftType]} 초안</h2>
+          <span className="eyebrow">Briefing only</span>
+          <h2>{aiDraftTypeLabels[result.draftType]} 작성 중단</h2>
         </div>
         <MessageSquareText size={18} />
       </div>
       <div className="ai-draft-meta">
         <span>{result.action.title}</span>
-        <span>{result.source === 'openai' ? 'AI 생성' : '기본 초안'}</span>
+        <span>{result.source === 'openai' ? 'AI 브리핑' : 'CRM 브리핑'}</span>
         <span>승인 전 저장 안 됨</span>
       </div>
       {draft.subject ? <strong className="ai-draft-subject">{draft.subject}</strong> : null}
@@ -20071,7 +19885,7 @@ function AIWorkspaceDraftPreview({
       <div className="ai-prompt-actions">
         <button onClick={onCopy} type="button">
           {copied ? <Check size={14} /> : <Copy size={14} />}
-          {copied ? '복사됨' : '초안 복사'}
+          {copied ? '복사됨' : '내용 복사'}
         </button>
       </div>
     </section>
@@ -20180,7 +19994,7 @@ type AIWorkspaceMemoryEditDraft = {
 const aiMemoryTypeLabels: Record<AIWorkspaceMemoryType, string> = {
   fact: '검수 사실',
   correction: '정정',
-  preference: '답변 선호',
+  preference: '브리핑 선호',
 };
 
 function normalizeAIWorkspaceMemoryType(value: string | undefined): AIWorkspaceMemoryType {
@@ -20267,7 +20081,7 @@ function AIWorkspaceMemoryPanel({
             <option value="">전체</option>
             <option value="fact">검수 사실</option>
             <option value="correction">정정</option>
-            <option value="preference">답변 선호</option>
+            <option value="preference">브리핑 선호</option>
           </select>
         </label>
         <label>
@@ -20333,7 +20147,7 @@ function AIWorkspaceMemoryPanel({
                       >
                         <option value="fact">검수 사실</option>
                         <option value="correction">정정</option>
-                        <option value="preference">답변 선호</option>
+                        <option value="preference">브리핑 선호</option>
                       </select>
                       <select
                         onChange={(event) => {
@@ -20458,7 +20272,7 @@ function AIWorkspacePage({
   const [actionFeedbackMessage, setActionFeedbackMessage] = useState('');
   const [actionFeedbackError, setActionFeedbackError] = useState('');
   const [departmentQuestion, setDepartmentQuestion] = useState('');
-  const [departmentQuestionModel, setDepartmentQuestionModel] = useState<AIWorkspaceQuestionModel | string>('gpt-5.4-mini');
+  const [departmentQuestionModel, setDepartmentQuestionModel] = useState<AIWorkspaceQuestionModel | string>('gpt-5.4-nano');
   const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
   const [departmentQuestionLoading, setDepartmentQuestionLoading] = useState(false);
   const [departmentQuestionError, setDepartmentQuestionError] = useState('');
@@ -20653,7 +20467,7 @@ function AIWorkspacePage({
       const result = await generateAIWorkspaceActionDraft(action.id, draftType);
       setDraftResult(result);
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : 'AI 초안 생성에 실패했습니다.');
+      setDraftError(error instanceof Error ? error.message : 'AI는 브리핑 전용입니다.');
     } finally {
       setDraftLoadingKey('');
     }
@@ -20745,7 +20559,7 @@ function AIWorkspacePage({
       setQuestionHistoryPage(1);
       await onRefresh({ departmentId: activeDepartmentId, questionPage: 1, questionScope });
     } catch (error) {
-      setDepartmentQuestionError(error instanceof Error ? error.message : '부서 질문 답변에 실패했습니다.');
+      setDepartmentQuestionError(error instanceof Error ? error.message : '부서 브리핑 생성에 실패했습니다.');
     } finally {
       setDepartmentQuestionLoading(false);
     }
@@ -20768,10 +20582,10 @@ function AIWorkspacePage({
         rating,
         comment,
       });
-      setQuestionReviewMessage(result.message || 'AI 답변 검수를 저장했습니다.');
+      setQuestionReviewMessage(result.message || 'AI 브리핑 검수를 저장했습니다.');
       await onRefresh({ departmentId: activeDepartmentId, questionPage: questionHistoryPage, questionScope });
     } catch (error) {
-      setQuestionReviewError(error instanceof Error ? error.message : 'AI 답변 검수 저장에 실패했습니다.');
+      setQuestionReviewError(error instanceof Error ? error.message : 'AI 브리핑 검수 저장에 실패했습니다.');
     } finally {
       setQuestionReviewSaving('');
     }
@@ -20816,7 +20630,7 @@ function AIWorkspacePage({
     if (deletingQuestionLogId) {
       return;
     }
-    const confirmed = window.confirm('이 질문/답변 기록을 삭제할까요? 삭제 후에는 복구할 수 없습니다.');
+    const confirmed = window.confirm('이 브리핑 기록을 삭제할까요? 삭제 후에는 복구할 수 없습니다.');
     if (!confirmed) {
       return;
     }
@@ -20832,9 +20646,9 @@ function AIWorkspacePage({
         : currentPage;
       setQuestionHistoryPage(nextPage);
       await onRefresh({ departmentId: activeDepartmentId, questionPage: nextPage, questionScope });
-      setDeleteQuestionLogMessage(result.message || '질문/답변 기록을 삭제했습니다.');
+      setDeleteQuestionLogMessage(result.message || '브리핑 기록을 삭제했습니다.');
     } catch (error) {
-      setDeleteQuestionLogError(error instanceof Error ? error.message : '질문/답변 기록 삭제에 실패했습니다.');
+      setDeleteQuestionLogError(error instanceof Error ? error.message : '브리핑 기록 삭제에 실패했습니다.');
     } finally {
       setDeletingQuestionLogId(null);
     }
@@ -20844,7 +20658,7 @@ function AIWorkspacePage({
     return (
       <section className="dashboard-loading">
         <Loader2 className="spin-icon" size={24} />
-        <span>AI 업무 데이터를 불러오는 중입니다</span>
+        <span>AI 브리핑 데이터를 불러오는 중입니다</span>
       </section>
     );
   }
@@ -20859,7 +20673,7 @@ function AIWorkspacePage({
         <div className="dashboard-api-alert">
           <AlertTriangle size={18} />
           <div>
-            <strong>AI workspace API에 연결되지 않았습니다</strong>
+            <strong>AI 브리핑 API에 연결되지 않았습니다</strong>
             <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
           </div>
           <a href="/reporting/login/">로그인</a>
@@ -20879,16 +20693,16 @@ function AIWorkspacePage({
 
       <div className="dashboard-summary-band">
         <div>
-          <span className="eyebrow">AI Workspace</span>
-          <h2>{data.currentUser.company || 'AI 업무도구'}</h2>
-          <p>부서를 선택하고 현재 상황을 질문합니다. 질문 기록은 선택 부서 기준으로 관리됩니다.</p>
+          <span className="eyebrow">AI briefing</span>
+          <h2>{data.currentUser.company || 'AI 브리핑'}</h2>
+          <p>AI는 CRM 데이터 브리핑만 제공합니다. 창작, 전략, 메일/보고 초안은 만들지 않습니다.</p>
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href={data.links.weeklyReportCreate}>
             주간보고
           </a>
           <a className="route-primary-action" href={data.links.aiHub}>
-            AI Workspace
+            AI 브리핑
             <MoveUpRight size={16} />
           </a>
         </div>

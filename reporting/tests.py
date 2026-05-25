@@ -3942,11 +3942,12 @@ class AIPermissionTests(TestCase):
                       msg=f"User without AI perm should be blocked, got {r.status_code}")
 
     def test_ai_departments_accessible_with_permission(self):
-        """can_use_ai=True 사용자는 AI 분석 페이지 접근 가능"""
+        """can_use_ai=True 사용자는 React AI 브리핑 화면으로 이동"""
         self.client.force_login(self.user_with_ai)
         r = self.client.get('/ai/')
-        self.assertEqual(r.status_code, 200,
-                         msg=f"User with AI perm should access, got {r.status_code}")
+        self.assertEqual(r.status_code, 302,
+                         msg=f"User with AI perm should redirect, got {r.status_code}")
+        self.assertEqual(r['Location'], '/ai-workspace/')
 
     def test_weekly_report_ai_draft_blocked_without_permission(self):
         """can_use_ai=False 사용자는 AI 주간보고 초안 생성 API에서 403"""
@@ -3956,6 +3957,16 @@ class AIPermissionTests(TestCase):
             {'week_start': '2026-04-21', 'week_end': '2026-04-27'}
         )
         self.assertEqual(r.status_code, 403)
+
+    def test_weekly_report_ai_draft_disabled_for_briefing_only(self):
+        """can_use_ai=True 사용자도 AI 주간보고 초안 API는 410"""
+        self.client.force_login(self.user_with_ai)
+        r = self.client.get(
+            reverse('reporting:weekly_report_ai_draft'),
+            {'week_start': '2026-04-21', 'week_end': '2026-04-27'}
+        )
+        self.assertEqual(r.status_code, 410)
+        self.assertEqual(r.json()['error'], 'briefing_only')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -11961,16 +11972,16 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIsNone(payload['featuredDepartment'])
         self.assertEqual(payload['metrics']['departmentsWithCustomers'], 0)
 
-    def test_ai_workspace_summary_uses_mini_only_question_model_choices(self):
+    def test_ai_workspace_summary_uses_nano_only_question_model_choices(self):
         self.client.force_login(self.user)
 
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['defaultQuestionModel'], 'gpt-5.4-mini')
+        self.assertEqual(payload['defaultQuestionModel'], 'gpt-5.4-nano')
         self.assertEqual(payload['questionModelChoices'], [
-            {'id': 'gpt-5.4-mini', 'label': 'GPT-5.4 mini'},
+            {'id': 'gpt-5.4-nano', 'label': 'GPT-5.4 nano'},
         ])
 
     def test_ai_workspace_summary_api_lists_own_ai_operational_data(self):
@@ -12680,7 +12691,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             data=json.dumps({
                 'departmentId': department.id,
                 'question': '선결제 납품이랑 선결제 없이 납품된거 구분해줘',
-                'model': 'gpt-5.4-mini',
+                'model': 'gpt-5.4-nano',
             }),
             content_type='application/json',
         )
@@ -12744,15 +12755,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('전체 부서', answer_text)
         self.assertIn(department.name, answer_text)
         self.assertIn(other_department.name, answer_text)
-        action_items = payload['answer']['actionItems']
-        self.assertGreaterEqual(len(action_items), 2)
-        self.assertTrue(any(item['department'] == department.name for item in action_items))
-        self.assertTrue(any(item['department'] == other_department.name for item in action_items))
-        for item in action_items[:2]:
-            self.assertTrue(item['reason'])
-            self.assertTrue(item['nextAction'])
-            self.assertTrue(item['timing'])
-            self.assertIsInstance(item['crmEvidence'], list)
+        self.assertEqual(payload['answer']['actionItems'], [])
+        self.assertNotIn('decision', payload['answer'])
+        self.assertNotIn('perspective', payload['answer'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_filters_resolved_verified_memory_from_today_actions(self, _mock_client):
@@ -12800,9 +12805,10 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['source'], 'fallback')
         skipped = payload['context']['actionFilter']['skippedActions']
         self.assertTrue(any(item['reason'] == 'verified_memory_resolved' and item['customer'] == '문새롬 담당자' for item in skipped))
-        action_text = json.dumps(payload['answer']['actionItems'], ensure_ascii=False)
-        self.assertNotIn('문새롬', action_text)
-        self.assertIn(active_department.name, action_text)
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        self.assertNotIn('문새롬', answer_text)
+        self.assertIn(active_department.name, answer_text)
+        self.assertEqual(payload['answer']['actionItems'], [])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_filters_recent_sent_email_from_today_actions(self, _mock_client):
@@ -12847,7 +12853,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         skipped = payload['context']['actionFilter']['skippedActions']
         self.assertTrue(any(item['reason'] == 'recent_outbound_email' and item['customer'] == '이준서 담당자' for item in skipped))
-        self.assertNotIn('이준서', json.dumps(payload['answer']['actionItems'], ensure_ascii=False))
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        self.assertNotIn('이준서', answer_text)
+        self.assertEqual(payload['answer']['actionItems'], [])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_applies_explicit_exclusion_names(self, _mock_client):
@@ -12885,13 +12893,14 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('김기윤', skipped_text)
         self.assertIn('한은영', skipped_text)
         self.assertTrue(all(item['reason'] == 'question_exclusion' for item in skipped if item['customer'] in {'이다민 담당자', '김기윤 담당자', '한은영 담당자'}))
-        action_text = json.dumps(payload['answer']['actionItems'], ensure_ascii=False)
-        self.assertNotIn('이다민', action_text)
-        self.assertNotIn('김기윤', action_text)
-        self.assertNotIn('한은영', action_text)
-        self.assertIn(followups['박준현'][1].name, action_text)
+        answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
+        self.assertNotIn('이다민', answer_text)
+        self.assertNotIn('김기윤', answer_text)
+        self.assertNotIn('한은영', answer_text)
+        self.assertIn(followups['박준현'][1].name, answer_text)
+        self.assertEqual(payload['answer']['actionItems'], [])
 
-    def test_ai_workspace_department_question_normalizes_action_items(self):
+    def test_ai_workspace_department_question_normalizer_strips_action_items_for_briefing_only(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 
         result = _ai_workspace_normalize_department_question_answer({
@@ -12920,13 +12929,11 @@ class AIWorkspaceSummaryApiTests(TestCase):
         })
 
         self.assertEqual(result['confidence'], 'high')
-        self.assertEqual(result['actionItems'][0]['rank'], 1)
-        self.assertEqual(result['actionItems'][0]['customer'], '이다민')
-        self.assertIn('Paradigm Tube', result['actionItems'][0]['nextAction'])
-        self.assertIn('월요일 오후', result['actionItems'][0]['timing'])
-        self.assertEqual(result['actionItems'][0]['crmEvidence'][0]['label'], '추천 작업')
+        self.assertEqual(result['actionItems'], [])
+        self.assertNotIn('decision', result)
+        self.assertNotIn('perspective', result)
 
-    def test_ai_workspace_department_question_normalizes_decision(self):
+    def test_ai_workspace_department_question_normalizer_strips_decision_for_briefing_only(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 
         result = _ai_workspace_normalize_department_question_answer({
@@ -12947,15 +12954,11 @@ class AIWorkspaceSummaryApiTests(TestCase):
         })
 
         self.assertEqual(result['confidence'], 'high')
-        self.assertEqual(
-            result['decision']['recommendedChoice'],
-            '재견적 설명 끝에 조건 확인처럼 짧게만 묻습니다.',
-        )
-        self.assertIn('별도 질문', result['decision']['rejectedChoice'])
-        self.assertIn('고객 부담', result['decision']['reason'])
-        self.assertIn('먼저 꺼내면', result['decision']['exception'])
+        self.assertEqual(result['actionItems'], [])
+        self.assertNotIn('decision', result)
+        self.assertNotIn('perspective', result)
 
-    def test_ai_workspace_department_question_normalizes_perspective(self):
+    def test_ai_workspace_department_question_normalizer_strips_perspective_for_briefing_only(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
 
         result = _ai_workspace_normalize_department_question_answer({
@@ -12977,12 +12980,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
         })
 
         self.assertEqual(result['confidence'], 'high')
-        self.assertEqual(
-            result['perspective']['customerPerspective'],
-            '고객 입장에서는 이미 답한 샘플 평가를 다시 묻는다고 느낄 수 있습니다.',
-        )
-        self.assertIn('가격 조건', result['perspective']['talkTrack'])
-        self.assertIn('독촉', result['perspective']['caution'])
+        self.assertEqual(result['actionItems'], [])
+        self.assertNotIn('decision', result)
+        self.assertNotIn('perspective', result)
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_question_uses_recent_feedback_as_completed_sample_context(self, _mock_client):
@@ -13044,11 +13044,12 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('완료', answer_text)
         self.assertIn('2-3영업일', answer_text)
         self.assertNotIn('먼저 샘플이 실제로 전달됐는지 확인', answer_text)
-        self.assertIn('perspective', payload['answer'])
-        self.assertIn('고객 입장', payload['answer']['perspective']['customerPerspective'])
+        self.assertEqual(payload['answer']['actionItems'], [])
+        self.assertNotIn('decision', payload['answer'])
+        self.assertNotIn('perspective', payload['answer'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
-    def test_ai_workspace_question_requote_sample_feedback_uses_customer_perspective(self, _mock_client):
+    def test_ai_workspace_question_requote_sample_feedback_stays_briefing_only(self, _mock_client):
         from reporting.models import AIWorkspaceActionFeedback, History
 
         followup, department = self._create_customer(self.user, '이다민')
@@ -13094,22 +13095,15 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['source'], 'fallback')
         answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
-        decision = payload['answer']['decision']
-        perspective = payload['answer']['perspective']
         self.assertIn('재견적', answer_text)
         self.assertIn('다시 캐묻기보다', answer_text)
         self.assertIn('구매 판단 기준', answer_text)
-        self.assertIn('다시 캐묻지 말고', decision['recommendedChoice'])
-        self.assertIn('버립니다', decision['rejectedChoice'])
-        self.assertIn('같은 질문 반복', decision['reason'])
-        self.assertIn('고객이 먼저', decision['exception'])
-        self.assertIn('고객 입장', perspective['customerPerspective'])
-        self.assertIn('이미 샘플 사용감 차이를 말했는데', perspective['customerPerspective'])
-        self.assertIn('지난번 샘플', perspective['talkTrack'])
-        self.assertIn('독촉', perspective['caution'])
+        self.assertEqual(payload['answer']['actionItems'], [])
+        self.assertNotIn('decision', payload['answer'])
+        self.assertNotIn('perspective', payload['answer'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
-    def test_ai_workspace_question_scale_up_uses_customer_perspective(self, _mock_client):
+    def test_ai_workspace_question_scale_up_stays_briefing_only(self, _mock_client):
         from reporting.models import DeliveryItem, History, Schedule
         from decimal import Decimal
 
@@ -13155,16 +13149,11 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['source'], 'fallback')
         answer_text = payload['answer']['summary'] + ' '.join(payload['answer']['bullets'])
-        decision = payload['answer']['decision']
-        perspective = payload['answer']['perspective']
         self.assertIn('소모 속도', answer_text)
         self.assertIn('구매 압박', answer_text)
-        self.assertIn('같은 품목 추가 주문을 바로 밀지 말고', decision['recommendedChoice'])
-        self.assertIn('즉시 업셀', decision['rejectedChoice'])
-        self.assertIn('구매 압박은 낮으므로', decision['reason'])
-        self.assertIn('재고가 충분한 품목', perspective['customerPerspective'])
-        self.assertIn('동반 구매 품목', perspective['salesJudgment'])
-        self.assertIn('바로 추가 주문', perspective['talkTrack'])
+        self.assertEqual(payload['answer']['actionItems'], [])
+        self.assertNotIn('decision', payload['answer'])
+        self.assertNotIn('perspective', payload['answer'])
 
     def test_ai_workspace_question_context_includes_product_master_facts(self):
         from decimal import Decimal
@@ -13315,7 +13304,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             data=json.dumps({
                 'departmentId': department.id,
                 'question': '메일 참고해서 어떻게 답할지 알려줘',
-                'model': 'gpt-5.4-mini',
+                'model': 'gpt-5.4-nano',
             }),
             content_type='application/json',
         )
@@ -13331,7 +13320,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('메일/이메일/회신/답장', rules_text)
 
     @patch('ai_chat.services.get_openai_client')
-    def test_ai_workspace_department_question_prompt_request_stays_freeform(self, mock_client):
+    def test_ai_workspace_department_question_prompt_request_stays_briefing_only(self, mock_client):
         from types import SimpleNamespace
 
         captured = {}
@@ -13341,9 +13330,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
                 captured.update(kwargs)
                 content = json.dumps({
                     'answer': (
-                        '아래 프롬프트를 외부 AI에 그대로 보내세요.\n\n'
-                        '상황: 고객은 내부 비교 검토 중이며 행정 담당자에게 전달할 자료가 필요합니다.\n'
-                        '요청: 다음 메일 전략과 확인해야 할 조건을 CRM 맥락 기준으로 제안해 주세요.'
+                        '외부 AI용 프롬프트는 작성하지 않습니다.\n\n'
+                        'CRM 기록상 고객은 내부 비교 검토 중이며 행정 담당자에게 전달할 자료가 필요한 상태입니다.'
                     ),
                     'confidence': 'high',
                 })
@@ -13358,7 +13346,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             data=json.dumps({
                 'departmentId': department.id,
                 'question': '외부 AI한테 전략 상담받게 보낼 프롬프트 하나 만들어줘',
-                'model': 'gpt-5.4-mini',
+                'model': 'gpt-5.4-nano',
             }),
             content_type='application/json',
         )
@@ -13366,17 +13354,17 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['source'], 'openai')
-        self.assertIn('외부 AI에 그대로', payload['answer']['summary'])
+        self.assertIn('프롬프트는 작성하지 않습니다', payload['answer']['summary'])
         self.assertIn('\n', payload['answer']['summary'])
         self.assertEqual(payload['answer']['actionItems'], [])
         self.assertNotIn('decision', payload['answer'])
         self.assertNotIn('perspective', payload['answer'])
 
         prompt_payload = json.loads(captured['messages'][1]['content'])
-        self.assertEqual(prompt_payload['responseGuidance']['intent'], 'external_ai_prompt')
+        self.assertEqual(prompt_payload['responseGuidance']['intent'], 'briefing_only_refusal')
         rules_text = '\n'.join(prompt_payload['rules'])
-        self.assertIn('답변 형식은 질문 의도에 맞게 자유롭게 선택', rules_text)
-        self.assertIn('프롬프트 생성 요청에서는 추천 판단', rules_text)
+        self.assertIn('AI는 브리핑 전용', rules_text)
+        self.assertIn('산출물 자체를 만들지 않는다', rules_text)
 
     def test_ai_workspace_department_question_normalizer_does_not_inject_fallback_cards(self):
         from reporting.views import _ai_workspace_normalize_department_question_answer
@@ -13550,8 +13538,11 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['context']['scheduleId'], schedule.id)
         self.assertFalse(payload['context']['stored'])
         self.assertIn('납품', payload['coach']['summary'])
-        self.assertTrue(payload['coach']['afterMeetingNoteDraft']['content'])
+        self.assertEqual(payload['coach']['afterMeetingNoteDraft']['content'], '')
+        self.assertEqual(payload['coach']['afterMeetingNoteDraft']['nextAction'], '')
         self.assertEqual(payload['coach']['afterMeetingNoteDraft']['actionType'], 'delivery_schedule')
+        self.assertEqual(payload['coach']['mailDraft']['subject'], '')
+        self.assertEqual(payload['coach']['mailDraft']['body'], '')
         self.assertEqual(AIWorkspaceQuestionLog.objects.count(), 0)
 
     def test_ai_workspace_department_question_requires_ai_permission(self):
@@ -13598,7 +13589,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             data=json.dumps({
                 'departmentId': department.id,
                 'question': '마지막 주문일 알려줘',
-                'model': 'gpt-5.4-mini',
+                'model': 'gpt-5.4-nano',
             }),
             content_type='application/json',
         )
@@ -13609,17 +13600,17 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['questionLog']['department']['id'], department.id)
         self.assertEqual(payload['questionLog']['question'], '마지막 주문일 알려줘')
         self.assertEqual(payload['questionLog']['source'], payload['source'])
-        self.assertEqual(payload['model'], 'gpt-5.4-mini')
-        self.assertEqual(payload['questionLog']['model'], 'gpt-5.4-mini')
+        self.assertEqual(payload['model'], 'gpt-5.4-nano')
+        self.assertEqual(payload['questionLog']['model'], 'gpt-5.4-nano')
 
         log = AIWorkspaceQuestionLog.objects.get(user=self.user)
         self.assertEqual(log.department, department)
         self.assertEqual(log.scope_type, 'department')
-        self.assertEqual(log.model, 'gpt-5.4-mini')
+        self.assertEqual(log.model, 'gpt-5.4-nano')
         self.assertEqual(log.question, '마지막 주문일 알려줘')
         self.assertIn('summary', log.answer_snapshot)
 
-    def test_ai_workspace_department_question_normalizes_legacy_model_to_mini(self):
+    def test_ai_workspace_department_question_normalizes_legacy_model_to_nano(self):
         from reporting.models import AIWorkspaceQuestionLog
 
         _followup, department = self._create_customer(self.user, '질문모델정리')
@@ -13637,9 +13628,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['model'], 'gpt-5.4-mini')
+        self.assertEqual(payload['model'], 'gpt-5.4-nano')
         log = AIWorkspaceQuestionLog.objects.get(user=self.user)
-        self.assertEqual(log.model, 'gpt-5.4-mini')
+        self.assertEqual(log.model, 'gpt-5.4-nano')
 
     def test_ai_workspace_department_question_records_all_scope_question_log(self):
         from reporting.models import AIWorkspaceQuestionLog
@@ -13653,7 +13644,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             data=json.dumps({
                 'scopeType': 'all',
                 'question': '전체 부서에서 오늘 우선 챙길 곳을 찾아줘',
-                'model': 'gpt-5.4-mini',
+                'model': 'gpt-5.4-nano',
             }),
             content_type='application/json',
         )
@@ -13666,13 +13657,13 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['department'], None)
         self.assertEqual(payload['questionLog']['scopeType'], 'all')
         self.assertEqual(payload['questionLog']['department'], None)
-        self.assertEqual(payload['model'], 'gpt-5.4-mini')
+        self.assertEqual(payload['model'], 'gpt-5.4-nano')
         self.assertGreaterEqual(payload['context']['departmentCount'], 1)
 
         log = AIWorkspaceQuestionLog.objects.get(user=self.user)
         self.assertIsNone(log.department)
         self.assertEqual(log.scope_type, 'all')
-        self.assertEqual(log.model, 'gpt-5.4-mini')
+        self.assertEqual(log.model, 'gpt-5.4-nano')
         self.assertIn('summary', log.answer_snapshot)
 
     def test_ai_workspace_question_log_detail_api_returns_full_answer_for_owner(self):
@@ -13816,7 +13807,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(AIWorkspaceQuestionLog.objects.filter(id=log.id).exists())
 
     @patch('ai_chat.services.get_openai_client')
-    def test_ai_workspace_department_question_uses_crm_strategy_system_prompt(self, mock_client):
+    def test_ai_workspace_department_question_uses_crm_briefing_system_prompt(self, mock_client):
         from types import SimpleNamespace
 
         captured = {}
@@ -13833,15 +13824,15 @@ class AIWorkspaceSummaryApiTests(TestCase):
                 return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
         mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
-        _followup, department = self._create_customer(self.user, '전략프롬프트')
+        _followup, department = self._create_customer(self.user, '브리핑프롬프트')
         self.client.force_login(self.user)
 
         response = self.client.post(
             reverse('reporting:ai_workspace_department_question_api'),
             data=json.dumps({
                 'departmentId': department.id,
-                'question': '이 부서 CRM 전략 방향을 정리해줘',
-                'model': 'gpt-5.4-mini',
+                'question': '이 부서 CRM 현황을 브리핑해줘',
+                'model': 'gpt-5.4-nano',
             }),
             content_type='application/json',
         )
@@ -13849,15 +13840,16 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['source'], 'openai')
         system_prompt = captured['messages'][0]['content']
-        from reporting.views import AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT
-        self.assertEqual(system_prompt, AI_WORKSPACE_CRM_STRATEGY_SYSTEM_PROMPT)
+        from reporting.views import AI_WORKSPACE_BRIEFING_SYSTEM_PROMPT
+        self.assertEqual(system_prompt, AI_WORKSPACE_BRIEFING_SYSTEM_PROMPT)
         prompt_payload = json.loads(captured['messages'][1]['content'])
         self.assertNotIn('answerDirection', prompt_payload['crmContext'])
         rules_text = '\n'.join(prompt_payload['rules'])
         self.assertIn('JSON 객체만 반환', rules_text)
         self.assertIn('"answer": string', rules_text)
+        self.assertIn('decision, perspective, actionItems 필드는 사용하지 않는다', rules_text)
 
-    def test_ai_workspace_department_question_normalizes_unsupported_model_to_mini(self):
+    def test_ai_workspace_department_question_normalizes_unsupported_model_to_nano(self):
         from reporting.models import AIWorkspaceQuestionLog
 
         _followup, department = self._create_customer(self.user, '질문모델검증')
@@ -13875,8 +13867,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['model'], 'gpt-5.4-mini')
-        self.assertEqual(AIWorkspaceQuestionLog.objects.get().model, 'gpt-5.4-mini')
+        self.assertEqual(payload['model'], 'gpt-5.4-nano')
+        self.assertEqual(AIWorkspaceQuestionLog.objects.get().model, 'gpt-5.4-nano')
 
     def test_ai_workspace_summary_includes_department_question_history_with_pagination(self):
         from datetime import timedelta
@@ -14051,7 +14043,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual(payload['feedback']['rating'], 'needs_style')
         self.assertEqual(payload['feedback']['department']['id'], department.id)
-        self.assertIn('다음 질문 답변', payload['message'])
+        self.assertIn('다음 브리핑', payload['message'])
 
         feedback = AIWorkspaceQuestionFeedback.objects.get(user=self.user)
         self.assertEqual(feedback.department, department)
@@ -14096,7 +14088,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             question='P4345N00이 튜브야?',
             answer_snapshot={'summary': '잘못된 답변'},
             source='openai',
-            model='gpt-5.4-mini',
+            model='gpt-5.4-nano',
         )
         self.client.force_login(self.user)
 
@@ -14118,7 +14110,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual(payload['memory']['memoryType'], 'correction')
         self.assertEqual(payload['memory']['department']['id'], department.id)
-        self.assertIn('다음 질문', payload['message'])
+        self.assertIn('다음 브리핑', payload['message'])
 
         memory = AIWorkspaceMemory.objects.get(user=self.user)
         self.assertEqual(memory.department, department)
@@ -14398,7 +14390,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
             question='이전 질문',
             answer_snapshot={'summary': '이전 답변', 'decision': {'recommendedChoice': '샘플 확인'}},
             source='openai',
-            model='gpt-5.4-mini',
+            model='gpt-5.4-nano',
         )
         AIWorkspaceQuestionLog.objects.create(
             user=self.coworker,
@@ -14746,7 +14738,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertNotIn(f'service_case:{other_case.id}', action_ids)
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
-    def test_ai_workspace_action_draft_api_supports_asset_actions(self, _mock_client):
+    def test_ai_workspace_action_draft_api_is_disabled_for_briefing_only(self, _mock_client):
         followup, department = self._create_customer(self.user, '장비초안')
         today = timezone.localdate()
         asset = CustomerAsset.objects.create(
@@ -14778,12 +14770,10 @@ class AIWorkspaceSummaryApiTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 410)
         payload = response.json()
-        self.assertEqual(payload['source'], 'fallback')
-        self.assertEqual(payload['action']['kind'], 'service_case')
-        self.assertEqual(payload['draftType'], 'email')
-        self.assertIn('초안 장비', json.dumps(payload['evidence'], ensure_ascii=False))
+        self.assertEqual(payload['error'], 'briefing_only')
+        self.assertIn('브리핑 전용', payload['message'])
 
     def test_ai_workspace_action_queue_excludes_completed_sold_quotes(self):
         from datetime import time, timedelta
@@ -14917,7 +14907,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.json()['error'], 'permission_denied')
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
-    def test_ai_workspace_action_draft_api_returns_fallback_without_saving(self, _mock_client):
+    def test_ai_workspace_action_draft_api_blocks_without_saving(self, _mock_client):
         from reporting.models import History, WeeklyReport
 
         followup, department = self._create_customer(self.user, '초안고객')
@@ -14931,12 +14921,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 410)
         payload = response.json()
-        self.assertTrue(payload['requiresHumanApproval'])
-        self.assertEqual(payload['source'], 'fallback')
-        self.assertEqual(payload['draftType'], 'questions')
-        self.assertTrue(payload['draft']['bullets'])
+        self.assertEqual(payload['error'], 'briefing_only')
         self.assertEqual(History.objects.filter(user=self.user).count(), 0)
         self.assertEqual(WeeklyReport.objects.filter(user=self.user).count(), 0)
 
@@ -15687,7 +15674,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         )
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
-    def test_ai_workspace_action_draft_api_accepts_scoped_quote_missing_from_global_queue(self, _mock_client):
+    def test_ai_workspace_action_draft_api_rejects_scoped_quote_for_briefing_only(self, _mock_client):
         from datetime import time, timedelta
         from decimal import Decimal
         from reporting.models import Quote, Schedule
@@ -15756,11 +15743,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 410)
         payload = response.json()
-        self.assertEqual(payload['source'], 'fallback')
-        self.assertEqual(payload['action']['id'], f'quote:{selected_quote.id}')
-        self.assertIn('스코프견적초안', payload['draft']['body'])
+        self.assertEqual(payload['error'], 'briefing_only')
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_accepts_scoped_followup_missing_from_global_queue(self, _mock_client):
