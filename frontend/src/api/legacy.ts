@@ -3495,8 +3495,6 @@ export type AIWorkspacePromptTarget = {
   href: string;
 };
 
-export type AIWorkspaceDraftType = 'email' | 'note' | 'questions' | 'weekly_report';
-
 export type AIWorkspaceActionKind =
   | 'quote_followup'
   | 'delivery_risk'
@@ -3586,7 +3584,6 @@ export type AIWorkspaceAction = {
   dueDate: string | null;
   evidence: AIWorkspaceActionEvidence[];
   recommendedAction: string;
-  draftTypes: AIWorkspaceDraftType[];
   feedback: AIWorkspaceActionFeedback | null;
   hrefs: {
     customer?: string;
@@ -3597,7 +3594,6 @@ export type AIWorkspaceAction = {
     ai?: string;
     aiHub?: string;
     mailboxThread?: string;
-    weeklyAiDraft?: string;
     djangoCustomer?: string;
     djangoSchedule?: string;
     djangoNote?: string;
@@ -3633,23 +3629,6 @@ export type AIWorkspaceDailyBrief = {
     moneyImpact: number | null;
   }>;
   suggestedFocus: string[];
-};
-
-export type AIWorkspaceActionDraftResponse = {
-  success?: boolean;
-  source: 'openai' | 'fallback';
-  generatedAt: string;
-  action: AIWorkspaceAction;
-  draftType: AIWorkspaceDraftType;
-  draft: {
-    subject: string;
-    body: string;
-    bullets: string[];
-  };
-  evidence: AIWorkspaceActionEvidence[];
-  requiresHumanApproval: boolean;
-  error?: string;
-  message?: string;
 };
 
 export type AIWorkspaceActionFeedbackResponse = {
@@ -4046,7 +4025,6 @@ export type AIWorkspaceData = {
     aiHub: string;
     weeklyReports: string;
     weeklyReportCreate: string;
-    weeklyAiDraft: string;
     customers: string;
     notes: string;
     dashboard: string;
@@ -4191,7 +4169,6 @@ export type WeeklyReportsData = {
     create: string;
     createApi: string;
     schedulesApi: string;
-    aiDraftApi: string;
     djangoList: string;
     djangoCreate: string;
   };
@@ -4258,20 +4235,6 @@ export type WeeklyReportSchedulesData = {
     quote_delivery: WeeklyReportScheduleItem[];
   };
   error?: string;
-};
-
-export type WeeklyReportAiDraft = {
-  title?: string;
-  activityNotes?: string;
-  quoteDeliveryNotes?: string;
-  otherNotes?: string;
-  activity_notes?: string;
-  quote_delivery_notes?: string;
-  other_notes?: string;
-  activity?: string;
-  quoteDelivery?: string;
-  other?: string;
-  summary?: string;
 };
 
 export type WeeklyReportSaveResponse = {
@@ -5967,7 +5930,6 @@ const emptyAIWorkspaceData: AIWorkspaceData = {
     aiHub: '/ai-workspace/',
     weeklyReports: '/weekly-reports/',
     weeklyReportCreate: '/weekly-reports/new/',
-    weeklyAiDraft: '/reporting/api/weekly-reports/ai-draft/',
     customers: '/customers/',
     notes: '/notes/',
     dashboard: '/dashboard/',
@@ -6050,7 +6012,6 @@ const emptyWeeklyReportLinks: WeeklyReportsData['links'] = {
   create: '/weekly-reports/new/',
   createApi: '/reporting/api/weekly-reports/create/',
   schedulesApi: '/reporting/api/weekly-reports/schedules/',
-  aiDraftApi: '/reporting/api/weekly-reports/ai-draft/',
   djangoList: '/reporting/weekly-reports/',
   djangoCreate: '/reporting/weekly-reports/create/',
 };
@@ -10079,34 +10040,6 @@ export async function deleteAIWorkspaceQuestionLog(questionLogId: number): Promi
   return payload;
 }
 
-export async function generateAIWorkspaceActionDraft(
-  actionId: string,
-  draftType: AIWorkspaceDraftType,
-): Promise<AIWorkspaceActionDraftResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch('/reporting/api/ai-workspace/actions/draft/', {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-    body: JSON.stringify({ actionId, draftType }),
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`AI action draft API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as AIWorkspaceActionDraftResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `AI action draft failed: ${response.status}`);
-  }
-  return data;
-}
-
 export async function submitAIWorkspaceActionFeedback(
   actionId: string,
   feedback: string,
@@ -10956,29 +10889,6 @@ export async function loadWeeklyReportSchedules(weekStart: string, weekEnd: stri
       quote_delivery: data.categorized?.quote_delivery ?? [],
     },
   };
-}
-
-export async function generateWeeklyReportAiDraft(weekStart: string, weekEnd: string): Promise<WeeklyReportAiDraft> {
-  const query = new URLSearchParams();
-  query.set('week_start', weekStart);
-  query.set('week_end', weekEnd);
-  const response = await fetch(`/reporting/api/weekly-reports/ai-draft/?${query.toString()}`, {
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Weekly report AI draft API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as { draft?: WeeklyReportAiDraft; error?: string };
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.error) {
-    throw new Error(data.error || `Weekly report AI draft failed: ${response.status}`);
-  }
-  return data.draft ?? {};
 }
 
 export async function saveWeeklyReportManagerComment(

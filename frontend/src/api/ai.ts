@@ -4,7 +4,6 @@ export type {
   AiDepartmentRunResponse,
   AiPainpointVerifyResponse,
   AIWorkspaceAction,
-  AIWorkspaceActionDraftResponse,
   AIWorkspaceActionEvidence,
   AIWorkspaceActionFeedback,
   AIWorkspaceActionFeedbackResponse,
@@ -14,7 +13,6 @@ export type {
   AIWorkspaceData,
   AIWorkspaceDepartment,
   AIWorkspaceDepartmentQuestionResponse,
-  AIWorkspaceDraftType,
   AIWorkspaceFeaturedDepartment,
   AIWorkspaceFeedbackHistory,
   AIWorkspaceFeedbackHistoryItem,
@@ -60,7 +58,6 @@ export type {
 export {
   askAIWorkspaceDepartmentQuestion,
   deleteAIWorkspaceQuestionLog,
-  generateAIWorkspaceActionDraft,
   generateScheduleAICoach,
   loadAIWorkspaceData,
   loadAIWorkspaceMemories,

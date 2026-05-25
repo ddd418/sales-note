@@ -149,7 +149,6 @@ import {
   deleteTask,
   deleteWeeklyReport,
   downloadScheduleDocument,
-  generateWeeklyReportAiDraft,
   loadDashboardData,
   loadBusinessCardsData,
   loadDocumentTemplatesData,
@@ -283,19 +282,13 @@ import {
   updatePrepayment as updateCustomerPrepayment,
 } from './api/prepayments';
 import type {
-  AIWorkspaceAction,
-  AIWorkspaceActionDraftResponse,
   AIWorkspaceData,
   AIWorkspaceDepartment,
   AIWorkspaceDepartmentQuestionResponse,
-  AIWorkspaceDraftType,
-  AIWorkspaceFollowupTarget,
   AIWorkspaceMemoriesData,
   AIWorkspaceMemoryFilters,
   AIWorkspaceMemoryItem,
   AIWorkspaceMemoryType,
-  AIWorkspacePainpoint,
-  AIWorkspacePromptTarget,
   AIWorkspaceQuestionFeedbackRating,
   AIWorkspaceQuestionLog,
   AIWorkspaceQuestionLogDetailData,
@@ -308,7 +301,6 @@ import type {
 import {
   askAIWorkspaceDepartmentQuestion,
   deleteAIWorkspaceQuestionLog,
-  generateAIWorkspaceActionDraft,
   generateScheduleAICoach,
   loadAIWorkspaceData,
   loadAIWorkspaceMemories,
@@ -316,7 +308,6 @@ import {
   normalizeCustomerAiDepartment,
   runAiDepartmentAnalysis,
   saveAIWorkspaceMemory,
-  submitAIWorkspaceActionFeedback,
   submitAIWorkspaceQuestionFeedback,
   toggleAIWorkspaceMemory,
   updateAIWorkspaceMemory,
@@ -1883,7 +1874,7 @@ const routeMeta: Record<
   mail: {
     eyebrow: 'Sales CRM / Mailbox',
     title: '메일',
-    summary: '고객과 주고받은 메일을 고객 기록, AI 판단 근거와 함께 관리합니다.',
+    summary: '고객과 주고받은 메일을 고객 기록, AI 브리핑 근거와 함께 관리합니다.',
     primaryHref: '/mailbox/',
     primaryLabel: '프론트 메일함 보기',
     actions: [
@@ -10907,8 +10898,6 @@ function ScheduleAICoachPanel({
   loading,
   message,
   permissionMessage,
-  onApplyDraft,
-  onCopyMail,
   onGenerate,
   result,
 }: {
@@ -10917,8 +10906,6 @@ function ScheduleAICoachPanel({
   loading: boolean;
   message: string;
   permissionMessage: string;
-  onApplyDraft: () => void;
-  onCopyMail: () => void;
   onGenerate: () => void;
   result: ScheduleAICoachResponse | null;
 }) {
@@ -11316,47 +11303,6 @@ function ScheduleDetailPage({
       setScheduleCoachError(error instanceof Error ? error.message : '일정 AI 브리핑 생성에 실패했습니다.');
     } finally {
       setScheduleCoachLoading(false);
-    }
-  };
-
-  const handleScheduleCoachApplyDraft = () => {
-    if (!currentSchedule) {
-      return;
-    }
-    const draft = scheduleCoachResult?.coach.afterMeetingNoteDraft;
-    if (!draft?.content) {
-      setScheduleCoachError('AI는 브리핑 전용입니다. 보고 초안 적용은 지원하지 않습니다.');
-      setScheduleCoachMessage('');
-      return;
-    }
-    setScheduleNoteForm({
-      ...makeScheduleNoteCreateForm(currentSchedule),
-      actionType: draft.actionType || scheduleActivityToNoteActionType(currentSchedule.activityType),
-      content: draft.content,
-      nextAction: draft.nextAction || scheduleCoachResult?.coach.recommendedNextAction || '',
-    });
-    setScheduleNoteOpen(true);
-    setScheduleNoteError('');
-    setScheduleNoteMessage('브리핑 내용을 확인했습니다.');
-    setScheduleNoteHref('');
-    setScheduleCoachError('');
-    setScheduleCoachMessage('AI는 브리핑 전용입니다.');
-  };
-
-  const handleScheduleCoachCopyMail = async () => {
-    const draft = scheduleCoachResult?.coach.mailDraft;
-    if (!draft?.subject && !draft?.body) {
-      setScheduleCoachError('AI는 브리핑 전용입니다. 메일 작성은 지원하지 않습니다.');
-      setScheduleCoachMessage('');
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText([draft.subject, draft.body].filter(Boolean).join('\n\n'));
-      setScheduleCoachError('');
-      setScheduleCoachMessage('브리핑 내용을 확인했습니다.');
-    } catch {
-      setScheduleCoachError('메일 작성은 지원하지 않습니다.');
-      setScheduleCoachMessage('');
     }
   };
 
@@ -12581,8 +12527,6 @@ function ScheduleDetailPage({
             loading={scheduleCoachLoading}
             message={scheduleCoachMessage}
             permissionMessage={data.ai.message}
-            onApplyDraft={handleScheduleCoachApplyDraft}
-            onCopyMail={handleScheduleCoachCopyMail}
             onGenerate={handleScheduleCoachRun}
             result={scheduleCoachResult}
           />
@@ -14689,7 +14633,7 @@ function AIWorkspaceDepartmentList({
   const visibleDepartments = filteredDepartments.slice(0, 5);
 
   if (departments.length === 0) {
-    return <DashboardEmpty label="AI 분석 대상 부서가 없습니다" />;
+    return <DashboardEmpty label="AI 브리핑 대상 부서가 없습니다" />;
   }
 
   return (
@@ -14748,103 +14692,6 @@ function AIWorkspaceDepartmentList({
           {formatNumber(filteredDepartments.length - visibleDepartments.length)}개가 더 있습니다. 검색어를 더 구체적으로 입력하세요.
         </p>
       ) : null}
-    </div>
-  );
-}
-
-function AIWorkspacePainpointList({ painpoints }: { painpoints: AIWorkspacePainpoint[] }) {
-  if (painpoints.length === 0) {
-    return <DashboardEmpty label="미검증 PainPoint가 없습니다" />;
-  }
-
-  return (
-    <div className="ai-painpoint-list">
-      {painpoints.map((painpoint) => (
-        <a className="ai-painpoint-row" href={painpoint.href} key={painpoint.id}>
-          <div>
-            <strong>{painpoint.hypothesis}</strong>
-            <span>{[painpoint.company, painpoint.department, painpoint.categoryLabel].filter(Boolean).join(' · ')}</span>
-            {painpoint.question ? <small>{painpoint.question}</small> : null}
-          </div>
-          <div className="ai-confidence">
-            <span>{painpoint.confidenceLabel}</span>
-            <strong>{painpoint.confidenceScore}</strong>
-          </div>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function AIWorkspaceFollowupTargets({ targets }: { targets: AIWorkspaceFollowupTarget[] }) {
-  if (targets.length === 0) {
-    return <DashboardEmpty label="AI 고객 분석 대상이 없습니다" />;
-  }
-
-  return (
-    <div className="ai-followup-grid">
-      {targets.map((target) => (
-        <article className="ai-followup-card" key={target.id}>
-          <div>
-            <strong>{target.company || target.customer}</strong>
-            <span>{[target.customer, target.department, target.priorityLabel].filter(Boolean).join(' · ')}</span>
-            {target.analysisSummary ? <small>{target.analysisSummary}</small> : null}
-          </div>
-          <div className="ai-followup-card-footer">
-            <strong>{Math.round(target.score)}</strong>
-            <div>
-              <a href={target.href}>{target.hasAnalysis ? '분석 보기' : '분석 시작'}</a>
-              <a href={target.customerHref}>고객</a>
-            </div>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function AIWorkspacePromptQueue({
-  copiedPromptId,
-  onCopyPrompt,
-  targets,
-}: {
-  copiedPromptId: string;
-  onCopyPrompt: (target: AIWorkspacePromptTarget) => void;
-  targets: AIWorkspacePromptTarget[];
-}) {
-  if (targets.length === 0) {
-    return <DashboardEmpty label="AI 작업 프롬프트 대상이 없습니다" />;
-  }
-
-  return (
-    <div className="ai-prompt-grid">
-      {targets.map((target) => (
-        <article className={`ai-prompt-card ${target.type}`} key={target.id}>
-          <div className="ai-prompt-card-head">
-            <div>
-              <span>{target.typeLabel}</span>
-              <strong>{target.title}</strong>
-              {target.subtitle ? <small>{target.subtitle}</small> : null}
-            </div>
-            <em>{target.priority}</em>
-          </div>
-          {target.context.length > 0 ? (
-            <div className="ai-prompt-context">
-              {target.context.slice(0, 4).map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-            </div>
-          ) : null}
-          <pre>{target.prompt}</pre>
-          <div className="ai-prompt-actions">
-            <button onClick={() => onCopyPrompt(target)} type="button">
-              {copiedPromptId === target.id ? <Check size={14} /> : <Copy size={14} />}
-              {copiedPromptId === target.id ? '복사됨' : '복사'}
-            </button>
-            <a href={target.href}>열기</a>
-          </div>
-        </article>
-      ))}
     </div>
   );
 }
@@ -17292,19 +17139,6 @@ function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId
   );
 }
 
-function weeklyDraftValue(draft: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = draft[key];
-    if (Array.isArray(value)) {
-      return value.map((item) => String(item)).join('\n');
-    }
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
-  }
-  return '';
-}
-
 function weeklyScheduleText(item: WeeklyReportSchedulesData['schedules'][number]): string {
   const lines = [
     `- ${item.date}${item.weekday ? `(${item.weekday})` : ''}: ${item.customer || '-'}${item.activity_type_display ? ` - ${item.activity_type_display}` : ''}`,
@@ -17646,11 +17480,6 @@ function WeeklyReportEditorPage({
     }));
     setFormMessage('선택한 일정을 본문에 삽입했습니다.');
     setFormError('');
-  };
-
-  const handleAiDraft = async () => {
-    setFormError('AI는 브리핑 전용입니다. 주간보고 초안 생성은 지원하지 않습니다.');
-    setFormMessage('');
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -19034,20 +18863,6 @@ function ProductManagementPage({
   );
 }
 
-const aiDraftTypeLabels: Record<AIWorkspaceDraftType, string> = {
-  email: '메일',
-  note: '노트',
-  questions: '질문',
-  weekly_report: '보고',
-};
-
-const aiDraftButtonLabels: Record<AIWorkspaceDraftType, string> = {
-  email: '메일 작성 중단',
-  note: '노트 작성 중단',
-  questions: '질문 작성 중단',
-  weekly_report: '보고 작성 중단',
-};
-
 function formatAIActionDate(value: string | null) {
   if (!value) {
     return '';
@@ -19739,159 +19554,6 @@ function AIWorkspaceQuestionDetailPage({
   );
 }
 
-function AIWorkspaceActionQueue({
-  actions,
-  draftLoadingKey,
-  feedbackDrafts,
-  feedbackSavingId,
-  onFeedbackChange,
-  onSubmitFeedback,
-  onGenerateDraft,
-}: {
-  actions: AIWorkspaceAction[];
-  draftLoadingKey: string;
-  feedbackDrafts: Record<string, string>;
-  feedbackSavingId: string;
-  onFeedbackChange: (actionId: string, value: string) => void;
-  onSubmitFeedback: (action: AIWorkspaceAction) => void;
-  onGenerateDraft: (action: AIWorkspaceAction, draftType: AIWorkspaceDraftType) => void;
-}) {
-  if (actions.length === 0) {
-    return <DashboardEmpty label="오늘 바로 실행할 AI 추천 액션이 없습니다" />;
-  }
-
-  return (
-    <div className="ai-action-list">
-      {actions.slice(0, 8).map((action) => {
-        const feedbackText = feedbackDrafts[action.id] ?? '';
-        const feedbackInputId = `ai-feedback-${action.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-        const isSavingFeedback = feedbackSavingId === action.id;
-        return (
-          <article className={`ai-action-card ${action.kind}`} key={action.id}>
-            <div className="ai-action-card-head">
-              <div>
-                <span>{action.kindLabel}</span>
-                <strong>{action.title}</strong>
-                <small>{[action.company, action.department, action.customer].filter(Boolean).join(' · ')}</small>
-              </div>
-              <div className="ai-action-score">
-                <span>{action.priorityLabel}</span>
-                <strong>{formatNumber(action.priorityScore)}</strong>
-              </div>
-            </div>
-            <p>{action.recommendedAction}</p>
-            <div className="ai-action-meta">
-              {action.moneyImpact ? <span>{formatWon(action.moneyImpact)}</span> : null}
-              {action.dueDate ? <span>기한 {formatAIActionDate(action.dueDate)}</span> : null}
-            </div>
-            {action.evidence.length > 0 ? (
-              <div className="ai-evidence-list">
-                {action.evidence.slice(0, 4).map((item) => (
-                  <span key={`${action.id}-${item.label}-${item.value}`}>
-                    <b>{item.label}</b>
-                    {item.value}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {action.feedback ? (
-              <div className="ai-action-feedback-status">
-                <CheckCircle2 size={16} />
-                <div>
-                  <strong>{action.feedback.statusLabel}</strong>
-                  <span>{action.feedback.feedback}</span>
-                  {action.feedback.intentLabel ? <small>{action.feedback.intentLabel}</small> : null}
-                  {action.feedback.nextAction ? <small>{action.feedback.nextAction}</small> : null}
-                  {action.feedback.crmSync?.message ? <small>{action.feedback.crmSync.message}</small> : null}
-                  {action.feedback.crmSync?.changes?.length ? (
-                    <small>
-                      {action.feedback.crmSync.changes.slice(0, 2).map((change) => change.label).join(' · ')}
-                    </small>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-            <div className="ai-action-feedback-form">
-              <label htmlFor={feedbackInputId}>현장 답변 기록</label>
-              <textarea
-                id={feedbackInputId}
-                maxLength={1200}
-                onChange={(event) => onFeedbackChange(action.id, event.target.value)}
-                placeholder="예: 고객이 아직 안산대요 / 다음달 예산 확정 후 다시 연락 / 추가 자료를 메일로 요청"
-                rows={3}
-                value={feedbackText}
-              />
-              <div className="ai-action-feedback-footer">
-                <button
-                  className="ai-action-feedback-submit"
-                  disabled={isSavingFeedback || !feedbackText.trim()}
-                  onClick={() => onSubmitFeedback(action)}
-                  type="button"
-                >
-                  {isSavingFeedback ? <Loader2 className="spin-icon" size={14} /> : <Send size={14} />}
-                  {isSavingFeedback ? '기록 중' : '기록하고 AI 판단'}
-                </button>
-              </div>
-            </div>
-            <div className="ai-action-buttons">
-              {action.hrefs.customer ? <a href={action.hrefs.customer}>고객 보기</a> : null}
-              {action.hrefs.assets ? <a href={action.hrefs.assets}>장비 보기</a> : null}
-              {action.hrefs.schedule ? <a href={action.hrefs.schedule}>일정 보기</a> : null}
-              {action.hrefs.note ? <a href={action.hrefs.note}>노트 보기</a> : null}
-              {action.hrefs.mailboxThread ? <a href={action.hrefs.mailboxThread}>메일 보기</a> : null}
-              {action.hrefs.report ? <a href={action.hrefs.report}>보고 작성</a> : null}
-              {action.hrefs.ai ? <a href={action.hrefs.ai}>AI 분석</a> : null}
-            </div>
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function AIWorkspaceDraftPreview({
-  copied,
-  result,
-  onCopy,
-}: {
-  copied: boolean;
-  result: AIWorkspaceActionDraftResponse;
-  onCopy: () => void;
-}) {
-  const draft = result.draft;
-  return (
-    <section className="dashboard-panel ai-draft-panel">
-      <div className="dashboard-panel-heading">
-        <div>
-          <span className="eyebrow">Briefing only</span>
-          <h2>{aiDraftTypeLabels[result.draftType]} 작성 중단</h2>
-        </div>
-        <MessageSquareText size={18} />
-      </div>
-      <div className="ai-draft-meta">
-        <span>{result.action.title}</span>
-        <span>{result.source === 'openai' ? 'AI 브리핑' : 'CRM 브리핑'}</span>
-        <span>승인 전 저장 안 됨</span>
-      </div>
-      {draft.subject ? <strong className="ai-draft-subject">{draft.subject}</strong> : null}
-      {draft.body ? <pre>{draft.body}</pre> : null}
-      {draft.bullets.length > 0 ? (
-        <ul>
-          {draft.bullets.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      ) : null}
-      <div className="ai-prompt-actions">
-        <button onClick={onCopy} type="button">
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-          {copied ? '복사됨' : '내용 복사'}
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function AIWorkspaceFeedbackPerformance({ data }: { data: AIWorkspaceData }) {
   const feedbackHistory = data.feedbackHistory;
   const stats = feedbackHistory.stats;
@@ -20262,15 +19924,6 @@ function AIWorkspacePage({
   selectedDepartmentId: number | null;
   onDepartmentSelect: (department: AIWorkspaceDepartment) => void;
 }) {
-  const [copiedPromptId, setCopiedPromptId] = useState('');
-  const [draftLoadingKey, setDraftLoadingKey] = useState('');
-  const [draftResult, setDraftResult] = useState<AIWorkspaceActionDraftResponse | null>(null);
-  const [draftError, setDraftError] = useState('');
-  const [copiedDraft, setCopiedDraft] = useState(false);
-  const [actionFeedbackDrafts, setActionFeedbackDrafts] = useState<Record<string, string>>({});
-  const [actionFeedbackSavingId, setActionFeedbackSavingId] = useState('');
-  const [actionFeedbackMessage, setActionFeedbackMessage] = useState('');
-  const [actionFeedbackError, setActionFeedbackError] = useState('');
   const [departmentQuestion, setDepartmentQuestion] = useState('');
   const [departmentQuestionModel, setDepartmentQuestionModel] = useState<AIWorkspaceQuestionModel | string>('gpt-5.4-nano');
   const [departmentQuestionResult, setDepartmentQuestionResult] = useState<AIWorkspaceDepartmentQuestionResponse | null>(null);
@@ -20445,90 +20098,6 @@ function AIWorkspacePage({
       setMemoryError(error instanceof Error ? error.message : 'AI 기억 상태 변경에 실패했습니다.');
     } finally {
       setMemorySavingId(null);
-    }
-  };
-
-  const handleCopyPrompt = async (target: AIWorkspacePromptTarget) => {
-    try {
-      await navigator.clipboard.writeText(target.prompt);
-      setCopiedPromptId(target.id);
-      window.setTimeout(() => setCopiedPromptId(''), 1600);
-    } catch {
-      setCopiedPromptId('');
-    }
-  };
-
-  const handleGenerateActionDraft = async (action: AIWorkspaceAction, draftType: AIWorkspaceDraftType) => {
-    const loadingKey = `${action.id}:${draftType}`;
-    setDraftLoadingKey(loadingKey);
-    setDraftError('');
-    setCopiedDraft(false);
-    try {
-      const result = await generateAIWorkspaceActionDraft(action.id, draftType);
-      setDraftResult(result);
-    } catch (error) {
-      setDraftError(error instanceof Error ? error.message : 'AI는 브리핑 전용입니다.');
-    } finally {
-      setDraftLoadingKey('');
-    }
-  };
-
-  const handleActionFeedbackChange = (actionId: string, value: string) => {
-    setActionFeedbackDrafts((previous) => ({
-      ...previous,
-      [actionId]: value,
-    }));
-  };
-
-  const handleSubmitActionFeedback = async (action: AIWorkspaceAction) => {
-    const feedback = (actionFeedbackDrafts[action.id] || '').trim();
-    if (!feedback || actionFeedbackSavingId) {
-      return;
-    }
-
-    setActionFeedbackSavingId(action.id);
-    setActionFeedbackError('');
-    setActionFeedbackMessage('');
-    try {
-      const result = await submitAIWorkspaceActionFeedback(action.id, feedback);
-      setActionFeedbackDrafts((previous) => {
-        const next = { ...previous };
-        delete next[action.id];
-        return next;
-      });
-      await onRefresh({ departmentId: data?.featuredDepartment?.departmentId ?? selectedDepartmentId });
-      if (result.crmSync?.message) {
-        setActionFeedbackMessage(result.crmSync.message);
-      } else if (result.hidden) {
-        setActionFeedbackMessage('답변을 기록했고 추천 실행 목록에서 정리했습니다.');
-      } else if (result.feedback.nextAction) {
-        setActionFeedbackMessage(`답변을 기록했습니다. 다음 액션: ${result.feedback.nextAction}`);
-      } else {
-        setActionFeedbackMessage(result.message || '답변을 기록했습니다.');
-      }
-    } catch (error) {
-      setActionFeedbackError(error instanceof Error ? error.message : '답변 기록에 실패했습니다.');
-    } finally {
-      setActionFeedbackSavingId('');
-    }
-  };
-
-  const handleCopyDraft = async () => {
-    if (!draftResult) {
-      return;
-    }
-    const draft = draftResult.draft;
-    const text = [
-      draft.subject,
-      draft.body,
-      ...(draft.bullets || []).map((item) => `- ${item}`),
-    ].filter(Boolean).join('\n\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedDraft(true);
-      window.setTimeout(() => setCopiedDraft(false), 1600);
-    } catch {
-      setCopiedDraft(false);
     }
   };
 
@@ -21353,7 +20922,7 @@ function DetailPanel({
 
   const handleAiDepartmentRun = async () => {
     if (!deal || !aiDepartment?.canAnalyze || !aiDepartment.runHref || aiRunning) {
-      setAiError(aiDepartment?.message || 'AI 분석을 실행할 수 없습니다.');
+      setAiError(aiDepartment?.message || 'AI 브리핑을 실행할 수 없습니다.');
       setAiMessage('');
       return;
     }
@@ -21365,10 +20934,10 @@ function DetailPanel({
       const result = await runAiDepartmentAnalysis(aiDepartment.runHref);
       await onRefresh(deal.id);
       const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
-      setAiMessage(cardCount > 0 ? `AI 분석을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 분석을 완료했습니다.');
+      setAiMessage(cardCount > 0 ? `AI 브리핑을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 브리핑을 완료했습니다.');
       setAiResultOpen(true);
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : 'AI 분석 실행에 실패했습니다.');
+      setAiError(error instanceof Error ? error.message : 'AI 브리핑 실행에 실패했습니다.');
     } finally {
       setAiRunning(false);
     }
@@ -21485,14 +21054,14 @@ function DetailPanel({
           <div className="customer-ai-card-heading">
             <div>
               <span className="eyebrow">Department AI</span>
-              <h3>{aiDepartment.departmentName || '부서 AI 분석'}</h3>
+              <h3>{aiDepartment.departmentName || '부서 AI 브리핑'}</h3>
             </div>
             <Sparkles size={18} />
           </div>
           {aiDepartment.hasAnalysis ? (
             <p>{aiDepartment.summary || '분석 요약 없음'}</p>
           ) : (
-            <p>{aiDepartment.message || '아직 부서 AI 분석이 없습니다.'}</p>
+            <p>{aiDepartment.message || '아직 부서 AI 브리핑이 없습니다.'}</p>
           )}
           <div className="customer-ai-metrics">
             <span>미팅 <strong>{formatNumber(aiDepartment.meetingCount)}</strong></span>
@@ -21516,12 +21085,12 @@ function DetailPanel({
             ) : null}
             {aiDepartment.href ? (
               <a className="route-secondary-action" href={aiDepartment.href}>
-                AI 결과
+                AI 브리핑
                 <MoveUpRight size={15} />
               </a>
             ) : aiDepartment.hubHref ? (
               <a className="route-secondary-action" href={aiDepartment.hubHref}>
-                AI 허브
+                AI 브리핑
                 <MoveUpRight size={15} />
               </a>
             ) : null}
@@ -21538,7 +21107,7 @@ function DetailPanel({
               type="button"
             >
               {aiRunning ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
-              AI 분석 실행
+              AI 브리핑 실행
             </button>
           </div>
           {aiDepartment.hasAnalysis && aiResultOpen ? (
