@@ -1,5 +1,111 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 Z단계 Legacy 제거와 최종 전환
+
+### 요약
+
+- React parity가 확인된 주간보고를 첫 legacy template 제거 단위로 확정했습니다.
+- `/reporting/weekly-reports/*` legacy GET/HEAD는 React `/weekly-reports/*` route로 이동하도록 전환했습니다.
+- React 전환이 완료된 old form action은 더 이상 Django template mutation을 실행하지 않고 `410 Gone`과 React `Location` header를 반환하도록 공통 helper를 추가했습니다.
+- 주간보고 Django template 3개를 삭제하고, legacy render view 함수를 제거했습니다.
+- frontend proxy/static server도 `/reporting/weekly-reports/*` GET 요청을 React route로 직접 redirect하도록 보강했습니다.
+- legacy template 삭제 후보, redirect/410/404 정책, 백업/복구 절차, PR 분할 순서를 문서화했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `README.md`
+- `docs/LEGACY_RETIREMENT_PLAN.md`
+- `docs/OPERATIONS_RUNBOOK.md`
+- `frontend/server.mjs`
+- `reporting/react_redirects.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `reporting/templates/reporting/weekly_report/list.html` 삭제
+- `reporting/templates/reporting/weekly_report/form.html` 삭제
+- `reporting/templates/reporting/weekly_report/detail.html` 삭제
+
+### CRM 개선
+
+- 사용자는 주간보고 목록/작성/상세/수정 작업을 React 화면에서만 진행합니다.
+- Django는 주간보고 저장/수정/삭제/일정 로드/AI 초안/관리자 코멘트 API만 담당합니다.
+- 오래된 Django form POST가 실수로 데이터를 변경하지 않도록 닫았습니다.
+- 다음 legacy 삭제 PR에서 재사용할 `react_page_retired` 정책이 생겼습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` namespace와 weekly-report URL name은 유지했습니다.
+- React weekly-report API 응답 shape, 권한, 저장/삭제 동작은 유지했습니다.
+- 로그인, 관리자, 파일/Excel/PDF, legal/error template는 삭제하지 않았습니다.
+- DB 모델/필드/마이그레이션 변경은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\react_redirects.py reporting\urls.py reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportReactApiTests reporting.tests.AccessControlTests.test_weekly_report_list_blocked --verbosity=1
+→ 실패: 테스트 클래스명 지정 오류(AccessControlTests 없음). 코드 실패 아님.
+
+python manage.py test reporting.tests.AnonymousAccessTests.test_weekly_report_list_blocked --verbosity=1
+→ Ran 1 test, OK
+
+python manage.py test reporting.tests.WeeklyReportTests reporting.tests.WeeklyReportReactApiTests --verbosity=1
+→ Ran 17 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.AnonymousAccessTests.test_weekly_report_list_blocked --verbosity=1
+→ Ran 8 tests, OK
+
+python scripts\backup_restore_rehearsal.py --dry-run
+→ OK, pg_dump/pg_restore/check/audit rehearsal plan 출력
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing App chunk still reports Vite >500 kB warning
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 PR 단위는 주간보고 template만 실제 삭제했습니다. customers/notes/schedules/prepayments/products/mailbox/todos/AI 등 남은 legacy template는 문서화된 후보 순서대로 별도 PR에서 제거해야 합니다.
+- 일부 API payload에는 compatibility link로 `/reporting/weekly-reports/*` URL이 남아 있지만, 해당 URL은 React로 redirect됩니다.
+- `reporting/base.html`은 남은 legacy/support templates가 공유하므로 최종 audit 전까지 유지합니다.
+
+### Production Deployment Status
+
+- Pending deployment.
+- Runtime route behavior changed, so Railway backend/frontend deployment and production smoke are required.
+
+### Recommended Next Task
+
+- 운영 수동 확인 후 core CRM legacy templates(customers/notes/schedules/dashboard/reports)을 다음 삭제 후보로 묶고, 같은 redirect/410 정책을 적용합니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/weekly-reports/`, `/weekly-reports/new/`, `/weekly-reports/<id>/`, `/weekly-reports/<id>/edit/`가 정상 로딩되는지 확인합니다.
+2. 기존 `/reporting/weekly-reports/`, `/reporting/weekly-reports/create/`, `/reporting/weekly-reports/<id>/`, `/reporting/weekly-reports/<id>/edit/`, `/reporting/weekly-reports/<id>/delete/`가 React로 이동하는지 확인합니다.
+3. React에서 주간보고 작성, 수정, 삭제, 일정 불러오기, AI 초안 버튼, 관리자 코멘트 저장을 역할별로 확인합니다.
+4. 로그아웃/시크릿 창에서 `/reporting/api/weekly-reports/`가 `401 login_required`를 반환하는지 확인합니다.
+5. Railway logs에서 `/reporting/weekly-reports/*` 관련 500 오류가 없는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 Y단계 성능/운영 최적화
 
 ### 요약

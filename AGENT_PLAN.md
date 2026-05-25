@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement Z-step legacy retirement and final transition plan
+
+**Background**:
+
+- User asked to complete the legacy-removal/final-transition step so user-facing CRM screens are React-only and Django remains login/auth/API/file/admin backend plus intentionally retained helper screens.
+- Most migrated `/reporting/*` template routes already redirect authenticated GET/HEAD requests to React, but `/reporting/weekly-reports/*` still renders Django templates directly even though React weekly-report pages and APIs exist.
+- Template deletion needs to be split into auditable PR-sized units with reference-search evidence, redirect/410 policy, backup/rollback steps, deployment smoke, and manual production verification.
+
+**DB change required**: No.
+
+- This task changes URL routing, retirement policy helpers, docs, and tests.
+- No model fields, migrations, or data changes are planned.
+
+**Implementation scope**:
+
+- Define a documented legacy template retirement map and minimal retained Django-template set.
+- Add a final-transition helper for parity-complete legacy routes: authenticated GET/HEAD redirects to React; non-GET legacy form actions return `410 Gone` with the React target so users must use the React API-backed flow.
+- Convert weekly-report legacy template routes to the final-transition policy as the first deletion unit.
+- Delete weekly-report Django templates only after URL references no longer render them.
+- Keep weekly-report JSON APIs, load-schedules API, AI draft API, manager-comment API, and permission checks unchanged for React.
+- Update README and the operations runbook with candidate groups, redirect/410/404 policy, backup/restore checks, deletion-PR sequencing, deploy smoke, and manual verification.
+- Update tests from legacy template rendering expectations to React redirect/410 expectations.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\react_redirects.py reporting\urls.py reporting\tests.py`
+- Focused Django tests for weekly-report legacy redirects/retired form actions and weekly-report React APIs.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Production smoke after Railway deployment for `/weekly-reports/`, `/reporting/weekly-reports/`, protected weekly-report APIs, and representative existing routes.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement Y-step performance and operations optimization plan
 
 **Background**:

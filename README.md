@@ -12,7 +12,7 @@
 - `frontend/`: React/TypeScript CRM 프론트엔드입니다. 고객, 일정, 납품, 선결제, 리포트, AI 워크스페이스 등 운영 화면을 담당합니다.
 - `sales_project/settings.py`: 기본 Django settings 진입점입니다. Railway/DATABASE_URL 환경에서는 `settings_production.py`로 분기합니다.
 - `sales_project/settings_production.py`: Railway 운영 배포용 settings입니다.
-- `templates/`, `reporting/templates/`: 기존 Django 템플릿 화면입니다. React 기능 parity가 검증되기 전에는 삭제하지 않습니다.
+- `templates/`, `reporting/templates/`: 기존 Django 템플릿 화면입니다. 삭제 후보와 보존 대상은 [Legacy Retirement Plan](docs/LEGACY_RETIREMENT_PLAN.md)에 기록합니다.
 - `AGENT_PLAN.md`, `AGENT_REPORT.md`: 작업 계획과 결과 기록입니다.
 
 ## 루트 정리 상태
@@ -73,6 +73,7 @@ cd frontend; npm run build
 문서/미사용 산출물 삭제처럼 런타임 동작에 영향이 없는 변경은 Railway 재배포 대상이 아닙니다. 그래도 Django 설정 검증과 핵심 smoke 테스트 결과는 `AGENT_REPORT.md`에 기록합니다.
 
 운영 안정화 절차는 [Operations Runbook](docs/OPERATIONS_RUNBOOK.md)에 정리되어 있습니다.
+React 전환 후 legacy Django 템플릿 제거 절차는 [Legacy Retirement Plan](docs/LEGACY_RETIREMENT_PLAN.md)에 정리되어 있습니다.
 
 자주 쓰는 운영 점검:
 
@@ -84,8 +85,7 @@ python scripts/backup_restore_rehearsal.py --dry-run
 
 ## 다음 개발 우선순위
 
-1. 계정/prepayment/asset/AI API를 `reporting/api/` 하위 모듈로 단계적으로 분리합니다.
-2. `frontend/src/App.tsx`의 계정, 선결제, 장비, AI 화면을 `pages/` 모듈로 계속 분리합니다.
-3. 중복 담당자/부서 병합 및 잘못 연결된 납품/선결제 이관 도구를 안정화합니다.
-4. `/reports/`를 계정별 현황표 중심으로 계속 고도화합니다.
-5. `/assets/` 장비/A/S/교정 운영 수동 검수 후 접수 흐름과 고객 선택 자동완성을 보강합니다.
+1. React parity가 확인된 Django template 삭제 후보를 PR 단위로 계속 제거합니다.
+2. 남은 `/reporting/*` legacy page는 `GET/HEAD -> React`, old form action -> `410 Gone` 정책을 적용합니다.
+3. 각 삭제 PR마다 URL 참조 검색, 권한 테스트, Railway smoke, 운영 수동 확인을 기록합니다.
+4. 최종적으로 Django는 login/auth/API/file/admin backend와 의도적으로 남긴 보조 화면만 렌더링하도록 정리합니다.

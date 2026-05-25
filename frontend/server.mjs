@@ -286,6 +286,24 @@ function getCoreCrmReactLocation(requestUrl) {
   if (pathname === '/reporting/downloads/' || pathname === '/reporting/downloads') {
     return buildReactLocation('/downloads/', params);
   }
+  if (pathname === '/reporting/weekly-reports/' || pathname === '/reporting/weekly-reports') {
+    return buildReactLocation('/weekly-reports/', params);
+  }
+  if (pathname === '/reporting/weekly-reports/create/' || pathname === '/reporting/weekly-reports/create') {
+    return buildReactLocation('/weekly-reports/new/', params);
+  }
+  match = pathname.match(/^\/reporting\/weekly-reports\/(\d+)\/edit\/?$/);
+  if (match) {
+    return buildReactLocation(`/weekly-reports/${match[1]}/edit/`, params);
+  }
+  match = pathname.match(/^\/reporting\/weekly-reports\/(\d+)\/delete\/?$/);
+  if (match) {
+    return buildReactLocation(`/weekly-reports/${match[1]}/`, params);
+  }
+  match = pathname.match(/^\/reporting\/weekly-reports\/(\d+)\/?$/);
+  if (match) {
+    return buildReactLocation(`/weekly-reports/${match[1]}/`, params);
+  }
   if (pathname === '/reporting/profile/' || pathname === '/reporting/profile') {
     return buildReactLocation('/profile/', params);
   }

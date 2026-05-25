@@ -16577,21 +16577,21 @@ class WeeklyReportTests(TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_weekly_report_list_accessible(self):
-        """주간보고 목록: 인증 후 200"""
+        """주간보고 legacy 목록은 React 주간보고 화면으로 이동"""
         self.client.force_login(self.salesman)
         r = self.client.get(reverse('reporting:weekly_report_list'))
-        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], frontend_url('weekly-reports/'))
 
     def test_weekly_report_create_page_renders_schedule_loader(self):
-        """주간보고 작성 화면은 일정 자동 로드 스크립트를 렌더링"""
+        """주간보고 legacy 작성 화면은 React 작성 화면으로 이동"""
         self.client.force_login(self.salesman)
         r = self.client.get(reverse('reporting:weekly_report_create'))
-        self.assertEqual(r.status_code, 200)
-        self.assertContains(r, 'loadSchedules();')
-        self.assertContains(r, 'normalizeEditorHtmlInput')
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], frontend_url('weekly-reports/new/'))
 
     def test_weekly_report_create_normalizes_double_escaped_html(self):
-        """Quill HTML이 이중 escape되어 들어와도 정상 HTML로 저장/렌더링"""
+        """React API도 Quill HTML 이중 escape를 정상 HTML로 저장/반환"""
         import datetime
         from reporting.models import WeeklyReport
 
@@ -16606,15 +16606,19 @@ class WeeklyReportTests(TestCase):
         )
         other = '<p>&lt;p&gt;국민대학교 방문&lt;/p&gt;</p>'
 
-        r = self.client.post(reverse('reporting:weekly_report_create'), {
-            'week_start': '2026-04-20',
-            'week_end': '2026-04-24',
-            'title': 'HTML 정규화 테스트',
-            'activity_notes': activity,
-            'quote_delivery_notes': quote_delivery,
-            'other_notes': other,
-        })
-        self.assertEqual(r.status_code, 302)
+        r = self.client.post(
+            reverse('reporting:weekly_report_create_api'),
+            data=json.dumps({
+                'weekStart': '2026-04-20',
+                'weekEnd': '2026-04-24',
+                'title': 'HTML 정규화 테스트',
+                'activityNotes': activity,
+                'quoteDeliveryNotes': quote_delivery,
+                'otherNotes': other,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(r.status_code, 200)
 
         report = WeeklyReport.objects.get(
             user=self.salesman,
@@ -16625,11 +16629,63 @@ class WeeklyReportTests(TestCase):
         self.assertNotIn('&amp;lt;p&amp;gt;', report.activity_notes)
         self.assertIn('<p>국민대학교 방문</p>', report.other_notes)
 
-        detail = self.client.get(reverse('reporting:weekly_report_detail', args=[report.pk]))
+        detail = self.client.get(reverse('reporting:weekly_report_detail_api', args=[report.pk]))
         self.assertEqual(detail.status_code, 200)
-        self.assertContains(detail, '수리 피펫 가져다드리고 데모피펫 회수')
-        self.assertContains(detail, '국민대학교 방문')
-        self.assertNotContains(detail, '&lt;p&gt;04/28')
+        detail_payload = detail.json()
+        self.assertIn('수리 피펫 가져다드리고 데모피펫 회수', detail_payload['report']['activityNotesHtml'])
+        self.assertIn('국민대학교 방문', detail_payload['report']['otherNotesHtml'])
+        self.assertNotIn('&lt;p&gt;04/28', detail_payload['report']['activityNotesHtml'])
+
+    def test_weekly_report_legacy_detail_routes_redirect_to_react(self):
+        """주간보고 legacy 상세/수정/삭제 GET은 React route로 이동"""
+        import datetime
+        from reporting.models import WeeklyReport
+
+        self.client.force_login(self.salesman)
+        report = WeeklyReport.objects.create(
+            user=self.salesman,
+            week_start=datetime.date(2026, 4, 20),
+            week_end=datetime.date(2026, 4, 24),
+            title='HTML 정규화 테스트',
+        )
+
+        detail = self.client.get(reverse('reporting:weekly_report_detail', args=[report.pk]))
+        self.assertEqual(detail.status_code, 302)
+        self.assertEqual(detail['Location'], frontend_url(f'weekly-reports/{report.pk}/'))
+
+        edit = self.client.get(reverse('reporting:weekly_report_edit', args=[report.pk]))
+        self.assertEqual(edit.status_code, 302)
+        self.assertEqual(edit['Location'], frontend_url(f'weekly-reports/{report.pk}/edit/'))
+
+        delete = self.client.get(reverse('reporting:weekly_report_delete', args=[report.pk]))
+        self.assertEqual(delete.status_code, 302)
+        self.assertEqual(delete['Location'], frontend_url(f'weekly-reports/{report.pk}/'))
+
+    def test_weekly_report_legacy_form_actions_are_retired(self):
+        """React parity 이후 legacy 주간보고 form POST는 410으로 닫힘"""
+        import datetime
+        from reporting.models import WeeklyReport
+
+        self.client.force_login(self.salesman)
+        report = WeeklyReport.objects.create(
+            user=self.salesman,
+            week_start=datetime.date(2026, 4, 20),
+            week_end=datetime.date(2026, 4, 24),
+            title='legacy form close test',
+        )
+
+        create = self.client.post(reverse('reporting:weekly_report_create'), {'title': 'legacy'})
+        self.assertEqual(create.status_code, 410)
+        self.assertEqual(create['Location'], frontend_url('weekly-reports/new/'))
+
+        edit = self.client.post(reverse('reporting:weekly_report_edit', args=[report.pk]), {'title': 'legacy'})
+        self.assertEqual(edit.status_code, 410)
+        self.assertEqual(edit['Location'], frontend_url(f'weekly-reports/{report.pk}/edit/'))
+
+        delete = self.client.post(reverse('reporting:weekly_report_delete', args=[report.pk]))
+        self.assertEqual(delete.status_code, 410)
+        self.assertEqual(delete['Location'], frontend_url(f'weekly-reports/{report.pk}/'))
+        self.assertTrue(WeeklyReport.objects.filter(pk=report.pk).exists())
 
 
 class WeeklyReportReactApiTests(TestCase):

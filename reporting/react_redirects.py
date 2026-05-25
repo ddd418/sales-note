@@ -5,6 +5,7 @@ from urllib.parse import urlencode, urljoin
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 
 
@@ -50,6 +51,37 @@ def react_page_redirect(legacy_view, target):
             target_url = target(request, *args, **kwargs) if callable(target) else target
             return redirect(target_url)
         return legacy_view(request, *args, **kwargs)
+
+    return _wrapped
+
+
+def react_page_retired(target):
+    """Close a parity-complete legacy template route.
+
+    Authenticated page reads still land users on the React replacement. Legacy
+    form actions are intentionally gone so stale Django forms cannot mutate CRM
+    data after the React/API flow becomes canonical.
+    """
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        target_url = target(request, *args, **kwargs) if callable(target) else target
+        if request.method.upper() in READ_PAGE_METHODS:
+            return redirect(target_url)
+
+        message = 'This legacy Django CRM page has moved to React.'
+        if 'application/json' in request.headers.get('Accept', ''):
+            response = JsonResponse(
+                {
+                    'success': False,
+                    'error': message,
+                    'redirect': target_url,
+                },
+                status=410,
+            )
+        else:
+            response = HttpResponse(message, status=410, content_type='text/plain; charset=utf-8')
+        response['Location'] = target_url
+        return response
 
     return _wrapped
 

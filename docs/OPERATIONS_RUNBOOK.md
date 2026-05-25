@@ -77,6 +77,37 @@ python scripts/backup_restore_rehearsal.py --allow-target-reset
 python manage.py simple_backup --format=auto --keep=7
 ```
 
+## Legacy Template Retirement
+
+React parity가 완료된 Django template를 삭제할 때는 [Legacy Retirement Plan](LEGACY_RETIREMENT_PLAN.md)을 기준으로 작은 PR 단위로 진행합니다.
+
+삭제 전 확인:
+
+```powershell
+rg -n "template/path/or/url_name" reporting todos ai_chat sales_project frontend docs
+python manage.py simple_backup --format=auto --keep=7
+python scripts/backup_restore_rehearsal.py --dry-run
+python manage.py check
+python manage.py makemigrations --check --dry-run
+```
+
+운영 정책:
+
+- 인증된 `GET`/`HEAD` legacy page는 React route로 `302` redirect합니다.
+- React parity가 완료된 old form action은 `410 Gone`으로 닫고 `Location` header에 React route를 제공합니다.
+- React replacement가 없는 route는 삭제하지 않습니다. 폐기 route는 별도 공지/검수 후 `404` 또는 `410`으로 닫습니다.
+- login/auth/API/file/admin/legal/error/document generation 화면은 의도적으로 Django에 남길 수 있습니다.
+
+배포 후 확인:
+
+```powershell
+python scripts/post_deploy_smoke.py `
+  --backend-url https://web-production-8a820.up.railway.app `
+  --frontend-url https://sales-note-frontend-production.up.railway.app
+```
+
+수동으로 React replacement route와 기존 `/reporting/*` route를 모두 열어 redirect, 권한, API 저장/삭제가 정상인지 확인합니다. template-only rollback은 이전 commit 재배포 또는 revert PR로 처리하며, DB 복구는 보통 필요하지 않습니다.
+
 ## Logs And Alerts
 
 Railway 기본 로그는 stdout/stderr 기준입니다. Django 운영 로그 레벨은 `DJANGO_LOG_LEVEL`로 조정합니다.
