@@ -4,12 +4,13 @@ TODOLIST 뷰
 - 매니저: 업무 하달, 진행 현황, 워크로드
 """
 import json
+import mimetypes
 from functools import wraps
 
 from django.contrib.auth.models import User
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
+from django.http import FileResponse, Http404, JsonResponse, HttpResponse
 from django.contrib import messages
 from django.db.models import Q, Count
 from django.utils import timezone
@@ -1573,7 +1574,7 @@ def _tasks_attachment_payload(attachment):
         'fileSize': attachment.file_size,
         'uploadedAt': attachment.uploaded_at.isoformat() if attachment.uploaded_at else None,
         'uploadedBy': _tasks_user_payload(attachment.uploaded_by),
-        'downloadHref': attachment.file.url if attachment.file else '',
+        'downloadHref': reverse('reporting:tasks_attachment_download_api', args=[attachment.id]) if attachment.file else '',
     }
 
 
@@ -1870,6 +1871,39 @@ def tasks_attachment_upload_api(request, pk):
         **_tasks_detail_payload(todo, request.user),
         'message': f'첨부파일 {len(attachments)}개를 업로드했습니다.',
     })
+
+
+@require_http_methods(["GET"])
+def tasks_attachment_download_api(request, attachment_id):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    attachment = get_object_or_404(
+        TodoAttachment.objects.select_related('todo', 'uploaded_by'),
+        pk=attachment_id,
+    )
+    if not _tasks_can_view(attachment.todo, request.user):
+        return JsonResponse({
+            'success': False,
+            'source': 'django',
+            'error': 'permission_denied',
+            'message': '이 업무 첨부파일에 접근할 권한이 없습니다.',
+        }, status=403)
+    if not attachment.file:
+        raise Http404
+
+    filename = attachment.filename or attachment.file.name.rsplit('/', 1)[-1]
+    content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    try:
+        return FileResponse(
+            attachment.file.open('rb'),
+            as_attachment=True,
+            filename=filename,
+            content_type=content_type,
+        )
+    except FileNotFoundError:
+        raise Http404
 
 
 @require_http_methods(["POST"])

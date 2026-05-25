@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement U-step file/excel/download commonization plan
+
+**Background**:
+
+- User asked to complete React full replacement item U for files, Excel, downloads, and common attachment controls.
+- Django already owns the protected file, generated document, Excel/CSV export, Gmail attachment, asset service report, and calibration certificate endpoints.
+- React currently uses several download buttons and three separate attachment UIs for notes, schedules, and tasks.
+
+**DB change required**: No.
+
+- Existing `HistoryFile`, `ScheduleFile`, `TodoAttachment`, document, product, report, prepayment, asset, and mailbox models support this scope.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add an authenticated download registry API listing all known download/export routes, including parameterized routes, auth/role policy, scope labels, expected filename patterns, streaming/large-download notes, and React entry points.
+- Add a React `/downloads/` page that shows download URLs by business area, displays range and expected filename before the user downloads, and keeps Django as the actual file/Excel handler.
+- Add `/reporting/downloads/` legacy GET/HEAD routing and navigation entry to the React download hub.
+- Preserve existing protected Django download endpoints and add focused regression tests for registry auth plus representative anonymous/unauthorized download blocking.
+- Extract a shared React `AttachmentManager` component and use it for note, schedule, task, and customer attachment lists without changing backend upload/delete endpoints.
+- Keep upload/download/delete actions using existing Django APIs, CSRF/session handling, and permission checks.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\file_views.py reporting\urls.py reporting\tests.py`
+- Focused Django tests for download registry/navigation and representative protected file/download endpoints.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Browser/local smoke for `/downloads/`, `/reporting/downloads/`, protected `/reporting/api/downloads/`, and React attachment sections.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement T-step data cleanup tools plan
 
 **Background**:

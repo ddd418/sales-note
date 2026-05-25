@@ -160,6 +160,7 @@ urlpatterns = [
     path('api/tasks/<int:pk>/update/', lazy_view('todos.views.tasks_update_api'), name='tasks_update_api'),
     path('api/tasks/<int:pk>/delete/', lazy_view('todos.views.tasks_delete_api'), name='tasks_delete_api'),
     path('api/tasks/<int:pk>/attachments/', lazy_view('todos.views.tasks_attachment_upload_api'), name='tasks_attachment_upload_api'),
+    path('api/tasks/attachments/<int:attachment_id>/download/', lazy_view('todos.views.tasks_attachment_download_api'), name='tasks_attachment_download_api'),
     path('api/tasks/<int:pk>/comments/', lazy_view('todos.views.tasks_comment_api'), name='tasks_comment_api'),
     path('api/tasks/<int:pk>/status/', lazy_view('todos.views.tasks_status_api'), name='tasks_status_api'),
     # 히스토리 URL들
@@ -358,6 +359,11 @@ urlpatterns = [
         views.analytics_dashboard_view,
         static_react_page('data-cleanup/'),
     ), name='data_cleanup'),
+    path('downloads/', react_page_redirect(
+        views.analytics_dashboard_view,
+        static_react_page('downloads/'),
+    ), name='downloads'),
+    path('api/downloads/', views.downloads_registry_api, name='downloads_registry_api'),
     path('analytics/export/activity.csv', views.analytics_activity_csv_export, name='analytics_activity_csv'),
     path('analytics/export/pipeline.csv', views.analytics_pipeline_csv_export, name='analytics_pipeline_csv'),
     path('analytics/export/activity.xlsx', views.analytics_activity_xlsx_export, name='analytics_activity_xlsx'),

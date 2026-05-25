@@ -84,6 +84,7 @@ import {
   DocumentTemplateItem,
   DocumentTemplateMutationPayload,
   DocumentTemplatesData,
+  DownloadsData,
   EmployeeManagementItem,
   EmployeeMutationPayload,
   EmployeesData,
@@ -224,6 +225,7 @@ import {
   loadAccountCleanupPreviewData,
   loadBusinessCardsData,
   loadDocumentTemplatesData,
+  loadDownloadsData,
   loadEmployeesData,
   loadAccountDetailData,
   loadCustomerAssetDirectoryData,
@@ -315,8 +317,10 @@ import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, Sta
 import { AccountCleanupPreviewPage } from './pages/accounts/AccountCleanupPreviewPage';
 import { CompanyManagementPage } from './pages/companies/CompanyManagementPage';
 import { DataCleanupPage } from './pages/data-cleanup/DataCleanupPage';
+import { DownloadsPage } from './pages/downloads/DownloadsPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
+import { AttachmentManager, type AttachmentManagerFile } from './components/shared/AttachmentManager';
 import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from './components/shared/FeedbackStates';
 
 const scheduleCalendarUrl = '/schedules/calendar/';
@@ -1769,6 +1773,18 @@ const routeMeta: Record<
       { label: '고객 목록', href: '/customers/' },
     ],
   },
+  downloads: {
+    eyebrow: 'Sales CRM / Downloads',
+    title: '파일/다운로드',
+    summary: '파일, Excel, CSV 다운로드 URL과 권한 범위를 확인합니다.',
+    primaryHref: '/downloads/',
+    primaryLabel: '다운로드 허브 열기',
+    actions: [
+      { label: '다운로드 허브', href: '/downloads/', primary: true },
+      { label: '리포트', href: '/reports/' },
+      { label: '서류', href: '/documents/' },
+    ],
+  },
   customers: {
     eyebrow: 'Sales CRM / Customers',
     title: '고객',
@@ -1978,6 +1994,7 @@ function getCurrentView(): MainView {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
   if (pathname.startsWith('/data-cleanup/')) return 'dataCleanup';
+  if (pathname.startsWith('/downloads/')) return 'downloads';
   if (pathname.startsWith('/reports/')) return 'analytics';
   if (pathname.startsWith('/analytics/')) return 'analytics';
   if (pathname.startsWith('/companies/')) return 'companies';
@@ -3026,39 +3043,13 @@ function CustomerDetailNoteList({
 }
 
 function CustomerAttachmentList({ files }: { files: CustomerAttachmentItem[] }) {
-  if (files.length === 0) {
-    return <DashboardEmpty label="첨부된 파일이 없습니다" />;
-  }
-
   return (
-    <div className="customer-attachment-list">
-      {files.map((file) => (
-        <article className="customer-attachment-row" key={`${file.fileType}-${file.id}`}>
-          <div className="dashboard-row-icon">
-            {file.fileType === 'schedule' ? <CalendarDays size={17} /> : <FileText size={17} />}
-          </div>
-          <div className="customer-attachment-main">
-            <strong>{file.filename}</strong>
-            <span>
-              {[file.fileTypeLabel, file.sourceOwner, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}
-            </span>
-            <small>
-              {[file.sourceLabel, file.sourceDate ? formatDateLabel(file.sourceDate) : '', file.sourceDetail].filter(Boolean).join(' · ')}
-            </small>
-          </div>
-          <div className="customer-attachment-actions">
-            <span>{file.size}</span>
-            <a className="customer-row-action" href={file.sourceHref}>
-              원문 <MoveUpRight size={13} />
-            </a>
-            <a className="customer-row-action" href={file.downloadHref}>
-              <Download size={13} />
-              다운로드
-            </a>
-          </div>
-        </article>
-      ))}
-    </div>
+    <AttachmentManager
+      className="customer-attachment-manager"
+      emptyLabel="첨부된 파일이 없습니다"
+      files={files}
+      title="첨부파일"
+    />
   );
 }
 
@@ -8226,7 +8217,7 @@ function NoteDetailPage({
     }
   };
 
-  const handleNoteFileDelete = async (file: NoteFileItem) => {
+  const handleNoteFileDelete = async (file: NoteFileItem | AttachmentManagerFile) => {
     if (noteFileDeletingId !== null) {
       return;
     }
@@ -8239,7 +8230,7 @@ function NoteDetailPage({
       return;
     }
 
-    setNoteFileDeletingId(file.id);
+    setNoteFileDeletingId(Number(file.id));
     setNoteFileError('');
     setNoteFileMessage('');
     try {
@@ -8586,58 +8577,21 @@ function NoteDetailPage({
             {data.links.schedule ? <a href={data.links.schedule}>연결 일정</a> : null}
             <a href={data.links.createNote}>새 노트 작성</a>
           </div>
-          <div className="schedule-file-heading">
-            <h3 className="customer-detail-section-heading">첨부파일</h3>
-            {note.canEdit && data.links.uploadFiles ? (
-              <>
-                <input
-                  aria-label="영업노트 첨부파일 선택"
-                  className="schedule-file-input"
-                  multiple
-                  onChange={handleNoteFilesSelected}
-                  ref={noteFileInputRef}
-                  type="file"
-                />
-                <button
-                  className="customer-row-action schedule-file-upload-button"
-                  disabled={noteFileUploading}
-                  onClick={handleNoteFileUploadClick}
-                  type="button"
-                >
-                  {noteFileUploading ? <Loader2 className="spin-icon" size={14} /> : <Upload size={14} />}
-                  <span>{noteFileUploading ? '업로드 중' : '업로드'}</span>
-                </button>
-              </>
-            ) : null}
-          </div>
           {noteFileError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{noteFileError}</span></div> : null}
           {noteFileMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{noteFileMessage}</span></div> : null}
-          {note.files.length === 0 ? (
-            <DashboardEmpty label="첨부파일이 없습니다" />
-          ) : (
-            <div className="schedule-file-list">
-              {note.files.map((file) => (
-                <div className="schedule-file-row" key={file.id}>
-                  <a className="schedule-file-download" href={file.downloadHref}>
-                    <strong>{file.filename}</strong>
-                    <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
-                  </a>
-                  {file.canDelete && file.deleteHref ? (
-                    <button
-                      aria-label={`${file.filename} 삭제`}
-                      className="customer-row-action schedule-file-delete-button"
-                      disabled={noteFileDeletingId === file.id}
-                      onClick={() => handleNoteFileDelete(file)}
-                      type="button"
-                    >
-                      {noteFileDeletingId === file.id ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
-                      <span>삭제</span>
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
+          <AttachmentManager
+            canUpload={note.canEdit && Boolean(data.links.uploadFiles)}
+            deletingId={noteFileDeletingId}
+            emptyLabel="첨부파일이 없습니다"
+            files={note.files}
+            inputRef={noteFileInputRef}
+            title="첨부파일"
+            uploadAriaLabel="영업노트 첨부파일 선택"
+            uploading={noteFileUploading}
+            onDelete={handleNoteFileDelete}
+            onFilesSelected={handleNoteFilesSelected}
+            onUploadClick={handleNoteFileUploadClick}
+          />
           <h3 className="customer-detail-section-heading">댓글</h3>
           {data.comments.canCreate ? (
             <form className="note-reply-compose" onSubmit={handleReplySubmit}>
@@ -11557,7 +11511,7 @@ function ScheduleDetailPage({
     }
   };
 
-  const handleScheduleFileDelete = async (file: ScheduleFileItem) => {
+  const handleScheduleFileDelete = async (file: ScheduleFileItem | AttachmentManagerFile) => {
     if (fileDeletingId !== null) {
       return;
     }
@@ -11570,7 +11524,7 @@ function ScheduleDetailPage({
       return;
     }
 
-    setFileDeletingId(file.id);
+    setFileDeletingId(Number(file.id));
     setFileError('');
     setFileMessage('');
     try {
@@ -13089,58 +13043,21 @@ function ScheduleDetailPage({
               ) : null}
             </div>
           )}
-          <div className="schedule-file-heading">
-            <h3 className="customer-detail-section-heading">첨부파일</h3>
-            {schedule.canEdit && data.links.uploadFiles ? (
-              <>
-                <input
-                  aria-label="일정 첨부파일 선택"
-                  className="schedule-file-input"
-                  multiple
-                  onChange={handleScheduleFilesSelected}
-                  ref={fileInputRef}
-                  type="file"
-                />
-                <button
-                  className="customer-row-action schedule-file-upload-button"
-                  disabled={fileUploading}
-                  onClick={handleScheduleFileUploadClick}
-                  type="button"
-                >
-                  {fileUploading ? <Loader2 className="spin-icon" size={14} /> : <Upload size={14} />}
-                  <span>{fileUploading ? '업로드 중' : '업로드'}</span>
-                </button>
-              </>
-            ) : null}
-          </div>
           {fileError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{fileError}</span></div> : null}
           {fileMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{fileMessage}</span></div> : null}
-          {schedule.files.length === 0 ? (
-            <DashboardEmpty label="첨부파일이 없습니다" />
-          ) : (
-            <div className="schedule-file-list">
-              {schedule.files.map((file) => (
-                <div className="schedule-file-row" key={file.id}>
-                  <a className="schedule-file-download" href={file.downloadHref}>
-                    <strong>{file.filename}</strong>
-                    <span>{[file.size, file.uploadedAt ? formatDateTimeLabel(file.uploadedAt) : ''].filter(Boolean).join(' · ')}</span>
-                  </a>
-                  {file.canDelete && file.deleteHref ? (
-                    <button
-                      aria-label={`${file.filename} 삭제`}
-                      className="customer-row-action schedule-file-delete-button"
-                      disabled={fileDeletingId === file.id}
-                      onClick={() => handleScheduleFileDelete(file)}
-                      type="button"
-                    >
-                      {fileDeletingId === file.id ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
-                      <span>삭제</span>
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
+          <AttachmentManager
+            canUpload={schedule.canEdit && Boolean(data.links.uploadFiles)}
+            deletingId={fileDeletingId}
+            emptyLabel="첨부파일이 없습니다"
+            files={schedule.files}
+            inputRef={fileInputRef}
+            title="첨부파일"
+            uploadAriaLabel="일정 첨부파일 선택"
+            uploading={fileUploading}
+            onDelete={handleScheduleFileDelete}
+            onFilesSelected={handleScheduleFilesSelected}
+            onUploadClick={handleScheduleFileUploadClick}
+          />
         </aside>
       </div>
 
@@ -17307,33 +17224,18 @@ function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId
                 </dl>
               </div>
 
-              <div className="side-card task-detail-attachments">
-                <div className="section-heading-row compact">
-                  <div>
-                    <p className="eyebrow">Files</p>
-                    <h3>첨부파일</h3>
-                  </div>
-                  <button type="button" disabled={uploading} onClick={handleUploadClick}>
-                    <Upload size={15} />
-                    {uploading ? '업로드 중' : '업로드'}
-                  </button>
-                </div>
-                <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilesSelected} />
-                {attachments.length ? (
-                  <div className="task-attachment-list">
-                    {attachments.map((attachment) => (
-                      <a href={attachment.downloadHref} key={attachment.id}>
-                        <FileText size={16} />
-                        <span>{attachment.filename}</span>
-                        <small>{formatFileSize(attachment.fileSize)}</small>
-                        <Download size={15} />
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state small">등록된 첨부파일이 없습니다.</div>
-                )}
-              </div>
+              <AttachmentManager
+                canUpload={Boolean(task.canUploadAttachment && task.uploadHref)}
+                className="side-card task-detail-attachments"
+                emptyLabel="등록된 첨부파일이 없습니다."
+                files={attachments}
+                inputRef={fileInputRef}
+                title="첨부파일"
+                uploadAriaLabel="업무 첨부파일 선택"
+                uploading={uploading}
+                onFilesSelected={handleFilesSelected}
+                onUploadClick={handleUploadClick}
+              />
 
               <div className="side-card task-detail-comments">
                 <h3>댓글</h3>
@@ -21936,6 +21838,8 @@ export function App() {
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
   const [reportsData, setReportsData] = useState<ReportsData | null>(null);
   const [reportsLoading, setReportsLoading] = useState(currentView === 'analytics' || currentView === 'dataCleanup');
+  const [downloadsData, setDownloadsData] = useState<DownloadsData | null>(null);
+  const [downloadsLoading, setDownloadsLoading] = useState(currentView === 'downloads');
   const [reportsDateFrom, setReportsDateFrom] = useState(() => new URLSearchParams(window.location.search).get('date_from') || '');
   const [reportsDateTo, setReportsDateTo] = useState(() => new URLSearchParams(window.location.search).get('date_to') || '');
   const [reportsUserId, setReportsUserId] = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
@@ -22286,6 +22190,24 @@ export function App() {
     reportsQuery,
     reportsUserId,
   ]);
+
+  useEffect(() => {
+    if (currentView !== 'downloads') {
+      return;
+    }
+    let alive = true;
+    setDownloadsLoading(true);
+    loadDownloadsData().then((data) => {
+      if (!alive) {
+        return;
+      }
+      setDownloadsData(data);
+      setDownloadsLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView]);
 
   useEffect(() => {
     if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId) {
@@ -23954,6 +23876,13 @@ export function App() {
     setReportsData(data);
     return data;
   };
+  const refreshDownloadsData = async () => {
+    setDownloadsLoading(true);
+    const data = await loadDownloadsData();
+    setDownloadsData(data);
+    setDownloadsLoading(false);
+    return data;
+  };
   const refreshBusinessCardsData = async () => {
     const data = await loadBusinessCardsData();
     setBusinessCardsData(data);
@@ -24609,6 +24538,19 @@ export function App() {
           data={reportsData}
           loading={reportsLoading}
           onRefresh={() => { void refreshReportsData(); }}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'downloads') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <DownloadsPage
+          data={downloadsData}
+          loading={downloadsLoading}
+          onRefresh={() => { void refreshDownloadsData(); }}
         />
       </AppShell>
     );

@@ -224,12 +224,13 @@ class ReactTasksApiTests(TestCase):
             related_client=self.followup,
         )
         TodoLog.objects.create(todo=task, actor=self.user, action_type=TodoLog.ActionType.CREATED, message='생성 로그')
-        TodoAttachment.objects.create(
+        attachment = TodoAttachment.objects.create(
             todo=task,
             file=SimpleUploadedFile('detail.txt', b'detail', content_type='text/plain'),
             filename='detail.txt',
             uploaded_by=self.user,
         )
+        self.addCleanup(attachment.file.delete, False)
 
         self.client.force_login(self.colleague)
         response = self.client.get(reverse('reporting:tasks_detail_api', args=[task.id]))
@@ -240,6 +241,10 @@ class ReactTasksApiTests(TestCase):
         self.assertEqual(payload['task']['detailHref'], f'/tasks/{task.id}/')
         self.assertEqual(payload['task']['relatedClient']['customer'], '업무 고객')
         self.assertEqual(payload['attachments'][0]['filename'], 'detail.txt')
+        self.assertEqual(
+            payload['attachments'][0]['downloadHref'],
+            reverse('reporting:tasks_attachment_download_api', args=[attachment.id]),
+        )
         self.assertEqual(payload['logs'][0]['message'], '생성 로그')
         self.assertTrue(payload['task']['canComment'])
         self.assertEqual(payload['task']['commentHref'], reverse('reporting:tasks_comment_api', args=[task.id]))
@@ -315,6 +320,40 @@ class ReactTasksApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['error'], '댓글 내용을 입력하세요.')
 
+    def test_task_attachment_download_api_is_protected_and_scoped(self):
+        task = Todo.objects.create(
+            title='다운로드 업무',
+            description='첨부 보호',
+            created_by=self.user,
+            assigned_to=self.colleague,
+            requested_by=self.user,
+            source_type=Todo.SourceType.PEER_REQUEST,
+            status=Todo.Status.ONGOING,
+        )
+        attachment = TodoAttachment.objects.create(
+            todo=task,
+            file=SimpleUploadedFile('task-download.txt', b'task file', content_type='text/plain'),
+            filename='task-download.txt',
+            uploaded_by=self.user,
+        )
+        self.addCleanup(attachment.file.delete, False)
+        download_url = reverse('reporting:tasks_attachment_download_api', args=[attachment.id])
+
+        anonymous_response = self.client.get(download_url)
+        self.assertEqual(anonymous_response.status_code, 401)
+        self.assertEqual(anonymous_response.json()['error'], 'login_required')
+
+        self.client.force_login(self.other_user)
+        forbidden_response = self.client.get(download_url)
+        self.assertEqual(forbidden_response.status_code, 403)
+        self.assertNotIn('attachment', forbidden_response.get('Content-Disposition', ''))
+
+        self.client.force_login(self.colleague)
+        response = self.client.get(download_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment', response.get('Content-Disposition', ''))
+        response.close()
+
     def test_task_update_delete_and_attachment_api_permissions(self):
         task = Todo.objects.create(
             title='수정할 업무',
@@ -356,6 +395,12 @@ class ReactTasksApiTests(TestCase):
         self.assertEqual(upload.status_code, 200)
         self.assertEqual(TodoAttachment.objects.filter(todo=task).count(), 1)
         self.assertEqual(upload.json()['attachments'][0]['filename'], 'react-task.txt')
+        attachment = TodoAttachment.objects.get(todo=task)
+        self.addCleanup(attachment.file.delete, False)
+        self.assertEqual(
+            upload.json()['attachments'][0]['downloadHref'],
+            reverse('reporting:tasks_attachment_download_api', args=[attachment.id]),
+        )
 
         delete = self.client.post(reverse('reporting:tasks_delete_api', args=[task.id]))
         self.assertEqual(delete.status_code, 200)

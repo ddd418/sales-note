@@ -256,6 +256,14 @@ export function ReportsPage({
     }
     return `${path}${params.toString() ? `?${params.toString()}` : ''}`;
   })();
+  const exportScopeLabel: Record<string, string> = {
+    filtered: '현재 필터',
+    all: '전체 계정',
+    deliveries: '납품 있는 계정',
+    prepayment_balance: '선결제 잔액 계정',
+    cleanup_candidates: '정리 후보 계정',
+  };
+  const excelFilename = `계정별_운영현황_${data.filters.dateFrom}_${data.filters.dateTo}.xlsx`;
   const comparison = data.comparison.customerOperations;
   const previousDateRangeLabel = comparison.dateFrom && comparison.dateTo
     ? `${formatDateLabel(comparison.dateFrom) || comparison.dateFrom} - ${formatDateLabel(comparison.dateTo) || comparison.dateTo}`
@@ -290,9 +298,12 @@ export function ReportsPage({
         </div>
         <div className="reports-actions">
           {data.scope.canExport ? (
-            <a className="route-secondary-action" href={excelHref}>
+            <a className="route-secondary-action download-range-action" href={excelHref}>
               <Download size={15} />
-              현황 엑셀
+              <span>
+                <strong>현황 엑셀</strong>
+                <small>{exportScopeLabel[selectedExportScope] || selectedExportScope} · {excelFilename}</small>
+              </span>
             </a>
           ) : null}
           <a className="route-secondary-action" href="/customers/"><Users size={15} />고객 목록</a>

@@ -483,6 +483,8 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['analytics']['label'], '분석')
         self.assertEqual(items_by_id['dataCleanup']['href'], '/data-cleanup/')
         self.assertEqual(items_by_id['dataCleanup']['label'], '데이터정리')
+        self.assertEqual(items_by_id['downloads']['href'], '/downloads/')
+        self.assertEqual(items_by_id['downloads']['label'], '파일/다운로드')
         self.assertEqual(items_by_id['businessCards']['href'], '/mailbox/business-cards/')
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
         self.assertEqual(items_by_id['services']['href'], '/services/')
@@ -562,6 +564,67 @@ class ReactNavigationApiTests(TestCase):
         self.assertTrue(admin_payload['capabilities']['canManageEmployees'])
         self.assertTrue(admin_payload['capabilities']['canManageUsers'])
         self.assertTrue(admin_payload['capabilities']['canUseMailbox'])
+
+
+class DownloadRegistryApiTests(TestCase):
+    """React download registry API regression tests."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = make_user('download-registry-user')
+        self.url = reverse('reporting:downloads_registry_api')
+
+    def test_download_registry_requires_login_json(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_download_registry_lists_current_download_surfaces(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['source'], 'django')
+        ids = {item['id'] for item in payload['downloads']}
+        expected_ids = {
+            'customers.fullExcel',
+            'customers.basicExcel',
+            'notes.attachment',
+            'schedules.attachment',
+            'tasks.attachment',
+            'reports.activityCsv',
+            'reports.pipelineCsv',
+            'reports.activityXlsx',
+            'reports.pipelineXlsx',
+            'reports.customerOperationsXlsx',
+            'accounts.deliveryRecordsXlsx',
+            'customers.deliveryRecordsXlsx',
+            'accounts.cleanupPreviewJson',
+            'prepayments.listXlsx',
+            'prepayments.customerXlsx',
+            'prepayments.accountXlsx',
+            'products.exportXlsx',
+            'documents.template',
+            'documents.generated',
+            'documents.generateXlsx',
+            'assets.serviceReport',
+            'assets.calibrationCertificate',
+            'mailbox.attachment',
+        }
+        self.assertTrue(expected_ids.issubset(ids))
+        items_by_id = {item['id']: item for item in payload['downloads']}
+        self.assertEqual(items_by_id['customers.fullExcel']['href'], reverse('reporting:followup_excel_download'))
+        self.assertEqual(
+            items_by_id['tasks.attachment']['hrefTemplate'],
+            '/reporting/api/tasks/attachments/{attachment_id}/download/',
+        )
+        self.assertTrue(items_by_id['notes.attachment']['streaming'])
+        self.assertTrue(payload['policy']['authRequired'])
+        self.assertEqual(payload['links']['react'], '/downloads/')
 
 
 class EmployeeManagementApiTests(TestCase):
@@ -7447,6 +7510,36 @@ class NotesSummaryApiTests(TestCase):
         self.assertTrue(payload['success'])
         self.assertFalse(HistoryFile.objects.filter(pk=history_file.id).exists())
 
+    def test_note_file_download_blocks_anonymous_and_out_of_scope_users(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from reporting.models import HistoryFile
+
+        target = self._create_note(self.user, '파일다운로드', action_type='quote', content='다운로드 파일')
+        history_file = HistoryFile.objects.create(
+            history=target,
+            file=SimpleUploadedFile('download-note.txt', b'download memo', content_type='text/plain'),
+            original_filename='download-note.txt',
+            file_size=13,
+            uploaded_by=self.user,
+        )
+        self.addCleanup(history_file.file.delete, False)
+        download_url = reverse('reporting:file_download', args=[history_file.id])
+
+        anonymous_response = self.client.get(download_url)
+        self.assertEqual(anonymous_response.status_code, 302)
+        self.assertIn('/reporting/login/', anonymous_response['Location'])
+
+        self.client.force_login(self.other_user)
+        other_response = self.client.get(download_url)
+        self.assertNotEqual(other_response.status_code, 200)
+        self.assertNotIn('attachment', other_response.get('Content-Disposition', ''))
+
+        self.client.force_login(self.user)
+        owner_response = self.client.get(download_url)
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertIn('attachment', owner_response.get('Content-Disposition', ''))
+        owner_response.close()
+
     def test_note_reply_create_api_allows_owner_and_same_company_manager(self):
         from reporting.models import History
 
@@ -10995,6 +11088,36 @@ class SchedulesSummaryApiTests(TestCase):
         payload = response.json()
         self.assertTrue(payload['success'])
         self.assertFalse(ScheduleFile.objects.filter(pk=schedule_file.id).exists())
+
+    def test_schedule_file_download_blocks_anonymous_and_out_of_scope_users(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from reporting.models import ScheduleFile
+
+        schedule = self._create_schedule(self.user, '파일다운로드')
+        schedule_file = ScheduleFile.objects.create(
+            schedule=schedule,
+            file=SimpleUploadedFile('schedule-download.txt', b'schedule memo', content_type='text/plain'),
+            original_filename='schedule-download.txt',
+            file_size=13,
+            uploaded_by=self.user,
+        )
+        self.addCleanup(schedule_file.file.delete, False)
+        download_url = reverse('reporting:schedule_file_download', args=[schedule_file.id])
+
+        anonymous_response = self.client.get(download_url)
+        self.assertEqual(anonymous_response.status_code, 302)
+        self.assertIn('/reporting/login/', anonymous_response['Location'])
+
+        self.client.force_login(self.other_user)
+        other_response = self.client.get(download_url)
+        self.assertEqual(other_response.status_code, 403)
+        self.assertNotIn('attachment', other_response.get('Content-Disposition', ''))
+
+        self.client.force_login(self.user)
+        owner_response = self.client.get(download_url)
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertIn('attachment', owner_response.get('Content-Disposition', ''))
+        owner_response.close()
 
 
 class DocumentTemplatesReactApiTests(TestCase):

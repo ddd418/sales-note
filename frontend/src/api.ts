@@ -156,6 +156,7 @@ export type DashboardData = {
 
 export * from './api/reports';
 export * from './api/accountCleanup';
+export * from './api/downloads';
 
 export type ProfileData = {
   success?: boolean;
