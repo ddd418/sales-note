@@ -81,9 +81,10 @@ railway status
 → production project linked; web, sales-note-frontend, and Postgres Online
 
 railway metrics --all --json --since 1h
-→ web: CPU ~0.00017 vCPU, RAM ~309 MB, 5xx 0, p95 965 ms
-→ sales-note-frontend: CPU ~0.00003 vCPU, RAM ~46 MB, 5xx 0, p95 856 ms
-→ Postgres: CPU ~0.00027 vCPU, RAM ~52 MB
+→ Before deploy: web RAM ~309 MB, frontend RAM ~46 MB, 5xx 0
+→ After deploy: web CPU ~0.120 vCPU, RAM ~192 MB, 5xx 0, p95 355 ms
+→ After deploy: sales-note-frontend CPU ~0.00002 vCPU, RAM ~44 MB, 5xx 0, p95 950 ms
+→ After deploy: Postgres CPU ~0.0015 vCPU, RAM ~45 MB
 
 railway metrics --all --cpu --memory --network --json --since 6h
 → web: RAM ~309 MB, network egress/ingress 0.0 MB in CLI summary
@@ -105,9 +106,12 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending.
-- Runtime behavior and DB indexes changed, so backend/frontend Railway deployment is required after commit and push.
-- Deployment IDs and post-deploy smoke result will be updated after Railway finishes deploying this Y-step commit.
+- Completed.
+- Code commit `f5d69dc perf: optimize react crm runtime operations` is present on `origin/main`.
+- Railway backend `web` deployment `928b4789-f8d1-4c4e-bd03-aa565e87e606` succeeded for commit `f5d69dc`.
+- Railway frontend `sales-note-frontend` deployment `bef16be5-fe1f-4be2-9f35-e38c1f4dcff4` succeeded for commit `f5d69dc`.
+- Post-deploy smoke passed, including frontend cache headers and protected API checks.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### Recommended Next Task
 
