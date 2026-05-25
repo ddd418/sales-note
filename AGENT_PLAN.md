@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement N-step asset/service/calibration replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item N for `/assets/`, `/services/`, A/S, and calibration workflows.
+- `CustomerAsset`, `ServiceCase`, and `CalibrationRecord` models and React `/assets/` and `/services/` pages already exist.
+- Existing React asset creation is account-aware, but the create panel can auto-select the first account/contact, which is risky for operations.
+- Direct links from `/services/` to `/assets/?asset=<id>` should reliably open the selected asset drawer even when the asset is outside the current filtered/first-page result.
+- Service report download permission should match the same service-case visibility rules used by the React service list.
+
+**DB change required**: No.
+
+- Existing `CustomerAsset.company`, `CustomerAsset.department`, optional `CustomerAsset.primary_followup`, `ServiceCase.asset`, and `CalibrationRecord.asset` support account-based operation.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Keep `/assets/` as the canonical React 장비/A/S/교정 operation screen and `/services/` as the service ledger list.
+- Make asset registration explicitly account-first: no default first-account selection, no automatic contact selection in React.
+- Treat the asset 담당자 as auxiliary: leave `CustomerAsset.primary_followup` empty on account-first create unless the user explicitly chooses a contact.
+- Improve account autocomplete ranking for exact/start-with matches on company, department, and contact fields.
+- Let `/assets/?asset=<id>` load the selected asset into the drawer even if it is outside the active filter result or initial 120 rows, while preserving filter metrics.
+- Keep asset edit/status change, A/S create/update/report upload, calibration create/update/certificate upload flows in React.
+- Keep service report/certificate download routes protected by Django auth and scope checks; align service report download scope with `/services/` list visibility.
+- Add focused tests for no-contact account-first creation, selected asset include-by-ID, account search ranking, and service report scoped download parity.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.ServiceCasesSummaryApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/assets/`, `/assets/?asset=<id>`, `/services/`, protected customer-assets/services APIs, and protected report/certificate download URLs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement M-step prepayment replacement plan
 
 **Background**:

@@ -6599,10 +6599,12 @@ function CustomerAssetDirectoryCreatePanel({
     setAccountId((previous) => (
       data.create.accounts.some((account) => String(account.departmentId || account.id) === previous)
         ? previous
-        : (data.create.accounts[0]?.departmentId ? String(data.create.accounts[0].departmentId) : '')
+        : ''
     ));
     setForm((previous) => ({
       ...previous,
+      departmentId: '',
+      primaryFollowupId: '',
       status: previous.status || statusFallback,
     }));
     setError('');
@@ -6654,9 +6656,7 @@ function CustomerAssetDirectoryCreatePanel({
       return {
         ...previous,
         departmentId: String(selectedAccount.departmentId || selectedAccount.id),
-        primaryFollowupId: contactStillValid
-          ? previous.primaryFollowupId
-          : (selectedAccount.primaryFollowupId ? String(selectedAccount.primaryFollowupId) : ''),
+        primaryFollowupId: contactStillValid ? previous.primaryFollowupId : '',
       };
     });
   }, [selectedAccount?.departmentId, selectedAccount?.id]);
@@ -6679,7 +6679,7 @@ function CustomerAssetDirectoryCreatePanel({
     setForm((previous) => ({
       ...previous,
       departmentId: account ? String(account.departmentId || account.id) : '',
-      primaryFollowupId: account?.primaryFollowupId ? String(account.primaryFollowupId) : '',
+      primaryFollowupId: '',
     }));
     setError('');
     setMessage('');
@@ -6715,7 +6715,7 @@ function CustomerAssetDirectoryCreatePanel({
         {
           ...payload,
           departmentId: selectedAccount.departmentId || selectedAccount.id,
-          primaryFollowupId: selectedContact?.id ?? selectedAccount.primaryFollowupId ?? undefined,
+          primaryFollowupId: selectedContact?.id ?? null,
         },
         selectedAccount.assetCreateUrl,
       );
@@ -6771,11 +6771,11 @@ function CustomerAssetDirectoryCreatePanel({
             <small>{accountSearchLoading ? '계정 검색 중' : '장비는 계정 기준으로 저장되고 담당자는 보조 정보로만 연결됩니다.'}</small>
           </div>
           <div className="form-field">
-            <span>담당자</span>
+            <span>담당자 보조 정보</span>
             <SearchableSelect
               allowEmpty
               ariaLabel="장비 보조 담당자 선택"
-              emptyLabel="담당자 없음"
+              emptyLabel="담당자 미지정"
               onChange={(value) => handleFieldChange('primaryFollowupId', value)}
               options={(selectedAccount?.contacts ?? []).map((contact) => ({
                 value: String(contact.id),
@@ -21705,6 +21705,7 @@ export function App() {
       owner: assetDirectoryOwner,
       service: assetDirectoryService,
       calibration: assetDirectoryCalibration,
+      assetId: assetDirectorySelectedId,
     }).then((data) => {
       if (!alive) {
         return;
@@ -21715,7 +21716,7 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [assetDirectoryCalibration, assetDirectoryOwner, assetDirectoryQuery, assetDirectoryService, assetDirectoryStatus, currentView]);
+  }, [assetDirectoryCalibration, assetDirectoryOwner, assetDirectoryQuery, assetDirectorySelectedId, assetDirectoryService, assetDirectoryStatus, currentView]);
 
   useEffect(() => {
     if (currentView !== 'assets') {
@@ -22488,6 +22489,7 @@ export function App() {
       owner: assetDirectoryOwner,
       service: assetDirectoryService,
       calibration: assetDirectoryCalibration,
+      assetId: assetDirectorySelectedId,
     });
     setAssetsData(data);
     return data;

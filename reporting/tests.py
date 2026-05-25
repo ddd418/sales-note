@@ -5192,6 +5192,39 @@ class CustomersSummaryApiTests(TestCase):
         })
         self.assertEqual(manager_response.status_code, 403)
 
+    def test_customer_asset_account_first_create_keeps_contact_auxiliary(self):
+        account = self._create_customer(self.user, '담당자보조장비')
+        self.client.force_login(self.user)
+
+        create_response = self.client.post(reverse('reporting:customer_asset_directory_create_api'), {
+            'department_id': str(account.department_id),
+            'asset_name': '담당자 미지정 장비',
+            'status': 'active',
+        })
+
+        self.assertEqual(create_response.status_code, 200)
+        asset = CustomerAsset.objects.get(id=create_response.json()['asset']['id'])
+        self.assertEqual(asset.department, account.department)
+        self.assertIsNone(asset.primary_followup)
+        self.assertIsNone(create_response.json()['asset']['primaryFollowupId'])
+        self.assertEqual(create_response.json()['asset']['accountHref'], f'/accounts/{account.department_id}/')
+
+    def test_customer_asset_account_search_prioritizes_exact_account_matches(self):
+        exact = self._create_customer(self.user, '정확검색')
+        contains = self._create_customer(self.user, '포함검색')
+        exact.department.name = 'Alpha Lab'
+        exact.department.save(update_fields=['name'])
+        contains.department.name = 'Zzz Alpha Lab'
+        contains.department.save(update_fields=['name'])
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_asset_account_search_api'), {'q': 'Alpha Lab'})
+
+        self.assertEqual(response.status_code, 200)
+        accounts = response.json()['accounts']
+        self.assertGreaterEqual(len(accounts), 2)
+        self.assertEqual(accounts[0]['departmentId'], exact.department_id)
+
     def test_customer_assets_summary_api_uses_manager_scope_and_metrics(self):
         from datetime import timedelta
         from django.utils import timezone
@@ -5328,6 +5361,40 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual([item['id'] for item in payload['assets']], [target_asset.id])
         self.assertEqual(payload['assets'][0]['latestServiceCase']['caseType'], 'inspection')
         self.assertEqual(payload['assets'][0]['latestCalibration']['result'], 'pending')
+
+    def test_customer_assets_summary_api_includes_selected_asset_for_direct_drawer_link(self):
+        visible = self._create_customer(self.user, '장비직접링크검색')
+        selected = self._create_customer(self.user, '장비직접링크선택')
+        visible_asset = CustomerAsset.objects.create(
+            company=visible.company,
+            department=visible.department,
+            primary_followup=visible,
+            asset_name='Visible PCR Asset',
+            status='active',
+            created_by=self.user,
+        )
+        selected_asset = CustomerAsset.objects.create(
+            company=selected.company,
+            department=selected.department,
+            primary_followup=selected,
+            asset_name='Hidden Selected Asset',
+            status='inactive',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_assets_summary_api'), {
+            'q': 'Visible PCR',
+            'asset': str(selected_asset.id),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = [item['id'] for item in payload['assets']]
+        self.assertIn(visible_asset.id, ids)
+        self.assertIn(selected_asset.id, ids)
+        self.assertEqual(payload['metrics']['filteredAssets'], 1)
+        self.assertEqual(payload['filters']['asset'], str(selected_asset.id))
 
     def test_customer_assets_summary_api_returns_work_queue_and_directory_links(self):
         target = self._create_customer(self.user, '장비큐고객')
@@ -8000,6 +8067,32 @@ class ServiceCasesSummaryApiTests(TestCase):
         self.assertNotIn(other.id, ids)
         self.assertEqual(payload['metrics']['totalCases'], 2)
         self.assertTrue(payload['scope']['canViewAll'])
+
+    def test_service_report_download_matches_visible_service_case_scope(self):
+        followup, asset = self._create_customer_asset(self.coworker, '동료장비내서비스')
+        service_case = ServiceCase.objects.create(
+            asset=asset,
+            followup=followup,
+            case_type='inspection',
+            status='completed',
+            priority='normal',
+            received_date=timezone.localdate(),
+            symptom='내가 접수한 동료 장비 서비스',
+            assigned_to=self.user,
+            created_by=self.user,
+            service_report=SimpleUploadedFile('visible-service-report.txt', b'service report', content_type='text/plain'),
+        )
+        self.client.force_login(self.user)
+
+        list_response = self.client.get(self.url, {'q': '동료장비내서비스'})
+        download_response = self.client.get(reverse('reporting:customer_asset_service_report_download_api', args=[service_case.id]))
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertIn(service_case.id, {item['id'] for item in list_response.json()['serviceCases']})
+        self.assertEqual(download_response.status_code, 200)
+        self.assertIn('attachment', download_response.get('Content-Disposition', ''))
+        download_response.close()
+        service_case.service_report.delete(save=False)
 
 
 class SchedulesSummaryApiTests(TestCase):

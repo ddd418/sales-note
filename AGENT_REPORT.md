@@ -1,5 +1,106 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 N단계 장비/서비스/A/S/교정 완전 대체
+
+### 요약
+
+- `/assets/` 장비 등록 UX를 계정 우선으로 정리했습니다. 첫 계정 자동 선택과 담당자 자동 선택을 제거했습니다.
+- 담당자는 보조 정보로만 선택되며, 계정 기준 등록 시 담당자를 고르지 않으면 `CustomerAsset.primary_followup`을 비워 계정 `Department` 기준으로 장비가 묶이게 했습니다.
+- 고객/계정 autocomplete는 정확 일치와 시작 일치가 먼저 나오도록 backend 검색 랭킹을 보강했습니다.
+- `/services/` 목록이나 외부 링크에서 `/assets/?asset=<id>`로 들어올 때 선택 장비가 현재 필터/첫 120건 밖에 있어도 drawer가 열릴 수 있게 API와 React 요청을 보강했습니다.
+- A/S 접수/상태 변경/서비스 리포트 업로드, 교정 기록/알림/성적서 업로드는 기존 React drawer 흐름을 유지하고 테스트로 확인했습니다.
+- 서비스 리포트 다운로드 권한을 `/services/` 목록 가시성과 맞춰, 장비 생성자가 아니어도 본인이 접수/배정된 서비스 리포트는 다운로드할 수 있게 했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+
+### CRM 개선
+
+- 장비 등록 시 사용자가 명시적으로 계정을 선택해야 하므로 잘못된 첫 번째 계정에 장비가 저장될 위험을 줄였습니다.
+- 장비 담당자는 "담당자 보조 정보"로 표시되고 미지정 가능해졌습니다.
+- 계정 검색 결과는 업체/부서/담당자 텍스트의 정확도에 따라 더 자연스럽게 정렬됩니다.
+- 서비스 목록에서 장비로 이동하는 링크가 더 안정적으로 drawer 상세 화면을 열 수 있습니다.
+- 매니저는 계속 읽기 전용이며 같은 회사 장비/서비스 현황을 볼 수 있습니다.
+
+### 기존 기능 보존
+
+- `/assets/`, `/services/` React route와 `/reporting/api/customer-assets/*`, `/reporting/api/services/` backend API를 유지했습니다.
+- 고객 상세 안의 장비/A/S/교정 작성 흐름도 기존 API와 함께 유지했습니다.
+- 서비스 리포트와 교정 성적서 파일은 계속 Django 인증/권한 보호 아래 다운로드됩니다.
+- Django template 삭제는 하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.ServiceCasesSummaryApiTests --verbosity=1
+→ Ran 61 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Browser/local smoke on frontend server :4177
+→ /assets/ rendered React shell, console error count 0
+→ /assets/?asset=123 rendered React shell and selected-asset drawer empty state, console error count 0
+→ /services/ rendered React shell, console error count 0
+→ Local backend was not running, so API 502 notice was expected in the shell smoke
+```
+
+### 알려진 제한
+
+- 로컬 브라우저 smoke는 인증된 실제 데이터 mutation까지는 실행하지 않았습니다. 실제 장비 등록, 서비스 리포트 다운로드, 성적서 다운로드는 운영 서버에서 사용자 세션으로 수동 확인이 필요합니다.
+- `/services/`는 서비스 원장/검색 화면이며, 서비스 접수와 수정은 `/assets/` 장비 drawer에서 수행합니다.
+- 기존 frontend bundle size 경고는 이번 변경과 별개로 남아 있습니다.
+
+### 운영 배포 상태
+
+- 배포 예정. 코드 검증 완료 후 commit/push와 Railway 배포 확인을 진행합니다.
+
+### 권장 다음 작업
+
+- 운영 `/assets/`와 `/services/` 수동 검수 완료 후 다음 React 완전대체 항목으로 넘어갑니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/assets/`에 로그인해서 접속합니다.
+2. 장비 등록을 눌렀을 때 계정이 자동 선택되지 않고, 직접 업체/부서/담당자를 검색해 계정을 선택해야 하는지 확인합니다.
+3. 담당자 보조 정보를 비운 채 장비를 등록하고, 계정 상세 `/accounts/<department_id>/`와 장비 목록에서 계정 기준으로 보이는지 확인합니다.
+4. 장비 목록에서 장비명, 모델, 시리얼, 업체, 연구실 검색과 상태/담당자/서비스/교정 필터를 확인합니다.
+5. 장비 drawer에서 상태 변경, 모델/시리얼/설치 위치/메모 수정이 되는지 확인합니다.
+6. 장비 drawer에서 서비스 접수 후 상태를 접수, 진행중, 대기, 완료로 바꿔 저장되는지 확인합니다.
+7. 서비스 리포트 파일을 업로드하고 `/services/` 목록 및 drawer에서 리포트 다운로드가 되는지 확인합니다.
+8. 교정 기록을 추가하고 다음 교정일이 30일 내/지연 상태로 표시되는지 확인합니다.
+9. 교정 성적서를 업로드하고 drawer에서 다운로드되는지 확인합니다.
+10. `/services/`에서 서비스 기록을 검색하고 장비 링크를 눌렀을 때 `/assets/?asset=<id>` drawer가 열리는지 확인합니다.
+11. manager 계정은 장비/서비스/교정 데이터를 회사 전체로 볼 수 있지만 등록/수정 입력이 막히는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 M단계 선결제 완전 대체
 
 ### 요약

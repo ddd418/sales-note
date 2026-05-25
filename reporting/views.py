@@ -5,7 +5,7 @@ from django.contrib import messages
 from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db import transaction
-from django.db.models import Sum, Count, Q, Prefetch
+from django.db.models import Sum, Count, Q, Prefetch, Case, IntegerField, Value, When
 from django.core.paginator import Paginator  # 페이지네이션 추가
 from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
@@ -5079,6 +5079,7 @@ def _customer_asset_create_account_payload(department, contacts=None):
 def _customer_asset_account_options(request, user_profile, q='', limit=80):
     q = (q or '').strip()
     account_qs = _customer_asset_account_queryset(request, user_profile)
+    ordering = ['company__name', 'name', 'id']
     if q:
         account_qs = account_qs.filter(
             Q(company__name__icontains=q) |
@@ -5090,8 +5091,32 @@ def _customer_asset_account_options(request, user_profile, q='', limit=80):
             Q(followup_departments__email__icontains=q) |
             Q(followup_departments__phone_number__icontains=q)
         )
+        account_qs = account_qs.annotate(
+            _asset_search_rank=Case(
+                When(company__name__iexact=q, then=Value(0)),
+                When(name__iexact=q, then=Value(0)),
+                When(company__name__istartswith=q, then=Value(1)),
+                When(name__istartswith=q, then=Value(1)),
+                When(followup_departments__customer_name__istartswith=q, then=Value(2)),
+                When(followup_departments__manager__istartswith=q, then=Value(2)),
+                When(followup_departments__email__istartswith=q, then=Value(2)),
+                When(followup_departments__phone_number__istartswith=q, then=Value(2)),
+                default=Value(3),
+                output_field=IntegerField(),
+            )
+        )
+        ordering = ['_asset_search_rank', 'company__name', 'name', 'id']
 
-    accounts = list(account_qs.order_by('company__name', 'name', 'id')[:limit])
+    raw_accounts = list(account_qs.order_by(*ordering).distinct()[:max(limit * 3, limit)])
+    accounts = []
+    seen_department_ids = set()
+    for account in raw_accounts:
+        if account.id in seen_department_ids:
+            continue
+        seen_department_ids.add(account.id)
+        accounts.append(account)
+        if len(accounts) >= limit:
+            break
     department_ids = [account.id for account in accounts]
     accessible_users = _customer_asset_accessible_users(request, user_profile)
     contact_qs = FollowUp.objects.filter(
@@ -5229,6 +5254,13 @@ def customer_assets_summary_api(request):
     owner = request.GET.get('owner', '').strip()
     service = request.GET.get('service', '').strip()
     calibration = request.GET.get('calibration', '').strip()
+    selected_asset_id = None
+    selected_asset_param = request.GET.get('asset', '').strip()
+    if selected_asset_param:
+        try:
+            selected_asset_id = int(selected_asset_param)
+        except ValueError:
+            selected_asset_id = None
 
     base_assets = CustomerAsset.objects.filter(
         created_by__in=scope_users,
@@ -5293,6 +5325,10 @@ def customer_assets_summary_api(request):
     filtered_assets_qs = queryset.distinct()
     filtered_count = filtered_assets_qs.count()
     assets = list(filtered_assets_qs.order_by('-updated_at', '-created_at', '-id')[:120])
+    if selected_asset_id and all(asset.id != selected_asset_id for asset in assets):
+        selected_asset = base_assets.filter(pk=selected_asset_id).first()
+        if selected_asset:
+            assets = [selected_asset, *assets]
     asset_ids = [asset.id for asset in assets]
     service_cases = list(
         ServiceCase.objects.filter(asset_id__in=asset_ids).select_related(
@@ -5372,6 +5408,7 @@ def customer_assets_summary_api(request):
             'owner': owner,
             'service': service,
             'calibration': calibration,
+            'asset': str(selected_asset_id) if selected_asset_id else '',
         },
         'options': {
             'owners': owner_options,
@@ -5486,8 +5523,6 @@ def customer_asset_directory_create_api(request):
             )
         except (FollowUp.DoesNotExist, ValueError):
             return JsonResponse({'success': False, 'error': '선택한 담당자를 찾을 수 없습니다.'}, status=400)
-    else:
-        primary_followup = account_representative_followup(department, scope_users)
 
     asset_name = request.POST.get('asset_name', '').strip()
     if not asset_name:
@@ -5958,7 +5993,11 @@ def customer_asset_service_report_download_api(request, case_id):
     user_profile = get_user_profile(request.user)
     scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
     service_case = get_object_or_404(
-        ServiceCase.objects.filter(asset__created_by__in=scope_users).select_related('asset'),
+        ServiceCase.objects.filter(
+            Q(asset__created_by__in=scope_users) |
+            Q(created_by__in=scope_users) |
+            Q(assigned_to__in=scope_users)
+        ).select_related('asset'),
         pk=case_id,
     )
     return _customer_asset_file_response(service_case.service_report)

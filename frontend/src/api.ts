@@ -1078,6 +1078,7 @@ export type CustomerAssetDirectoryData = {
     owner: string;
     service: string;
     calibration: string;
+    asset: string;
   };
   options: {
     owners: Array<{ id: number; name: string }>;
@@ -5127,6 +5128,7 @@ const emptyCustomerAssetDirectoryData: CustomerAssetDirectoryData = {
     owner: '',
     service: '',
     calibration: '',
+    asset: '',
   },
   options: {
     owners: [],
@@ -7265,11 +7267,12 @@ export async function loadCustomerAssetDirectoryData(params: {
   owner?: string;
   service?: string;
   calibration?: string;
+  assetId?: number | null;
 } = {}): Promise<CustomerAssetDirectoryData> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value) {
-      query.set(key, value);
+      query.set(key === 'assetId' ? 'asset' : key, String(value));
     }
   });
 
