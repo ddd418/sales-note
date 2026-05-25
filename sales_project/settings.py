@@ -49,7 +49,16 @@ else:
     ROOT_URLCONF = "sales_project.urls"
     TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [], "APP_DIRS": True, "OPTIONS": {"context_processors": ["django.template.context_processors.request", "django.contrib.auth.context_processors.auth", "django.contrib.messages.context_processors.messages", "reporting.context_processors.manager_filter_context"]}}]
     WSGI_APPLICATION = "sales_project.wsgi.application"
-    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+    _e2e_sqlite_database = os.environ.get('E2E_SQLITE_DATABASE')
+    if _e2e_sqlite_database:
+        _e2e_sqlite_path = Path(_e2e_sqlite_database)
+        if not _e2e_sqlite_path.is_absolute():
+            _e2e_sqlite_path = BASE_DIR / _e2e_sqlite_path
+        _e2e_sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        _sqlite_database_name = _e2e_sqlite_path
+    else:
+        _sqlite_database_name = BASE_DIR / "db.sqlite3"
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": _sqlite_database_name}}
     AUTH_PASSWORD_VALIDATORS = [{"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"}, {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"}, {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"}, {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"}]
     
     # 최적화된 인증 백엔드 (UserProfile select_related)

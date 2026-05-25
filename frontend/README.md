@@ -65,6 +65,21 @@ cd frontend
 npm run dev
 ```
 
+## E2E QA
+
+Playwright E2E는 Django/Vite 서버를 별도 포트로 띄우고 `output/e2e/e2e.sqlite3`에 테스트 전용 seed 데이터를 생성합니다. 개발용 `db.sqlite3`를 직접 건드리지 않습니다.
+
+```bash
+cd frontend
+npm run e2e
+```
+
+현재 범위:
+
+- 고객 상세, 계정 상세, 리포트, 선결제, 계정 정리 preview
+- 리포트 Excel 다운로드와 salesman/manager/admin 권한 차이
+- 역할별 React navigation/API permission smoke
+
 ## Railway 배포
 
 Railway 프론트 서비스는 `frontend` 디렉터리를 root로 두고 아래 명령을 사용합니다.

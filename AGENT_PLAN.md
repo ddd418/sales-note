@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement X-step test and QA expansion plan
+
+**Background**:
+
+- User asked to expand tests/QA so regressions after React replacement are blocked by automated tests.
+- A Playwright harness already exists under `frontend/e2e`, with deterministic Django seed data and local Django/Vite web servers.
+- Current coverage exercises customer/account detail, reports, prepayments, cleanup preview, Excel download permissions, and basic salesman/manager/admin export behavior.
+- The post-deploy smoke script currently checks health, login, dashboard shell, and one protected reports API.
+
+**DB change required**: No.
+
+- This task changes test files, seed metadata only if needed, and smoke automation.
+- No model fields or migrations are planned.
+- The E2E seed command remains local/test-only and refuses production-like environments by default.
+
+**Implementation scope**:
+
+- Run the existing Playwright E2E suite and stabilize any failing selectors or seed assumptions.
+- Add role-permission E2E coverage for salesman, manager, and admin navigation/API capabilities beyond Excel-only checks.
+- Keep the core E2E scenarios focused on customer detail, account detail, reports, prepayments, cleanup preview, and Excel download.
+- Strengthen `scripts/post_deploy_smoke.py` so production smoke checks representative React routes and protected domain APIs, not only the dashboard/reports API.
+- Document the QA workflow and manual server validation steps in `AGENT_REPORT.md`.
+
+**Validation plan**:
+
+- `python -m py_compile scripts\post_deploy_smoke.py reporting\management\commands\seed_e2e_data.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `$env:E2E_SQLITE_DATABASE="output/e2e/e2e.sqlite3"; python manage.py seed_e2e_data --output output/e2e/seed.json`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npx playwright test`
+- `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+- `git diff --check`
+
 ## 2026-05-25 React full replacement W-step Django view/service layer cleanup plan
 
 **Background**:

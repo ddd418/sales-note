@@ -5,8 +5,10 @@ const djangoBaseURL = process.env.E2E_DJANGO_BASE_URL || 'http://127.0.0.1:8013'
 const frontendBaseURL = process.env.E2E_FRONTEND_BASE_URL || 'http://127.0.0.1:5183';
 const djangoPort = new URL(djangoBaseURL).port || '8013';
 const frontendPort = new URL(frontendBaseURL).port || '5183';
+const e2eDatabase = process.env.E2E_SQLITE_DATABASE || 'output/e2e/e2e.sqlite3';
 
 process.env.E2E_DJANGO_BASE_URL = djangoBaseURL;
+process.env.E2E_SQLITE_DATABASE = e2eDatabase;
 
 export default defineConfig({
   testDir: './e2e',
@@ -33,11 +35,13 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `cd .. && python manage.py migrate --noinput && python manage.py seed_e2e_data --output output/e2e/seed.json && python manage.py runserver 127.0.0.1:${djangoPort}`,
+      command: `cd .. && python manage.py migrate --noinput && python manage.py seed_e2e_data --output output/e2e/seed.json && python manage.py runserver --noreload 127.0.0.1:${djangoPort}`,
       url: `${djangoBaseURL}/reporting/login/`,
       env: {
         ...process.env,
+        E2E_SQLITE_DATABASE: e2eDatabase,
         FRONTEND_PIPELINE_URL: `${frontendBaseURL}/`,
+        PYTHONIOENCODING: 'utf-8',
       },
       timeout: 120_000,
       reuseExistingServer: false,

@@ -12,6 +12,24 @@ import requests
 
 DEFAULT_BACKEND_URL = 'https://web-production-8a820.up.railway.app'
 DEFAULT_FRONTEND_URL = 'https://sales-note-frontend-production.up.railway.app'
+FRONTEND_REACT_ROUTES = (
+    '/dashboard/',
+    '/customers/',
+    '/reports/',
+    '/prepayments/',
+    '/assets/',
+    '/ai-workspace/',
+    '/data-cleanup/',
+    '/downloads/',
+)
+PROTECTED_DOMAIN_APIS = (
+    '/reporting/api/customers/',
+    '/reporting/api/reports/',
+    '/reporting/api/prepayments/',
+    '/reporting/api/customer-assets/',
+    '/reporting/api/ai-workspace/',
+    '/reporting/api/downloads/',
+)
 
 
 @dataclass
@@ -52,6 +70,36 @@ def expect_status(session, results, name, base_url, path, expected_statuses, tim
         if contains:
             ok = ok and contains in response.text
         detail = f'{response.status_code} {response.headers.get("content-type", "")}'.strip()
+    except Exception as exc:
+        ok = False
+        detail = exc.__class__.__name__
+    record(results, name, ok, detail)
+
+
+def expect_html_route(session, results, name, base_url, path, timeout=10):
+    url = build_url(base_url, path)
+    try:
+        response = session.get(url, timeout=timeout, allow_redirects=False)
+        content_type = response.headers.get('content-type', '')
+        ok = response.status_code == 200 and 'text/html' in content_type
+        detail = f'{response.status_code} {content_type}'.strip()
+    except Exception as exc:
+        ok = False
+        detail = exc.__class__.__name__
+    record(results, name, ok, detail)
+
+
+def expect_login_required_api(session, results, name, base_url, path, timeout=10):
+    url = build_url(base_url, path)
+    try:
+        response = session.get(url, timeout=timeout, allow_redirects=False)
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        error = payload.get('error', '')
+        ok = response.status_code == 401 and error == 'login_required'
+        detail = f'{response.status_code} {error or response.headers.get("content-type", "")}'.strip()
     except Exception as exc:
         ok = False
         detail = exc.__class__.__name__
@@ -121,6 +169,13 @@ def main():
     expect_json_status(session, results, 'frontend healthz', args.frontend_url, '/healthz/', 200, 'ok', args.timeout)
     expect_status(session, results, 'frontend dashboard shell', args.frontend_url, '/dashboard/', (200,), args.timeout)
     expect_protected(session, results, 'frontend reports API protected', args.frontend_url, '/reporting/api/reports/', args.timeout)
+
+    for route in FRONTEND_REACT_ROUTES:
+        expect_html_route(session, results, f'frontend React route {route}', args.frontend_url, route, args.timeout)
+
+    for api_path in PROTECTED_DOMAIN_APIS:
+        expect_login_required_api(session, results, f'frontend protected API {api_path}', args.frontend_url, api_path, args.timeout)
+        expect_login_required_api(session, results, f'backend protected API {api_path}', args.backend_url, api_path, args.timeout)
 
     if args.username and args.password:
         authenticated_profile_check(results, args.backend_url, args.username, args.password, args.timeout)
