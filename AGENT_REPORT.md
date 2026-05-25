@@ -81,8 +81,19 @@ Browser/local smoke on frontend server :5173
 
 ### 운영 배포 상태
 
-- 배포 예정.
-- Production authenticated UI verification is pending user login/session confirmation after deployment.
+- 완료.
+- Commit `bfdf9a7 feat: complete react user management parity` is present on `origin/main`.
+- Railway backend `web` deployment `4c87c9a1-10bf-4e69-bf7c-ff34bd73b26e` succeeded for commit `bfdf9a7`.
+- Railway frontend `sales-note-frontend` deployment `34521e83-b3f8-4f9a-8daa-e30ecc722638` succeeded for commit `bfdf9a7`.
+- Production smoke passed:
+  - backend `/healthz/`, `/readyz/`, login page OK
+  - protected backend `/reporting/api/employees/` returned `401`
+  - frontend `/healthz`, `/employees/` shell OK
+  - protected frontend-proxied `/reporting/api/employees/` returned `401`
+  - frontend `/reporting/users/?search=kim` redirects to `/employees/?q=kim`
+  - frontend `/reporting/manager/users/` redirects to `/employees/`
+  - direct backend `/reporting/users/` and `/reporting/manager/users/` return login redirects when unauthenticated; authenticated React redirect is covered by Django redirect tests.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
