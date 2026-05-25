@@ -94,6 +94,7 @@ urlpatterns = [
     path('api/tasks/<int:pk>/update/', lazy_view('todos.views.tasks_update_api'), name='tasks_update_api'),
     path('api/tasks/<int:pk>/delete/', lazy_view('todos.views.tasks_delete_api'), name='tasks_delete_api'),
     path('api/tasks/<int:pk>/attachments/', lazy_view('todos.views.tasks_attachment_upload_api'), name='tasks_attachment_upload_api'),
+    path('api/tasks/<int:pk>/comments/', lazy_view('todos.views.tasks_comment_api'), name='tasks_comment_api'),
     path('api/tasks/<int:pk>/status/', lazy_view('todos.views.tasks_status_api'), name='tasks_status_api'),
     # 히스토리 URL들
     path('histories/', react_page_redirect(

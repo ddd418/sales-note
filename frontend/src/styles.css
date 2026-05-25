@@ -11273,6 +11273,7 @@ tbody tr:hover {
 .task-detail-people dl,
 .task-detail-people div,
 .task-attachment-list,
+.task-comment-list,
 .task-log-list {
   display: grid;
   gap: 8px;
@@ -11326,15 +11327,48 @@ tbody tr:hover {
 }
 
 .task-attachment-list span,
+.task-comment-item span,
 .task-log-item span {
   overflow-wrap: anywhere;
 }
 
 .task-attachment-list small,
+.task-comment-item small,
 .task-log-item small {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.task-comment-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.task-comment-form textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.task-comment-form button {
+  justify-self: end;
+}
+
+.task-comment-item {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #ffffff;
 }
 
 .task-log-item {

@@ -1,5 +1,42 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement O-step tasks/comments/delegation plan
+
+**Background**:
+
+- User asked to complete React full replacement item O for personal tasks, manager task assignment, comments, delegation, status/deadline flow, and role policy.
+- The `todos` Django app remains the canonical backend for `Todo`, `TodoAttachment`, and `TodoLog`, while React already has `/tasks/`, `/tasks/manager/`, and `/tasks/<id>/`.
+- Current React task screens still expose visible Django fallback links, and task detail has attachments/status/edit but no dedicated comment-submit flow.
+- Legacy `/todos/*` GET pages can still open Django templates.
+
+**DB change required**: No.
+
+- Existing `TodoLog.ActionType.COMMENTED` is enough for task comments/audit entries.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Keep React `/tasks/`, `/tasks/manager/`, and `/tasks/<id>/` as the user-facing task collaboration surfaces.
+- Add a task comment JSON API that writes `TodoLog(COMMENTED)` entries and returns the refreshed React task detail payload.
+- Add React task-detail comment composer and comment list while preserving the existing audit/status log.
+- Keep manager read-only for core sales data, but allow manager task assignment, status handling for tasks they assigned, attachments, and comments.
+- Preserve current admin policy: admin keeps user-management capability and personal task access, while manager-only task assignment remains manager scoped unless explicitly expanded later.
+- Remove visible Django task links from React task cards/list/detail/manager surfaces.
+- Redirect authenticated GET/HEAD legacy `/todos/*` task screens to React equivalents while preserving existing POST fallback routes and legacy HTMX/API compatibility.
+- Add focused tests for comment permission/scope, manager comment without core-sales mutation rights, and legacy task redirects.
+
+**Validation plan**:
+
+- `python -m py_compile todos\views.py todos\urls.py reporting\urls.py todos\tests.py`
+- `python manage.py test todos.tests.ReactTasksApiTests reporting.tests.NavigationApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/tasks/`, `/tasks/manager/`, `/tasks/<id>/`, `/todos/` redirects, task comment API, and protected task APIs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement N-step asset/service/calibration replacement plan
 
 **Background**:

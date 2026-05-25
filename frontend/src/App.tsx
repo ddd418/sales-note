@@ -181,6 +181,7 @@ import {
   bulkUpsertProducts,
   cancelPrepayment as cancelCustomerPrepayment,
   changeProfilePassword,
+  commentTask,
   createCompany as createCompanyRecord,
   createDepartment as createDepartmentRecord,
   createNote as createSalesNote,
@@ -15918,7 +15919,6 @@ function TaskCard({
         {task.canSetOnHold ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'on_hold' })}>보류</button> : null}
         {task.canComplete ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'done' })}>완료</button> : null}
         <a href={detailHref}>상세</a>
-        <a href={task.djangoHref}>Django</a>
       </div>
     </article>
   );
@@ -16155,8 +16155,13 @@ function PersonalTasksPage({ routeData }: { routeData: PipelineData }) {
   const [data, setData] = useState<TasksData | null>(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('active');
-  const [tab, setTab] = useState<TaskTab>('my');
-  const [mode, setMode] = useState<'self' | 'request'>('self');
+  const [tab, setTab] = useState<TaskTab>(() => {
+    const value = new URLSearchParams(window.location.search).get('tab');
+    return value === 'received' || value === 'requested' ? value : 'my';
+  });
+  const [mode, setMode] = useState<'self' | 'request'>(() => (
+    new URLSearchParams(window.location.search).get('mode') === 'request' ? 'request' : 'self'
+  ));
   const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
   const [saving, setSaving] = useState(false);
   const [actioningId, setActioningId] = useState<number | null>(null);
@@ -16247,7 +16252,6 @@ function PersonalTasksPage({ routeData }: { routeData: PipelineData }) {
             </div>
             <div className="route-actions">
               {source?.scope.canManage ? <a className="route-secondary-action" href="/tasks/manager/">업무하달</a> : null}
-              <a className="route-secondary-action" href={source?.links.djangoList || '/todos/'}>Django</a>
             </div>
           </div>
           <div className="task-toolbar">
@@ -16383,7 +16387,6 @@ function TaskManagerPage({ routeData }: { routeData: PipelineData }) {
             </div>
             <div className="route-actions">
               <a className="route-secondary-action" href="/tasks/">개인 업무</a>
-              <a className="route-secondary-action" href={source?.links.djangoManager || '/todos/manager/'}>Django</a>
             </div>
           </div>
           <div className="task-toolbar">
@@ -16476,12 +16479,14 @@ function TaskManagerPage({ routeData }: { routeData: PipelineData }) {
 function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId: number }) {
   const [data, setData] = useState<TaskDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editOpen, setEditOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(() => new URLSearchParams(window.location.search).get('edit') === '1');
   const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
   const [saving, setSaving] = useState(false);
   const [actioning, setActioning] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [comment, setComment] = useState('');
+  const [commentSaving, setCommentSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -16519,10 +16524,11 @@ function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId
   const task = data?.task ?? null;
   const attachments = data?.attachments ?? [];
   const logs = data?.logs ?? [];
+  const comments = logs.filter((log) => log.actionType === 'commented');
+  const auditLogs = logs.filter((log) => log.actionType !== 'commented');
   const durations = data?.options.durations ?? [];
   const routeActions = [
     { label: '업무 목록', href: data?.links.list || '/tasks/', primary: true },
-    { label: 'Django 상세', href: data?.links.djangoDetail || task?.djangoHref || '/todos/' },
   ];
 
   const handleEditFieldChange = (field: keyof TaskFormState, value: string) => {
@@ -16628,6 +16634,34 @@ function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId
     } finally {
       setUploading(false);
       event.target.value = '';
+    }
+  };
+
+  const handleCommentSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!task || commentSaving) return;
+    if (!task.canComment || !task.commentHref) {
+      setError('댓글 작성 권한이 없습니다.');
+      setMessage('');
+      return;
+    }
+    if (!comment.trim()) {
+      setError('댓글 내용을 입력하세요.');
+      setMessage('');
+      return;
+    }
+    setCommentSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await commentTask(task.commentHref, comment.trim());
+      applyDetailData(updated);
+      setComment('');
+      setMessage(updated.message || '댓글을 추가했습니다.');
+    } catch (commentError) {
+      setError(commentError instanceof Error ? commentError.message : '댓글 작성에 실패했습니다.');
+    } finally {
+      setCommentSaving(false);
     }
   };
 
@@ -16798,11 +16832,47 @@ function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId
                 )}
               </div>
 
+              <div className="side-card task-detail-comments">
+                <h3>댓글</h3>
+                {task.canComment ? (
+                  <form className="task-comment-form" onSubmit={handleCommentSubmit}>
+                    <textarea
+                      aria-label="업무 댓글"
+                      onChange={(event) => {
+                        setComment(event.target.value);
+                        setError('');
+                        setMessage('');
+                      }}
+                      placeholder="업무 진행 상황이나 요청 사항을 남기세요"
+                      rows={4}
+                      value={comment}
+                    />
+                    <button className="primary-button" type="submit" disabled={commentSaving}>
+                      {commentSaving ? '등록 중' : '댓글 등록'}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="empty-state small">댓글 작성 권한이 없습니다.</div>
+                )}
+                {comments.length ? (
+                  <div className="task-comment-list">
+                    {comments.map((log) => (
+                      <div className="task-comment-item" key={log.id}>
+                        <span>{log.message}</span>
+                        <small>{[log.actor ? tasksUserLabel(log.actor) : '', formatDateTimeLabel(log.createdAt)].filter(Boolean).join(' · ')}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state small">등록된 댓글이 없습니다.</div>
+                )}
+              </div>
+
               <div className="side-card task-detail-logs">
                 <h3>변경 기록</h3>
-                {logs.length ? (
+                {auditLogs.length ? (
                   <div className="task-log-list">
-                    {logs.map((log) => (
+                    {auditLogs.map((log) => (
                       <div className="task-log-item" key={log.id}>
                         <strong>{log.actionLabel || log.actionType}</strong>
                         <span>{log.message || [log.prevStatus, log.newStatus].filter(Boolean).join(' → ')}</span>

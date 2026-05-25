@@ -1,5 +1,112 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 O단계 업무/댓글/업무하달 완전 대체
+
+### 요약
+
+- `/tasks/`, `/tasks/manager/`, `/tasks/<id>/`를 업무 협업의 React 기준 화면으로 정리했습니다.
+- 업무 상세에 댓글 입력 UI를 추가하고, Django `TodoLog(COMMENTED)`를 쓰는 `/reporting/api/tasks/<id>/comments/` API를 추가했습니다.
+- React 업무 목록/하달/상세 화면에서 보이던 Django fallback 버튼을 제거했습니다.
+- `/todos/*` 주요 GET/HEAD legacy 화면은 React 업무 URL로 리다이렉트하게 했고, 기존 POST fallback과 HTMX/API 호환 경로는 유지했습니다.
+- 매니저는 core 영업 데이터 수정 권한 없이 같은 회사 업무에 댓글을 남길 수 있고, 본인이 하달한 업무 상태/첨부 흐름은 유지됩니다.
+- 관리자 정책은 현재 운영 기준대로 사용자관리와 개인 업무 접근을 유지하고, 업무하달은 manager 전용으로 보존했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `todos/views.py`
+- `todos/urls.py`
+- `todos/tests.py`
+- `reporting/urls.py`
+- `frontend/server.mjs`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 업무 상세에서 댓글을 바로 남기고, 댓글과 변경 기록을 구분해서 볼 수 있습니다.
+- 댓글은 생성자/담당자/요청자와 같은 회사 매니저만 작성할 수 있도록 scope를 맞췄습니다.
+- legacy `/todos/`, `/todos/request/`, `/todos/<id>/`, `/todos/manager/` 북마크가 React 화면으로 이동합니다.
+- React 업무 카드와 화면에서 Django 화면으로 빠지는 visible 링크가 사라졌습니다.
+- `/todos/request/`와 탭별 URL에서 들어오면 React 쪽 초기 탭/요청 모드가 맞춰집니다.
+
+### 기존 기능 보존
+
+- `todos` 앱 모델과 기존 POST 기반 생성/수정/삭제/상태 fallback은 유지했습니다.
+- 기존 첨부파일 업로드, 상태 변경, 승인/반려, 매니저 업무하달 API를 보존했습니다.
+- 카테고리 관리와 HTMX 보조 API는 이번 범위 밖이므로 삭제하지 않았습니다.
+- manager는 계속 핵심 영업 데이터 수정이 차단되고, 업무하달/댓글/첨부 등 협업 입력만 허용됩니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile todos\views.py todos\urls.py reporting\urls.py todos\tests.py
+→ OK
+
+python manage.py test todos.tests.ReactTasksApiTests --verbosity=1
+→ Ran 12 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py test reporting.tests.ReactNavigationApiTests --verbosity=1
+→ Ran 4 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Browser/local smoke on frontend server :4173
+→ /todos/ redirected to /tasks/
+→ /todos/manager/ redirected to /tasks/manager/
+→ /tasks/ React route rendered without visible Django fallback text
+→ Browser console error count 0
+```
+
+### 알려진 제한
+
+- 로컬 브라우저 smoke는 인증된 실제 사용자 세션의 댓글 등록까지는 실행하지 않았고, 댓글 작성은 Django API 테스트로 검증했습니다.
+- 업무 카테고리 관리 React UI는 이번 O 단계 범위에 포함하지 않았습니다.
+- 기존 frontend bundle size 경고는 이번 변경과 별개로 남아 있습니다.
+
+### 운영 배포 상태
+
+- 배포 전 검증 완료.
+- Commit/push와 Railway 배포 후 이 섹션을 최종 deployment id와 production smoke 결과로 갱신할 예정입니다.
+
+### 권장 다음 작업
+
+- 운영 서버에서 O 단계 수동 확인 완료 후 P 단계 또는 남은 React 완전대체 항목으로 진행합니다.
+
+### 운영 서버 수동 확인 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/tasks/`에 로그인 후 접속합니다.
+2. 실무자 계정에서 내 업무 생성, 동료 업무 요청, 받은 업무 승인/반려, 진행/보류/완료 버튼을 확인합니다.
+3. 업무 상세로 들어가 댓글을 작성하고, 댓글이 `댓글` 영역에 보이며 변경 기록과 구분되는지 확인합니다.
+4. 첨부파일 업로드와 다운로드가 기존처럼 되는지 확인합니다.
+5. 매니저 계정으로 `/tasks/manager/`에 접속해 업무하달, 담당자 필터, 상태 변경을 확인합니다.
+6. 매니저가 core 영업 데이터 수정 버튼 없이 업무 댓글은 작성할 수 있는지 확인합니다.
+7. 관리자 계정에서 사용자관리 메뉴와 개인 업무 접근은 유지되고, 업무하달 메뉴가 manager 전용으로 유지되는지 확인합니다.
+8. `/todos/`, `/todos/request/`, `/todos/manager/`를 직접 열었을 때 React `/tasks/` 계열 URL로 이동하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 N단계 장비/서비스/A/S/교정 완전 대체
 
 ### 요약

@@ -234,6 +234,52 @@ function getCoreCrmReactLocation(requestUrl) {
     return buildReactLocation(`/prepayments/${match[1]}/`, params);
   }
 
+  if (pathname === '/todos/' || pathname === '/todos') {
+    return buildReactLocation('/tasks/', params);
+  }
+  if (pathname === '/todos/create/' || pathname === '/todos/create') {
+    return buildReactLocation('/tasks/', params, { extra: { create: '1' } });
+  }
+  if (pathname === '/todos/request/' || pathname === '/todos/request') {
+    return buildReactLocation('/tasks/', params, { extra: { mode: 'request' } });
+  }
+  if (pathname === '/todos/my/' || pathname === '/todos/my') {
+    return buildReactLocation('/tasks/', params, { extra: { tab: 'my' } });
+  }
+  if (pathname === '/todos/received/' || pathname === '/todos/received') {
+    return buildReactLocation('/tasks/', params, { extra: { tab: 'received' } });
+  }
+  if (pathname === '/todos/requested/' || pathname === '/todos/requested') {
+    return buildReactLocation('/tasks/', params, { extra: { tab: 'requested' } });
+  }
+  if (
+    pathname === '/todos/manager/' ||
+    pathname === '/todos/manager' ||
+    pathname === '/todos/manager/workload/' ||
+    pathname === '/todos/manager/workload'
+  ) {
+    return buildReactLocation('/tasks/manager/', params);
+  }
+  if (pathname === '/todos/manager/assign/' || pathname === '/todos/manager/assign') {
+    return buildReactLocation('/tasks/manager/', params, { extra: { assign: '1' } });
+  }
+  match = pathname.match(/^\/todos\/manager\/task\/(\d+)\/?$/);
+  if (match) {
+    return buildReactLocation(`/tasks/${match[1]}/`, params);
+  }
+  match = pathname.match(/^\/todos\/(\d+)\/edit\/?$/);
+  if (match) {
+    return buildReactLocation(`/tasks/${match[1]}/`, params, { extra: { edit: '1' } });
+  }
+  match = pathname.match(/^\/todos\/(\d+)\/delete\/?$/);
+  if (match) {
+    return buildReactLocation(`/tasks/${match[1]}/`, params, { extra: { delete: '1' } });
+  }
+  match = pathname.match(/^\/todos\/(\d+)\/?$/);
+  if (match) {
+    return buildReactLocation(`/tasks/${match[1]}/`, params);
+  }
+
   return '';
 }
 

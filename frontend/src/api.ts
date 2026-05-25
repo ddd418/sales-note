@@ -4399,6 +4399,7 @@ export type TaskItem = {
   canUpdate?: boolean;
   canDelete?: boolean;
   canUploadAttachment?: boolean;
+  canComment?: boolean;
   attachmentCount?: number;
   logCount?: number;
   detailHref?: string;
@@ -4406,6 +4407,7 @@ export type TaskItem = {
   updateHref?: string;
   deleteHref?: string;
   uploadHref?: string;
+  commentHref?: string;
   djangoHref: string;
 };
 
@@ -10518,6 +10520,9 @@ export const changeTaskStatus = (submitUrl: string, payload: { action?: string; 
 
 export const updateTask = (submitUrl: string, payload: TaskFormPayload) =>
   postTaskJson<TaskFormPayload, TaskDetailData>(submitUrl, payload);
+
+export const commentTask = (submitUrl: string, message: string) =>
+  postTaskJson<{ message: string }, TaskDetailData>(submitUrl, { message });
 
 export const deleteTask = (submitUrl: string) =>
   postTaskJson<Record<string, never>, TaskMutationResponse>(submitUrl, {});

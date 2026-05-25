@@ -28,6 +28,7 @@ class ReactTasksApiTests(TestCase):
         self.user = make_user('tasks_user', company=self.company, can_use_ai=True)
         self.colleague = make_user('tasks_colleague', company=self.company)
         self.manager = make_user('tasks_manager', role='manager', company=self.company)
+        self.admin = make_user('tasks_admin', role='admin', company=self.company)
         self.other_user = make_user('tasks_other', company=self.other_company)
 
         customer_company = Company.objects.create(name='업무 고객사', created_by=self.user)
@@ -240,10 +241,79 @@ class ReactTasksApiTests(TestCase):
         self.assertEqual(payload['task']['relatedClient']['customer'], '업무 고객')
         self.assertEqual(payload['attachments'][0]['filename'], 'detail.txt')
         self.assertEqual(payload['logs'][0]['message'], '생성 로그')
+        self.assertTrue(payload['task']['canComment'])
+        self.assertEqual(payload['task']['commentHref'], reverse('reporting:tasks_comment_api', args=[task.id]))
 
         self.client.force_login(self.other_user)
         forbidden = self.client.get(reverse('reporting:tasks_detail_api', args=[task.id]))
         self.assertEqual(forbidden.status_code, 403)
+
+    def test_task_comment_api_allows_participants_and_same_company_manager(self):
+        task = Todo.objects.create(
+            title='댓글 확인 업무',
+            description='댓글 본문',
+            created_by=self.user,
+            assigned_to=self.colleague,
+            requested_by=self.user,
+            source_type=Todo.SourceType.PEER_REQUEST,
+            status=Todo.Status.ONGOING,
+        )
+
+        self.client.force_login(self.colleague)
+        colleague_comment = self.client.post(
+            reverse('reporting:tasks_comment_api', args=[task.id]),
+            data=json.dumps({'message': '처리 진행 중입니다.'}),
+            content_type='application/json',
+        )
+        self.assertEqual(colleague_comment.status_code, 200)
+        self.assertEqual(colleague_comment.json()['message'], '댓글을 추가했습니다.')
+        self.assertTrue(TodoLog.objects.filter(
+            todo=task,
+            actor=self.colleague,
+            action_type=TodoLog.ActionType.COMMENTED,
+            message='처리 진행 중입니다.',
+        ).exists())
+
+        self.client.force_login(self.manager)
+        manager_comment = self.client.post(
+            reverse('reporting:tasks_comment_api', args=[task.id]),
+            data=json.dumps({'message': '마감 전에 공유해주세요.'}),
+            content_type='application/json',
+        )
+        self.assertEqual(manager_comment.status_code, 200)
+        self.assertFalse(manager_comment.json()['task']['canUpdate'])
+        self.assertTrue(TodoLog.objects.filter(
+            todo=task,
+            actor=self.manager,
+            action_type=TodoLog.ActionType.COMMENTED,
+            message='마감 전에 공유해주세요.',
+        ).exists())
+
+        self.client.force_login(self.other_user)
+        forbidden = self.client.post(
+            reverse('reporting:tasks_comment_api', args=[task.id]),
+            data=json.dumps({'message': '외부 댓글'}),
+            content_type='application/json',
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_task_comment_api_validates_message(self):
+        task = Todo.objects.create(
+            title='빈 댓글 확인',
+            created_by=self.user,
+            source_type=Todo.SourceType.SELF,
+            status=Todo.Status.ONGOING,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:tasks_comment_api', args=[task.id]),
+            data=json.dumps({'message': '  '}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], '댓글 내용을 입력하세요.')
 
     def test_task_update_delete_and_attachment_api_permissions(self):
         task = Todo.objects.create(
@@ -290,3 +360,58 @@ class ReactTasksApiTests(TestCase):
         delete = self.client.post(reverse('reporting:tasks_delete_api', args=[task.id]))
         self.assertEqual(delete.status_code, 200)
         self.assertFalse(Todo.objects.filter(id=task.id).exists())
+
+    def test_legacy_todo_get_routes_redirect_to_react_and_post_fallback_remains(self):
+        task = Todo.objects.create(
+            title='legacy 업무',
+            created_by=self.user,
+            source_type=Todo.SourceType.SELF,
+            status=Todo.Status.ONGOING,
+        )
+        self.client.force_login(self.user)
+
+        redirects = [
+            (reverse('todos:list'), '/tasks/'),
+            (reverse('todos:my_list'), '/tasks/?tab=my'),
+            (reverse('todos:received_list'), '/tasks/?tab=received'),
+            (reverse('todos:requested_list'), '/tasks/?tab=requested'),
+            (reverse('todos:create'), '/tasks/?create=1'),
+            (reverse('todos:request_to_peer'), '/tasks/?mode=request'),
+            (reverse('todos:detail', args=[task.id]), f'/tasks/{task.id}/'),
+            (reverse('todos:edit', args=[task.id]), f'/tasks/{task.id}/?edit=1'),
+            (reverse('todos:delete', args=[task.id]), f'/tasks/{task.id}/?delete=1'),
+        ]
+        for url, expected_location in redirects:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response['Location'], expected_location)
+
+        create_response = self.client.post(
+            reverse('todos:create'),
+            data={'title': 'legacy POST fallback', 'description': '기존 폼 호환'},
+        )
+        self.assertEqual(create_response.status_code, 302)
+        self.assertTrue(Todo.objects.filter(title='legacy POST fallback', created_by=self.user).exists())
+
+    def test_legacy_manager_todo_get_routes_redirect_to_react(self):
+        task = Todo.objects.create(
+            title='legacy manager 업무',
+            created_by=self.manager,
+            assigned_to=self.colleague,
+            requested_by=self.manager,
+            source_type=Todo.SourceType.MANAGER_ASSIGN,
+            status=Todo.Status.ONGOING,
+        )
+        self.client.force_login(self.manager)
+
+        redirects = [
+            (reverse('todos:manager_dashboard'), '/tasks/manager/'),
+            (reverse('todos:manager_task_detail', args=[task.id]), f'/tasks/{task.id}/'),
+            (reverse('todos:manager_workload'), '/tasks/manager/'),
+        ]
+        for url, expected_location in redirects:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response['Location'], expected_location)

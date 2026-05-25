@@ -4,6 +4,7 @@ TODOLIST 뷰
 - 매니저: 업무 하달, 진행 현황, 워크로드
 """
 import json
+from functools import wraps
 
 from django.contrib.auth.models import User
 from django.shortcuts import render, get_object_or_404, redirect
@@ -18,6 +19,22 @@ from django.views.decorators.http import require_POST, require_http_methods
 
 from .models import Todo, TodoAttachment, TodoLog, TodoCategory
 from reporting.readonly_api import api_login_required_or_readonly_response
+
+
+def react_todo_page(view_func, target):
+    """Redirect legacy task GET pages to React while keeping POST fallbacks alive."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if request.method in ['GET', 'HEAD']:
+            react_path = target(request, *args, **kwargs) if callable(target) else target
+            query_string = request.META.get('QUERY_STRING', '')
+            if query_string:
+                separator = '&' if '?' in react_path else '?'
+                react_path = f'{react_path}{separator}{query_string}'
+            return redirect(react_path)
+        return view_func(request, *args, **kwargs)
+
+    return wrapper
 
 
 # ============================================
@@ -1545,6 +1562,10 @@ def _tasks_can_upload_attachment(todo, user):
     )
 
 
+def _tasks_can_comment(todo, user):
+    return _tasks_can_view(todo, user)
+
+
 def _tasks_attachment_payload(attachment):
     return {
         'id': attachment.id,
@@ -1579,6 +1600,7 @@ def _tasks_payload(todo, user):
     can_update = _tasks_can_update(todo, user)
     can_delete = _tasks_can_delete(todo, user)
     can_upload = _tasks_can_upload_attachment(todo, user)
+    can_comment = _tasks_can_comment(todo, user)
     return {
         'id': todo.id,
         'title': todo.title,
@@ -1612,6 +1634,7 @@ def _tasks_payload(todo, user):
         'canUpdate': can_update,
         'canDelete': can_delete,
         'canUploadAttachment': can_upload,
+        'canComment': can_comment,
         'attachmentCount': getattr(todo, 'attachment_count', None) if hasattr(todo, 'attachment_count') else todo.attachments.count(),
         'logCount': getattr(todo, 'log_count', None) if hasattr(todo, 'log_count') else todo.logs.count(),
         'detailHref': f'/tasks/{todo.id}/',
@@ -1619,6 +1642,7 @@ def _tasks_payload(todo, user):
         'updateHref': reverse('reporting:tasks_update_api', args=[todo.id]),
         'deleteHref': reverse('reporting:tasks_delete_api', args=[todo.id]),
         'uploadHref': reverse('reporting:tasks_attachment_upload_api', args=[todo.id]),
+        'commentHref': reverse('reporting:tasks_comment_api', args=[todo.id]),
         'djangoHref': reverse('todos:detail', args=[todo.id]),
     }
 
@@ -1845,6 +1869,44 @@ def tasks_attachment_upload_api(request, pk):
     return JsonResponse({
         **_tasks_detail_payload(todo, request.user),
         'message': f'첨부파일 {len(attachments)}개를 업로드했습니다.',
+    })
+
+
+@require_http_methods(["POST"])
+def tasks_comment_api(request, pk):
+    auth_response = _tasks_api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    payload, error = _tasks_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+
+    todo = get_object_or_404(
+        Todo.objects.select_related('created_by', 'assigned_to', 'requested_by'),
+        pk=pk,
+    )
+    if not _tasks_can_comment(todo, request.user):
+        return JsonResponse({'success': False, 'error': '댓글 작성 권한이 없습니다.'}, status=403)
+
+    message = str(payload.get('message') or payload.get('comment') or '').strip()
+    if not message:
+        return JsonResponse({'success': False, 'error': '댓글 내용을 입력하세요.'}, status=400)
+
+    TodoLog.objects.create(
+        todo=todo,
+        actor=request.user,
+        action_type=TodoLog.ActionType.COMMENTED,
+        message=message[:2000],
+    )
+    todo = Todo.objects.select_related(
+        'created_by', 'created_by__userprofile', 'assigned_to', 'assigned_to__userprofile',
+        'requested_by', 'requested_by__userprofile', 'related_client', 'related_client__company',
+        'related_client__department', 'category',
+    ).prefetch_related('attachments__uploaded_by', 'attachments__uploaded_by__userprofile', 'logs__actor', 'logs__actor__userprofile').get(pk=todo.pk)
+    return JsonResponse({
+        **_tasks_detail_payload(todo, request.user),
+        'message': '댓글을 추가했습니다.',
     })
 
 
