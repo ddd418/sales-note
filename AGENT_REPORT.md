@@ -1,5 +1,122 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 T단계 데이터 품질/정리 도구 React화
+
+### 요약
+
+- `/data-cleanup/` 전용 React 화면을 추가해 계정 정리 후보 검수, cleanup preview 이동, Department 병합 dry-run, FollowUp/contact 병합 dry-run, 보류/제외/복구, 감사 이력 조회, 관리자 확인 문구 기반 실행 흐름을 한 화면에 연결했습니다.
+- 기존 `/reports/`의 데이터 품질 payload와 기존 cleanup API를 재사용하고, 전용 화면에서는 후보/이력 limit을 확장해서 더 많은 정리 후보를 볼 수 있게 했습니다.
+- `/reporting/data-cleanup/` legacy 진입은 React `/data-cleanup/`로 이동합니다.
+- `AccountCleanupDecision`, `AccountCleanupAuditLog` 기존 모델을 사용했으며 DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `frontend/server.mjs`
+- `frontend/src/App.tsx`
+- `frontend/src/api/accountCleanup.ts`
+- `frontend/src/api/reports.ts`
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/pages/data-cleanup/DataCleanupPage.tsx`
+- `reporting/api/reports.py`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 데이터 정리 업무자가 React에서 중복 계정/중복 담당자/미지정 담당자를 검수하고 처리할 수 있습니다.
+- 후보 카드에서 cleanup preview로 바로 이동할 수 있고, Department/Contact dry-run 결과를 이관 그룹과 영향 건수로 확인합니다.
+- 관리자 계정은 dry-run 후 서버가 요구하는 확인 문구를 입력해야 execute API를 실행할 수 있습니다.
+- 보류/제외된 후보와 실제 실행 로그가 감사 이력으로 노출되고, decision 후보는 React에서 복구할 수 있습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 기존 라우트와 기존 reports/cleanup/preview API를 유지했습니다.
+- Django template 삭제는 하지 않았습니다.
+- 인증되지 않은 reports/cleanup API는 계속 `401 login_required`를 반환합니다.
+- manager/salesman의 execute 차단과 admin-only 실행 정책을 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\api\reports.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 30 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large App bundle
+
+Browser/local smoke
+→ Opened http://127.0.0.1:4173/data-cleanup/
+→ Confirmed React data cleanup page rendered with 데이터정리 navigation, 계정 정리 후보 목록, and login-required API alert when local Django was unavailable
+→ Opened http://127.0.0.1:4173/reporting/data-cleanup/
+→ Confirmed redirect to /data-cleanup/
+→ Browser console errors: none
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz, readyz, login page, protected reports API
+→ PASS frontend healthz, dashboard shell, protected reports API
+
+Production route smoke
+→ https://sales-note-frontend-production.up.railway.app/data-cleanup/ returned 200 text/html
+→ https://sales-note-frontend-production.up.railway.app/reporting/data-cleanup/ returned 302 Location: /data-cleanup/
+→ frontend-proxied and direct backend /reporting/api/reports/?cleanup_limit=100&cleanup_history_limit=50 returned 401 login_required when anonymous
+```
+
+### 알려진 제한
+
+- 실제 후보 dry-run, execute, 보류/제외, 복구는 운영 로그인 세션에서 사용자가 수동 검수해야 합니다.
+- Contact merge 실행은 현재 같은 업체/같은 부서 안에서만 허용되는 제한된 병합입니다.
+- Department merge 실행은 담당자, 장비, 선결제, 부서 메모 중심의 제한된 병합이며 모든 데이터 종류 삭제/통합을 자동화하지 않습니다.
+- 대량 후보 UX는 card 중심입니다. 향후 표/필터/검색을 추가하면 운영량이 많을 때 더 편해집니다.
+
+### Production Deployment Status
+
+- Completed.
+- Code commit `a9f8910 feat: add react data cleanup workflow` is present on `origin/main`.
+- Railway backend `web` deployment `21ac01fb-4a7c-40fb-b63c-3163ff345c07` succeeded for commit `a9f8910`.
+- Railway frontend `sales-note-frontend` deployment `4b649e62-8a78-4292-a041-9136e41cb920` succeeded for commit `a9f8910`.
+- Production anonymous smoke passed for `/data-cleanup/`, `/reporting/data-cleanup/`, and protected reports API cleanup-limit requests.
+- Authenticated production UI verification is pending user login/session confirmation.
+
+### Recommended Next Task
+
+- 사용자가 운영 서버에서 데이터 정리 후보, preview, dry-run, 보류/제외, admin execute, audit log를 수동 검수한 뒤 다음 React 완전대체 항목을 진행합니다.
+
+### Manual Server Test Process
+
+1. `https://sales-note-frontend-production.up.railway.app/data-cleanup/`에 로그인 상태로 접속합니다.
+2. 왼쪽 메뉴에 `데이터정리`가 보이고 화면 제목이 `데이터 품질/정리 도구`인지 확인합니다.
+3. `계정명 유사 후보`에서 `preview`를 눌러 `/accounts/<id>/cleanup-preview/?target=<id>`로 이동하는지 확인합니다.
+4. 같은 후보에서 `Department dry-run`을 누르고 병합 실행 전 검수 패널에 이관 그룹/영향 건수/확인 문구가 표시되는지 확인합니다.
+5. `담당자 중복 후보`에서 `Contact dry-run`을 눌러 FollowUp/contact 병합 계획이 표시되는지 확인합니다.
+6. 후보 하나를 `보류` 처리한 뒤 새로고침 후 보류 상태와 이력 표시를 확인합니다.
+7. 후보 하나를 `제외` 처리한 뒤 후보 목록에서 사라지고 이력에 남는지 확인합니다.
+8. 이력의 decision 항목에서 `복구`를 눌러 후보가 다시 목록에 나타나는지 확인합니다.
+9. admin 계정으로 로그인해 dry-run 후 표시된 확인 문구를 정확히 입력하고 `승인 후 실행`을 눌러 AuditLog 번호가 표시되는지 확인합니다. 실제 운영 데이터 병합은 되돌리기 어렵기 때문에 테스트용 후보 또는 사전에 합의된 후보에서만 진행합니다.
+10. 실행 후 관련 계정/담당자 상세와 `정리 작업 이력`에서 audit log가 남았는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 S단계 프로필/개인 설정 완전 대체
 
 ### 요약
