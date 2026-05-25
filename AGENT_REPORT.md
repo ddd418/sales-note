@@ -11,6 +11,7 @@
 - 일정 상세 AI는 실행 코치/초안 생성이 아니라 일정 브리핑으로 표시하고, 보고/메일 초안 버튼과 payload를 비웠습니다.
 - 주간보고 AI 초안 API와 AI Workspace 액션 초안 API는 `410 Gone`으로 차단했습니다.
 - legacy `/ai/` 프롬프트 허브는 React `/ai-workspace/` 브리핑 화면으로 redirect합니다.
+- React 번들에 남아 있던 AI 초안/프롬프트/AI 분석 잔여 UI와 API wrapper를 제거했습니다.
 
 ### 변경된 파일
 
@@ -20,6 +21,7 @@
 - `ai_chat/tests.py`
 - `ai_chat/views.py`
 - `frontend/src/App.tsx`
+- `frontend/src/api/ai.ts`
 - `frontend/src/api/legacy.ts`
 - `frontend/src/components/shared/CrmShell.tsx`
 - `reporting/tests.py`
@@ -75,18 +77,36 @@ Local browser smoke
 → `AI 브리핑` text visible
 → Old positive labels `AI 업무도구`, `AI Workspace 열기`, `AI에게 질문`, `메일 초안 복사`, `보고 초안 적용` not visible
 
+Frontend source and bundle marker scan
+→ `gpt-5.4-mini`, `AI 업무도구`, `AI Workspace 열기`, `AI에게 질문`, `메일 초안 복사`, `보고 초안 적용`, `주간보고 초안`, `AI 작업 프롬프트`, `AI 분석`, `AI 추천`, `AI 판단` absent
+→ `AI 브리핑` and `gpt-5.4-nano` present
+
 git diff --check
 → OK, CRLF normalization warnings only
 ```
 
 ### 알려진 제한
 
-- legacy AI 분석 결과 상세 화면과 내부 분석 데이터 구조에는 과거 “전략” 계열 용어가 일부 남아 있습니다. 이번 작업에서는 사용자가 진입하는 `/ai/` 프롬프트 허브를 React 브리핑 화면으로 redirect하고, React/주요 API의 생성 기능을 차단하는 데 범위를 맞췄습니다.
+- 내부 Django 함수명과 일부 데이터 구조에는 과거 AI action/draft 이름이 남아 있습니다. 사용자 진입 React 화면과 주요 API 동작은 브리핑 전용으로 막았고, backend 내부 이름 정리는 별도 refactor로 남겼습니다.
 - AI Workspace 전체 테스트 클래스는 매우 커서 시간 제한 내 전체 실행은 끝나지 않았고, 변경 지점 중심의 집중 테스트를 실행했습니다.
 
 ### Production Deployment Status
 
-- Pending commit, push, Railway deployment, and production smoke.
+- Completed.
+- Code commits pushed to `origin/main`:
+  - `ed333d5 feat: make AI briefing only with nano model`
+  - `98a2683 refactor: remove AI draft frontend remnants`
+- Railway production deployments:
+  - Backend `web`: `5c85c778-6da3-4ce2-9977-452be3b08e16`, commit `98a2683`, `SUCCESS`
+  - Frontend `sales-note-frontend`: `bbdb8579-82bb-4aa3-b61f-d223344f49b7`, commit `98a2683`, `SUCCESS`
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+  - Confirmed `/data-cleanup/` and `/downloads/` remain `404`
+  - Confirmed protected API endpoints remain `401 login_required`
+- Production bundle marker scan:
+  - Present: `AI 브리핑`, `gpt-5.4-nano`
+  - Absent: `gpt-5.4-mini`, `AI 업무도구`, `AI Workspace 열기`, `AI에게 질문`, `메일 초안 복사`, `보고 초안 적용`, `주간보고 초안`, `AI 작업 프롬프트`, `AI 분석`, `AI 추천`, `AI 판단`
 
 ### Manual Server Test Process
 
