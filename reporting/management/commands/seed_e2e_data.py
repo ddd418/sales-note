@@ -17,7 +17,7 @@ from reporting.models import (
     UserCompany,
     UserProfile,
 )
-from reporting.test_fixtures import create_account_ledger_fixture
+from reporting.services.test_fixtures import create_account_ledger_fixture
 
 
 E2E_PASSWORD = 'E2ePass123!'

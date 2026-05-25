@@ -38,7 +38,7 @@ from reporting.models import (
     UserProfile,
     UserCompany,
 )
-from reporting.test_fixtures import create_account_ledger_fixture
+from reporting.services.test_fixtures import create_account_ledger_fixture
 
 
 FRONTEND_BASE_URL = 'https://sales-note-frontend-production.up.railway.app/'
@@ -1109,7 +1109,7 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
 
     def test_common_account_ledger_feeds_reports_customer_detail_and_ai(self):
         from ai_chat.services import gather_prepayment_data, gather_quote_delivery_data
-        from reporting.account_ledger import account_operational_ledger_for_followups
+        from reporting.services.account_ledger import account_operational_ledger_for_followups
 
         today = timezone.localdate()
         create_account_ledger_fixture(

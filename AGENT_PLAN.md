@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement W-step Django view/service layer cleanup plan
+
+**Background**:
+
+- User asked to clean the Django view/service layer so Django acts as the API and business-logic server, not the CRM page renderer.
+- `reporting/views.py` remains very large and still contains mixed legacy pages, JSON APIs, Excel exports, AI logic, and helper code.
+- Reports/data-quality APIs are already partially split into `reporting/api/reports.py`, and a shared ledger implementation exists in `reporting/account_ledger.py`.
+
+**DB change required**: No.
+
+- This task is Python module organization and service-layer routing only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add domain API modules for accounts/customers, assets/services, prepayments, and AI workspace.
+- Physically split the prepayment legacy/API/Excel block out of `reporting/views.py` into `reporting/api/prepayments.py`.
+- Route account/customer, reports, prepayment, asset/service, and AI JSON/API endpoints through `reporting.api.*` modules using `lazy_view`.
+- Introduce `reporting/services/account_ledger.py` as the canonical account ledger service namespace and update reports, customer detail, AI services, tests, and seed fixtures to import through it.
+- Keep backward-compatible behavior and URL names unchanged.
+- Preserve existing Django templates and legacy redirect fallbacks while React remains the CRM UI.
+- Use the existing shared account ledger fixture and focused regression tests to confirm customer detail, reports, Excel, and AI continue to share the same calculation contract.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\api\*.py reporting\services\*.py ai_chat\services.py reporting\tests.py`
+- Focused Django tests for account ledger consistency, prepayment APIs, account/customer APIs, reports API/XLSX, asset APIs, and AI workspace protected endpoints.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Local anonymous API smoke for `/reporting/api/customers/`, `/reports/`, `/prepayments/`, `/customer-assets/`, `/ai-workspace/`.
+- Production smoke after Railway deployment.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement V-step API layer modularization plan
 
 **Background**:

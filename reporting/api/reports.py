@@ -27,7 +27,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from reporting.account_ledger import (
+from reporting.services.account_ledger import (
     account_key_for_followup,
     account_operational_ledgers_for_followups,
     account_representative_followup,

@@ -326,7 +326,7 @@ def _schedule_prepayment_payload(schedule):
         payload['paymentEvidence'] = payload['payment_evidence']
         return payload
 
-    from reporting.account_ledger import delivery_payment_payload
+    from reporting.services.account_ledger import delivery_payment_payload
 
     ledger_payload = delivery_payment_payload(schedule)
     usage_rows = []
@@ -569,7 +569,7 @@ def _account_ledger_payment_payload_for_ai(record):
 
 def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
     """견적/납품 관련 모델과 일정 품목 데이터를 하나의 AI 입력으로 통합한다."""
-    from reporting.account_ledger import account_operational_ledger_for_followups
+    from reporting.services.account_ledger import account_operational_ledger_for_followups
     from reporting.models import FollowUp, History
 
     followup_ids = [followup_id for followup_id in dict.fromkeys(followup_ids or []) if followup_id]
@@ -1553,7 +1553,7 @@ def gather_prepayment_data(followups):
     followups: FollowUp queryset (이미 권한 범위 내로 필터링됨)
     """
     from datetime import date, timedelta
-    from reporting.account_ledger import account_operational_ledgers_for_followups
+    from reporting.services.account_ledger import account_operational_ledgers_for_followups
 
     try:
         followup_list = list(followups.select_related('user', 'company', 'department'))
