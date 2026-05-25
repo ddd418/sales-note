@@ -440,6 +440,8 @@ export async function loadReportsData(params: {
   exportScope?: string;
   prepaymentBalanceFilter?: string;
   query?: string;
+  cleanupLimit?: number;
+  cleanupHistoryLimit?: number;
   userId?: string;
 } = {}): Promise<ReportsData> {
   const query = new URLSearchParams();
@@ -451,6 +453,8 @@ export async function loadReportsData(params: {
   if (params.exportScope && params.exportScope !== 'filtered') query.set('export_scope', params.exportScope);
   if (params.prepaymentBalanceFilter && params.prepaymentBalanceFilter !== 'any') query.set('prepayment_balance_filter', params.prepaymentBalanceFilter);
   if (params.query) query.set('q', params.query);
+  if (params.cleanupLimit) query.set('cleanup_limit', String(params.cleanupLimit));
+  if (params.cleanupHistoryLimit) query.set('cleanup_history_limit', String(params.cleanupHistoryLimit));
   if (params.userId) query.set('user_id', params.userId);
 
   try {

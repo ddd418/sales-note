@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement T-step data cleanup tools plan
+
+**Background**:
+
+- User asked to complete React full replacement item T for data quality and cleanup tools.
+- Existing backend already detects duplicate account/contact candidates in the reports API, stores manual hold/dismiss decisions in `AccountCleanupDecision`, records execution logs in `AccountCleanupAuditLog`, and exposes department/contact merge dry-run/execute APIs.
+- Existing React reports page surfaces cleanup candidates, but the workflow is not yet a dedicated inspection/execution/audit screen.
+
+**DB change required**: No.
+
+- Existing `AccountCleanupDecision` and `AccountCleanupAuditLog` models support hold/dismiss, dry-run, limited admin execution, and audit history.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a dedicated React `/data-cleanup/` screen for data quality operations.
+- Reuse the reports summary API with a larger cleanup candidate/history limit for the dedicated cleanup screen.
+- Add React API clients for department merge dry-run/execute and FollowUp/contact merge dry-run/execute.
+- Show account cleanup candidate lists with direct cleanup preview links.
+- Let users manually hold, dismiss, and restore cleanup candidates from React.
+- Connect duplicate account candidates to the Department merge dry-run API and duplicate contact candidates to the FollowUp/contact merge dry-run API.
+- Show the dry-run transfer plan, warnings, required confirmation text, and admin-only execution control in React.
+- Show recent cleanup audit/decision history in React and allow decision restore where applicable.
+- Add `/data-cleanup/` to navigation and route handling while preserving `/reports/` cleanup links.
+- Add focused tests for data cleanup navigation and API payload limits plus existing cleanup API coverage.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\api\reports.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Production smoke for `/data-cleanup/`, `/reporting/data-cleanup/`, protected reports API with cleanup limits, cleanup preview links, and protected dry-run APIs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement S-step profile/settings replacement plan
 
 **Background**:

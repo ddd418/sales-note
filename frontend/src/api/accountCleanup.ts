@@ -130,6 +130,89 @@ export type DataQualityContactAssignResponse = {
   contact?: ReportsDataQualityContact;
 };
 
+export type AccountCleanupMergeTransfer = {
+  key: string;
+  label: string;
+  count: number;
+  sampleIds: number[];
+  sampleLimit: number;
+  truncated: boolean;
+  detail: string;
+};
+
+export type AccountCleanupMergePlan = {
+  actionType: 'department_merge' | 'contact_merge' | string;
+  sourceAccount?: {
+    id: number;
+    name: string;
+    companyId: number | null;
+    companyName: string;
+    href: string;
+  };
+  targetAccount?: {
+    id: number;
+    name: string;
+    companyId: number | null;
+    companyName: string;
+    href: string;
+  };
+  sourceContact?: {
+    id: number;
+    customerName: string;
+    manager: string;
+    email: string;
+    status: string;
+    companyId: number | null;
+    companyName: string;
+    departmentId: number | null;
+    departmentName: string;
+    href: string;
+  };
+  targetContact?: {
+    id: number;
+    customerName: string;
+    manager: string;
+    email: string;
+    status: string;
+    companyId: number | null;
+    companyName: string;
+    departmentId: number | null;
+    departmentName: string;
+    href: string;
+  };
+  transfers: AccountCleanupMergeTransfer[];
+  counts: {
+    transferCount: number;
+    groups: number;
+  };
+};
+
+export type AccountCleanupMergeResponse = {
+  success?: boolean;
+  source?: 'django' | string;
+  generatedAt?: string;
+  error?: string;
+  message?: string;
+  actionType: 'department_merge' | 'contact_merge' | string;
+  mode: 'dry_run' | 'execute' | string;
+  dryRun: boolean;
+  executed: boolean;
+  canExecute: boolean;
+  requiredConfirmationText: string;
+  plan: AccountCleanupMergePlan;
+  warnings: string[];
+  auditLogId: number | null;
+  result?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+};
+
+export type AccountCleanupMergePayload = {
+  mode?: 'dry_run' | 'execute';
+  targetDepartmentId?: number | null;
+  targetFollowupId?: number | null;
+  confirmationText?: string;
+};
+
 const emptyAccountCleanupPreviewAccount: AccountCleanupPreviewAccount = {
   id: null,
   name: '',
@@ -364,6 +447,59 @@ export async function saveAccountCleanupDecision(
     throw new Error(data.error || data.message || `Cleanup decision failed: ${response.status}`);
   }
   return data;
+}
+
+async function postAccountCleanupMerge(
+  url: string,
+  payload: AccountCleanupMergePayload,
+): Promise<AccountCleanupMergeResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Cleanup merge API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as AccountCleanupMergeResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Cleanup merge failed: ${response.status}`);
+  }
+  return {
+    ...data,
+    warnings: data.warnings ?? [],
+    plan: {
+      ...(data.plan ?? {}),
+      transfers: data.plan?.transfers ?? [],
+      counts: {
+        transferCount: data.plan?.counts?.transferCount ?? 0,
+        groups: data.plan?.counts?.groups ?? 0,
+      },
+    },
+  };
+}
+
+export function runDepartmentCleanupMerge(
+  sourceDepartmentId: number,
+  payload: AccountCleanupMergePayload,
+): Promise<AccountCleanupMergeResponse> {
+  return postAccountCleanupMerge(`/reporting/api/accounts/${sourceDepartmentId}/cleanup-merge/`, payload);
+}
+
+export function runContactCleanupMerge(
+  sourceFollowupId: number,
+  payload: AccountCleanupMergePayload,
+): Promise<AccountCleanupMergeResponse> {
+  return postAccountCleanupMerge(`/reporting/api/customers/${sourceFollowupId}/cleanup-merge/`, payload);
 }
 
 export async function assignDataQualityContactAccount(

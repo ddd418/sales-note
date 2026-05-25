@@ -2229,6 +2229,7 @@ def navigation_api(request):
     items = [
         {'id': 'dashboard', 'label': '대시보드', 'href': '/dashboard/'},
         {'id': 'analytics', 'label': '분석', 'href': '/reports/'},
+        {'id': 'dataCleanup', 'label': '데이터정리', 'href': '/data-cleanup/'},
         {'id': 'customers', 'label': '고객', 'href': '/customers/'},
         {'id': 'companies', 'label': '업체/부서', 'href': '/companies/'},
         {'id': 'assets', 'label': '장비', 'href': '/assets/'},

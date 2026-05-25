@@ -211,6 +211,9 @@ function getCoreCrmReactLocation(requestUrl) {
   if (pathname === '/reporting/analytics/' || pathname === '/reporting/analytics') {
     return buildReactLocation('/reports/', params);
   }
+  if (pathname === '/reporting/data-cleanup/' || pathname === '/reporting/data-cleanup') {
+    return buildReactLocation('/data-cleanup/', params);
+  }
   if (pathname === '/reporting/profile/' || pathname === '/reporting/profile') {
     return buildReactLocation('/profile/', params);
   }

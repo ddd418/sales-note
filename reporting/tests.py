@@ -481,6 +481,8 @@ class ReactNavigationApiTests(TestCase):
         items_by_id = {item['id']: item for item in payload['items']}
         self.assertEqual(items_by_id['analytics']['href'], '/reports/')
         self.assertEqual(items_by_id['analytics']['label'], '분석')
+        self.assertEqual(items_by_id['dataCleanup']['href'], '/data-cleanup/')
+        self.assertEqual(items_by_id['dataCleanup']['label'], '데이터정리')
         self.assertEqual(items_by_id['businessCards']['href'], '/mailbox/business-cards/')
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
         self.assertEqual(items_by_id['services']['href'], '/services/')
@@ -526,6 +528,7 @@ class ReactNavigationApiTests(TestCase):
         self.client.force_login(salesman)
         salesman_payload = self.client.get(reverse('reporting:navigation_api')).json()
         salesman_ids = {item['id'] for item in salesman_payload['items']}
+        self.assertIn('dataCleanup', salesman_ids)
         self.assertIn('tasks', salesman_ids)
         self.assertIn('mail', salesman_ids)
         self.assertNotIn('tasksManager', salesman_ids)
@@ -537,6 +540,7 @@ class ReactNavigationApiTests(TestCase):
         self.client.force_login(manager)
         manager_payload = self.client.get(reverse('reporting:navigation_api')).json()
         manager_ids = {item['id'] for item in manager_payload['items']}
+        self.assertIn('dataCleanup', manager_ids)
         self.assertIn('tasks', manager_ids)
         self.assertIn('tasksManager', manager_ids)
         self.assertIn('employees', manager_ids)
@@ -549,6 +553,7 @@ class ReactNavigationApiTests(TestCase):
         self.client.force_login(admin)
         admin_payload = self.client.get(reverse('reporting:navigation_api')).json()
         admin_ids = {item['id'] for item in admin_payload['items']}
+        self.assertIn('dataCleanup', admin_ids)
         self.assertIn('tasks', admin_ids)
         self.assertIn('mail', admin_ids)
         self.assertIn('userAdmin', admin_ids)
@@ -1273,6 +1278,44 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertGreaterEqual(operations_row['cleanupCandidateCount'], 1)
         self.assertIn('duplicate_account', operations_row['cleanupTypes'])
         self.assertTrue(operations_row['cleanupPreviewHref'])
+
+    def test_reports_api_accepts_data_cleanup_candidate_and_history_limits(self):
+        for index in range(3):
+            duplicate_email = f'cleanup-limit-{index}@example.com'
+            FollowUp.objects.create(
+                user=self.user,
+                user_company=self.company,
+                company=self.customer_company,
+                department=self.department,
+                customer_name=f'정리 제한 담당자 {index}-A',
+                email=duplicate_email,
+            )
+            FollowUp.objects.create(
+                user=self.user,
+                user_company=self.company,
+                company=self.customer_company,
+                department=self.department,
+                customer_name=f'정리 제한 담당자 {index}-B',
+                email=duplicate_email,
+            )
+            AccountCleanupAuditLog.objects.create(
+                created_by=self.user,
+                action_type=AccountCleanupAuditLog.ACTION_CONTACT_MERGE,
+                mode=AccountCleanupAuditLog.MODE_EXECUTE,
+                source_followup=self.followup,
+            )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'), {
+            'cleanup_limit': '2',
+            'cleanup_history_limit': '1',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        data_quality = response.json()['dataQuality']
+        self.assertGreaterEqual(data_quality['metrics']['duplicateContactGroups'], 3)
+        self.assertEqual(len(data_quality['duplicateContacts']), 2)
+        self.assertEqual(len(data_quality['history']), 1)
 
     def test_account_cleanup_decision_api_holds_dismisses_and_restores_candidate(self):
         compact_department = Department.objects.create(

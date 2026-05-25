@@ -314,6 +314,7 @@ import {
 import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
 import { AccountCleanupPreviewPage } from './pages/accounts/AccountCleanupPreviewPage';
 import { CompanyManagementPage } from './pages/companies/CompanyManagementPage';
+import { DataCleanupPage } from './pages/data-cleanup/DataCleanupPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
 import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from './components/shared/FeedbackStates';
@@ -1756,6 +1757,18 @@ const routeMeta: Record<
       { label: '파이프라인 XLSX', href: '/reporting/analytics/export/pipeline.xlsx' },
     ],
   },
+  dataCleanup: {
+    eyebrow: 'Sales CRM / Data Cleanup',
+    title: '데이터정리',
+    summary: '중복 계정과 담당자 후보를 검수하고 dry-run, 승인 실행, 감사 이력을 확인합니다.',
+    primaryHref: '/data-cleanup/',
+    primaryLabel: '데이터 정리 도구 열기',
+    actions: [
+      { label: '정리 도구', href: '/data-cleanup/', primary: true },
+      { label: '계정 현황표', href: '/reports/?export_scope=cleanup_candidates' },
+      { label: '고객 목록', href: '/customers/' },
+    ],
+  },
   customers: {
     eyebrow: 'Sales CRM / Customers',
     title: '고객',
@@ -1964,6 +1977,7 @@ const routeMeta: Record<
 function getCurrentView(): MainView {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
+  if (pathname.startsWith('/data-cleanup/')) return 'dataCleanup';
   if (pathname.startsWith('/reports/')) return 'analytics';
   if (pathname.startsWith('/analytics/')) return 'analytics';
   if (pathname.startsWith('/companies/')) return 'companies';
@@ -21921,7 +21935,7 @@ export function App() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
   const [reportsData, setReportsData] = useState<ReportsData | null>(null);
-  const [reportsLoading, setReportsLoading] = useState(currentView === 'analytics');
+  const [reportsLoading, setReportsLoading] = useState(currentView === 'analytics' || currentView === 'dataCleanup');
   const [reportsDateFrom, setReportsDateFrom] = useState(() => new URLSearchParams(window.location.search).get('date_from') || '');
   const [reportsDateTo, setReportsDateTo] = useState(() => new URLSearchParams(window.location.search).get('date_to') || '');
   const [reportsUserId, setReportsUserId] = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
@@ -22226,11 +22240,12 @@ export function App() {
   }, [currentView, employeeCompany, employeeQuery, employeeRole, employeeStatus]);
 
   useEffect(() => {
-    if (currentView !== 'analytics') {
+    if (currentView !== 'analytics' && currentView !== 'dataCleanup') {
       return;
     }
     let alive = true;
     setReportsLoading(true);
+    const isCleanupView = currentView === 'dataCleanup';
     loadReportsData({
       companyId: reportsCompanyId,
       dateFrom: reportsDateFrom,
@@ -22240,6 +22255,8 @@ export function App() {
       exportScope: reportsExportScope,
       prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
       query: reportsQuery,
+      cleanupLimit: isCleanupView ? 100 : undefined,
+      cleanupHistoryLimit: isCleanupView ? 50 : undefined,
       userId: reportsUserId,
     }).then((data) => {
       if (!alive) {
@@ -23930,6 +23947,8 @@ export function App() {
       exportScope: reportsExportScope,
       prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
       query: reportsQuery,
+      cleanupLimit: currentView === 'dataCleanup' ? 100 : undefined,
+      cleanupHistoryLimit: currentView === 'dataCleanup' ? 50 : undefined,
       userId: reportsUserId,
     });
     setReportsData(data);
@@ -24577,6 +24596,19 @@ export function App() {
           onQueryChange={setReportsQuery}
           onRefresh={() => { void refreshReportsData(); }}
           onUserChange={setReportsUserId}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'dataCleanup') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <DataCleanupPage
+          data={reportsData}
+          loading={reportsLoading}
+          onRefresh={() => { void refreshReportsData(); }}
         />
       </AppShell>
     );

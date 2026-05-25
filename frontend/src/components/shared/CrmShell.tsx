@@ -1,6 +1,7 @@
 import {
   Activity,
   Archive,
+  ArrowRightLeft,
   Bell,
   Building2,
   CalendarDays,
@@ -29,6 +30,7 @@ import { getCookie } from '../../api/shared';
 export type MainView =
   | 'dashboard'
   | 'analytics'
+  | 'dataCleanup'
   | 'customers'
   | 'companies'
   | 'assets'
@@ -52,6 +54,7 @@ type ShellNavigationItem = NavigationItem & { icon?: LucideIcon };
 const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
   { id: 'analytics', label: '현황', icon: Activity, href: '/reports/' },
+  { id: 'dataCleanup', label: '데이터정리', icon: ArrowRightLeft, href: '/data-cleanup/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'companies', label: '업체/부서', icon: Building2, href: '/companies/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
@@ -73,6 +76,7 @@ const fallbackNavItems: ShellNavigationItem[] = [
 const navIconMap: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   analytics: Activity,
+  dataCleanup: ArrowRightLeft,
   customers: Users,
   companies: Building2,
   assets: Wrench,
@@ -97,6 +101,7 @@ const navIconMap: Record<string, LucideIcon> = {
 const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   dashboard: { eyebrow: 'Sales CRM / Dashboard', title: '대시보드' },
   analytics: { eyebrow: 'Sales CRM / Reports', title: '분석' },
+  dataCleanup: { eyebrow: 'Sales CRM / Data Cleanup', title: '데이터정리' },
   customers: { eyebrow: 'Sales CRM / Customers', title: '고객' },
   companies: { eyebrow: 'Sales CRM / Companies', title: '업체/부서' },
   assets: { eyebrow: 'Sales CRM / Assets', title: '장비' },

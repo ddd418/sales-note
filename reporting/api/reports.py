@@ -980,7 +980,7 @@ def _reports_cleanup_department_payload(department_id, grouped_followups, peer_d
     }
 
 
-def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
+def _reports_data_quality_payload(followups_qs, filter_users, limit=12, history_limit=10):
     followups = list(
         followups_qs.select_related('user', 'company', 'department')
         .annotate(
@@ -1183,7 +1183,7 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12):
         'duplicateContacts': duplicate_contacts[:limit],
         'contactsWithoutDepartment': unassigned_department_candidates[:limit],
         'contactsWithoutCompany': unassigned_company_candidates[:limit],
-        'history': _reports_cleanup_history_payload(filter_users, limit=10),
+        'history': _reports_cleanup_history_payload(filter_users, limit=history_limit),
     }
 
 
@@ -1482,7 +1482,22 @@ def reports_summary_api(request):
         date_to,
         request.user,
     )
-    data_quality = _reports_data_quality_payload(followups_qs, filter_users)
+    cleanup_limit = 12
+    cleanup_history_limit = 10
+    try:
+        cleanup_limit = max(1, min(int(request.GET.get('cleanup_limit') or cleanup_limit), 100))
+    except (TypeError, ValueError):
+        cleanup_limit = 12
+    try:
+        cleanup_history_limit = max(1, min(int(request.GET.get('cleanup_history_limit') or cleanup_history_limit), 100))
+    except (TypeError, ValueError):
+        cleanup_history_limit = 10
+    data_quality = _reports_data_quality_payload(
+        followups_qs,
+        filter_users,
+        limit=cleanup_limit,
+        history_limit=cleanup_history_limit,
+    )
     cleanup_markers = _reports_cleanup_marker_map(data_quality)
     customer_operations = _reports_attach_cleanup_markers(customer_operations, cleanup_markers)
     customer_operations = _reports_apply_row_filters(customer_operations, report_filters)
