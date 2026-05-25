@@ -81,7 +81,20 @@ Local browser smoke on frontend server :4174
 
 ### 운영 배포 상태
 
-- 배포 전 검증 완료. 커밋/푸시 및 Railway 배포 예정.
+- 완료.
+- Commit `c5144ed feat: complete react mail business ai parity` is present on `origin/main`.
+- Railway backend `web` deployment `349f0e60-c15f-4931-8b68-cb88e5a32db6` succeeded for commit `c5144ed`.
+- Railway frontend `sales-note-frontend` deployment `4e1fce21-ba18-4852-ac91-d54926f5f874` succeeded for commit `c5144ed`.
+- Production smoke passed:
+  - backend `/healthz/`, `/readyz/`, login page OK
+  - protected backend `/reporting/api/reports/` returned `401`
+  - frontend `/healthz`, dashboard shell OK
+  - frontend `/mailbox/`, `/mailbox/business-cards/?create=1`, `/ai-workspace/` returned `200`
+  - frontend `/reporting/mailbox/inbox/` redirects to `/mailbox/?box=inbox`
+  - frontend `/reporting/business-cards/create/` redirects to `/mailbox/business-cards/?create=1`
+  - frontend `/reporting/gmail/send/mailbox/` redirects to `/mailbox/?compose=1`
+  - protected frontend-proxied mailbox, business-card, and AI Workspace APIs returned `401`
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
