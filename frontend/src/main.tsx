@@ -1,27 +1,45 @@
-import React from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
+import { CRM_CLIENT_NAVIGATION_EVENT } from './navigationEvents';
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
-const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
 
-async function renderApp() {
-  if (pathname.startsWith('/dashboard/')) {
-    const { DashboardApp } = await import('./DashboardApp');
-    root.render(
-      <React.StrictMode>
-        <DashboardApp />
-      </React.StrictMode>,
-    );
-    return;
-  }
+const DashboardApp = React.lazy(async () => ({
+  default: (await import('./DashboardApp')).DashboardApp,
+}));
+const CrmApp = React.lazy(async () => ({
+  default: (await import('./App')).App,
+}));
 
-  const { App } = await import('./App');
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
+function isDashboardRoute() {
+  const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
+  return pathname.startsWith('/dashboard/');
+}
+
+function RootRouter() {
+  const [, setRouteChangeSignal] = useState(0);
+
+  useEffect(() => {
+    const refreshRoute = () => setRouteChangeSignal((value) => value + 1);
+    window.addEventListener('popstate', refreshRoute);
+    window.addEventListener(CRM_CLIENT_NAVIGATION_EVENT, refreshRoute);
+    return () => {
+      window.removeEventListener('popstate', refreshRoute);
+      window.removeEventListener(CRM_CLIENT_NAVIGATION_EVENT, refreshRoute);
+    };
+  }, []);
+
+  const RootComponent = isDashboardRoute() ? DashboardApp : CrmApp;
+  return (
+    <Suspense fallback={null}>
+      <RootComponent />
+    </Suspense>
   );
 }
 
-void renderApp();
+root.render(
+  <React.StrictMode>
+    <RootRouter />
+  </React.StrictMode>,
+);

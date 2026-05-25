@@ -336,6 +336,7 @@ import {
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
 import { AttachmentManager, type AttachmentManagerFile } from './components/shared/AttachmentManager';
 import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from './components/shared/FeedbackStates';
+import { CRM_CLIENT_NAVIGATION_EVENT } from './navigationEvents';
 
 const scheduleCalendarUrl = '/schedules/calendar/';
 
@@ -2646,6 +2647,20 @@ const pipelineDataViews: MainView[] = ['pipeline', 'tasks', 'weeklyReports', 'do
 
 function routeUsesPipelineData(view: MainView): boolean {
   return pipelineDataViews.includes(view);
+}
+
+function useRouteChangeSignal() {
+  const [, setRouteChangeSignal] = useState(0);
+
+  useEffect(() => {
+    const refreshRoute = () => setRouteChangeSignal((value) => value + 1);
+    window.addEventListener('popstate', refreshRoute);
+    window.addEventListener(CRM_CLIENT_NAVIGATION_EVENT, refreshRoute);
+    return () => {
+      window.removeEventListener('popstate', refreshRoute);
+      window.removeEventListener(CRM_CLIENT_NAVIGATION_EVENT, refreshRoute);
+    };
+  }, []);
 }
 
 function LazyPageBoundary({ children }: { children: ReactNode }) {
@@ -21829,6 +21844,8 @@ function DetailPanel({
 }
 
 export function App() {
+  useRouteChangeSignal();
+
   const currentView = getCurrentView();
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const accountDetailId = currentView === 'customers' ? getAccountDetailId() : null;

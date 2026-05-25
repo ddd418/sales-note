@@ -22,9 +22,10 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type MouseEvent, type ReactNode, useEffect, useState } from 'react';
 import { loadNavigationData, type NavigationData, type NavigationItem } from '../../api/dashboard';
 import { getCookie } from '../../api/shared';
+import { CRM_CLIENT_NAVIGATION_EVENT } from '../../navigationEvents';
 
 export type MainView =
   | 'dashboard'
@@ -49,6 +50,30 @@ export type MainView =
   | 'notFound';
 
 type ShellNavigationItem = NavigationItem & { icon?: LucideIcon };
+
+const reactRoutePrefixes = [
+  '/dashboard/',
+  '/reports/',
+  '/analytics/',
+  '/companies/',
+  '/accounts/',
+  '/customers/',
+  '/assets/',
+  '/services/',
+  '/pipeline/',
+  '/notes/',
+  '/schedules/',
+  '/tasks/',
+  '/employees/',
+  '/mailbox/',
+  '/business-cards/',
+  '/weekly-reports/',
+  '/documents/',
+  '/products/',
+  '/prepayments/',
+  '/profile/',
+  '/ai-workspace/',
+];
 
 const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
@@ -146,6 +171,42 @@ function isActiveNavItem(item: NavigationItem, activeView: MainView, pathname: s
   return item.id === 'tasks';
 }
 
+function isReactClientRoute(pathname: string) {
+  const normalizedPathname = pathname.endsWith('/') ? pathname : `${pathname}/`;
+  return reactRoutePrefixes.some((prefix) => normalizedPathname.startsWith(prefix));
+}
+
+function handleClientNavigation(event: MouseEvent<HTMLAnchorElement>, href: string) {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  ) {
+    return;
+  }
+  let targetUrl: URL;
+  try {
+    targetUrl = new URL(href, window.location.href);
+  } catch {
+    return;
+  }
+  if (targetUrl.origin !== window.location.origin || !isReactClientRoute(targetUrl.pathname)) {
+    return;
+  }
+  event.preventDefault();
+
+  const nextLocation = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+  const currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextLocation !== currentLocation) {
+    window.history.pushState(null, '', nextLocation);
+    window.dispatchEvent(new Event(CRM_CLIENT_NAVIGATION_EVENT));
+  }
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+}
+
 export function AppShell({ activeView, children }: { activeView: MainView; children: ReactNode }) {
   const [navigation, setNavigation] = useState<NavigationData | null>(null);
 
@@ -179,7 +240,12 @@ export function AppShell({ activeView, children }: { activeView: MainView; child
           {items.map((item) => {
             const Icon = item.icon || navIconMap[item.id] || LayoutDashboard;
             return (
-              <a className={`nav-item ${isActiveNavItem(item, activeView, pathname, hasTaskManagerItem) ? 'active' : ''}`} href={item.href} key={`${item.id}-${item.href}`}>
+              <a
+                className={`nav-item ${isActiveNavItem(item, activeView, pathname, hasTaskManagerItem) ? 'active' : ''}`}
+                href={item.href}
+                key={`${item.id}-${item.href}`}
+                onClick={(event) => handleClientNavigation(event, item.href)}
+              >
                 <Icon size={18} />
                 <span>{item.label}</span>
               </a>

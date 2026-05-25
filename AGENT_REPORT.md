@@ -1,5 +1,96 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — 메뉴 이동/새로고침 속도 개선
+
+### 요약
+
+- 왼쪽 CRM 메뉴 클릭을 전체 문서 reload가 아니라 React 내부 URL 전환으로 처리하도록 변경했습니다.
+- `/dashboard/` 전용 경량 앱으로 시작한 뒤 다른 메뉴로 이동하거나, 일반 CRM 화면에서 다시 대시보드로 이동해도 루트 렌더러가 `DashboardApp`과 메인 `App`을 URL에 맞춰 전환하도록 보강했습니다.
+- 브라우저 뒤로/앞으로 가기와 client navigation 이벤트가 React route 감지에 반영되도록 했습니다.
+- 프론트 운영 Node 서버가 HTML/JS/CSS/JSON/SVG/text 정적 파일을 `br` 또는 `gzip`으로 압축 전송하도록 추가했습니다.
+- 운영 smoke가 해시 asset의 cache header뿐 아니라 `Content-Encoding`도 확인하도록 강화했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/server.mjs`
+- `frontend/src/App.tsx`
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/main.tsx`
+- `frontend/src/navigationEvents.ts`
+- `scripts/post_deploy_smoke.py`
+
+### CRM 개선
+
+- 사이드바 메뉴 이동 시 App shell, CSS, JS 전체를 다시 받는 흐름을 줄였습니다.
+- 새로고침이나 첫 진입 때 내려받는 대형 JS/CSS asset은 Brotli/gzip 압축으로 전송됩니다.
+- 대시보드 경량 진입 구조는 유지하면서도 대시보드에서 다른 메뉴로 빠르게 이동할 수 있습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` backend/API/auth route와 권한 흐름은 변경하지 않았습니다.
+- 파일/Excel/첨부 다운로드 endpoint는 변경하지 않았습니다.
+- `/data-cleanup/`, `/downloads/` 제거 정책은 유지했습니다.
+- DB 모델/필드/마이그레이션 변경은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile scripts\post_deploy_smoke.py
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK
+→ Existing App chunk still reports Vite >500 kB warning
+
+Local frontend static compression smoke
+→ `/dashboard/` HTML: 200, no-cache
+→ hashed JS asset: 200, public max-age=31536000 immutable, Content-Encoding=br
+
+Local Playwright browser smoke
+→ `/dashboard/` → sidebar `/customers/`: document requests stayed 1, title changed to `고객`
+→ browser back: returned to `대시보드`
+→ `/customers/` → sidebar `/dashboard/`: document requests stayed 1, title changed to `대시보드`
+
+python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.RemovedStandaloneMenuRouteTests --verbosity=1
+→ Ran 5 tests, OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 변경은 왼쪽 CRM 메뉴 전환에 집중했습니다. 각 화면 내부의 개별 상세 링크/버튼은 기존 동작을 보존합니다.
+- 일부 대형 화면은 화면별 API 자체가 느리면 추가 쿼리 최적화가 필요할 수 있습니다.
+- `App` 메인 chunk는 아직 500 kB 경고가 남아 있어 다음 성능 작업에서는 더 세분화된 route chunk 분리가 유효합니다.
+
+### Production Deployment Status
+
+- Pending. Runtime change이므로 commit/push 후 Railway `sales-note-frontend` 중심으로 배포하고 production smoke를 실행해야 합니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/dashboard/`에 진입합니다.
+2. 왼쪽 메뉴에서 `고객`, `영업노트`, `일정`, `보고서`, `선결제`를 차례로 눌러 화면이 새로고침 느낌 없이 전환되는지 확인합니다.
+3. 브라우저 뒤로/앞으로 가기로 대시보드와 고객 화면 사이를 이동해 화면 제목과 왼쪽 active 메뉴가 맞는지 확인합니다.
+4. 새로고침 후 첫 로딩이 이전보다 빨라졌는지 확인합니다.
+5. 개발자도구 Network에서 `/assets/*.js` 또는 `/assets/*.css` 응답의 `Content-Encoding`이 `br` 또는 `gzip`인지 확인합니다.
+
 ## 2026-05-25 — 데이터정리/다운로드 독립 메뉴 삭제
 
 ### 요약

@@ -3,6 +3,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { constants as zlibConstants, createBrotliCompress, createGzip } from 'node:zlib';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
@@ -23,6 +24,8 @@ const mimeTypes = {
   '.txt': 'text/plain; charset=utf-8',
   '.webp': 'image/webp',
 };
+
+const compressibleStaticExtensions = new Set(['.css', '.html', '.js', '.json', '.map', '.svg', '.txt']);
 
 const hopByHopHeaders = new Set([
   'connection',
@@ -95,14 +98,67 @@ function recordOperationalError(event, details = {}) {
   sendWebhookAlert(payload);
 }
 
-function sendStatic(response, filePath) {
+function selectStaticEncoding(request, extension) {
+  if (!compressibleStaticExtensions.has(extension)) {
+    return '';
+  }
+  const acceptedEncodings = String(request.headers['accept-encoding'] || '')
+    .toLowerCase()
+    .split(',')
+    .map((value) => value.trim().split(';')[0])
+    .filter(Boolean);
+  if (acceptedEncodings.includes('br')) {
+    return 'br';
+  }
+  if (acceptedEncodings.includes('gzip')) {
+    return 'gzip';
+  }
+  return '';
+}
+
+function sendStatic(request, response, filePath) {
   const extension = extname(filePath);
-  response.writeHead(200, {
+  const fileStat = statSync(filePath);
+  const contentEncoding = selectStaticEncoding(request, extension);
+  const headers = {
     'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    'Content-Length': fileStat.size,
     'Content-Type': mimeTypes[extension] || 'application/octet-stream',
     'X-Content-Type-Options': 'nosniff',
+  };
+  if (compressibleStaticExtensions.has(extension)) {
+    headers.Vary = 'Accept-Encoding';
+  }
+  if (contentEncoding) {
+    headers['Content-Encoding'] = contentEncoding;
+    delete headers['Content-Length'];
+  }
+  response.writeHead(200, {
+    ...headers,
   });
-  createReadStream(filePath).pipe(response);
+  if ((request.method || 'GET').toUpperCase() === 'HEAD') {
+    response.end();
+    return;
+  }
+  const readStream = createReadStream(filePath);
+  readStream.on('error', () => {
+    if (!response.destroyed) {
+      response.destroy();
+    }
+  });
+  if (contentEncoding === 'br') {
+    readStream.pipe(createBrotliCompress({
+      params: {
+        [zlibConstants.BROTLI_PARAM_QUALITY]: 5,
+      },
+    })).pipe(response);
+    return;
+  }
+  if (contentEncoding === 'gzip') {
+    readStream.pipe(createGzip({ level: 6 })).pipe(response);
+    return;
+  }
+  readStream.pipe(response);
 }
 
 function sendJson(response, statusCode, body) {
@@ -601,7 +657,7 @@ createServer((request, response) => {
     proxyToDjango(request, response);
     return;
   }
-  sendStatic(response, resolveStaticPath(requestUrl));
+  sendStatic(request, response, resolveStaticPath(requestUrl));
 }).listen(port, '0.0.0.0', () => {
   console.log(`Frontend server listening on ${port}`);
   console.log('Redirecting migrated core CRM legacy pages to React routes');

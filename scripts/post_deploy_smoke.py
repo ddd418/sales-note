@@ -118,15 +118,26 @@ def expect_frontend_static_cache(session, results, base_url, timeout=10):
             return
 
         asset_url = build_url(base_url, asset_match.group(1))
-        asset_response = session.get(asset_url, timeout=timeout, allow_redirects=False)
+        asset_response = session.get(
+            asset_url,
+            timeout=timeout,
+            allow_redirects=False,
+            headers={'Accept-Encoding': 'br, gzip'},
+        )
         asset_cache = asset_response.headers.get('cache-control', '')
+        asset_encoding = asset_response.headers.get('content-encoding', '').lower()
         ok = (
             'no-cache' in html_cache.lower()
             and asset_response.status_code == 200
             and 'max-age=31536000' in asset_cache.lower()
             and 'immutable' in asset_cache.lower()
+            and asset_encoding in {'br', 'gzip'}
         )
-        detail = f'html={html_cache or "-"} asset={asset_response.status_code} {asset_cache or "-"}'
+        detail = (
+            f'html={html_cache or "-"} '
+            f'asset={asset_response.status_code} {asset_cache or "-"} '
+            f'encoding={asset_encoding or "identity"}'
+        )
     except Exception as exc:
         ok = False
         detail = exc.__class__.__name__

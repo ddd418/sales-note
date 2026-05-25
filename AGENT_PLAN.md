@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React menu/navigation speed improvement plan
+
+**Background**:
+
+- User reported that opening each menu or refreshing pages feels significantly slow in production.
+- The current React sidebar navigation uses plain document links, so top-level CRM menu clicks trigger a full browser navigation and reload the frontend shell.
+- The frontend production static server sets long-lived cache headers for hashed assets, but it does not compress JS/CSS/HTML responses when the browser requests gzip/Brotli.
+- Previous performance work reduced backend/API load, so this task focuses on the frontend runtime path users feel during menu movement and refresh.
+
+**DB change required**: No.
+
+- This task changes React navigation handling, frontend static-file delivery, smoke checks, and docs only.
+- No model, migration, or data changes are planned.
+
+**Implementation scope**:
+
+- Convert left CRM sidebar menu clicks for same-origin React routes into lightweight client-side navigation with `history.pushState`, while preserving normal browser behavior for modified clicks, downloads, Django legacy/auth routes, API/media/static paths, and external links.
+- Teach `App.tsx` to re-render when the sidebar changes the URL or the user uses browser back/forward, so route detection and page loading follow the updated path.
+- Add gzip/Brotli compression to the Node frontend server for compressible static assets such as HTML, JS, CSS, JSON, SVG, and text.
+- Extend production smoke to verify frontend static asset compression as well as cache headers.
+- Update `AGENT_REPORT.md` with validation, deployment status, and a manual production speed test process.
+
+**Validation plan**:
+
+- `python -m py_compile scripts\post_deploy_smoke.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && node --check server.mjs`
+- `cd frontend && npm run build`
+- Local frontend server static compression smoke.
+- Production post-deploy smoke with cache/compression assertions.
+- `git diff --check`
+
 ## 2026-05-25 Remove forbidden data-cleanup and downloads menus plan
 
 **Background**:
