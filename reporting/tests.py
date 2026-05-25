@@ -230,6 +230,17 @@ class CoreCrmLegacyRedirectTests(TestCase):
             action_type='customer_meeting',
             content='React 전환 테스트',
         )
+        self.prepayment = Prepayment.objects.create(
+            department=self.department,
+            customer=self.followup,
+            company=self.company,
+            amount=100000,
+            balance=80000,
+            payment_date=timezone.localdate(),
+            payment_method='transfer',
+            payer_name='React전환입금자',
+            created_by=self.user,
+        )
         self.personal_schedule = PersonalSchedule.objects.create(
             user=self.user,
             company=self.company_profile,
@@ -266,12 +277,18 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(reverse('reporting:schedule_calendar'), 'schedules/calendar/')
         self.assertReactRedirect(reverse('reporting:funnel_pipeline'), 'pipeline/')
         self.assertReactRedirect(reverse('reporting:analytics_dashboard'), 'reports/')
+        self.assertReactRedirect(reverse('reporting:prepayment_list'), 'prepayments/')
 
     def test_core_detail_page_redirects(self):
         self.assertReactRedirect(reverse('reporting:followup_detail', args=[self.followup.id]), f'customers/{self.followup.id}/')
         self.assertReactRedirect(reverse('reporting:customer_detail_report', args=[self.followup.id]), f'customers/{self.followup.id}/')
         self.assertReactRedirect(reverse('reporting:history_detail', args=[self.history.id]), f'notes/{self.history.id}/')
         self.assertReactRedirect(reverse('reporting:schedule_detail', args=[self.schedule.id]), f'schedules/{self.schedule.id}/')
+        self.assertReactRedirect(reverse('reporting:prepayment_detail', args=[self.prepayment.id]), f'prepayments/{self.prepayment.id}/')
+        self.assertReactRedirect(reverse('reporting:prepayment_edit', args=[self.prepayment.id]), f'prepayments/{self.prepayment.id}/edit/')
+        self.assertReactRedirect(reverse('reporting:prepayment_delete', args=[self.prepayment.id]), f'prepayments/{self.prepayment.id}/?delete=1')
+        self.assertReactRedirect(reverse('reporting:prepayment_transfer', args=[self.prepayment.id]), f'prepayments/{self.prepayment.id}/?transfer=1')
+        self.assertReactRedirect(reverse('reporting:prepayment_customer', args=[self.followup.id]), f'prepayments/customer/{self.followup.id}/')
         self.assertReactRedirect(reverse('reporting:history_delete', args=[self.history.id]), f'notes/{self.history.id}/?delete=1')
         self.assertReactRedirect(reverse('reporting:schedule_delete', args=[self.schedule.id]), f'schedules/{self.schedule.id}/?delete=1')
         self.assertReactRedirect(
@@ -306,6 +323,7 @@ class CoreCrmLegacyRedirectTests(TestCase):
             reverse('reporting:history_create_from_schedule', args=[self.schedule.id]),
             f'notes/?create=1&schedule={self.schedule.id}',
         )
+        self.assertReactRedirect(reverse('reporting:prepayment_create'), 'prepayments/new/')
         self.assertReactRedirect(
             f"{reverse('reporting:personal_schedule_create')}?date=2026-05-20&time=10:30",
             'schedules/calendar/?date=2026-05-20&time=10%3A30&create=personal',
@@ -320,6 +338,10 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(
             f"{reverse('reporting:analytics_dashboard')}?date_from=2026-05-01&date_to=2026-05-25&user_id={self.user.id}",
             f'reports/?date_from=2026-05-01&date_to=2026-05-25&user_id={self.user.id}',
+        )
+        self.assertReactRedirect(
+            f"{reverse('reporting:prepayment_list')}?search=입금자&status=active&data_filter=all",
+            'prepayments/?q=%EC%9E%85%EA%B8%88%EC%9E%90&status=active&data_filter=all',
         )
 
     def test_non_get_legacy_create_action_is_not_redirected_to_react(self):
@@ -7521,6 +7543,27 @@ class PrepaymentDetailApiTests(TestCase):
                 balance_after=70000,
             ).exists()
         )
+
+    def test_prepayment_update_api_keeps_contact_auxiliary_when_omitted(self):
+        prepayment = self._create_prepayment(self.user, name='보조담당자', amount=100000, balance=80000)
+        original_customer = prepayment.customer
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:prepayment_update_api', args=[prepayment.id]), {
+            'department': str(original_customer.department_id),
+            'amount': '100000',
+            'balance': '75000',
+            'payment_date': '2026-05-10',
+            'payment_method': 'transfer',
+            'status': 'active',
+            'memo': '담당자 미지정 수정',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        prepayment.refresh_from_db()
+        self.assertEqual(prepayment.department_id, original_customer.department_id)
+        self.assertEqual(prepayment.customer_id, original_customer.id)
+        self.assertEqual(int(prepayment.balance), 75000)
 
     def test_prepayment_cancel_api_only_owner_and_records_reason(self):
         prepayment = self._create_prepayment(self.user)

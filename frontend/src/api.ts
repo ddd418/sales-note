@@ -2653,7 +2653,7 @@ export type PrepaymentFormPayload = {
   amount: string;
   balance?: string;
   departmentId: number;
-  customerId: number;
+  customerId?: number | null;
   memo?: string;
   payerName?: string;
   paymentDate: string;
@@ -8936,7 +8936,9 @@ export async function loadPrepaymentDetailData(prepaymentId: number): Promise<Pr
 function prepaymentPayloadBody(payload: PrepaymentFormPayload): URLSearchParams {
   const body = new URLSearchParams();
   body.set('department', String(payload.departmentId));
-  body.set('customer', String(payload.customerId));
+  if (payload.customerId) {
+    body.set('customer', String(payload.customerId));
+  }
   body.set('amount', payload.amount);
   body.set('payment_date', payload.paymentDate);
   body.set('payment_method', payload.paymentMethod);

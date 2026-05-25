@@ -31212,6 +31212,9 @@ def _prepayment_parse_form_data(request, *, existing=None):
     if department.id not in allowed_department_ids:
         raise PermissionError('접근 권한이 없는 계정입니다.')
 
+    if customer is None and current_customer and current_customer.department_id == department.id:
+        customer = current_customer
+
     if customer is None:
         customer = (
             _prepayment_customer_queryset_for_request(request)

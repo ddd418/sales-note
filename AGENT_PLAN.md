@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement M-step prepayment replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item M for prepayments.
+- The account-based prepayment schema, ledger entries, account/customer APIs, React list/create/detail/account pages, delivery deduction drilldowns, account Excel export, and mutation APIs already exist.
+- Remaining full-replacement gaps are React create/edit treating contact as required primary data, visible links back to Django prepayment templates, and legacy `/reporting/prepayment/*` GET pages still opening Django templates.
+
+**DB change required**: No.
+
+- Existing `Prepayment.department`, `Prepayment.customer`, `PrepaymentUsage`, and `PrepaymentLedgerEntry` support account-first operation and audit history.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Keep the React prepayment registration flow account-first and make the contact selector optional/auxiliary; backend may infer an accessible account contact when omitted.
+- Preserve edit compatibility while avoiding accidental account/contact mismatch.
+- Remove visible Django prepayment-screen links from React list/detail/account pages; keep backend Excel and API links protected.
+- Redirect authenticated GET/HEAD legacy prepayment template URLs to React:
+  - list to `/prepayments/`
+  - create to `/prepayments/new/`
+  - detail/edit/delete/transfer to `/prepayments/<id>/`
+  - customer scope to `/prepayments/customer/<id>/`
+- Keep legacy POST fallbacks and Excel download routes intact during the transition.
+- Add focused tests for prepayment legacy redirects, account-first create without contact, manager read-only behavior, cancel/delete/transfer permissions, account drilldown payloads, and account Excel protection.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.PrepaymentsSummaryApiTests reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentCustomerApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/prepayments/`, `/prepayments/new/`, `/prepayments/<id>/`, `/prepayments/account/<id>/`, protected prepayment APIs, legacy redirects, and Excel login protection.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement L-step reports replacement plan
 
 **Background**:

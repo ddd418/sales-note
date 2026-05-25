@@ -362,13 +362,43 @@ urlpatterns = [
     path('api/companies/<int:company_id>/customers/', views.api_company_customers, name='api_company_customers'),
     
     # 선결제 URL들
-    path('prepayment/', views.prepayment_list_view, name='prepayment_list'),
-    path('prepayment/create/', views.prepayment_create_view, name='prepayment_create'),
-    path('prepayment/<int:pk>/', views.prepayment_detail_view, name='prepayment_detail'),
-    path('prepayment/<int:pk>/edit/', views.prepayment_edit_view, name='prepayment_edit'),
-    path('prepayment/<int:pk>/delete/', views.prepayment_delete_view, name='prepayment_delete'),
-    path('prepayment/<int:pk>/transfer/', views.prepayment_transfer_view, name='prepayment_transfer'),
-    path('prepayment/customer/<int:customer_id>/', views.prepayment_customer_view, name='prepayment_customer'),
+    path('prepayment/', react_page_redirect(
+        views.prepayment_list_view,
+        static_react_page('prepayments/', rename={'search': 'q'}),
+    ), name='prepayment_list'),
+    path('prepayment/create/', react_page_redirect(
+        views.prepayment_create_view,
+        static_react_page('prepayments/new/'),
+    ), name='prepayment_create'),
+    path('prepayment/<int:pk>/', react_page_redirect(
+        views.prepayment_detail_view,
+        id_react_page('prepayments/{pk}/'),
+    ), name='prepayment_detail'),
+    path('prepayment/<int:pk>/edit/', react_page_redirect(
+        views.prepayment_edit_view,
+        id_react_page('prepayments/{pk}/edit/'),
+    ), name='prepayment_edit'),
+    path('prepayment/<int:pk>/delete/', react_page_redirect(
+        views.prepayment_delete_view,
+        lambda request, pk: frontend_url(
+            f'prepayments/{pk}/',
+            query_with(request, extra={'delete': '1'}),
+        ),
+    ), name='prepayment_delete'),
+    path('prepayment/<int:pk>/transfer/', react_page_redirect(
+        views.prepayment_transfer_view,
+        lambda request, pk: frontend_url(
+            f'prepayments/{pk}/',
+            query_with(request, extra={'transfer': '1'}),
+        ),
+    ), name='prepayment_transfer'),
+    path('prepayment/customer/<int:customer_id>/', react_page_redirect(
+        views.prepayment_customer_view,
+        lambda request, customer_id: frontend_url(
+            f'prepayments/customer/{customer_id}/',
+            query_with(request),
+        ),
+    ), name='prepayment_customer'),
     path('prepayment/customer/<int:customer_id>/excel/', views.prepayment_customer_excel, name='prepayment_customer_excel'),
     path('prepayment/account/<int:department_id>/excel/', views.prepayment_account_excel, name='prepayment_account_excel'),
     path('prepayment/excel/', views.prepayment_list_excel, name='prepayment_list_excel'),

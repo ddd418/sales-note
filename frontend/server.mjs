@@ -211,6 +211,28 @@ function getCoreCrmReactLocation(requestUrl) {
   if (pathname === '/reporting/analytics/' || pathname === '/reporting/analytics') {
     return buildReactLocation('/reports/', params);
   }
+  if (pathname === '/reporting/prepayment/' || pathname === '/reporting/prepayment') {
+    return buildReactLocation('/prepayments/', params, { rename: { search: 'q' } });
+  }
+  if (pathname === '/reporting/prepayment/create/' || pathname === '/reporting/prepayment/create') {
+    return buildReactLocation('/prepayments/new/', params);
+  }
+  match = pathname.match(/^\/reporting\/prepayment\/customer\/(\d+)\/?$/);
+  if (match) {
+    return buildReactLocation(`/prepayments/customer/${match[1]}/`, params);
+  }
+  match = pathname.match(/^\/reporting\/prepayment\/(\d+)\/edit\/?$/);
+  if (match) {
+    return buildReactLocation(`/prepayments/${match[1]}/edit/`, params);
+  }
+  match = pathname.match(/^\/reporting\/prepayment\/(\d+)\/(?:delete|transfer)\/?$/);
+  if (match) {
+    return buildReactLocation(`/prepayments/${match[1]}/`, params);
+  }
+  match = pathname.match(/^\/reporting\/prepayment\/(\d+)\/?$/);
+  if (match) {
+    return buildReactLocation(`/prepayments/${match[1]}/`, params);
+  }
 
   return '';
 }

@@ -13271,7 +13271,7 @@ function PrepaymentsTable({ data }: { data: PrepaymentsData }) {
           {data.prepayments.map((prepayment) => (
             <tr key={prepayment.id}>
               <td>
-                <a className="customer-name-link" href={prepayment.customerHref || prepayment.djangoCustomerHref}>
+                <a className="customer-name-link" href={prepayment.customerHref || prepayment.customerPrepaymentHref || '/customers/'}>
                   <strong>{prepayment.companyName || prepayment.customerName || '고객 미지정'}</strong>
                   <span>{[prepayment.departmentName, prepayment.customerName].filter(Boolean).join(' · ')}</span>
                 </a>
@@ -13303,10 +13303,9 @@ function PrepaymentsTable({ data }: { data: PrepaymentsData }) {
                 <div className="customer-row-actions">
                   <a className="customer-row-action" href={`/prepayments/${prepayment.id}/`}>상세</a>
                   {prepayment.canManage ? <a className="customer-row-action" href={`/prepayments/${prepayment.id}/edit/`}>수정</a> : null}
-                  {prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref ? (
-                    <a className="customer-row-action" href={prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref}>계정별</a>
+                  {prepayment.customerPrepaymentHref ? (
+                    <a className="customer-row-action" href={prepayment.customerPrepaymentHref}>계정별</a>
                   ) : null}
-                  <a className="customer-row-action" href={prepayment.href}>Django</a>
                 </div>
               </td>
             </tr>
@@ -13359,7 +13358,9 @@ function PrepaymentsPage({
     { label: '사용 금액', value: formatWon(data.metrics.totalUsed), detail: '차감 누적', icon: Activity, tone: 'amber' as const },
     { label: '사용 가능', value: `${formatNumber(data.metrics.activeCount)}건`, detail: `소진 ${formatNumber(data.metrics.depletedCount)}건`, icon: CircleDollarSign, tone: 'teal' as const },
   ];
-  const showOwnerSelect = dataFilter === 'user';
+  const selectedDataFilter = dataFilter || data.filters.dataFilter || 'me';
+  const selectedFilterUser = filterUser || data.filters.filterUser || '';
+  const showOwnerSelect = selectedDataFilter === 'user';
 
   return (
     <section className="prepayments-page">
@@ -13419,12 +13420,12 @@ function PrepaymentsPage({
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
-        <select onChange={(event) => onDataFilterChange(event.target.value)} value={dataFilter}>
+        <select onChange={(event) => onDataFilterChange(event.target.value)} value={selectedDataFilter}>
           {data.options.dataFilters.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
-        <select disabled={!showOwnerSelect} onChange={(event) => onFilterUserChange(event.target.value)} value={filterUser}>
+        <select disabled={!showOwnerSelect} onChange={(event) => onFilterUserChange(event.target.value)} value={selectedFilterUser}>
           <option value="">직원 선택</option>
           {data.options.owners.map((option) => (
             <option key={option.id} value={option.id}>{option.name}</option>
@@ -13512,7 +13513,6 @@ function PrepaymentCustomerPage({
         <div className="schedules-summary-actions">
           {data.links.accountDetail ? <a className="route-secondary-action" href={data.links.accountDetail}>계정 상세</a> : null}
           <a className="route-secondary-action" href={data.links.prepayments}>선결제 목록</a>
-          <a className="route-secondary-action" href={data.links.djangoCustomer}>Django 고객별</a>
           <a className="route-secondary-action" href={data.links.accountExcel || data.links.djangoExcel}>엑셀</a>
         </div>
       </div>
@@ -13572,7 +13572,7 @@ function PrepaymentCustomerPage({
                   {data.prepayments.map((prepayment) => (
                     <tr key={prepayment.id}>
                       <td>
-                        <a className="customer-name-link" href={prepayment.customerHref || prepayment.djangoCustomerHref}>
+                        <a className="customer-name-link" href={prepayment.customerHref || '/customers/'}>
                           <strong>{prepayment.customerName || data.customer.customerName || '고객 미정'}</strong>
                           <span>{[prepayment.companyName, prepayment.departmentName].filter(Boolean).join(' · ')}</span>
                         </a>
@@ -13600,7 +13600,6 @@ function PrepaymentCustomerPage({
                         <div className="customer-row-actions">
                           <a className="customer-row-action" href={`/prepayments/${prepayment.id}/`}>상세</a>
                           {prepayment.canManage ? <a className="customer-row-action" href={`/prepayments/${prepayment.id}/edit/`}>수정</a> : null}
-                          <a className="customer-row-action" href={prepayment.href}>Django</a>
                         </div>
                       </td>
                     </tr>
@@ -13628,9 +13627,7 @@ function PrepaymentCustomerPage({
             ))}
           </div>
           <div className="customers-side-actions">
-            <a href={data.links.accountDetail || data.links.customerDetail || data.links.djangoCustomerDetail}>{isAccountScope ? '계정 상세' : '고객 상세'}</a>
-            <a href={data.links.djangoCustomerDetail}>Django 고객 상세</a>
-            <a href={data.links.djangoCustomer}>Django 고객별 선결제</a>
+            <a href={data.links.accountDetail || data.links.customerDetail || '/prepayments/'}>{isAccountScope ? '계정 상세' : '고객 상세'}</a>
           </div>
         </aside>
       </div>
@@ -13780,13 +13777,15 @@ function PrepaymentFormFields({
           />
         </div>
         <div className="form-field">
-          <span>담당자</span>
+          <span>담당자 보조 정보</span>
           <SearchableSelect
             ariaLabel="담당자 선택"
+            allowEmpty
             disabled={!form.departmentId}
+            emptyLabel="담당자 미지정"
             onChange={(nextValue) => onChange('customerId', nextValue)}
             options={filteredCustomers.map(makeCustomerSelectOption)}
-            placeholder={form.departmentId ? '담당자 검색' : '계정을 먼저 선택'}
+            placeholder={form.departmentId ? '담당자 검색' : '계정 선택 후 검색'}
             value={form.customerId}
           />
         </div>
@@ -13891,26 +13890,12 @@ function PrepaymentCreatePage({
   const [message, setMessage] = useState('');
   const [createdHref, setCreatedHref] = useState('');
 
-  useEffect(() => {
-    if (!data?.create.accounts.length || form.departmentId) {
-      return;
-    }
-    const firstAccount = data.create.accounts[0];
-    const firstCustomer = data.create.customers.find((customer) => customer.departmentId === firstAccount.id);
-    setForm((previous) => ({
-      ...previous,
-      departmentId: String(firstAccount.id),
-      customerId: firstCustomer ? String(firstCustomer.id) : '',
-    }));
-  }, [data?.create.accounts, data?.create.customers, form.departmentId]);
-
   const handleChange = (field: keyof PrepaymentFormState, value: string) => {
     if (field === 'departmentId') {
-      const firstCustomer = data?.create.customers.find((customer) => String(customer.departmentId ?? '') === value);
       setForm((previous) => ({
         ...previous,
         departmentId: value,
-        customerId: firstCustomer ? String(firstCustomer.id) : '',
+        customerId: '',
       }));
       setError('');
       setMessage('');
@@ -13942,10 +13927,6 @@ function PrepaymentCreatePage({
       setError('계정을 선택하세요.');
       return;
     }
-    if (!customerId) {
-      setError('담당자를 선택하세요.');
-      return;
-    }
     if (!form.amount || Number(form.amount) <= 0) {
       setError('선결제 금액을 입력하세요.');
       return;
@@ -13958,7 +13939,7 @@ function PrepaymentCreatePage({
     const payload: PrepaymentFormPayload = {
       amount: form.amount,
       departmentId,
-      customerId,
+      customerId: customerId || null,
       memo: form.memo.trim() || undefined,
       payerName: form.payerName.trim() || undefined,
       paymentDate: form.paymentDate,
@@ -14113,11 +14094,10 @@ function PrepaymentDetailPage({
 
   const handleChange = (field: keyof PrepaymentFormState, value: string) => {
     if (field === 'departmentId') {
-      const firstCustomer = data?.edit.customers.find((customer) => String(customer.departmentId ?? '') === value);
       setForm((previous) => ({
         ...previous,
         departmentId: value,
-        customerId: firstCustomer ? String(firstCustomer.id) : '',
+        customerId: '',
       }));
       setError('');
       setMessage('');
@@ -14148,10 +14128,6 @@ function PrepaymentDetailPage({
       setError('계정을 선택하세요.');
       return;
     }
-    if (!customerId) {
-      setError('담당자를 선택하세요.');
-      return;
-    }
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('선결제 금액을 입력하세요.');
       return;
@@ -14169,7 +14145,7 @@ function PrepaymentDetailPage({
       amount: form.amount,
       balance: form.balance,
       departmentId,
-      customerId,
+      customerId: customerId || null,
       memo: form.memo.trim() || undefined,
       payerName: form.payerName.trim() || undefined,
       paymentDate: form.paymentDate,
@@ -14332,7 +14308,6 @@ function PrepaymentDetailPage({
         </div>
         <div className="schedules-summary-actions">
           <a className="route-secondary-action" href="/prepayments/">목록</a>
-          <a className="route-secondary-action" href={data.links.djangoDetail}>Django 상세</a>
           {data.links.reactEdit && !editRoute ? <a className="route-primary-action" href={data.links.reactEdit}>수정</a> : null}
         </div>
       </div>
@@ -14368,7 +14343,6 @@ function PrepaymentDetailPage({
               form={form}
               options={formOptions}
               saving={saving}
-              secondaryActions={<a className="route-secondary-action" href={data.edit.djangoUrl || data.links.djangoEdit}>Django 수정</a>}
               showStatus
               submitLabel="저장"
               onChange={handleChange}
@@ -14533,11 +14507,8 @@ function PrepaymentDetailPage({
             </div>
           )}
           <div className="customers-side-actions">
-            <a href={prepayment.customerHref || prepayment.djangoCustomerHref}>고객 상세</a>
-            <a href={prepayment.customerPrepaymentHref || prepayment.djangoCustomerPrepaymentHref}>계정별 선결제</a>
-            {prepayment.djangoCustomerPrepaymentHref ? <a href={prepayment.djangoCustomerPrepaymentHref}>Django 고객별</a> : null}
-            {data.links.djangoTransfer ? <a href={data.links.djangoTransfer}>Django 이관</a> : null}
-            {data.links.djangoDelete ? <a href={data.links.djangoDelete}>Django 삭제/취소</a> : null}
+            {prepayment.customerHref ? <a href={prepayment.customerHref}>고객 상세</a> : null}
+            {prepayment.customerPrepaymentHref ? <a href={prepayment.customerPrepaymentHref}>계정별 선결제</a> : null}
           </div>
         </aside>
       </div>
@@ -21443,10 +21414,16 @@ export function App() {
   const [prepaymentCreateLoading, setPrepaymentCreateLoading] = useState(prepaymentCreateRoute);
   const [prepaymentDetailData, setPrepaymentDetailData] = useState<PrepaymentDetailData | null>(null);
   const [prepaymentDetailLoading, setPrepaymentDetailLoading] = useState(Boolean(prepaymentDetailId));
-  const [prepaymentQuery, setPrepaymentQuery] = useState('');
-  const [prepaymentStatus, setPrepaymentStatus] = useState('');
-  const [prepaymentDataFilter, setPrepaymentDataFilter] = useState('me');
-  const [prepaymentFilterUser, setPrepaymentFilterUser] = useState('');
+  const [prepaymentQuery, setPrepaymentQuery] = useState(
+    () => new URLSearchParams(window.location.search).get('q') || new URLSearchParams(window.location.search).get('search') || '',
+  );
+  const [prepaymentStatus, setPrepaymentStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
+  const [prepaymentDataFilter, setPrepaymentDataFilter] = useState(
+    () => new URLSearchParams(window.location.search).get('data_filter') || new URLSearchParams(window.location.search).get('dataFilter') || '',
+  );
+  const [prepaymentFilterUser, setPrepaymentFilterUser] = useState(
+    () => new URLSearchParams(window.location.search).get('filter_user') || new URLSearchParams(window.location.search).get('filterUser') || '',
+  );
   const [weeklyReportsData, setWeeklyReportsData] = useState<WeeklyReportsData | null>(null);
   const [weeklyReportsLoading, setWeeklyReportsLoading] = useState(
     currentView === 'weeklyReports' && !weeklyReportDetailId && !weeklyReportCreateRoute,

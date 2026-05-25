@@ -1,5 +1,107 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 M단계 선결제 완전 대체
+
+### 요약
+
+- 선결제 등록/수정 React 폼을 계정 우선 UX로 정리하고, 담당자 선택은 보조 정보로 두었습니다.
+- 담당자를 비워도 backend가 접근 가능한 계정 담당자를 연결할 수 있게 하고, 수정 시 담당자를 비운 경우 기존 담당자를 보존하도록 보강했습니다.
+- React 선결제 목록/상세/계정별 화면에서 Django 선결제 템플릿으로 빠지는 버튼과 링크를 제거했습니다.
+- legacy `/reporting/prepayment/*` GET 화면은 React `/prepayments/*`로 이동하도록 Django URL과 frontend server redirect map을 보강했습니다.
+- 선결제 계정별 잔액, 납품 차감 내역, 조정/이관/취소 원장, 계정별 Excel 다운로드 API는 기존 구현을 유지하고 테스트로 확인했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/urls.py`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/server.mjs`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+
+### CRM 개선
+
+- 사용자는 `/prepayments/new/`에서 먼저 계정을 선택하고, 담당자는 필요할 때만 보조로 선택합니다.
+- 매니저 첫 조회는 backend 기본 범위를 따르므로 회사 전체 선결제 현황을 볼 수 있고, 직원 선택 필터도 URL 상태를 보존합니다.
+- 선결제 상세에서 취소, 삭제, 이관 작업은 React API로만 처리됩니다.
+- `/reporting/prepayment/`, `/reporting/prepayment/create/`, `/reporting/prepayment/<id>/`, edit/delete/transfer, customer legacy URL은 React로 redirect됩니다.
+- Excel 다운로드 route는 계속 Django backend가 인증/권한을 보호하면서 파일만 제공합니다.
+
+### 기존 기능 보존
+
+- `/reporting/api/prepayments/*` JSON API, CSRF/session, manager read-only 정책을 유지했습니다.
+- legacy POST fallback은 유지했습니다. 전환 중 기존 POST 요청이 들어와도 form action은 Django view가 처리할 수 있습니다.
+- 계정별 Excel, 고객별 Excel, 전체 Excel download route는 redirect하지 않았습니다.
+- Django prepayment template 파일은 삭제하지 않았습니다. 운영 수동 검수 후 cleanup 단계에서 판단합니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.PrepaymentsSummaryApiTests reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentCustomerApiTests --verbosity=1
+→ Ran 26 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Browser/local smoke
+→ http://127.0.0.1:4176/prepayments/ rendered the React shell
+→ http://127.0.0.1:4176/prepayments/new/ rendered without console errors
+→ http://127.0.0.1:4176/reporting/prepayment/?search=입금자&status=active redirected to /prepayments/?q=입금자&status=active
+→ Browser console error count: 0
+```
+
+### 알려진 제한
+
+- 로컬 smoke는 backend runserver 없이 frontend shell/redirect 중심으로 확인했습니다. 인증된 실제 선결제 데이터, 파일 다운로드 내용, mutation 성공 흐름은 운영 서버에서 사용자 세션으로 수동 확인이 필요합니다.
+- Django prepayment templates는 아직 삭제하지 않았습니다.
+- 기존 frontend bundle size 경고는 이번 변경과 별개로 남아 있습니다.
+
+### 운영 배포 상태
+
+- 배포 예정입니다. commit/push 후 Railway `web` 및 `sales-note-frontend` 배포 상태와 production smoke 결과를 추가 기록합니다.
+
+### 권장 다음 작업
+
+- 운영 `/prepayments/` 수동 검수 완료 후 N 단계 또는 남은 legacy 화면 정리로 넘어갑니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/prepayments/`에 로그인해 접속합니다.
+2. 선결제 목록에서 계정/담당자/입금자/잔액/사용액/등록자가 보이는지 확인합니다.
+3. 매니저 계정은 회사 전체 선결제가 보이고, 각 행의 등록자가 구분되는지 확인합니다.
+4. 실무자 계정은 본인 범위와 권한만 보이는지 확인합니다.
+5. `/prepayments/new/`에서 계정을 먼저 선택하고 담당자 보조 정보는 비워도 등록 흐름이 가능한지 확인합니다.
+6. 선결제 상세에서 사용 내역과 납품 차감 일정 링크가 보이는지 확인합니다.
+7. 계정별 선결제 화면 `/prepayments/account/<department_id>/`에서 계정 잔액, 납품 차감 내역, 조정/이관/취소 원장을 확인합니다.
+8. 계정별 Excel 버튼을 눌러 파일이 다운로드되고 내용이 열리는지 확인합니다.
+9. 본인이 등록한 선결제에서 취소/이관/삭제 권한과 차단 메시지를 확인합니다.
+10. 매니저 계정에서는 취소/삭제/이관/수정 입력이 차단되는지 확인합니다.
+11. `/reporting/prepayment/`와 `/reporting/prepayment/create/`를 직접 열었을 때 React `/prepayments/`와 `/prepayments/new/`로 이동하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 L단계 리포트 /reports/ 완전 대체
 
 ### 요약
