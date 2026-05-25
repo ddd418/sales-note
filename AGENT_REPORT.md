@@ -1,5 +1,112 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 W단계 Django view/service layer 정리
+
+### 요약
+
+- `reporting/views.py`에서 선결제 legacy 화면/API/Excel 블록을 `reporting/api/prepayments.py`로 물리 분리했습니다.
+- 계정/고객, 장비/서비스, AI workspace API 라우트를 `reporting.api.accounts`, `reporting.api.assets`, `reporting.api.ai` 도메인 진입점으로 연결했습니다.
+- reports API는 기존 `reporting/api/reports.py`를 유지하면서 공통 계정 원장 import를 새 service namespace로 정리했습니다.
+- `reporting/services/account_ledger.py`를 공통 계정 원장 service layer 진입점으로 추가해 고객 상세, 리포트, Excel, AI가 같은 계산 구현을 보도록 했습니다.
+- 테스트/seed fixture import도 `reporting/services/test_fixtures.py`로 모았습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `ai_chat/services.py`
+- `reporting/api/accounts.py`
+- `reporting/api/ai.py`
+- `reporting/api/assets.py`
+- `reporting/api/prepayments.py`
+- `reporting/api/reports.py`
+- `reporting/management/commands/seed_e2e_data.py`
+- `reporting/services/__init__.py`
+- `reporting/services/account_ledger.py`
+- `reporting/services/test_fixtures.py`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- `/reporting/api/customers/`, `/reporting/api/reports/`, `/reporting/api/prepayments/`, `/reporting/api/customer-assets/`, `/reporting/api/ai-workspace/`가 도메인별 API 모듈을 통해 resolve됩니다.
+- 선결제 업무는 목록/상세/API/Excel 구현이 대형 `views.py` 밖으로 이동해 후속 React API 개선 범위가 작아졌습니다.
+- 고객 상세, reports Excel, AI 입력 데이터가 `reporting.services.account_ledger`를 공통 계약으로 사용합니다.
+- 테스트 fixture도 service namespace를 통해 가져오도록 바꿔 계정 원장 테스트 데이터 생성 위치가 명확해졌습니다.
+
+### 기존 기능 보존
+
+- 기존 URL name, `/reporting/*` route, React redirect fallback, JSON response shape은 유지했습니다.
+- 선결제 legacy Django 화면은 삭제하지 않고 React 전환 전 fallback으로 보존했습니다.
+- accounts/assets/AI API 구현은 이번 단계에서 domain entry module을 만들고 기존 view 구현에 위임해 동작 변경을 줄였습니다.
+- 인증이 필요한 대표 API는 익명 접근 시 운영/로컬 모두 `401 login_required`를 유지합니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\api\prepayments.py reporting\api\accounts.py reporting\api\assets.py reporting\api\ai.py reporting\api\reports.py reporting\services\account_ledger.py reporting\services\test_fixtures.py ai_chat\services.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_common_account_ledger_feeds_reports_customer_detail_and_ai reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_customer_operations_xlsx_export_downloads_table reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_requires_login_json reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_requires_login_json reporting.tests.PrepaymentsSummaryApiTests reporting.tests.PrepaymentDetailApiTests reporting.tests.PrepaymentCustomerApiTests reporting.tests.ServiceCasesSummaryApiTests reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_requires_login_json reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_draft_api_requires_ai_permission reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_action_feedback_api_requires_ai_permission --verbosity=1
+→ Ran 33 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+Local URL/API smoke
+→ /reporting/api/customers/ resolves to reporting.api.accounts.customers_summary_api and returns 401 login_required when anonymous
+→ /reporting/api/reports/ resolves to reporting.api.reports.reports_summary_api and returns 401 login_required when anonymous
+→ /reporting/api/prepayments/ resolves to reporting.api.prepayments.prepayment_api_list and returns 401 login_required when anonymous
+→ /reporting/api/customer-assets/ resolves to reporting.api.assets.customer_assets_summary_api and returns 401 login_required when anonymous
+→ /reporting/api/ai-workspace/ resolves to reporting.api.ai.ai_workspace_summary_api and returns 401 login_required when anonymous
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz, readyz, login page, protected reports API
+→ PASS frontend healthz, dashboard shell, protected reports API
+
+Production route/API smoke
+→ /customers/, /reports/, /prepayments/, /assets/, /ai-workspace/ returned 200 text/html
+→ frontend-proxied and direct backend /reporting/api/customers/, /reports/, /prepayments/, /customer-assets/, /ai-workspace/ returned 401 login_required when anonymous
+```
+
+### 알려진 제한
+
+- `reporting/views.py`는 여전히 notes/schedules/products/profile/mailbox/tasks 등 다른 도메인 구현을 많이 포함합니다. 이번 단계는 요청된 account/reports/prepayment/asset/AI 축을 우선 분리했습니다.
+- accounts/assets/AI 모듈은 아직 transitional delegation 방식입니다. 구현 자체를 파일별로 완전히 이동하는 작업은 다음 backend cleanup 단계에서 이어갈 수 있습니다.
+- 운영 로그인 세션에서 실제 고객 상세, 선결제 CRUD, 장비/서비스, AI workspace 상세 동작은 사용자의 수동 확인이 필요합니다.
+
+### Production Deployment Status
+
+- Completed.
+- Code commit `1aa3883 refactor: split django api view domains` is present on `origin/main`.
+- Railway backend `web` deployment `d9978ef8-45cd-4c88-b100-751c891b472d` succeeded for commit `1aa3883`.
+- Railway frontend `sales-note-frontend` deployment `10a70d37-2513-4b80-bd5f-f959e5d2aaf5` succeeded for commit `1aa3883`.
+- Production anonymous smoke passed for representative React routes and protected domain API endpoints.
+- Authenticated production UI/API verification is pending user login/session confirmation.
+
+### Recommended Next Task
+
+- 사용자가 운영 서버에서 W단계 수동 검수를 완료한 뒤, `reporting/views.py`에 남은 notes/schedules/products/profile/mailbox/tasks 도메인을 같은 방식으로 순차 분리합니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/customers/`에 로그인 후 고객 목록/상세 진입, 고객 상세 금액/선결제/납품 요약이 이전과 같은지 확인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/reports/`에서 리포트 요약과 고객 운영 Excel 다운로드가 정상인지 확인합니다.
+3. `https://sales-note-frontend-production.up.railway.app/prepayments/`에서 목록, 상세, 신규 작성, 수정, 취소/삭제/이관 권한 흐름이 정상인지 확인합니다.
+4. `https://sales-note-frontend-production.up.railway.app/assets/`에서 장비 목록, 서비스 케이스, 리포트/교정 인증서 다운로드 진입이 정상인지 확인합니다.
+5. `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에서 요약 데이터, 질문, 피드백, 액션 초안 API가 정상인지 확인합니다.
+6. 시크릿 창 또는 로그아웃 상태에서 `/reporting/api/customers/`, `/reporting/api/reports/`, `/reporting/api/prepayments/`, `/reporting/api/customer-assets/`, `/reporting/api/ai-workspace/`가 `401 login_required`를 반환하는지 확인합니다.
+7. 확인 중 500 오류나 금액 불일치가 보이면 해당 URL, 화면, 고객/계정 이름, 시간대를 알려주세요.
+
 ## 2026-05-25 — React 완전대체 V단계 API layer 정리
 
 ### 요약
