@@ -81,6 +81,22 @@ cd frontend && npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --json
+→ Latest web deployment 17c696d1-7562-40a2-82b3-a4605c0c54e7 SUCCESS for commit 50c6c5b
+
+railway deployment list --service sales-note-frontend --json
+→ Latest frontend deployment e6d9ea76-70a5-404c-ba23-994d8f26b652 SUCCESS for commit 50c6c5b
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend/frontend health, readyz, login, protected APIs, representative React routes, and static cache headers
+
+Production weekly-report route smoke
+→ Frontend /weekly-reports/ returned 200
+→ Frontend /reporting/weekly-reports/ redirected to /weekly-reports/
+→ Frontend /reporting/weekly-reports/create/ redirected to /weekly-reports/new/
+→ Backend /reporting/weekly-reports/ anonymous request redirected to login
+→ Backend /reporting/api/weekly-reports/ returned 401 login_required
 ```
 
 ### 알려진 제한
@@ -91,8 +107,12 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending deployment.
-- Runtime route behavior changed, so Railway backend/frontend deployment and production smoke are required.
+- Completed.
+- Code commit `50c6c5b refactor: retire weekly report legacy templates` is present on `origin/main`.
+- Railway backend `web` deployment `17c696d1-7562-40a2-82b3-a4605c0c54e7` succeeded for commit `50c6c5b`.
+- Railway frontend `sales-note-frontend` deployment `e6d9ea76-70a5-404c-ba23-994d8f26b652` succeeded for commit `50c6c5b`.
+- Production smoke passed for backend/frontend health, representative React routes, protected APIs, and weekly-report legacy redirects.
+- Authenticated production weekly-report creation/edit/delete/manual role verification is pending user login/session confirmation.
 
 ### Recommended Next Task
 
