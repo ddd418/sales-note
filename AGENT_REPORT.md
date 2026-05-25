@@ -89,8 +89,21 @@ Browser/local smoke on frontend server :4173
 
 ### 운영 배포 상태
 
-- 배포 전 검증 완료.
-- Commit/push와 Railway 배포 후 이 섹션을 최종 deployment id와 production smoke 결과로 갱신할 예정입니다.
+- 완료.
+- Commit `3528651 feat: complete react task collaboration parity` is present on `origin/main`.
+- Railway backend `web` deployment `b97798ad-e4ec-4dfc-8907-d980085d9607` succeeded for commit `3528651`.
+- Railway frontend `sales-note-frontend` deployment `132f1778-e842-4fe4-92d8-79ef557a0531` succeeded for commit `3528651`.
+- Production smoke passed:
+  - backend `/healthz/`, `/readyz/`, login page OK
+  - protected reports API returned `401`
+  - frontend `/healthz`, dashboard shell OK
+  - frontend-proxied protected reports API returned `401`
+  - protected tasks API returned `401`
+  - frontend `/todos/` redirects to `/tasks/`
+  - frontend `/todos/manager/` redirects to `/tasks/manager/`
+  - direct backend `/todos/` redirects to `/tasks/`
+  - direct backend `/todos/manager/` redirects to `/tasks/manager/`
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
