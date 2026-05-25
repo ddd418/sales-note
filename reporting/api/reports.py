@@ -1453,8 +1453,6 @@ def data_quality_contact_assign_account_api(request, followup_id):
 @require_http_methods(["GET"])
 def reports_summary_api(request):
     """React 보고서/분석 화면용 JSON API."""
-    from django.db.models import Max
-
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -1541,32 +1539,59 @@ def reports_summary_api(request):
         pipeline_stage__in=['potential', 'contact', 'quote', 'negotiation'],
     ).count()
 
+    activity_by_user = {
+        row['user_id']: row
+        for row in histories_qs.values('user_id').annotate(
+            history_count=Count('id'),
+            last=Max('created_at'),
+        )
+    }
+    active_followups_by_user = {
+        row['user_id']: row['count']
+        for row in FollowUp.objects.filter(
+            user__in=filter_users,
+            status='active',
+        ).values('user_id').annotate(count=Count('id'))
+    }
+    overdue_by_user = {
+        row['user_id']: row['count']
+        for row in History.objects.filter(
+            user__in=filter_users,
+            next_action_date__lt=today,
+            next_action_date__isnull=False,
+            reviewed_at__isnull=True,
+            parent_history__isnull=True,
+        ).values('user_id').annotate(count=Count('id'))
+    }
     activity_report = []
     for user in filter_users.select_related('userprofile'):
-        user_histories = histories_qs.filter(user=user)
-        user_hist_all = History.objects.filter(user=user, parent_history__isnull=True)
+        activity = activity_by_user.get(user.id, {})
         activity_report.append({
             'user': _analytics_user_payload(user),
-            'historyCount': user_histories.count(),
-            'followupCount': FollowUp.objects.filter(user=user, status='active').count(),
-            'overdueCount': user_hist_all.filter(
-                next_action_date__lt=today,
-                next_action_date__isnull=False,
-                reviewed_at__isnull=True,
-            ).count(),
-            'lastActivityAt': user_histories.aggregate(last=Max('created_at'))['last'],
+            'historyCount': activity.get('history_count', 0),
+            'followupCount': active_followups_by_user.get(user.id, 0),
+            'overdueCount': overdue_by_user.get(user.id, 0),
+            'lastActivityAt': activity.get('last'),
         })
     activity_report.sort(key=lambda item: item['historyCount'], reverse=True)
 
     active_followup_ids = histories_qs.values_list('followup_id', flat=True).distinct()
     customer_report = []
-    for followup in FollowUp.objects.filter(
+    customer_followups = list(FollowUp.objects.filter(
         pk__in=active_followup_ids,
-    ).select_related('company', 'department', 'user').order_by('-updated_at')[:50]:
-        last_hist = History.objects.filter(
-            followup=followup,
+    ).select_related('company', 'department', 'user').order_by('-updated_at')[:50])
+    customer_history_by_followup = {
+        row['followup_id']: row
+        for row in History.objects.filter(
+            followup_id__in=[followup.id for followup in customer_followups],
             parent_history__isnull=True,
-        ).aggregate(last=Max('created_at'), next_date=Max('next_action_date'))
+        ).values('followup_id').annotate(
+            last=Max('created_at'),
+            next_date=Max('next_action_date'),
+        )
+    }
+    for followup in customer_followups:
+        last_hist = customer_history_by_followup.get(followup.id, {})
         customer_report.append({
             'id': followup.id,
             'customer': followup.customer_name or '',
@@ -1582,12 +1607,16 @@ def reports_summary_api(request):
         })
 
     stage_order = ['potential', 'contact', 'quote', 'negotiation', 'won', 'lost']
+    stage_counts = {
+        row['pipeline_stage']: row['count']
+        for row in followups_qs.values('pipeline_stage').annotate(count=Count('id'))
+    }
     pipeline_summary = []
     for stage in stage_order:
         pipeline_summary.append({
             'stage': stage,
             'label': dict(FollowUp.PIPELINE_STAGE_CHOICES).get(stage, stage),
-            'count': followups_qs.filter(pipeline_stage=stage).count(),
+            'count': stage_counts.get(stage, 0),
         })
 
     open_service_statuses = ['received', 'in_progress', 'waiting']

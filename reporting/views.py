@@ -5,7 +5,7 @@ from django.contrib import messages
 from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db import transaction
-from django.db.models import Sum, Count, Q, Prefetch, Case, IntegerField, Value, When
+from django.db.models import Sum, Count, Q, Prefetch, Case, IntegerField, OuterRef, Subquery, Value, When
 from django.core.paginator import Paginator  # 페이지네이션 추가
 from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
@@ -5990,24 +5990,28 @@ def _customer_asset_work_queue_payload(scope_users, today):
             'customerHref': f'/customers/{followup.id}/' if followup else '',
         })
 
-    latest_calibrations_by_asset = {}
-    calibration_records = CalibrationRecord.objects.filter(
-        asset__created_by__in=scope_users,
+    latest_calibration_id = CalibrationRecord.objects.filter(
+        asset=OuterRef('pk'),
         next_due_date__isnull=False,
+    ).order_by('-calibration_date', '-created_at', '-id').values('id')[:1]
+    latest_calibration_ids = CustomerAsset.objects.filter(
+        created_by__in=scope_users,
+    ).annotate(
+        latest_calibration_id=Subquery(latest_calibration_id),
+    ).exclude(
+        latest_calibration_id__isnull=True,
+    ).values_list('latest_calibration_id', flat=True)
+    calibration_records = list(CalibrationRecord.objects.filter(
+        id__in=latest_calibration_ids,
+        next_due_date__lte=due_limit,
     ).select_related(
         'asset',
         'asset__company',
         'asset__department',
         'asset__primary_followup',
         'asset__created_by',
-    ).order_by('asset_id', '-calibration_date', '-created_at')
-    for record in calibration_records:
-        latest_calibrations_by_asset.setdefault(record.asset_id, record)
-
-    due_calibrations = [
-        record for record in latest_calibrations_by_asset.values()
-        if record.next_due_date and record.next_due_date <= due_limit
-    ]
+    ))
+    due_calibrations = calibration_records
     due_calibrations.sort(key=lambda record: (record.next_due_date or date.max, -record.id))
 
     for record in due_calibrations[:8]:

@@ -50,7 +50,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { Fragment, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, Suspense, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DashboardData,
   DashboardHistoryItem,
@@ -329,12 +329,14 @@ import type { DownloadsData } from './api/downloads';
 import { loadDownloadsData } from './api/downloads';
 import type { ReportsData } from './api/reports';
 import { loadReportsData } from './api/reports';
-import { Deal, emptyPipelineData, PipelineData, PipelineStage, PriorityTask, StageSummary } from './mockData';
-import { AccountCleanupPreviewPage } from './pages/accounts/AccountCleanupPreviewPage';
-import { CompanyManagementPage } from './pages/companies/CompanyManagementPage';
-import { DataCleanupPage } from './pages/data-cleanup/DataCleanupPage';
-import { DownloadsPage } from './pages/downloads/DownloadsPage';
-import { ReportsPage } from './pages/reports/ReportsPage';
+import { emptyPipelineData, type Deal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
+import {
+  AccountCleanupPreviewPage,
+  CompanyManagementPage,
+  DataCleanupPage,
+  DownloadsPage,
+  ReportsPage,
+} from './pages/lazyPages';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
 import { AttachmentManager, type AttachmentManagerFile } from './components/shared/AttachmentManager';
 import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from './components/shared/FeedbackStates';
@@ -2657,6 +2659,26 @@ function WorkspaceRoutePage({
 }
 
 const legacyFallbackViews: MainView[] = ['analytics', 'businessCards'];
+const pipelineDataViews: MainView[] = ['pipeline', 'tasks', 'weeklyReports', 'documents', 'products'];
+
+function routeUsesPipelineData(view: MainView): boolean {
+  return pipelineDataViews.includes(view);
+}
+
+function LazyPageBoundary({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={(
+        <section className="dashboard-loading">
+          <Loader2 className="spin-icon" size={24} />
+          <span>화면 모듈을 불러오는 중입니다</span>
+        </section>
+      )}
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 function LegacyFallbackRoutePage({ view }: { view: MainView }) {
   const meta = routeMeta[view];
@@ -21849,7 +21871,7 @@ export function App() {
   const initialAIWorkspaceQuestionScope = currentView === 'ai' ? getAIWorkspaceQuestionScopeParam() : 'department';
   const [mode, setMode] = useState<'board' | 'list'>('board');
   const [pipelineData, setPipelineData] = useState(emptyPipelineData);
-  const [pipelineLoading, setPipelineLoading] = useState(currentView === 'pipeline');
+  const [pipelineLoading, setPipelineLoading] = useState(routeUsesPipelineData(currentView));
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
   const [reportsData, setReportsData] = useState<ReportsData | null>(null);
@@ -22075,19 +22097,26 @@ export function App() {
   const scheduleCalendarRange = useMemo(() => getScheduleCalendarRange(scheduleCalendarMonth), [scheduleCalendarMonth]);
 
   useEffect(() => {
-    if (currentView === 'dashboard') {
+    if (!routeUsesPipelineData(currentView)) {
+      setPipelineLoading(false);
       return;
     }
     let alive = true;
     setPipelineLoading(true);
-    loadPipelineData().then((data) => {
-      if (!alive) {
-        return;
-      }
-      setPipelineData(data);
-      setSelectedDealId(data.deals[0]?.id ?? null);
-      setPipelineLoading(false);
-    });
+    loadPipelineData()
+      .then((data) => {
+        if (!alive) {
+          return;
+        }
+        setPipelineData(data);
+        setSelectedDealId(data.deals[0]?.id ?? null);
+        setPipelineLoading(false);
+      })
+      .catch(() => {
+        if (alive) {
+          setPipelineLoading(false);
+        }
+      });
     return () => {
       alive = false;
     };
@@ -24516,32 +24545,34 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <ReportsPage
-          data={reportsData}
-          dateFrom={reportsDateFrom}
-          dateTo={reportsDateTo}
-          deliveryFilter={reportsDeliveryFilter}
-          departmentId={reportsDepartmentId}
-          exportScope={reportsExportScope}
-          loading={reportsLoading}
-          companyId={reportsCompanyId}
-          prepaymentBalanceFilter={reportsPrepaymentBalanceFilter}
-          query={reportsQuery}
-          userId={reportsUserId}
-          onDateFromChange={setReportsDateFrom}
-          onDateToChange={setReportsDateTo}
-          onDeliveryFilterChange={setReportsDeliveryFilter}
-          onDepartmentChange={setReportsDepartmentId}
-          onExportScopeChange={setReportsExportScope}
-          onCompanyChange={(value) => {
-            setReportsCompanyId(value);
-            setReportsDepartmentId('');
-          }}
-          onPrepaymentBalanceFilterChange={setReportsPrepaymentBalanceFilter}
-          onQueryChange={setReportsQuery}
-          onRefresh={() => { void refreshReportsData(); }}
-          onUserChange={setReportsUserId}
-        />
+        <LazyPageBoundary>
+          <ReportsPage
+            data={reportsData}
+            dateFrom={reportsDateFrom}
+            dateTo={reportsDateTo}
+            deliveryFilter={reportsDeliveryFilter}
+            departmentId={reportsDepartmentId}
+            exportScope={reportsExportScope}
+            loading={reportsLoading}
+            companyId={reportsCompanyId}
+            prepaymentBalanceFilter={reportsPrepaymentBalanceFilter}
+            query={reportsQuery}
+            userId={reportsUserId}
+            onDateFromChange={setReportsDateFrom}
+            onDateToChange={setReportsDateTo}
+            onDeliveryFilterChange={setReportsDeliveryFilter}
+            onDepartmentChange={setReportsDepartmentId}
+            onExportScopeChange={setReportsExportScope}
+            onCompanyChange={(value) => {
+              setReportsCompanyId(value);
+              setReportsDepartmentId('');
+            }}
+            onPrepaymentBalanceFilterChange={setReportsPrepaymentBalanceFilter}
+            onQueryChange={setReportsQuery}
+            onRefresh={() => { void refreshReportsData(); }}
+            onUserChange={setReportsUserId}
+          />
+        </LazyPageBoundary>
       </AppShell>
     );
   }
@@ -24550,11 +24581,13 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <DataCleanupPage
-          data={reportsData}
-          loading={reportsLoading}
-          onRefresh={() => { void refreshReportsData(); }}
-        />
+        <LazyPageBoundary>
+          <DataCleanupPage
+            data={reportsData}
+            loading={reportsLoading}
+            onRefresh={() => { void refreshReportsData(); }}
+          />
+        </LazyPageBoundary>
       </AppShell>
     );
   }
@@ -24563,11 +24596,13 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <DownloadsPage
-          data={downloadsData}
-          loading={downloadsLoading}
-          onRefresh={() => { void refreshDownloadsData(); }}
-        />
+        <LazyPageBoundary>
+          <DownloadsPage
+            data={downloadsData}
+            loading={downloadsLoading}
+            onRefresh={() => { void refreshDownloadsData(); }}
+          />
+        </LazyPageBoundary>
       </AppShell>
     );
   }
@@ -24577,12 +24612,14 @@ export function App() {
       return (
         <AppShell activeView={currentView}>
           <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-          <AccountCleanupPreviewPage
-            data={accountCleanupPreviewData}
-            loading={accountCleanupPreviewLoading}
-            targetDepartmentId={accountCleanupTarget}
-            onTargetDepartmentChange={updateAccountCleanupTarget}
-          />
+          <LazyPageBoundary>
+            <AccountCleanupPreviewPage
+              data={accountCleanupPreviewData}
+              loading={accountCleanupPreviewLoading}
+              targetDepartmentId={accountCleanupTarget}
+              onTargetDepartmentChange={updateAccountCleanupTarget}
+            />
+          </LazyPageBoundary>
         </AppShell>
       );
     }
@@ -24657,7 +24694,9 @@ export function App() {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <CompanyManagementPage />
+        <LazyPageBoundary>
+          <CompanyManagementPage />
+        </LazyPageBoundary>
       </AppShell>
     );
   }

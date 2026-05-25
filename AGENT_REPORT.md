@@ -1,5 +1,127 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 Y단계 성능/운영 최적화
+
+### 요약
+
+- React 리포트/데이터정리/다운로드/업체관리/계정정리 preview 화면을 lazy page chunk로 분리했습니다.
+- `App.tsx`가 무관한 화면에서도 `/reporting/api/pipeline/`을 호출하던 흐름을 제거하고, pipeline 데이터는 pipeline/tasks/weeklyReports/documents/products에서만 불러오도록 제한했습니다.
+- reports summary API의 사용자별/고객별 반복 aggregate 쿼리를 batched aggregate로 줄였습니다.
+- 장비 work queue의 교정 조회가 scope 내 모든 교정 이력을 훑지 않고 자산별 최신 교정만 보도록 개선했습니다.
+- reports/customers/assets/prepayments 고빈도 조회 패턴에 맞춘 composite DB index migration을 추가했습니다.
+- 프론트 정적 서버에 `nosniff` 헤더와 proxy/runtime error JSON logging, 선택적 webhook alert 전송을 추가했습니다.
+- 운영 smoke에 HTML/static asset cache header 검증을 추가했습니다.
+- Railway CLI로 production CPU/RAM/network/http 현황을 확인했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `frontend/server.mjs`
+- `frontend/src/App.tsx`
+- `frontend/src/pages/lazyPages.ts`
+- `reporting/api/reports.py`
+- `reporting/migrations/0113_customerasset_asset_cr_status_upd_idx_and_more.py`
+- `reporting/models.py`
+- `reporting/views.py`
+- `scripts/post_deploy_smoke.py`
+
+### CRM 개선
+
+- `/reports/`, `/data-cleanup/`, `/downloads/`, `/companies/`, `/accounts/:id/cleanup-preview/` 진입 시 해당 화면 chunk를 별도 로딩합니다.
+- 고객/리포트/다운로드/장비/메일/프로필/AI 화면에서 불필요한 pipeline API 호출을 하지 않습니다.
+- 리포트 화면은 사용자별 활동 수, active 고객 수, overdue 수, 고객별 최근 활동/다음 액션, pipeline stage count를 반복 쿼리 대신 묶어서 계산합니다.
+- 장비 화면의 work queue는 최신 교정 기준만 조회해 이력 누적량이 커져도 API 비용이 덜 증가합니다.
+- DB index가 React 전환 후 많이 쓰는 목록/상세/리포트 필터와 정렬을 직접 받쳐줍니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` route와 기존 JSON response shape은 유지했습니다.
+- 모델 필드 추가/삭제 없이 index migration만 추가했습니다.
+- Django가 파일/Excel/API를 계속 처리하고 React는 사용자 조작 화면만 담당합니다.
+- 보호 API 익명 접근은 운영 smoke에서 계속 `401 login_required`로 확인했습니다.
+- 기존 Playwright CRM 핵심 E2E 11개가 모두 통과했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile scripts\post_deploy_smoke.py reporting\api\reports.py reporting\views.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations reporting
+→ Created reporting\migrations\0113_customerasset_asset_cr_status_upd_idx_and_more.py
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests
+→ Ran 26 tests, OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests
+→ Ran 57 tests, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ New lazy chunks include ReportsPage, DataCleanupPage, DownloadsPage, CompanyManagementPage, AccountCleanupPreviewPage
+→ Existing App chunk still reports Vite >500 kB warning
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run e2e
+→ 11 passed
+
+railway status
+→ production project linked; web, sales-note-frontend, and Postgres Online
+
+railway metrics --all --json --since 1h
+→ web: CPU ~0.00017 vCPU, RAM ~309 MB, 5xx 0, p95 965 ms
+→ sales-note-frontend: CPU ~0.00003 vCPU, RAM ~46 MB, 5xx 0, p95 856 ms
+→ Postgres: CPU ~0.00027 vCPU, RAM ~52 MB
+
+railway metrics --all --cpu --memory --network --json --since 6h
+→ web: RAM ~309 MB, network egress/ingress 0.0 MB in CLI summary
+→ sales-note-frontend: RAM ~46 MB, network egress/ingress 0.0 MB in CLI summary
+→ Postgres: RAM ~52 MB
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS health, protected APIs, React routes, and frontend cache headers
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- `App.tsx`는 일부 page chunk를 분리했지만 고객/노트/일정/선결제 등 큰 내부 페이지 함수가 아직 남아 있어 Vite가 기존 App chunk >500 kB 경고를 계속 냅니다.
+- Railway CLI network summary는 현재 창에서 0.0 MB로 표시됩니다. 대역폭/egress 비용의 장기 추이는 Railway 대시보드 billing/usage 화면과 함께 보는 편이 안전합니다.
+- Frontend webhook alert는 `FRONTEND_ERROR_ALERT_WEBHOOK_URL` 또는 `ERROR_ALERT_WEBHOOK_URL` 환경변수가 있을 때만 전송됩니다.
+
+### Production Deployment Status
+
+- Pending.
+- Runtime behavior and DB indexes changed, so backend/frontend Railway deployment is required after commit and push.
+- Deployment IDs and post-deploy smoke result will be updated after Railway finishes deploying this Y-step commit.
+
+### Recommended Next Task
+
+- 남은 큰 내부 페이지(`customers`, `notes`, `schedules`, `prepayments`)를 파일 단위로 더 분리해 App chunk 경고를 제거하고, authenticated production smoke에 로그인 계정을 연결합니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/reports/`, `/data-cleanup/`, `/downloads/`, `/companies/`, `/accounts/<id>/cleanup-preview/` 화면이 정상 로딩되는지 확인합니다.
+2. `/customers/`, `/assets/`, `/ai-workspace/`, `/profile/` 진입 시 화면이 뜨고 불필요한 pipeline 화면 상태가 섞이지 않는지 확인합니다.
+3. `/reports/`에서 기간/사용자/범위 필터를 바꿔 데이터가 정상 갱신되는지 확인합니다.
+4. `/assets/`에서 service/calibration 필터와 work queue가 정상 표시되는지 확인합니다.
+5. 브라우저 개발자도구 Network에서 HTML은 `Cache-Control: no-cache`, `/assets/*.js|css`는 `public, max-age=31536000, immutable`인지 확인합니다.
+6. Railway dashboard에서 배포 직후 backend/frontend CPU, RAM, egress, 5xx가 급증하지 않는지 10분 이상 확인합니다.
+
 ## 2026-05-25 — React 완전대체 X단계 테스트/QA 확대
 
 ### 요약

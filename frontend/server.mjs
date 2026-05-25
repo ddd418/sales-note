@@ -8,6 +8,8 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const distDir = join(__dirname, 'dist');
 const port = Number(process.env.PORT || 4173);
 const djangoBaseUrl = new URL(process.env.DJANGO_BASE_URL || 'http://127.0.0.1:8000');
+const errorAlertWebhookUrl = process.env.FRONTEND_ERROR_ALERT_WEBHOOK_URL || process.env.ERROR_ALERT_WEBHOOK_URL || '';
+const serviceName = process.env.RAILWAY_SERVICE_NAME || 'sales-note-frontend';
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -34,11 +36,71 @@ const hopByHopHeaders = new Set([
   'upgrade',
 ]);
 
+function compactError(error) {
+  if (!error || typeof error !== 'object') {
+    return { name: 'Error', message: String(error || '').slice(0, 240), code: '' };
+  }
+  return {
+    name: error.name || 'Error',
+    message: String(error.message || '').slice(0, 240),
+    code: String(error.code || ''),
+  };
+}
+
+function sendWebhookAlert(payload) {
+  if (!errorAlertWebhookUrl) {
+    return;
+  }
+  let webhookUrl;
+  try {
+    webhookUrl = new URL(errorAlertWebhookUrl);
+  } catch {
+    return;
+  }
+  if (webhookUrl.protocol !== 'http:' && webhookUrl.protocol !== 'https:') {
+    return;
+  }
+  const body = JSON.stringify(payload);
+  const alertRequest = (webhookUrl.protocol === 'https:' ? httpsRequest : httpRequest)(
+    {
+      protocol: webhookUrl.protocol,
+      hostname: webhookUrl.hostname,
+      port: webhookUrl.port,
+      path: `${webhookUrl.pathname}${webhookUrl.search}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    },
+    (alertResponse) => {
+      alertResponse.resume();
+    },
+  );
+  alertRequest.setTimeout(2500, () => alertRequest.destroy());
+  alertRequest.on('error', () => {});
+  alertRequest.write(body);
+  alertRequest.end();
+}
+
+function recordOperationalError(event, details = {}) {
+  const payload = {
+    service: serviceName,
+    event,
+    level: 'error',
+    generatedAt: new Date().toISOString(),
+    ...details,
+  };
+  console.error(JSON.stringify(payload));
+  sendWebhookAlert(payload);
+}
+
 function sendStatic(response, filePath) {
   const extension = extname(filePath);
   response.writeHead(200, {
     'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
     'Content-Type': mimeTypes[extension] || 'application/octet-stream',
+    'X-Content-Type-Options': 'nosniff',
   });
   createReadStream(filePath).pipe(response);
 }
@@ -47,6 +109,7 @@ function sendJson(response, statusCode, body) {
   response.writeHead(statusCode, {
     'Cache-Control': 'no-store',
     'Content-Type': 'application/json; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
   });
   response.end(JSON.stringify(body));
 }
@@ -94,7 +157,13 @@ function proxyToDjango(clientRequest, clientResponse) {
     },
   );
 
-  proxyRequest.on('error', () => {
+  proxyRequest.on('error', (error) => {
+    recordOperationalError('frontend_proxy_error', {
+      method: clientRequest.method || 'GET',
+      path: getPathname(clientRequest.url || '/'),
+      upstreamHost: djangoBaseUrl.host,
+      error: compactError(error),
+    });
     if (clientResponse.destroyed) {
       return;
     }
@@ -506,4 +575,17 @@ createServer((request, response) => {
   console.log(`Frontend server listening on ${port}`);
   console.log('Redirecting migrated core CRM legacy pages to React routes');
   console.log(`Proxying remaining legacy Django pages and API requests to ${djangoBaseUrl.origin}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  recordOperationalError('frontend_unhandled_rejection', {
+    error: compactError(reason),
+  });
+});
+
+process.on('uncaughtException', (error) => {
+  recordOperationalError('frontend_uncaught_exception', {
+    error: compactError(error),
+  });
+  setImmediate(() => process.exit(1));
 });

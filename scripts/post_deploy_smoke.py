@@ -89,6 +89,37 @@ def expect_html_route(session, results, name, base_url, path, timeout=10):
     record(results, name, ok, detail)
 
 
+def expect_frontend_static_cache(session, results, base_url, timeout=10):
+    route_url = build_url(base_url, '/dashboard/')
+    try:
+        response = session.get(route_url, timeout=timeout, allow_redirects=False)
+        html_cache = response.headers.get('cache-control', '')
+        asset_match = re.search(r'(?:src|href)="([^"]*/assets/[^"]+\.(?:js|css))"', response.text)
+        if response.status_code != 200 or not asset_match:
+            record(
+                results,
+                'frontend static cache headers',
+                False,
+                f'html {response.status_code} asset_missing',
+            )
+            return
+
+        asset_url = build_url(base_url, asset_match.group(1))
+        asset_response = session.get(asset_url, timeout=timeout, allow_redirects=False)
+        asset_cache = asset_response.headers.get('cache-control', '')
+        ok = (
+            'no-cache' in html_cache.lower()
+            and asset_response.status_code == 200
+            and 'max-age=31536000' in asset_cache.lower()
+            and 'immutable' in asset_cache.lower()
+        )
+        detail = f'html={html_cache or "-"} asset={asset_response.status_code} {asset_cache or "-"}'
+    except Exception as exc:
+        ok = False
+        detail = exc.__class__.__name__
+    record(results, 'frontend static cache headers', ok, detail)
+
+
 def expect_login_required_api(session, results, name, base_url, path, timeout=10):
     url = build_url(base_url, path)
     try:
@@ -168,6 +199,7 @@ def main():
 
     expect_json_status(session, results, 'frontend healthz', args.frontend_url, '/healthz/', 200, 'ok', args.timeout)
     expect_status(session, results, 'frontend dashboard shell', args.frontend_url, '/dashboard/', (200,), args.timeout)
+    expect_frontend_static_cache(session, results, args.frontend_url, args.timeout)
     expect_protected(session, results, 'frontend reports API protected', args.frontend_url, '/reporting/api/reports/', args.timeout)
 
     for route in FRONTEND_REACT_ROUTES:

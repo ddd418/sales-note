@@ -1,5 +1,43 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement Y-step performance and operations optimization plan
+
+**Background**:
+
+- User asked to complete performance/operations optimization so the React migration does not slow down the CRM or increase Railway operating cost.
+- `frontend/src/App.tsx` still imports several heavy page modules eagerly and also loads pipeline data for almost every non-dashboard route.
+- Reports/customers/assets APIs already have pagination and some indexes, but reports still performs per-user/per-customer aggregate queries and several high-traffic model orderings need explicit composite indexes.
+- The frontend static server already separates HTML and hashed asset cache policy, and backend error webhook logging exists for `ERROR_ALERT_WEBHOOK_URL`.
+
+**DB change required**: Yes.
+
+- Add focused composite indexes for the high-traffic React list/report paths: follow-up updated ordering, history by follow-up/date and next-action review queue, schedule upcoming-by-followup, asset filtered ordering, service-case asset timeline, and prepayment user/status/date ordering.
+- No model fields or data-shape migrations are planned.
+
+**Implementation scope**:
+
+- Add React route code splitting for already extracted page modules and wrap lazy CRM page rendering with a consistent loading fallback.
+- Reduce `App.tsx` eager page imports and avoid loading pipeline data on unrelated routes such as customers, reports, downloads, data-cleanup, assets, services, mail, profile, and AI.
+- Optimize reports summary aggregates by batching per-user activity counts, active follow-up counts, overdue counts, customer last-activity metadata, and pipeline stage counts.
+- Tighten the asset work-queue calibration query so it loads only the latest calibration per asset instead of scanning every calibration record in scope.
+- Add model indexes matching the large reports/customers/assets/prepayments query patterns.
+- Extend post-deploy smoke checks to verify frontend HTML/static asset cache headers.
+- Add frontend proxy/server operational error logging with optional webhook alerts, without logging cookies, headers, request bodies, or query strings.
+- Check Railway deployment/runtime status from the available CLI and document any CPU/RAM/egress visibility limits.
+
+**Validation plan**:
+
+- `python -m py_compile scripts\post_deploy_smoke.py`
+- `python manage.py makemigrations --check --dry-run` before DB edits, then create the focused index migration and re-run checks.
+- Focused Django tests for reports/customers/assets API behavior plus migration state.
+- `python manage.py check`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Railway CLI status/deployment check where available.
+- Production post-deploy smoke with cache-header assertions.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement X-step test and QA expansion plan
 
 **Background**:

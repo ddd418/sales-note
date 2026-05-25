@@ -735,6 +735,7 @@ class FollowUp(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['user', '-created_at'], name='follow_user_created_idx'),
+            models.Index(fields=['user', '-updated_at', '-created_at'], name='follow_user_updated_idx'),
             models.Index(fields=['user', 'pipeline_stage'], name='follow_user_stage_idx'),
             models.Index(fields=['user', 'department'], name='follow_user_dept_idx'),
         ]
@@ -839,6 +840,7 @@ class Schedule(models.Model):
             models.Index(fields=['user', 'activity_type', 'status', 'visit_date'], name='sched_user_act_stat_date_idx'),
             models.Index(fields=['visit_date', 'activity_type', 'status'], name='sched_date_act_stat_idx'),
             models.Index(fields=['followup', 'activity_type'], name='sched_follow_act_idx'),
+            models.Index(fields=['followup', 'status', 'visit_date', 'visit_time'], name='sched_follow_status_date_idx'),
         ]
 
 
@@ -965,6 +967,8 @@ class History(models.Model):
             models.Index(fields=['user', '-created_at'], name='hist_user_created_idx'),
             models.Index(fields=['user', 'action_type', '-created_at'], name='hist_user_action_date_idx'),
             models.Index(fields=['user', 'parent_history', '-created_at'], name='hist_user_parent_date_idx'),
+            models.Index(fields=['user', 'parent_history', 'next_action_date'], name='hist_user_parent_next_idx'),
+            models.Index(fields=['followup', 'parent_history', '-created_at'], name='hist_follow_parent_created_idx'),
             models.Index(fields=['user', 'next_action_date'], name='hist_user_next_idx'),
             models.Index(fields=['schedule', '-created_at'], name='hist_sched_created_idx'),
         ]
@@ -1311,6 +1315,7 @@ class CustomerAsset(models.Model):
             models.Index(fields=['company', 'department'], name='asset_company_dept_idx'),
             models.Index(fields=['primary_followup', '-updated_at'], name='asset_followup_updated_idx'),
             models.Index(fields=['created_by', '-updated_at'], name='asset_creator_updated_idx'),
+            models.Index(fields=['created_by', 'status', '-updated_at', '-created_at'], name='asset_cr_status_upd_idx'),
             models.Index(fields=['serial_number'], name='asset_serial_idx'),
         ]
 
@@ -1366,6 +1371,7 @@ class ServiceCase(models.Model):
         ordering = ['-received_date', '-created_at']
         indexes = [
             models.Index(fields=['asset', 'status'], name='svc_asset_status_idx'),
+            models.Index(fields=['asset', '-received_date', '-created_at'], name='svc_asset_received_created_idx'),
             models.Index(fields=['followup', '-received_date'], name='svc_followup_date_idx'),
             models.Index(fields=['created_by', '-received_date'], name='svc_creator_date_idx'),
             models.Index(fields=['status', 'due_date'], name='svc_status_due_idx'),
@@ -2028,6 +2034,7 @@ class Prepayment(models.Model):
         indexes = [
             models.Index(fields=['created_by', 'payment_date'], name='prepay_user_date_idx'),
             models.Index(fields=['created_by', 'status'], name='prepay_user_status_idx'),
+            models.Index(fields=['created_by', 'status', '-payment_date', '-created_at'], name='prepay_user_status_date_idx'),
             models.Index(fields=['department', 'created_by', 'payment_date'], name='prepay_dept_user_date_idx'),
             models.Index(fields=['department', 'status'], name='prepay_dept_status_idx'),
         ]
