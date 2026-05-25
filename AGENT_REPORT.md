@@ -69,6 +69,17 @@ Local Playwright browser smoke
 python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.RemovedStandaloneMenuRouteTests --verbosity=1
 → Ran 5 tests, OK
 
+railway deployment list --service sales-note-frontend --json
+→ Latest frontend deployment `416be5c5-b077-4c5a-92f0-4cdec1235fb0` SUCCESS for commit `e2fb2b3`
+
+railway deployment list --service web --json
+→ Latest backend deployment `571a77cd-ee61-4e99-b06e-78aa77d29d1b` SUCCESS for commit `e2fb2b3`
+→ Railway CLI emitted one transient GraphQL network warning after status output; deployment status was already confirmed as SUCCESS.
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS health, login, protected APIs, representative React routes, removed route 404s, and frontend static cache/compression headers
+→ Production hashed frontend asset returned `Content-Encoding=br`
+
 git diff --check
 → OK, CRLF normalization warnings only
 ```
@@ -81,7 +92,12 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending. Runtime change이므로 commit/push 후 Railway `sales-note-frontend` 중심으로 배포하고 production smoke를 실행해야 합니다.
+- Completed.
+- Code commit `e2fb2b3 perf: speed up frontend navigation` is present on `origin/main`.
+- Railway frontend `sales-note-frontend` deployment `416be5c5-b077-4c5a-92f0-4cdec1235fb0` succeeded for commit `e2fb2b3`.
+- Railway backend `web` deployment `571a77cd-ee61-4e99-b06e-78aa77d29d1b` succeeded for commit `e2fb2b3`.
+- Production smoke passed, including frontend static asset cache/compression check with `Content-Encoding=br`.
+- Authenticated production menu-click speed still needs user-side manual confirmation because it depends on the logged-in CRM session.
 
 ### Manual Server Test Process
 
