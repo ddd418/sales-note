@@ -1,5 +1,141 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 U단계 파일/엑셀/다운로드 공통화
+
+### 요약
+
+- `/downloads/` React 다운로드 허브를 추가해 CRM의 파일/Excel/CSV/문서/첨부 다운로드 URL 목록을 업무 그룹별로 볼 수 있게 했습니다.
+- 각 다운로드 카드에 다운로드 범위, 예상 파일명, Django URL name, 실제/템플릿 URL, 권한, 스트리밍/대용량/타임아웃 정보를 표시합니다.
+- `/reporting/downloads/` legacy 진입은 React `/downloads/`로 이동합니다.
+- 영업노트, 일정, 업무, 고객 첨부파일 UI를 공통 `AttachmentManager` 컴포넌트로 묶고 기존 Django upload/download/delete API를 그대로 사용하게 했습니다.
+- 업무 첨부파일은 media URL 직접 노출 대신 보호된 Django `FileResponse` 다운로드 API를 통해 내려받도록 보강했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `frontend/server.mjs`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/api/downloads.ts`
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/components/shared/AttachmentManager.tsx`
+- `frontend/src/pages/downloads/DownloadsPage.tsx`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+- `frontend/src/styles.css`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `todos/views.py`
+- `todos/tests.py`
+
+### CRM 개선
+
+- 사용자는 React에서 모든 주요 다운로드/Export 진입점을 한 화면에서 검수할 수 있습니다.
+- 다운로드 실행 전에 범위와 파일명 패턴을 확인할 수 있어 대량 Excel 오조작 위험을 줄였습니다.
+- 대용량 다운로드는 120초 기준과 범위 축소 안내를 표시합니다.
+- 첨부파일 목록, 업로드, 다운로드, 삭제 버튼이 노트/일정/업무/고객 화면에서 같은 컴포넌트와 스타일로 동작합니다.
+- 업무 첨부파일 다운로드에도 로그인/업무 조회 권한 검사를 적용했습니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 기존 Django API와 legacy 다운로드 URL을 유지했습니다.
+- Django template 삭제는 하지 않았습니다.
+- 기존 Excel/CSV/첨부/문서/자산/메일 다운로드 처리 주체는 Django로 유지했습니다.
+- 인증되지 않은 다운로드 레지스트리와 업무 첨부 다운로드 API는 `401 login_required`를 반환합니다.
+- 노트/일정 첨부 다운로드의 기존 권한 검사를 유지하고 회귀 테스트를 추가했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\file_views.py reporting\urls.py reporting\tests.py todos\views.py todos\tests.py
+→ OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.DownloadRegistryApiTests reporting.tests.NotesSummaryApiTests.test_note_file_download_blocks_anonymous_and_out_of_scope_users reporting.tests.SchedulesSummaryApiTests.test_schedule_file_download_blocks_anonymous_and_out_of_scope_users todos.tests.ReactTasksApiTests.test_task_detail_api_returns_attachments_and_logs_with_scope todos.tests.ReactTasksApiTests.test_task_attachment_download_api_is_protected_and_scoped todos.tests.ReactTasksApiTests.test_task_update_delete_and_attachment_api_permissions --verbosity=1
+→ Ran 11 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large App bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Browser/local smoke
+→ Anonymous /downloads/ redirected to /reporting/login/?next=/downloads/
+→ Logged in locally and opened http://127.0.0.1:4173/downloads/
+→ Confirmed React downloads hub rendered, navigation highlighted 파일/다운로드, cards displayed 범위/파일명/URL/권한
+→ Browser console errors: none
+
+Local route/API smoke
+→ http://127.0.0.1:4173/downloads/ returned 200
+→ http://127.0.0.1:4173/reporting/downloads/ returned 302 Location: /downloads/
+→ frontend-proxied /reporting/api/downloads/ returned 401 login_required when anonymous
+→ backend /reporting/api/tasks/attachments/1/download/ returned 401 login_required when anonymous
+
+python manage.py test reporting todos --verbosity=1
+→ Timed out after 15 minutes in the local environment
+→ Focused regression suite above passed
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz, readyz, login page, protected reports API
+→ PASS frontend healthz, dashboard shell, protected reports API
+
+Production route smoke
+→ https://sales-note-frontend-production.up.railway.app/downloads/ returned 200 text/html
+→ https://sales-note-frontend-production.up.railway.app/reporting/downloads/ returned 302 Location: /downloads/
+→ frontend-proxied and direct backend /reporting/api/downloads/ returned 401 login_required when anonymous
+→ frontend-proxied /reporting/api/tasks/attachments/1/download/ returned 401 login_required when anonymous
+```
+
+### 알려진 제한
+
+- 운영 로그인 세션에서 실제 Excel/첨부 다운로드, 업로드, 삭제는 사용자가 수동으로 확인해야 합니다.
+- 대용량 다운로드의 실제 완료 시간은 운영 데이터량과 필터 범위에 따라 달라지므로 운영에서 120초 기준으로 추가 검수가 필요합니다.
+- 다운로드 레지스트리는 현재 확인된 다운로드/Export 표면을 코드로 목록화했습니다. 새 다운로드 URL이 추가되면 레지스트리 항목도 함께 추가해야 합니다.
+- 전체 `reporting todos` 테스트 묶음은 로컬 15분 제한에서 완료되지 않았고, 이번 변경과 직접 관련된 집중 회귀 테스트는 통과했습니다.
+
+### Production Deployment Status
+
+- Completed.
+- Code commit `7ebd4c0 feat: add react download hub` is present on `origin/main`.
+- Railway backend `web` deployment `07e101d0-8f89-44ca-9c1f-485368b1e22b` succeeded for commit `7ebd4c0`.
+- Railway frontend `sales-note-frontend` deployment `182558f5-819e-4446-a9e4-3da0d2b36888` succeeded for commit `7ebd4c0`.
+- Production anonymous smoke passed for `/downloads/`, `/reporting/downloads/`, `/reporting/api/downloads/`, and protected task attachment download API.
+- Authenticated production UI verification is pending user login/session confirmation.
+
+### Recommended Next Task
+
+- 사용자가 운영 서버에서 다운로드 허브, 대표 Excel 다운로드, 첨부 upload/download/delete, 대용량 다운로드 범위 표시를 수동 검수한 뒤 다음 React 완전대체 항목을 진행합니다.
+
+### Manual Server Test Process
+
+1. `https://sales-note-frontend-production.up.railway.app/downloads/`에 로그인 상태로 접속합니다.
+2. 왼쪽 메뉴에 `파일/다운로드`가 보이고 화면 제목이 `파일/다운로드`인지 확인합니다.
+3. 상단 요약에서 총 URL 수, 대용량 수, 스트리밍 수, 120초 기준 안내가 표시되는지 확인합니다.
+4. 그룹 탭을 바꾸며 각 카드에 `범위`, `파일명`, `URL`, `권한`이 표시되는지 확인합니다.
+5. 직접 다운로드 버튼이 있는 대표 Excel 항목 하나를 눌러 파일명이 카드의 패턴과 맞는지 확인합니다.
+6. 대상 선택이 필요한 첨부/문서 항목은 `관련 화면`으로 이동해 실제 상세 화면에서 다운로드되는지 확인합니다.
+7. `/reports/`에서 운영 현황 Excel 버튼에 다운로드 범위와 파일명 안내가 같이 보이는지 확인합니다.
+8. 영업노트 상세, 일정 상세, 업무 상세에서 첨부파일 업로드, 다운로드, 삭제 버튼이 같은 형태로 동작하는지 확인합니다.
+9. 시크릿 창에서 `/downloads/`를 열면 로그인 화면으로 이동하는지 확인합니다.
+10. 시크릿 창 또는 로그아웃 상태에서 `/reporting/api/downloads/`와 `/reporting/api/tasks/attachments/<id>/download/`가 `401 login_required`를 반환하는지 확인합니다.
+11. 대용량 Excel은 날짜/범위를 좁혀 다운로드하고 120초 기준 안에서 완료되는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 T단계 데이터 품질/정리 도구 React화
 
 ### 요약
