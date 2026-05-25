@@ -2664,47 +2664,6 @@ def _download_registry():
 
 @never_cache
 @require_http_methods(["GET"])
-def downloads_registry_api(request):
-    """Authenticated registry for React download/export controls."""
-    auth_response = _api_login_required_response(request)
-    if auth_response:
-        return auth_response
-
-    downloads = _download_registry()
-    groups = []
-    seen = set()
-    for item in downloads:
-        if item['group'] in seen:
-            continue
-        seen.add(item['group'])
-        groups.append({
-            'id': item['group'],
-            'label': item['groupLabel'],
-            'count': sum(1 for download in downloads if download['group'] == item['group']),
-        })
-
-    return JsonResponse({
-        'success': True,
-        'source': 'django',
-        'generatedAt': timezone.now().isoformat(),
-        'links': {
-            'react': '/downloads/',
-            'legacy': reverse('reporting:downloads'),
-            'login': reverse('reporting:login'),
-        },
-        'policy': {
-            'authRequired': True,
-            'handler': 'Django API/FileResponse/HttpResponse',
-            'largeDownloadTimeoutSeconds': int(getattr(settings, 'DOWNLOAD_TIMEOUT_SECONDS', 120)),
-            'largeDownloadNote': '대용량 Excel은 서버에서 생성 후 전송되므로 날짜/범위 필터를 좁혀 120초 이내 완료를 목표로 검수합니다. 첨부파일은 가능한 경우 FileResponse로 스트리밍됩니다.',
-        },
-        'groups': groups,
-        'downloads': downloads,
-    })
-
-
-@never_cache
-@require_http_methods(["GET"])
 def navigation_api(request):
     """React CRM navigation configuration for authenticated users."""
     auth_response = _api_login_required_response(request)
@@ -2717,8 +2676,6 @@ def navigation_api(request):
     items = [
         {'id': 'dashboard', 'label': '대시보드', 'href': '/dashboard/'},
         {'id': 'analytics', 'label': '분석', 'href': '/reports/'},
-        {'id': 'dataCleanup', 'label': '데이터정리', 'href': '/data-cleanup/'},
-        {'id': 'downloads', 'label': '파일/다운로드', 'href': '/downloads/'},
         {'id': 'customers', 'label': '고객', 'href': '/customers/'},
         {'id': 'companies', 'label': '업체/부서', 'href': '/companies/'},
         {'id': 'assets', 'label': '장비', 'href': '/assets/'},

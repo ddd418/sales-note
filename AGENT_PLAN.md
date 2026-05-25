@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 Remove forbidden data-cleanup and downloads menus plan
+
+**Background**:
+
+- User explicitly stated that `/data-cleanup/` and `/downloads/` must never exist as menus and asked to remove them entirely.
+- These routes are currently exposed through React routing/navigation, frontend legacy redirect mapping, and production smoke route checks.
+- Backend file/download APIs and account cleanup APIs may still be used by existing buttons, reports, exports, and admin workflows, but the standalone React menu pages must not be available.
+
+**DB change required**: No.
+
+- This task removes frontend menu/page route exposure and updates checks/docs only.
+- No model, migration, or data changes are planned.
+
+**Implementation scope**:
+
+- Remove `/data-cleanup/` and `/downloads/` from React view detection, lazy page rendering, navigation metadata, and secondary dashboard links.
+- Remove frontend legacy redirects from `/reporting/data-cleanup/` and `/reporting/downloads/` to those React pages.
+- Make direct frontend access to `/data-cleanup/` and `/downloads/` fall through to the standard not-found experience instead of rendering CRM tool pages.
+- Keep backend protected APIs and existing report/download endpoints intact where other legitimate screens depend on them.
+- Update production smoke route/API lists so the removed pages are not treated as expected public React routes.
+- Record the removal and manual verification steps in `AGENT_REPORT.md`.
+
+**Validation plan**:
+
+- `python -m py_compile scripts\post_deploy_smoke.py reporting\urls.py reporting\tests.py`
+- Focused Django redirect/navigation tests that referenced these legacy routes.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Production smoke after Railway deployment plus manual checks that `/data-cleanup/` and `/downloads/` no longer render those menu pages.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement Z-step legacy retirement and final transition plan
 
 **Background**:

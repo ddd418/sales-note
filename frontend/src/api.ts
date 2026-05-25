@@ -10,5 +10,4 @@ export * from './api/prepayments';
 export * from './api/ai';
 export * from './api/reports';
 export * from './api/accountCleanup';
-export * from './api/downloads';
 export * from './api/legacy';

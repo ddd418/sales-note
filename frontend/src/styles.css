@@ -11910,7 +11910,6 @@ tbody tr:hover {
 }
 
 .reports-page,
-.downloads-page,
 .business-cards-page,
 .profile-page {
   display: grid;
@@ -14157,10 +14156,6 @@ tbody tr:hover {
 }
 
 @media (max-width: 1180px) {
-  .downloads-policy-panel {
-    grid-template-columns: 1fr;
-  }
-
   .account-cleanup-preview-grid,
   .account-cleanup-checklist-grid {
     grid-template-columns: 1fr;

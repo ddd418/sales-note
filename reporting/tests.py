@@ -471,7 +471,7 @@ class ReactNavigationApiTests(TestCase):
         self.assertFalse(payload['success'])
         self.assertEqual(payload['error'], 'login_required')
 
-    def test_navigation_api_includes_legacy_fallback_react_menu_entries(self):
+    def test_navigation_api_excludes_forbidden_menu_entries(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:navigation_api'))
@@ -481,10 +481,8 @@ class ReactNavigationApiTests(TestCase):
         items_by_id = {item['id']: item for item in payload['items']}
         self.assertEqual(items_by_id['analytics']['href'], '/reports/')
         self.assertEqual(items_by_id['analytics']['label'], '분석')
-        self.assertEqual(items_by_id['dataCleanup']['href'], '/data-cleanup/')
-        self.assertEqual(items_by_id['dataCleanup']['label'], '데이터정리')
-        self.assertEqual(items_by_id['downloads']['href'], '/downloads/')
-        self.assertEqual(items_by_id['downloads']['label'], '파일/다운로드')
+        self.assertNotIn('dataCleanup', items_by_id)
+        self.assertNotIn('downloads', items_by_id)
         self.assertEqual(items_by_id['businessCards']['href'], '/mailbox/business-cards/')
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
         self.assertEqual(items_by_id['services']['href'], '/services/')
@@ -530,7 +528,8 @@ class ReactNavigationApiTests(TestCase):
         self.client.force_login(salesman)
         salesman_payload = self.client.get(reverse('reporting:navigation_api')).json()
         salesman_ids = {item['id'] for item in salesman_payload['items']}
-        self.assertIn('dataCleanup', salesman_ids)
+        self.assertNotIn('dataCleanup', salesman_ids)
+        self.assertNotIn('downloads', salesman_ids)
         self.assertIn('tasks', salesman_ids)
         self.assertIn('mail', salesman_ids)
         self.assertNotIn('tasksManager', salesman_ids)
@@ -542,7 +541,8 @@ class ReactNavigationApiTests(TestCase):
         self.client.force_login(manager)
         manager_payload = self.client.get(reverse('reporting:navigation_api')).json()
         manager_ids = {item['id'] for item in manager_payload['items']}
-        self.assertIn('dataCleanup', manager_ids)
+        self.assertNotIn('dataCleanup', manager_ids)
+        self.assertNotIn('downloads', manager_ids)
         self.assertIn('tasks', manager_ids)
         self.assertIn('tasksManager', manager_ids)
         self.assertIn('employees', manager_ids)
@@ -555,7 +555,8 @@ class ReactNavigationApiTests(TestCase):
         self.client.force_login(admin)
         admin_payload = self.client.get(reverse('reporting:navigation_api')).json()
         admin_ids = {item['id'] for item in admin_payload['items']}
-        self.assertIn('dataCleanup', admin_ids)
+        self.assertNotIn('dataCleanup', admin_ids)
+        self.assertNotIn('downloads', admin_ids)
         self.assertIn('tasks', admin_ids)
         self.assertIn('mail', admin_ids)
         self.assertIn('userAdmin', admin_ids)
@@ -566,65 +567,13 @@ class ReactNavigationApiTests(TestCase):
         self.assertTrue(admin_payload['capabilities']['canUseMailbox'])
 
 
-class DownloadRegistryApiTests(TestCase):
-    """React download registry API regression tests."""
+class RemovedStandaloneMenuRouteTests(TestCase):
+    """Forbidden standalone menu routes should not resolve in Django."""
 
-    def setUp(self):
-        self.client = Client()
-        self.user = make_user('download-registry-user')
-        self.url = reverse('reporting:downloads_registry_api')
-
-    def test_download_registry_requires_login_json(self):
-        response = self.client.get(self.url)
-
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json()['error'], 'login_required')
-
-    def test_download_registry_lists_current_download_surfaces(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(self.url)
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertTrue(payload['success'])
-        self.assertEqual(payload['source'], 'django')
-        ids = {item['id'] for item in payload['downloads']}
-        expected_ids = {
-            'customers.fullExcel',
-            'customers.basicExcel',
-            'notes.attachment',
-            'schedules.attachment',
-            'tasks.attachment',
-            'reports.activityCsv',
-            'reports.pipelineCsv',
-            'reports.activityXlsx',
-            'reports.pipelineXlsx',
-            'reports.customerOperationsXlsx',
-            'accounts.deliveryRecordsXlsx',
-            'customers.deliveryRecordsXlsx',
-            'accounts.cleanupPreviewJson',
-            'prepayments.listXlsx',
-            'prepayments.customerXlsx',
-            'prepayments.accountXlsx',
-            'products.exportXlsx',
-            'documents.template',
-            'documents.generated',
-            'documents.generateXlsx',
-            'assets.serviceReport',
-            'assets.calibrationCertificate',
-            'mailbox.attachment',
-        }
-        self.assertTrue(expected_ids.issubset(ids))
-        items_by_id = {item['id']: item for item in payload['downloads']}
-        self.assertEqual(items_by_id['customers.fullExcel']['href'], reverse('reporting:followup_excel_download'))
-        self.assertEqual(
-            items_by_id['tasks.attachment']['hrefTemplate'],
-            '/reporting/api/tasks/attachments/{attachment_id}/download/',
-        )
-        self.assertTrue(items_by_id['notes.attachment']['streaming'])
-        self.assertTrue(payload['policy']['authRequired'])
-        self.assertEqual(payload['links']['react'], '/downloads/')
+    def test_removed_backend_menu_routes_return_404(self):
+        self.assertEqual(self.client.get('/reporting/data-cleanup/').status_code, 404)
+        self.assertEqual(self.client.get('/reporting/downloads/').status_code, 404)
+        self.assertEqual(self.client.get('/reporting/api/downloads/').status_code, 404)
 
 
 class EmployeeManagementApiTests(TestCase):

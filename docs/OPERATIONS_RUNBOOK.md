@@ -39,7 +39,7 @@ python scripts/post_deploy_smoke.py `
   --frontend-url https://sales-note-frontend-production.up.railway.app
 ```
 
-기본 smoke는 backend/frontend health, 로그인 페이지, React 대표 라우트(`/dashboard/`, `/customers/`, `/reports/`, `/prepayments/`, `/assets/`, `/ai-workspace/`, `/data-cleanup/`, `/downloads/`)와 대표 보호 API의 `401 login_required` 응답을 확인합니다.
+기본 smoke는 backend/frontend health, 로그인 페이지, React 대표 라우트(`/dashboard/`, `/customers/`, `/reports/`, `/prepayments/`, `/assets/`, `/ai-workspace/`)와 대표 보호 API의 `401 login_required` 응답을 확인합니다. 제거된 독립 메뉴 route(`/data-cleanup/`, `/downloads/`)는 `404`를 기대합니다.
 
 운영 계정으로 인증 API까지 확인할 때:
 

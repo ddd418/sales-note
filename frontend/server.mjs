@@ -280,12 +280,6 @@ function getCoreCrmReactLocation(requestUrl) {
   if (pathname === '/reporting/analytics/' || pathname === '/reporting/analytics') {
     return buildReactLocation('/reports/', params);
   }
-  if (pathname === '/reporting/data-cleanup/' || pathname === '/reporting/data-cleanup') {
-    return buildReactLocation('/data-cleanup/', params);
-  }
-  if (pathname === '/reporting/downloads/' || pathname === '/reporting/downloads') {
-    return buildReactLocation('/downloads/', params);
-  }
   if (pathname === '/reporting/weekly-reports/' || pathname === '/reporting/weekly-reports') {
     return buildReactLocation('/weekly-reports/', params);
   }
@@ -535,6 +529,17 @@ function isFrontendSessionRequest(pathname) {
   );
 }
 
+function isRemovedFrontendRoute(pathname) {
+  return (
+    pathname === '/data-cleanup' ||
+    pathname === '/data-cleanup/' ||
+    pathname.startsWith('/data-cleanup/') ||
+    pathname === '/downloads' ||
+    pathname === '/downloads/' ||
+    pathname.startsWith('/downloads/')
+  );
+}
+
 function isDjangoLegacyNamespace(pathname) {
   return (
     pathname.startsWith('/reporting/') ||
@@ -578,6 +583,14 @@ createServer((request, response) => {
       generatedAt: new Date().toISOString(),
       upstream: djangoBaseUrl.origin,
     });
+    return;
+  }
+  if (isRemovedFrontendRoute(pathname)) {
+    response.writeHead(404, {
+      'Cache-Control': 'no-cache',
+      'Content-Type': 'text/plain; charset=utf-8',
+    });
+    response.end('Not found');
     return;
   }
   if (shouldRedirectToReactPage(request)) {

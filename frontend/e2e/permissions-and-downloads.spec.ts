@@ -39,7 +39,7 @@ test.describe('Role permissions and Excel downloads', () => {
   }> = [
     {
       role: 'salesman',
-      expectedItems: ['dashboard', 'analytics', 'dataCleanup', 'downloads', 'customers', 'mail', 'prepayments'],
+      expectedItems: ['dashboard', 'analytics', 'customers', 'mail', 'prepayments'],
       hiddenItems: ['tasksManager', 'employees', 'userAdmin', 'ai'],
       capabilities: {
         canManageTasks: false,
@@ -53,7 +53,7 @@ test.describe('Role permissions and Excel downloads', () => {
     },
     {
       role: 'manager',
-      expectedItems: ['dashboard', 'analytics', 'dataCleanup', 'downloads', 'customers', 'tasksManager', 'employees', 'ai', 'prepayments'],
+      expectedItems: ['dashboard', 'analytics', 'customers', 'tasksManager', 'employees', 'ai', 'prepayments'],
       hiddenItems: ['mail', 'userAdmin'],
       capabilities: {
         canManageTasks: true,
@@ -67,7 +67,7 @@ test.describe('Role permissions and Excel downloads', () => {
     },
     {
       role: 'admin',
-      expectedItems: ['dashboard', 'analytics', 'dataCleanup', 'downloads', 'customers', 'userAdmin', 'mail', 'ai', 'prepayments'],
+      expectedItems: ['dashboard', 'analytics', 'customers', 'userAdmin', 'mail', 'ai', 'prepayments'],
       hiddenItems: ['tasksManager', 'employees'],
       capabilities: {
         canManageTasks: false,

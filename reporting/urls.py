@@ -366,15 +366,6 @@ urlpatterns = [
         views.analytics_dashboard_view,
         static_react_page('reports/'),
     ), name='analytics_dashboard'),
-    path('data-cleanup/', react_page_redirect(
-        views.analytics_dashboard_view,
-        static_react_page('data-cleanup/'),
-    ), name='data_cleanup'),
-    path('downloads/', react_page_redirect(
-        views.analytics_dashboard_view,
-        static_react_page('downloads/'),
-    ), name='downloads'),
-    path('api/downloads/', views.downloads_registry_api, name='downloads_registry_api'),
     path('analytics/export/activity.csv', views.analytics_activity_csv_export, name='analytics_activity_csv'),
     path('analytics/export/pipeline.csv', views.analytics_pipeline_csv_export, name='analytics_pipeline_csv'),
     path('analytics/export/activity.xlsx', views.analytics_activity_xlsx_export, name='analytics_activity_xlsx'),

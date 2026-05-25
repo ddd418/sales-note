@@ -1,5 +1,85 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — 데이터정리/다운로드 독립 메뉴 삭제
+
+### 요약
+
+- 사용자 요청에 따라 `/data-cleanup/`와 `/downloads/` 독립 React 메뉴/화면을 제거했습니다.
+- React navigation fallback과 Django navigation API에서 `데이터정리`, `파일/다운로드` 메뉴 항목을 삭제했습니다.
+- React lazy page import, page component, downloads API client, compatibility barrel export를 제거했습니다.
+- Frontend production server가 `/data-cleanup/`, `/downloads/` 및 하위 경로를 `404 Not found`로 응답하도록 막았습니다.
+- `/reporting/data-cleanup/`, `/reporting/downloads/`, `/reporting/api/downloads/` backend route도 제거해 legacy redirect와 다운로드 URL 목록 API가 더 이상 열리지 않게 했습니다.
+- 기존 개별 Excel/file 다운로드 API와 reports/account cleanup preview 같은 업무 API는 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `docs/OPERATIONS_RUNBOOK.md`
+- `frontend/e2e/permissions-and-downloads.spec.ts`
+- `frontend/server.mjs`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/api/downloads.ts` 삭제
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/pages/data-cleanup/DataCleanupPage.tsx` 삭제
+- `frontend/src/pages/downloads/DownloadsPage.tsx` 삭제
+- `frontend/src/pages/lazyPages.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+- `scripts/post_deploy_smoke.py`
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile scripts\post_deploy_smoke.py reporting\urls.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.RemovedStandaloneMenuRouteTests --verbosity=1
+→ Ran 5 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing App chunk still reports Vite >500 kB warning
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- `/reports/` 안의 데이터 품질 요약, account cleanup preview, 실제 Excel/file 다운로드 버튼은 기존 업무 흐름 보존을 위해 유지했습니다.
+- `AGENT_REPORT.md` 과거 기록에는 이전에 추가했던 `/data-cleanup/`, `/downloads/` 내역이 히스토리로 남아 있습니다. 현재 런타임에서는 제거 대상입니다.
+
+### Production Deployment Status
+
+- Pending deployment.
+- Runtime route behavior changed, so Railway backend/frontend deployment and production smoke are required.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 왼쪽 메뉴에 `데이터정리`, `파일/다운로드`가 없는지 확인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/data-cleanup/`가 `404`인지 확인합니다.
+3. `https://sales-note-frontend-production.up.railway.app/downloads/`가 `404`인지 확인합니다.
+4. `https://web-production-8a820.up.railway.app/reporting/data-cleanup/`, `/reporting/downloads/`, `/reporting/api/downloads/`가 `404`인지 확인합니다.
+5. 기존 `/reports/`, 고객/계정 상세 Excel, 첨부파일 다운로드 버튼은 정상 동작하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 Z단계 Legacy 제거와 최종 전환
 
 ### 요약

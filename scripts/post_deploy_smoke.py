@@ -19,6 +19,8 @@ FRONTEND_REACT_ROUTES = (
     '/prepayments/',
     '/assets/',
     '/ai-workspace/',
+)
+REMOVED_FRONTEND_ROUTES = (
     '/data-cleanup/',
     '/downloads/',
 )
@@ -28,7 +30,6 @@ PROTECTED_DOMAIN_APIS = (
     '/reporting/api/prepayments/',
     '/reporting/api/customer-assets/',
     '/reporting/api/ai-workspace/',
-    '/reporting/api/downloads/',
 )
 
 
@@ -83,6 +84,18 @@ def expect_html_route(session, results, name, base_url, path, timeout=10):
         content_type = response.headers.get('content-type', '')
         ok = response.status_code == 200 and 'text/html' in content_type
         detail = f'{response.status_code} {content_type}'.strip()
+    except Exception as exc:
+        ok = False
+        detail = exc.__class__.__name__
+    record(results, name, ok, detail)
+
+
+def expect_removed_route(session, results, name, base_url, path, timeout=10):
+    url = build_url(base_url, path)
+    try:
+        response = session.get(url, timeout=timeout, allow_redirects=False)
+        ok = response.status_code == 404
+        detail = f'{response.status_code} {response.headers.get("content-type", "")}'.strip()
     except Exception as exc:
         ok = False
         detail = exc.__class__.__name__
@@ -204,6 +217,9 @@ def main():
 
     for route in FRONTEND_REACT_ROUTES:
         expect_html_route(session, results, f'frontend React route {route}', args.frontend_url, route, args.timeout)
+
+    for route in REMOVED_FRONTEND_ROUTES:
+        expect_removed_route(session, results, f'frontend removed route {route}', args.frontend_url, route, args.timeout)
 
     for api_path in PROTECTED_DOMAIN_APIS:
         expect_login_required_api(session, results, f'frontend protected API {api_path}', args.frontend_url, api_path, args.timeout)

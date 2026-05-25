@@ -325,16 +325,12 @@ import {
 } from './api/ai';
 import type { AccountCleanupPreviewData } from './api/accountCleanup';
 import { loadAccountCleanupPreviewData } from './api/accountCleanup';
-import type { DownloadsData } from './api/downloads';
-import { loadDownloadsData } from './api/downloads';
 import type { ReportsData } from './api/reports';
 import { loadReportsData } from './api/reports';
 import { emptyPipelineData, type Deal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
 import {
   AccountCleanupPreviewPage,
   CompanyManagementPage,
-  DataCleanupPage,
-  DownloadsPage,
   ReportsPage,
 } from './pages/lazyPages';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
@@ -1779,30 +1775,6 @@ const routeMeta: Record<
       { label: '파이프라인 XLSX', href: '/reporting/analytics/export/pipeline.xlsx' },
     ],
   },
-  dataCleanup: {
-    eyebrow: 'Sales CRM / Data Cleanup',
-    title: '데이터정리',
-    summary: '중복 계정과 담당자 후보를 검수하고 dry-run, 승인 실행, 감사 이력을 확인합니다.',
-    primaryHref: '/data-cleanup/',
-    primaryLabel: '데이터 정리 도구 열기',
-    actions: [
-      { label: '정리 도구', href: '/data-cleanup/', primary: true },
-      { label: '계정 현황표', href: '/reports/?export_scope=cleanup_candidates' },
-      { label: '고객 목록', href: '/customers/' },
-    ],
-  },
-  downloads: {
-    eyebrow: 'Sales CRM / Downloads',
-    title: '파일/다운로드',
-    summary: '파일, Excel, CSV 다운로드 URL과 권한 범위를 확인합니다.',
-    primaryHref: '/downloads/',
-    primaryLabel: '다운로드 허브 열기',
-    actions: [
-      { label: '다운로드 허브', href: '/downloads/', primary: true },
-      { label: '리포트', href: '/reports/' },
-      { label: '서류', href: '/documents/' },
-    ],
-  },
   customers: {
     eyebrow: 'Sales CRM / Customers',
     title: '고객',
@@ -2006,13 +1978,24 @@ const routeMeta: Record<
       { label: '주간보고', href: '/weekly-reports/' },
     ],
   },
+  notFound: {
+    eyebrow: 'Sales CRM',
+    title: '페이지를 찾을 수 없습니다',
+    summary: '요청한 화면은 현재 CRM 메뉴에서 제공하지 않습니다.',
+    primaryHref: '/dashboard/',
+    primaryLabel: '대시보드로 이동',
+    actions: [
+      { label: '대시보드', href: '/dashboard/', primary: true },
+      { label: '고객', href: '/customers/' },
+      { label: '분석', href: '/reports/' },
+    ],
+  },
 };
 
 function getCurrentView(): MainView {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
-  if (pathname.startsWith('/data-cleanup/')) return 'dataCleanup';
-  if (pathname.startsWith('/downloads/')) return 'downloads';
+  if (pathname.startsWith('/data-cleanup/') || pathname.startsWith('/downloads/')) return 'notFound';
   if (pathname.startsWith('/reports/')) return 'analytics';
   if (pathname.startsWith('/analytics/')) return 'analytics';
   if (pathname.startsWith('/companies/')) return 'companies';
@@ -21875,9 +21858,7 @@ export function App() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
   const [reportsData, setReportsData] = useState<ReportsData | null>(null);
-  const [reportsLoading, setReportsLoading] = useState(currentView === 'analytics' || currentView === 'dataCleanup');
-  const [downloadsData, setDownloadsData] = useState<DownloadsData | null>(null);
-  const [downloadsLoading, setDownloadsLoading] = useState(currentView === 'downloads');
+  const [reportsLoading, setReportsLoading] = useState(currentView === 'analytics');
   const [reportsDateFrom, setReportsDateFrom] = useState(() => new URLSearchParams(window.location.search).get('date_from') || '');
   const [reportsDateTo, setReportsDateTo] = useState(() => new URLSearchParams(window.location.search).get('date_to') || '');
   const [reportsUserId, setReportsUserId] = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
@@ -22189,12 +22170,11 @@ export function App() {
   }, [currentView, employeeCompany, employeeQuery, employeeRole, employeeStatus]);
 
   useEffect(() => {
-    if (currentView !== 'analytics' && currentView !== 'dataCleanup') {
+    if (currentView !== 'analytics') {
       return;
     }
     let alive = true;
     setReportsLoading(true);
-    const isCleanupView = currentView === 'dataCleanup';
     loadReportsData({
       companyId: reportsCompanyId,
       dateFrom: reportsDateFrom,
@@ -22204,8 +22184,6 @@ export function App() {
       exportScope: reportsExportScope,
       prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
       query: reportsQuery,
-      cleanupLimit: isCleanupView ? 100 : undefined,
-      cleanupHistoryLimit: isCleanupView ? 50 : undefined,
       userId: reportsUserId,
     }).then((data) => {
       if (!alive) {
@@ -22235,24 +22213,6 @@ export function App() {
     reportsQuery,
     reportsUserId,
   ]);
-
-  useEffect(() => {
-    if (currentView !== 'downloads') {
-      return;
-    }
-    let alive = true;
-    setDownloadsLoading(true);
-    loadDownloadsData().then((data) => {
-      if (!alive) {
-        return;
-      }
-      setDownloadsData(data);
-      setDownloadsLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [currentView]);
 
   useEffect(() => {
     if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId) {
@@ -23914,18 +23874,9 @@ export function App() {
       exportScope: reportsExportScope,
       prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
       query: reportsQuery,
-      cleanupLimit: currentView === 'dataCleanup' ? 100 : undefined,
-      cleanupHistoryLimit: currentView === 'dataCleanup' ? 50 : undefined,
       userId: reportsUserId,
     });
     setReportsData(data);
-    return data;
-  };
-  const refreshDownloadsData = async () => {
-    setDownloadsLoading(true);
-    const data = await loadDownloadsData();
-    setDownloadsData(data);
-    setDownloadsLoading(false);
     return data;
   };
   const refreshBusinessCardsData = async () => {
@@ -24571,36 +24522,6 @@ export function App() {
             onQueryChange={setReportsQuery}
             onRefresh={() => { void refreshReportsData(); }}
             onUserChange={setReportsUserId}
-          />
-        </LazyPageBoundary>
-      </AppShell>
-    );
-  }
-
-  if (currentView === 'dataCleanup') {
-    return (
-      <AppShell activeView={currentView}>
-        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <LazyPageBoundary>
-          <DataCleanupPage
-            data={reportsData}
-            loading={reportsLoading}
-            onRefresh={() => { void refreshReportsData(); }}
-          />
-        </LazyPageBoundary>
-      </AppShell>
-    );
-  }
-
-  if (currentView === 'downloads') {
-    return (
-      <AppShell activeView={currentView}>
-        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <LazyPageBoundary>
-          <DownloadsPage
-            data={downloadsData}
-            loading={downloadsLoading}
-            onRefresh={() => { void refreshDownloadsData(); }}
           />
         </LazyPageBoundary>
       </AppShell>
