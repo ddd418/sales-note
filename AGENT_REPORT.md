@@ -1,5 +1,125 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 V단계 API layer 정리
+
+### 요약
+
+- `frontend/src/api.ts`를 얇은 backward-compatible barrel로 바꾸고 기존 대형 혼합 구현은 `frontend/src/api/legacy.ts`로 분리했습니다.
+- `accounts`, `reports`, `prepayments`, `assets`, `ai`, `downloads`, `accountCleanup` 도메인 API 모듈을 React 화면에서 직접 import하도록 정리했습니다.
+- 공통 JSON fetch helper, CSRF header helper, login redirect 처리, JSON content-type 검사, payload error 처리 helper를 `frontend/src/api/shared.ts`에 추가했습니다.
+- reports/downloads/accountCleanup의 fetch/error handling을 공통 helper 기반으로 정리했습니다.
+- 타입 정의는 복사하지 않고 도메인 모듈에서 기존 타입을 re-export해 중복을 만들지 않았습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `frontend/src/api.ts`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/api/accounts.ts`
+- `frontend/src/api/prepayments.ts`
+- `frontend/src/api/assets.ts`
+- `frontend/src/api/ai.ts`
+- `frontend/src/api/shared.ts`
+- `frontend/src/api/reports.ts`
+- `frontend/src/api/accountCleanup.ts`
+- `frontend/src/api/downloads.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/pages/accounts/AccountCleanupPreviewPage.tsx`
+- `frontend/src/pages/companies/CompanyManagementPage.tsx`
+- `frontend/src/pages/data-cleanup/DataCleanupPage.tsx`
+- `frontend/src/pages/downloads/DownloadsPage.tsx`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+
+### CRM 개선
+
+- 계정/고객, 리포트, 선결제, 장비/서비스, AI 지휘석 화면이 각 도메인 API 모듈을 기준으로 import합니다.
+- 기존 `from './api'` 방식은 유지되어 아직 분리하지 않은 화면도 깨지지 않습니다.
+- 공통 fetch helper가 JSON 여부와 로그인 필요 응답을 같은 방식으로 처리해 API 응답 오류를 더 일관되게 다룹니다.
+- 이후 도메인별 API 개선 시 단일 거대 파일을 직접 만지는 범위를 줄였습니다.
+
+### 기존 기능 보존
+
+- Django API endpoint, URL, response shape은 변경하지 않았습니다.
+- `/reporting/*` 기존 API와 React proxy 경로를 유지했습니다.
+- 기존 central barrel import는 backward compatibility를 위해 계속 동작합니다.
+- 인증이 필요한 accounts/reports/prepayments/assets/AI/downloads API는 익명 접근 시 기존처럼 `401 login_required`를 반환합니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large App bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local API backward compatibility smoke
+→ frontend-proxied /reporting/api/customers/ returned 401 login_required when anonymous
+→ frontend-proxied /reporting/api/reports/ returned 401 login_required when anonymous
+→ frontend-proxied /reporting/api/prepayments/ returned 401 login_required when anonymous
+→ frontend-proxied /reporting/api/customer-assets/ returned 401 login_required when anonymous
+→ frontend-proxied /reporting/api/ai-workspace/ returned 401 login_required when anonymous
+→ frontend-proxied /reporting/api/downloads/ returned 401 login_required when anonymous
+
+Browser/local smoke
+→ Opened /customers/, /reports/, /prepayments/, /assets/, /ai-workspace/, /downloads/
+→ Confirmed expected domain text rendered for each route
+→ Browser console errors: none
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz, readyz, login page, protected reports API
+→ PASS frontend healthz, dashboard shell, protected reports API
+
+Production route/API smoke
+→ /customers/, /reports/, /prepayments/, /assets/, /ai-workspace/, /downloads/ returned 200 text/html
+→ frontend-proxied /reporting/api/customers/, /reports/, /prepayments/, /customer-assets/, /ai-workspace/, /downloads/ returned 401 login_required when anonymous
+```
+
+### 알려진 제한
+
+- `legacy.ts`에는 아직 notes/schedules/products/profile/mailbox/tasks/weekly/pipeline 구현이 남아 있습니다. 이번 V단계는 요청된 accounts/reports/prepayments/assets/AI 축을 우선 분리했습니다.
+- 도메인 모듈 중 accounts/prepayments/assets/AI는 현재 타입/함수 re-export 방식의 안정 진입점입니다. 후속 단계에서 구현까지 파일별로 옮기면 `legacy.ts`를 더 줄일 수 있습니다.
+- 실제 로그인 세션에서 각 화면의 상세 CRUD는 운영 수동 확인이 필요합니다.
+
+### Production Deployment Status
+
+- Completed.
+- Code commit `48abaa5 refactor: split frontend api domains` is present on `origin/main`.
+- Railway backend `web` deployment `c8357891-a806-43df-9015-98d697bac20f` succeeded for commit `48abaa5`.
+- Railway frontend `sales-note-frontend` deployment `da7bdb29-186f-4d3d-b4de-7127d5fedca7` succeeded for commit `48abaa5`.
+- Production anonymous smoke passed for domain React routes and protected domain API endpoints.
+- Authenticated production UI verification is pending user login/session confirmation.
+
+### Recommended Next Task
+
+- 사용자가 운영 서버에서 accounts/reports/prepayments/assets/AI 대표 화면을 수동 검수한 뒤 다음 React 완전대체 항목을 진행합니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/customers/`에 로그인 후 접속해 고객 목록/상세 이동이 정상인지 확인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/reports/`에서 필터 변경과 데이터 품질/다운로드 버튼 표시가 정상인지 확인합니다.
+3. `https://sales-note-frontend-production.up.railway.app/prepayments/`에서 목록, 상세, 신규 작성 화면 진입이 정상인지 확인합니다.
+4. `https://sales-note-frontend-production.up.railway.app/assets/`에서 장비 목록과 서비스 케이스 진입이 정상인지 확인합니다.
+5. `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에서 AI 지휘석 데이터 로딩, 질문 이력, 액션 카드 표시가 정상인지 확인합니다.
+6. `https://sales-note-frontend-production.up.railway.app/downloads/`에서 다운로드 허브가 계속 정상인지 확인합니다.
+7. 시크릿 창 또는 로그아웃 상태에서 `/reporting/api/customers/`, `/reporting/api/reports/`, `/reporting/api/prepayments/`, `/reporting/api/customer-assets/`, `/reporting/api/ai-workspace/`, `/reporting/api/downloads/`가 `401 login_required`를 반환하는지 확인합니다.
+8. 확인 중 화면 전환이나 API 오류 토스트가 반복되면 해당 URL과 동작을 알려주세요.
+
 ## 2026-05-25 — React 완전대체 U단계 파일/엑셀/다운로드 공통화
 
 ### 요약
