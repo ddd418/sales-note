@@ -84,6 +84,21 @@ Local browser smoke
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --json
+→ Backend deployment `82900d99-5530-435a-b2e2-8f90f2180f0f` SUCCESS for commit `04b3e0e`
+
+railway deployment list --service sales-note-frontend --json
+→ Frontend deployment `70d9b5cb-1051-44b2-bf9f-6a95aba97158` SUCCESS for commit `04b3e0e`
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS health, login, protected APIs, representative React routes, removed route 404s, and frontend static cache/compression headers
+
+Production receivables route smoke
+→ frontend `/receivables/`: 200
+→ frontend `/reporting/receivables/`: 302 to `/receivables/`
+→ frontend `/reporting/api/receivables/`: 401 login_required
+→ backend `/reporting/api/receivables/`: 401 login_required
 ```
 
 ### 알려진 제한
@@ -93,7 +108,12 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending. Runtime behavior changed, so this task must be committed, pushed, deployed to Railway, and smoke-tested.
+- Completed.
+- Code commit `04b3e0e feat: add receivables management menu` is present on `origin/main`.
+- Railway backend `web` deployment `82900d99-5530-435a-b2e2-8f90f2180f0f` succeeded for commit `04b3e0e`.
+- Railway frontend `sales-note-frontend` deployment `70d9b5cb-1051-44b2-bf9f-6a95aba97158` succeeded for commit `04b3e0e`.
+- Production smoke passed for health, login, protected APIs, representative React routes, removed forbidden routes, and frontend static cache/compression headers.
+- Authenticated `/receivables/` item mutation still needs user-side manual confirmation because it depends on a logged-in CRM session and real receivable data.
 
 ### Manual Server Test Process
 
