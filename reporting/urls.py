@@ -82,6 +82,9 @@ urlpatterns = [
     path('schedules/<int:schedule_id>/toggle-delivery-tax-invoice/', views.toggle_schedule_delivery_tax_invoice, name='toggle_schedule_delivery_tax_invoice'),
     path('api/navigation/', views.navigation_api, name='navigation_api'),
     path('api/employees/', views.employees_management_api, name='employees_management_api'),
+    path('api/employees/create/', views.employees_create_api, name='employees_create_api'),
+    path('api/employees/<int:user_id>/update/', views.employees_update_api, name='employees_update_api'),
+    path('api/employees/<int:user_id>/toggle-active/', views.employees_toggle_active_api, name='employees_toggle_active_api'),
     path('api/tasks/', lazy_view('todos.views.tasks_api'), name='tasks_api'),
     path('api/tasks/create/', lazy_view('todos.views.tasks_create_api'), name='tasks_create_api'),
     path('api/tasks/request/', lazy_view('todos.views.tasks_request_api'), name='tasks_request_api'),
@@ -246,17 +249,38 @@ urlpatterns = [
         views.manager_company_detail_view,
         lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk})),
     ), name='manager_company_detail'),    # 사용자 관리 URL들 (Admin 전용)
-    path('users/', views.user_list, name='user_list'),
-    path('users/create/', views.user_create, name='user_create'),
-    path('users/<int:user_id>/edit/', views.user_edit, name='user_edit'),
-    path('users/<int:user_id>/delete/', views.user_delete, name='user_delete'),
+    path('users/', react_page_redirect(
+        views.user_list,
+        static_react_page('employees/', rename={'search': 'q'}),
+    ), name='user_list'),
+    path('users/create/', react_page_redirect(
+        views.user_create,
+        static_react_page('employees/', extra={'create': '1'}),
+    ), name='user_create'),
+    path('users/<int:user_id>/edit/', react_page_redirect(
+        views.user_edit,
+        lambda request, user_id: frontend_url('employees/', query_with(request, extra={'employee': user_id, 'edit': '1'})),
+    ), name='user_edit'),
+    path('users/<int:user_id>/delete/', react_page_redirect(
+        views.user_delete,
+        lambda request, user_id: frontend_url('employees/', query_with(request, extra={'employee': user_id})),
+    ), name='user_delete'),
     path('users/<int:user_id>/toggle-active/', views.user_toggle_active, name='user_toggle_active'),
     path('users/<int:user_id>/toggle-ai/', views.user_toggle_ai, name='user_toggle_ai'),
     
     # 매니저용 사용자 관리 URL들 (Manager 전용)
-    path('manager/users/', views.manager_user_list, name='manager_user_list'),
-    path('manager/users/create/', views.manager_user_create, name='manager_user_create'),
-    path('manager/users/<int:user_id>/edit/', views.manager_user_edit, name='manager_user_edit'),
+    path('manager/users/', react_page_redirect(
+        views.manager_user_list,
+        static_react_page('employees/', rename={'search': 'q'}),
+    ), name='manager_user_list'),
+    path('manager/users/create/', react_page_redirect(
+        views.manager_user_create,
+        static_react_page('employees/', extra={'create': '1'}),
+    ), name='manager_user_create'),
+    path('manager/users/<int:user_id>/edit/', react_page_redirect(
+        views.manager_user_edit,
+        lambda request, user_id: frontend_url('employees/', query_with(request, extra={'employee': user_id, 'edit': '1'})),
+    ), name='manager_user_edit'),
     
     # Manager 전용 URL들
     path('manager/', views.manager_dashboard, name='manager_dashboard'),

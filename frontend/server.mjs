@@ -211,6 +211,30 @@ function getCoreCrmReactLocation(requestUrl) {
   if (pathname === '/reporting/analytics/' || pathname === '/reporting/analytics') {
     return buildReactLocation('/reports/', params);
   }
+  if (
+    pathname === '/reporting/users/' ||
+    pathname === '/reporting/users' ||
+    pathname === '/reporting/manager/users/' ||
+    pathname === '/reporting/manager/users'
+  ) {
+    return buildReactLocation('/employees/', params, { rename: { search: 'q' } });
+  }
+  if (
+    pathname === '/reporting/users/create/' ||
+    pathname === '/reporting/users/create' ||
+    pathname === '/reporting/manager/users/create/' ||
+    pathname === '/reporting/manager/users/create'
+  ) {
+    return buildReactLocation('/employees/', params, { extra: { create: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/(?:manager\/)?users\/(\d+)\/edit\/?$/);
+  if (match) {
+    return buildReactLocation('/employees/', params, { extra: { employee: match[1], edit: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/users\/(\d+)\/delete\/?$/);
+  if (match) {
+    return buildReactLocation('/employees/', params, { extra: { employee: match[1] } });
+  }
   if (pathname === '/reporting/prepayment/' || pathname === '/reporting/prepayment') {
     return buildReactLocation('/prepayments/', params, { rename: { search: 'q' } });
   }

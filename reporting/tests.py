@@ -344,6 +344,25 @@ class CoreCrmLegacyRedirectTests(TestCase):
             'prepayments/?q=%EC%9E%85%EA%B8%88%EC%9E%90&status=active&data_filter=all',
         )
 
+    def test_user_management_legacy_routes_redirect_to_react_employees(self):
+        self.assertReactRedirect(
+            f"{reverse('reporting:user_list')}?search=kim&role=salesman",
+            'employees/?q=kim&role=salesman',
+        )
+        self.assertReactRedirect(reverse('reporting:user_create'), 'employees/?create=1')
+        self.assertReactRedirect(
+            reverse('reporting:user_edit', args=[self.user.id]),
+            f'employees/?employee={self.user.id}&edit=1',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:manager_user_list'),
+            'employees/',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:manager_user_edit', args=[self.user.id]),
+            f'employees/?employee={self.user.id}&edit=1',
+        )
+
     def test_non_get_legacy_create_action_is_not_redirected_to_react(self):
         response = self.client.post(reverse('reporting:schedule_create'), {
             'followup': str(self.followup.id),
@@ -408,10 +427,10 @@ class ReactNavigationApiTests(TestCase):
         admin_response = self.client.get(reverse('reporting:navigation_api'))
         admin_items = {item['id']: item for item in admin_response.json()['items']}
         self.assertNotIn('employees', admin_items)
-        self.assertFalse(admin_response.json()['capabilities']['canManageEmployees'])
+        self.assertTrue(admin_response.json()['capabilities']['canManageEmployees'])
         self.assertIn('userAdmin', admin_items)
         self.assertEqual(admin_items['userAdmin']['label'], '사용자관리')
-        self.assertEqual(admin_items['userAdmin']['href'], reverse('reporting:user_list'))
+        self.assertEqual(admin_items['userAdmin']['href'], '/employees/')
         self.assertTrue(admin_response.json()['capabilities']['canManageUsers'])
 
     def test_navigation_api_role_menu_differences(self):
@@ -451,12 +470,13 @@ class ReactNavigationApiTests(TestCase):
         self.assertIn('userAdmin', admin_ids)
         self.assertNotIn('tasksManager', admin_ids)
         self.assertNotIn('employees', admin_ids)
+        self.assertTrue(admin_payload['capabilities']['canManageEmployees'])
         self.assertTrue(admin_payload['capabilities']['canManageUsers'])
         self.assertTrue(admin_payload['capabilities']['canUseMailbox'])
 
 
 class EmployeeManagementApiTests(TestCase):
-    """Manager-only employee management API tests."""
+    """React user/employee management API tests for admin and manager roles."""
 
     def setUp(self):
         self.client = Client()
@@ -475,7 +495,7 @@ class EmployeeManagementApiTests(TestCase):
         self.client.force_login(self.salesman)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['error'], 'manager_required')
+        self.assertEqual(response.json()['error'], 'management_required')
 
     def test_employee_management_api_lists_same_company_people(self):
         self.coworker.first_name = '길동'
@@ -509,7 +529,9 @@ class EmployeeManagementApiTests(TestCase):
         self.assertTrue(coworker_payload['canDownloadExcel'])
         self.assertTrue(coworker_payload['canUseAi'])
         self.assertEqual(coworker_payload['createdByName'], self.manager.username)
-        self.assertEqual(coworker_payload['editHref'], reverse('reporting:manager_user_edit', args=[self.coworker.id]))
+        self.assertEqual(coworker_payload['editHref'], f'/employees/?employee={self.coworker.id}&edit=1')
+        self.assertEqual(coworker_payload['updateHref'], reverse('reporting:employees_update_api', args=[self.coworker.id]))
+        self.assertEqual(coworker_payload['toggleActiveHref'], reverse('reporting:employees_toggle_active_api', args=[self.coworker.id]))
         manager_payload = next(item for item in payload['employees'] if item['id'] == self.manager.id)
         self.assertEqual(manager_payload['editHref'], '')
         self.assertTrue(manager_payload['isCurrentUser'])
@@ -527,6 +549,130 @@ class EmployeeManagementApiTests(TestCase):
         self.assertEqual(payload['filters']['q'], '필터')
         self.assertEqual(payload['filters']['role'], 'salesman')
         self.assertEqual([item['id'] for item in payload['employees']], [self.coworker.id])
+
+    def test_admin_employee_management_api_lists_all_and_filters_company(self):
+        admin = make_user('employee-api-admin', role='admin')
+        self.client.force_login(admin)
+
+        response = self.client.get(self.url, {'company': str(self.other_company.id)})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['scope']['mode'], 'admin')
+        self.assertTrue(payload['scope']['canChangeRole'])
+        self.assertEqual(payload['filters']['company'], str(self.other_company.id))
+        ids = {item['id'] for item in payload['employees']}
+        self.assertIn(self.other_user.id, ids)
+        self.assertNotIn(self.salesman.id, ids)
+        self.assertGreaterEqual(len(payload['options']['companies']), 2)
+
+    def test_manager_can_create_salesman_only_in_own_company(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('reporting:employees_create_api'),
+            data=json.dumps({
+                'username': 'employee-api-created',
+                'password': 'secret-password',
+                'passwordConfirm': 'secret-password',
+                'role': 'manager',
+                'companyName': self.other_company.name,
+                'canUseAi': True,
+                'canDownloadExcel': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        created = User.objects.get(username='employee-api-created')
+        profile = created.userprofile
+        self.assertEqual(profile.role, 'salesman')
+        self.assertEqual(profile.company_id, self.company.id)
+        self.assertFalse(profile.can_use_ai)
+        self.assertTrue(profile.can_download_excel)
+        self.assertEqual(payload['employee']['companyId'], self.company.id)
+
+    def test_manager_cannot_update_other_company_employee(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('reporting:employees_update_api', args=[self.other_user.id]),
+            data=json.dumps({'username': 'blocked-other-company'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_manager_update_keeps_role_company_and_ai_fixed(self):
+        self.client.force_login(self.manager)
+        response = self.client.post(
+            reverse('reporting:employees_update_api', args=[self.coworker.id]),
+            data=json.dumps({
+                'username': 'employee-api-coworker-updated',
+                'role': 'manager',
+                'companyName': self.other_company.name,
+                'canUseAi': True,
+                'canDownloadExcel': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.coworker.refresh_from_db()
+        profile = self.coworker.userprofile
+        self.assertEqual(self.coworker.username, 'employee-api-coworker-updated')
+        self.assertEqual(profile.role, 'salesman')
+        self.assertEqual(profile.company_id, self.company.id)
+        self.assertFalse(profile.can_use_ai)
+        self.assertTrue(profile.can_download_excel)
+
+    def test_admin_can_create_update_and_toggle_user(self):
+        admin = make_user('employee-api-admin-mutate', role='admin')
+        self.client.force_login(admin)
+        create_response = self.client.post(
+            reverse('reporting:employees_create_api'),
+            data=json.dumps({
+                'username': 'employee-api-admin-created',
+                'password': 'secret-password',
+                'passwordConfirm': 'secret-password',
+                'role': 'manager',
+                'companyId': str(self.company.id),
+                'canUseAi': True,
+                'canDownloadExcel': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(create_response.status_code, 201)
+        created = User.objects.get(username='employee-api-admin-created')
+        self.assertEqual(created.userprofile.role, 'manager')
+        self.assertTrue(created.userprofile.can_use_ai)
+
+        update_response = self.client.post(
+            reverse('reporting:employees_update_api', args=[created.id]),
+            data=json.dumps({
+                'username': 'employee-api-admin-updated',
+                'role': 'salesman',
+                'companyName': self.other_company.name,
+                'canUseAi': False,
+                'canDownloadExcel': False,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(update_response.status_code, 200)
+        created.refresh_from_db()
+        created.userprofile.refresh_from_db()
+        self.assertEqual(created.username, 'employee-api-admin-updated')
+        self.assertEqual(created.userprofile.role, 'salesman')
+        self.assertEqual(created.userprofile.company_id, self.other_company.id)
+        self.assertFalse(created.userprofile.can_use_ai)
+
+        toggle_response = self.client.post(
+            reverse('reporting:employees_toggle_active_api', args=[created.id]),
+            data=json.dumps({'isActive': False}),
+            content_type='application/json',
+        )
+        self.assertEqual(toggle_response.status_code, 200)
+        created.refresh_from_db()
+        self.assertFalse(created.is_active)
 
 
 class SalesNoteReadonlyBearerApiTests(TestCase):

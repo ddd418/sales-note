@@ -1,5 +1,46 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement P-step user/employee management plan
+
+**Background**:
+
+- User asked to complete React full replacement item P for admin user management and manager employee management.
+- Current React `/employees/` exists only as a manager employee list and still links create/edit actions to Django templates.
+- Admin navigation currently points to legacy `/reporting/users/` instead of a React user-management screen.
+- Existing Django templates support admin user list/create/edit/toggle/delete and manager same-company employee list/create/edit.
+
+**DB change required**: No.
+
+- Existing Django `User`, `UserProfile`, and `UserCompany` models already support role, company, active status, Excel permission, AI permission, and created-by audit fields.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Make React `/employees/` the canonical user/employee management screen for both admin and manager.
+- Extend the employees JSON API to support:
+  - admin listing all users with company/role/status/search filters
+  - manager listing same-company manager/salesman users only
+  - permission metadata that defines what each role can create, edit, deactivate, and change
+- Add JSON mutation APIs for employee create/update and active-status toggle.
+- Keep manager scope limited to same-company users; manager can create salesman accounts only and cannot change role, company, or AI permission.
+- Keep admin scope global; admin can create/update users, assign company/role, set Excel/AI permissions, change password, and activate/deactivate non-self users.
+- Avoid hard delete in React for this phase; use activation status for operational safety.
+- Remove visible Django fallback links from the React employee page and route metadata.
+- Redirect authenticated GET/HEAD legacy admin and manager user-management URLs to React `/employees/`, while preserving POST fallback routes during transition.
+- Add focused tests for admin global list/create/update/toggle, manager same-company scoping, manager mutation restrictions, salesman blocking, and legacy redirects.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.ReactNavigationApiTests reporting.tests.EmployeeManagementApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/employees/`, `/reporting/users/`, `/reporting/manager/users/`, and protected employee APIs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement O-step tasks/comments/delegation plan
 
 **Background**:

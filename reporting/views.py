@@ -2242,7 +2242,7 @@ def navigation_api(request):
         items.append({'id': 'tasksManager', 'label': '업무하달', 'href': '/tasks/manager/'})
         items.append({'id': 'employees', 'label': '직원관리', 'href': '/employees/'})
     if profile.role == 'admin':
-        items.append({'id': 'userAdmin', 'label': '사용자관리', 'href': reverse('reporting:user_list')})
+        items.append({'id': 'userAdmin', 'label': '사용자관리', 'href': '/employees/'})
     if profile.role != 'manager':
         items.append({'id': 'mail', 'label': '메일', 'href': '/mailbox/'})
     items.append({'id': 'businessCards', 'label': '명함', 'href': '/mailbox/business-cards/'})
@@ -2271,7 +2271,7 @@ def navigation_api(request):
         },
         'capabilities': {
             'canManageTasks': profile.role == 'manager',
-            'canManageEmployees': profile.role == 'manager',
+            'canManageEmployees': profile.role in ['admin', 'manager'],
             'canManageUsers': profile.role == 'admin',
             'canManageCompanies': profile.role != 'manager',
             'canUseAi': bool(profile.can_use_ai),
@@ -2285,20 +2285,20 @@ def navigation_api(request):
 @never_cache
 @require_http_methods(["GET"])
 def employees_management_api(request):
-    """Manager-only React employee management list API."""
+    """React user/employee management list API for admin and manager roles."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
 
     profile = get_user_profile(request.user)
-    if not profile.is_manager():
+    if not (profile.is_admin() or profile.is_manager()):
         return JsonResponse({
             'success': False,
             'source': 'django',
-            'error': 'manager_required',
-            'message': '직원관리는 Manager 계정만 사용할 수 있습니다.',
+            'error': 'management_required',
+            'message': '사용자/직원 관리는 Admin 또는 Manager 계정만 사용할 수 있습니다.',
         }, status=403)
-    if not profile.company_id:
+    if profile.is_manager() and not profile.company_id:
         return JsonResponse({
             'success': False,
             'source': 'django',
@@ -2308,29 +2308,45 @@ def employees_management_api(request):
 
     search_query = (request.GET.get('q') or request.GET.get('search') or '').strip()
     role_filter = (request.GET.get('role') or '').strip()
-    valid_roles = {'manager', 'salesman'}
+    status_filter = (request.GET.get('status') or '').strip()
+    company_filter = (request.GET.get('company') or request.GET.get('company_id') or '').strip()
+    valid_roles = {'admin', 'manager', 'salesman'} if profile.is_admin() else {'manager', 'salesman'}
+    valid_statuses = {'active', 'inactive'}
 
-    users = User.objects.select_related('userprofile', 'userprofile__created_by').filter(
-        userprofile__company=profile.company,
+    users = User.objects.select_related('userprofile', 'userprofile__company', 'userprofile__created_by').filter(
         userprofile__role__in=valid_roles,
     )
+    if profile.is_manager():
+        users = users.filter(userprofile__company=profile.company)
+    elif company_filter.isdigit():
+        users = users.filter(userprofile__company_id=int(company_filter))
+    else:
+        company_filter = ''
     if search_query:
         users = users.filter(
             Q(username__icontains=search_query)
             | Q(first_name__icontains=search_query)
             | Q(last_name__icontains=search_query)
             | Q(email__icontains=search_query)
+            | Q(userprofile__company__name__icontains=search_query)
         )
     if role_filter in valid_roles:
         users = users.filter(userprofile__role=role_filter)
     else:
         role_filter = ''
+    if status_filter == 'active':
+        users = users.filter(is_active=True)
+    elif status_filter == 'inactive':
+        users = users.filter(is_active=False)
+    else:
+        status_filter = ''
 
     total_count = users.count()
     active_count = users.filter(is_active=True).count()
+    admin_count = users.filter(userprofile__role='admin').count() if profile.is_admin() else 0
     manager_count = users.filter(userprofile__role='manager').count()
     salesman_count = users.filter(userprofile__role='salesman').count()
-    users = users.order_by('userprofile__role', 'last_name', 'first_name', 'username')
+    users = users.order_by('userprofile__company__name', 'userprofile__role', 'last_name', 'first_name', 'username')
 
     return JsonResponse({
         'success': True,
@@ -2338,55 +2354,355 @@ def employees_management_api(request):
         'generatedAt': timezone.now().isoformat(),
         'scope': {
             'canManage': True,
+            'mode': 'admin' if profile.is_admin() else 'manager',
             'companyId': profile.company_id,
-            'companyName': profile.company.name,
-            'label': f'{profile.company.name} 직원관리',
+            'companyName': profile.company.name if profile.company else '',
+            'label': '전체 사용자관리' if profile.is_admin() else f'{profile.company.name} 직원관리',
+            'canCreate': True,
+            'canUpdate': True,
+            'canDeactivate': True,
+            'canChangeRole': profile.is_admin(),
+            'canChangeCompany': profile.is_admin(),
+            'canChangeAi': profile.is_admin(),
+            'canChangePassword': True,
+            'canDelete': False,
         },
         'filters': {
             'q': search_query,
             'role': role_filter,
+            'status': status_filter,
+            'company': company_filter,
         },
         'metrics': {
             'totalEmployees': total_count,
             'activeEmployees': active_count,
             'inactiveEmployees': max(total_count - active_count, 0),
+            'adminCount': admin_count,
             'managerCount': manager_count,
             'salesmanCount': salesman_count,
         },
         'options': {
             'roles': [
                 {'value': '', 'label': '전체 권한'},
+                *([{'value': 'admin', 'label': 'Admin'}] if profile.is_admin() else []),
                 {'value': 'manager', 'label': 'Manager'},
                 {'value': 'salesman', 'label': 'SalesMan'},
             ],
+            'statuses': [
+                {'value': '', 'label': '전체 상태'},
+                {'value': 'active', 'label': '활성'},
+                {'value': 'inactive', 'label': '비활성'},
+            ],
+            'companies': [
+                {'id': company.id, 'name': company.name}
+                for company in UserCompany.objects.order_by('name')
+            ] if profile.is_admin() else [
+                {'id': profile.company_id, 'name': profile.company.name}
+            ],
         },
         'links': {
-            'djangoList': reverse('reporting:manager_user_list'),
-            'create': reverse('reporting:manager_user_create'),
+            'listApi': reverse('reporting:employees_management_api'),
+            'createApi': reverse('reporting:employees_create_api'),
+            'djangoList': reverse('reporting:user_list') if profile.is_admin() else reverse('reporting:manager_user_list'),
+            'create': reverse('reporting:user_create') if profile.is_admin() else reverse('reporting:manager_user_create'),
         },
         'employees': [
-            {
-                'id': user.id,
-                'username': user.username,
-                'name': _user_display_name(user),
-                'firstName': user.first_name,
-                'lastName': user.last_name,
-                'email': user.email,
-                'role': user.userprofile.role,
-                'roleLabel': user.userprofile.get_role_display(),
-                'company': profile.company.name,
-                'isActive': bool(user.is_active),
-                'canDownloadExcel': bool(user.userprofile.can_download_excel),
-                'canUseAi': bool(user.userprofile.can_use_ai),
-                'lastLogin': _datetime_or_none(user.last_login),
-                'dateJoined': _datetime_or_none(user.date_joined),
-                'createdByName': _user_display_name(user.userprofile.created_by) if user.userprofile.created_by_id else '',
-                'createdAt': _datetime_or_none(user.userprofile.created_at),
-                'editHref': reverse('reporting:manager_user_edit', args=[user.id]) if user.id != request.user.id else '',
-                'isCurrentUser': user.id == request.user.id,
-            }
+            _employee_management_payload(user, request.user)
             for user in users
         ],
+    })
+
+
+def _employees_parse_payload(request):
+    if request.content_type and 'application/json' in request.content_type:
+        try:
+            return json.loads(request.body.decode('utf-8') or '{}'), None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}, '잘못된 요청 형식입니다.'
+    return request.POST, None
+
+
+def _employee_bool_value(payload, *keys, default=False):
+    for key in keys:
+        if hasattr(payload, 'get') and key in payload:
+            value = payload.get(key)
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {'true', '1', 'yes', 'on'}:
+                    return True
+                if lowered in {'false', '0', 'no', 'off'}:
+                    return False
+            return bool(value)
+    return default
+
+
+def _employee_text_value(payload, *keys):
+    for key in keys:
+        value = payload.get(key) if hasattr(payload, 'get') else None
+        if value is not None:
+            return str(value).strip()
+    return ''
+
+
+def _employee_company_from_payload(payload, *, required=False):
+    company_id = _employee_text_value(payload, 'companyId', 'company_id', 'company')
+    company_name = _employee_text_value(payload, 'companyName', 'company_name')
+    if company_id.isdigit():
+        company = UserCompany.objects.filter(id=int(company_id)).first()
+        if company:
+            return company, None
+        return None, '선택한 회사를 찾을 수 없습니다.'
+    if company_id and not company_name:
+        company_name = company_id
+    if company_name:
+        return UserCompany.objects.get_or_create(name=company_name)[0], None
+    if required:
+        return None, '소속 회사를 입력하세요.'
+    return None, None
+
+
+def _employee_manage_profile(user):
+    return get_user_profile(user)
+
+
+def _employee_target_for_manager(actor, target_id):
+    actor_profile = _employee_manage_profile(actor)
+    if actor_profile.is_admin():
+        return get_object_or_404(
+            User.objects.select_related('userprofile', 'userprofile__company', 'userprofile__created_by'),
+            id=target_id,
+        )
+    if actor_profile.is_manager() and actor_profile.company_id:
+        return get_object_or_404(
+            User.objects.select_related('userprofile', 'userprofile__company', 'userprofile__created_by'),
+            id=target_id,
+            userprofile__company=actor_profile.company,
+            userprofile__role__in=['manager', 'salesman'],
+        )
+    raise Http404
+
+
+def _employee_can_update(actor, target):
+    actor_profile = _employee_manage_profile(actor)
+    if actor_profile.is_admin():
+        return True
+    if actor_profile.is_manager():
+        target_profile = _employee_manage_profile(target)
+        return bool(
+            actor_profile.company_id
+            and target_profile.company_id == actor_profile.company_id
+            and target_profile.role in ['manager', 'salesman']
+            and target.id != actor.id
+        )
+    return False
+
+
+def _employee_management_payload(user, actor):
+    actor_profile = _employee_manage_profile(actor)
+    user_profile = _employee_manage_profile(user)
+    is_admin_actor = actor_profile.is_admin()
+    can_update = _employee_can_update(actor, user)
+    can_toggle = can_update and user.id != actor.id
+    company = user_profile.company
+    return {
+        'id': user.id,
+        'username': user.username,
+        'name': _user_display_name(user),
+        'firstName': user.first_name,
+        'lastName': user.last_name,
+        'email': user.email,
+        'role': user_profile.role,
+        'roleLabel': user_profile.get_role_display(),
+        'companyId': company.id if company else None,
+        'company': company.name if company else '',
+        'isActive': bool(user.is_active),
+        'canDownloadExcel': bool(user_profile.can_download_excel),
+        'canUseAi': bool(user_profile.can_use_ai),
+        'lastLogin': _datetime_or_none(user.last_login),
+        'dateJoined': _datetime_or_none(user.date_joined),
+        'createdByName': _user_display_name(user_profile.created_by) if user_profile.created_by_id else '',
+        'createdAt': _datetime_or_none(user_profile.created_at),
+        'editHref': f'/employees/?employee={user.id}&edit=1' if can_update else '',
+        'updateHref': reverse('reporting:employees_update_api', args=[user.id]) if can_update else '',
+        'toggleActiveHref': reverse('reporting:employees_toggle_active_api', args=[user.id]) if can_toggle else '',
+        'canUpdate': can_update,
+        'canToggleActive': can_toggle,
+        'canChangeRole': can_update and is_admin_actor,
+        'canChangeCompany': can_update and is_admin_actor,
+        'canChangeAi': can_update and is_admin_actor,
+        'canChangePassword': can_update,
+        'canDelete': False,
+        'isCurrentUser': user.id == actor.id,
+    }
+
+
+@never_cache
+@require_http_methods(["POST"])
+def employees_create_api(request):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    actor_profile = _employee_manage_profile(request.user)
+    if not (actor_profile.is_admin() or actor_profile.is_manager()):
+        return JsonResponse({'success': False, 'error': '사용자 생성 권한이 없습니다.'}, status=403)
+    if actor_profile.is_manager() and not actor_profile.company_id:
+        return JsonResponse({'success': False, 'error': '소속 회사 정보가 없습니다.'}, status=400)
+
+    payload, error = _employees_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+
+    username = _employee_text_value(payload, 'username')
+    password = _employee_text_value(payload, 'password', 'password1')
+    password_confirm = _employee_text_value(payload, 'passwordConfirm', 'password2')
+    if not username:
+        return JsonResponse({'success': False, 'error': '사용자 ID를 입력하세요.'}, status=400)
+    if User.objects.filter(username=username).exists():
+        return JsonResponse({'success': False, 'error': f'사용자 ID "{username}"은 이미 사용 중입니다.'}, status=400)
+    if not password:
+        return JsonResponse({'success': False, 'error': '비밀번호를 입력하세요.'}, status=400)
+    if password_confirm and password != password_confirm:
+        return JsonResponse({'success': False, 'error': '비밀번호가 일치하지 않습니다.'}, status=400)
+
+    if actor_profile.is_manager():
+        role = 'salesman'
+        company = actor_profile.company
+        can_use_ai = False
+    else:
+        role = _employee_text_value(payload, 'role') or 'salesman'
+        if role not in {'admin', 'manager', 'salesman'}:
+            return JsonResponse({'success': False, 'error': '올바른 권한을 선택하세요.'}, status=400)
+        company, company_error = _employee_company_from_payload(payload, required=role != 'admin')
+        if company_error:
+            return JsonResponse({'success': False, 'error': company_error}, status=400)
+        can_use_ai = _employee_bool_value(payload, 'canUseAi', 'can_use_ai')
+
+    with transaction.atomic():
+        user = User.objects.create_user(
+            username=username,
+            email=_employee_text_value(payload, 'email'),
+            password=password,
+            first_name=_employee_text_value(payload, 'firstName', 'first_name'),
+            last_name=_employee_text_value(payload, 'lastName', 'last_name'),
+        )
+        UserProfile.objects.create(
+            user=user,
+            company=company,
+            role=role,
+            can_download_excel=_employee_bool_value(payload, 'canDownloadExcel', 'can_download_excel'),
+            can_use_ai=can_use_ai,
+            created_by=request.user,
+        )
+
+    user = User.objects.select_related('userprofile', 'userprofile__company', 'userprofile__created_by').get(pk=user.pk)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': f'사용자 "{user.username}"을(를) 생성했습니다.',
+        'employee': _employee_management_payload(user, request.user),
+    }, status=201)
+
+
+@never_cache
+@require_http_methods(["POST"])
+def employees_update_api(request, user_id):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    target = _employee_target_for_manager(request.user, user_id)
+    if not _employee_can_update(request.user, target):
+        return JsonResponse({'success': False, 'error': '사용자 수정 권한이 없습니다.'}, status=403)
+
+    actor_profile = _employee_manage_profile(request.user)
+    target_profile = _employee_manage_profile(target)
+    payload, error = _employees_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+
+    username = _employee_text_value(payload, 'username') or target.username
+    if User.objects.filter(username=username).exclude(pk=target.pk).exists():
+        return JsonResponse({'success': False, 'error': f'사용자 ID "{username}"은 이미 사용 중입니다.'}, status=400)
+
+    password = _employee_text_value(payload, 'password', 'password1')
+    password_confirm = _employee_text_value(payload, 'passwordConfirm', 'password2')
+    if password_confirm and password and password != password_confirm:
+        return JsonResponse({'success': False, 'error': '비밀번호가 일치하지 않습니다.'}, status=400)
+
+    target.username = username
+    target.email = _employee_text_value(payload, 'email') if 'email' in payload else target.email
+    target.first_name = _employee_text_value(payload, 'firstName', 'first_name') if any(key in payload for key in ['firstName', 'first_name']) else target.first_name
+    target.last_name = _employee_text_value(payload, 'lastName', 'last_name') if any(key in payload for key in ['lastName', 'last_name']) else target.last_name
+    if password:
+        target.set_password(password)
+    if any(key in payload for key in ['isActive', 'is_active']):
+        requested_active = _employee_bool_value(payload, 'isActive', 'is_active', default=target.is_active)
+        if target.id == request.user.id and not requested_active:
+            return JsonResponse({'success': False, 'error': '자기 자신의 계정은 비활성화할 수 없습니다.'}, status=400)
+        target.is_active = requested_active
+
+    if actor_profile.is_admin():
+        role = _employee_text_value(payload, 'role') or target_profile.role
+        if role not in {'admin', 'manager', 'salesman'}:
+            return JsonResponse({'success': False, 'error': '올바른 권한을 선택하세요.'}, status=400)
+        company, company_error = _employee_company_from_payload(payload, required=role != 'admin')
+        if company_error:
+            return JsonResponse({'success': False, 'error': company_error}, status=400)
+        if company is not None or role == 'admin':
+            target_profile.company = company
+        target_profile.role = role
+        target_profile.can_use_ai = _employee_bool_value(payload, 'canUseAi', 'can_use_ai', default=target_profile.can_use_ai)
+    target_profile.can_download_excel = _employee_bool_value(
+        payload,
+        'canDownloadExcel',
+        'can_download_excel',
+        default=target_profile.can_download_excel,
+    )
+
+    with transaction.atomic():
+        target.save()
+        target_profile.save()
+
+    target = User.objects.select_related('userprofile', 'userprofile__company', 'userprofile__created_by').get(pk=target.pk)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': f'사용자 "{target.username}" 정보를 수정했습니다.',
+        'employee': _employee_management_payload(target, request.user),
+    })
+
+
+@never_cache
+@require_http_methods(["POST"])
+def employees_toggle_active_api(request, user_id):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    target = _employee_target_for_manager(request.user, user_id)
+    if not _employee_can_update(request.user, target):
+        return JsonResponse({'success': False, 'error': '사용자 상태 변경 권한이 없습니다.'}, status=403)
+    if target.id == request.user.id:
+        return JsonResponse({'success': False, 'error': '자기 자신의 계정은 비활성화할 수 없습니다.'}, status=400)
+
+    payload, error = _employees_parse_payload(request)
+    if error:
+        return JsonResponse({'success': False, 'error': error}, status=400)
+    if any(key in payload for key in ['isActive', 'is_active']):
+        target.is_active = _employee_bool_value(payload, 'isActive', 'is_active', default=target.is_active)
+    else:
+        target.is_active = not target.is_active
+    target.save(update_fields=['is_active'])
+
+    target = User.objects.select_related('userprofile', 'userprofile__company', 'userprofile__created_by').get(pk=target.pk)
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'message': '사용자를 활성화했습니다.' if target.is_active else '사용자를 비활성화했습니다.',
+        'employee': _employee_management_payload(target, request.user),
     })
 
 

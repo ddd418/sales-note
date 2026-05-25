@@ -4302,6 +4302,7 @@ export type EmployeeManagementItem = {
   email: string;
   role: string;
   roleLabel: string;
+  companyId: number | null;
   company: string;
   isActive: boolean;
   canDownloadExcel: boolean;
@@ -4311,6 +4312,15 @@ export type EmployeeManagementItem = {
   createdByName: string;
   createdAt: string | null;
   editHref: string;
+  updateHref: string;
+  toggleActiveHref: string;
+  canUpdate: boolean;
+  canToggleActive: boolean;
+  canChangeRole: boolean;
+  canChangeCompany: boolean;
+  canChangeAi: boolean;
+  canChangePassword: boolean;
+  canDelete: boolean;
   isCurrentUser: boolean;
 };
 
@@ -4322,29 +4332,68 @@ export type EmployeesData = {
   message?: string;
   scope: {
     canManage: boolean;
+    mode: string;
     companyId: number | null;
     companyName: string;
     label: string;
+    canCreate: boolean;
+    canUpdate: boolean;
+    canDeactivate: boolean;
+    canChangeRole: boolean;
+    canChangeCompany: boolean;
+    canChangeAi: boolean;
+    canChangePassword: boolean;
+    canDelete: boolean;
   };
   filters: {
     q: string;
     role: string;
+    status: string;
+    company: string;
   };
   metrics: {
     totalEmployees: number;
     activeEmployees: number;
     inactiveEmployees: number;
+    adminCount?: number;
     managerCount: number;
     salesmanCount: number;
   };
   options: {
     roles: Array<{ value: string; label: string }>;
+    statuses: Array<{ value: string; label: string }>;
+    companies: Array<{ id: number; name: string }>;
   };
   links: {
+    listApi: string;
+    createApi: string;
     djangoList: string;
     create: string;
   };
   employees: EmployeeManagementItem[];
+};
+
+export type EmployeeMutationPayload = {
+  username: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: string;
+  companyId?: string;
+  companyName?: string;
+  password?: string;
+  passwordConfirm?: string;
+  canDownloadExcel?: boolean;
+  canUseAi?: boolean;
+  isActive?: boolean;
+};
+
+export type EmployeeMutationResponse = {
+  success?: boolean;
+  source?: 'django';
+  message?: string;
+  error?: string;
+  employee?: EmployeeManagementItem;
 };
 
 export type TaskUser = {
@@ -6065,29 +6114,50 @@ const emptyEmployeesData: EmployeesData = {
   generatedAt: new Date().toISOString(),
   scope: {
     canManage: false,
+    mode: '',
     companyId: null,
     companyName: '',
     label: '',
+    canCreate: false,
+    canUpdate: false,
+    canDeactivate: false,
+    canChangeRole: false,
+    canChangeCompany: false,
+    canChangeAi: false,
+    canChangePassword: false,
+    canDelete: false,
   },
   filters: {
     q: '',
     role: '',
+    status: '',
+    company: '',
   },
   metrics: {
     totalEmployees: 0,
     activeEmployees: 0,
     inactiveEmployees: 0,
+    adminCount: 0,
     managerCount: 0,
     salesmanCount: 0,
   },
   options: {
     roles: [
       { value: '', label: '전체 권한' },
+      { value: 'admin', label: 'Admin' },
       { value: 'manager', label: 'Manager' },
       { value: 'salesman', label: 'SalesMan' },
     ],
+    statuses: [
+      { value: '', label: '전체 상태' },
+      { value: 'active', label: '활성' },
+      { value: 'inactive', label: '비활성' },
+    ],
+    companies: [],
   },
   links: {
+    listApi: '/reporting/api/employees/',
+    createApi: '/reporting/api/employees/create/',
     djangoList: '/reporting/manager/users/',
     create: '/reporting/manager/users/create/',
   },
@@ -10262,10 +10332,12 @@ export async function loadNavigationData(): Promise<NavigationData> {
   }
 }
 
-export async function loadEmployeesData(params: { q?: string; role?: string } = {}): Promise<EmployeesData> {
+export async function loadEmployeesData(params: { q?: string; role?: string; status?: string; company?: string } = {}): Promise<EmployeesData> {
   const query = new URLSearchParams();
   if (params.q?.trim()) query.set('q', params.q.trim());
   if (params.role) query.set('role', params.role);
+  if (params.status) query.set('status', params.status);
+  if (params.company) query.set('company', params.company);
   try {
     const response = await fetch(`/reporting/api/employees/${query.toString() ? `?${query.toString()}` : ''}`, {
       credentials: 'include',
@@ -10301,6 +10373,9 @@ export async function loadEmployeesData(params: { q?: string; role?: string } = 
       options: {
         ...emptyEmployeesData.options,
         ...(payload.options ?? {}),
+        roles: payload.options?.roles ?? emptyEmployeesData.options.roles,
+        statuses: payload.options?.statuses ?? emptyEmployeesData.options.statuses,
+        companies: payload.options?.companies ?? [],
       },
       links: {
         ...emptyEmployeesData.links,
@@ -10316,6 +10391,40 @@ export async function loadEmployeesData(params: { q?: string; role?: string } = 
     };
   }
 }
+
+async function postEmployeeJson<TPayload>(submitUrl: string, payload: TPayload): Promise<EmployeeMutationResponse> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(submitUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Employee mutation API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as EmployeeMutationResponse;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || data.message || `Employee mutation failed: ${response.status}`);
+  }
+  return data;
+}
+
+export const createEmployee = (submitUrl: string, payload: EmployeeMutationPayload) =>
+  postEmployeeJson<EmployeeMutationPayload>(submitUrl, payload);
+
+export const updateEmployee = (submitUrl: string, payload: EmployeeMutationPayload) =>
+  postEmployeeJson<EmployeeMutationPayload>(submitUrl, payload);
+
+export const toggleEmployeeActive = (submitUrl: string, isActive?: boolean) =>
+  postEmployeeJson<{ isActive?: boolean }>(submitUrl, typeof isActive === 'boolean' ? { isActive } : {});
 
 export async function loadTasksData(params: { status?: string } = {}): Promise<TasksData> {
   const query = new URLSearchParams();

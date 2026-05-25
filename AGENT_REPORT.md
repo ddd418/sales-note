@@ -1,5 +1,108 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 P단계 사용자/직원 관리 완전 대체
+
+### 요약
+
+- `/employees/`를 admin 사용자관리와 manager 직원관리의 React 기준 화면으로 확장했습니다.
+- admin은 전체 사용자 목록/검색/역할/상태/회사 필터, 생성, 수정, 활성/비활성 처리를 React에서 수행할 수 있습니다.
+- manager는 같은 회사 직원만 조회하고, 같은 회사의 다른 직원만 수정/활성상태 변경할 수 있으며 신규 생성은 salesman 계정으로 제한됩니다.
+- React 화면의 visible Django 사용자관리 링크를 제거했습니다.
+- `/reporting/users/*`, `/reporting/manager/users/*` 주요 GET/HEAD legacy URL을 `/employees/`로 리다이렉트하도록 연결했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/server.mjs`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 관리자 계정에서 사라졌던 사용자관리 진입점이 React 메뉴의 `/employees/`로 복구되었습니다.
+- manager는 영업 데이터 수정 권한 없이 같은 회사 직원의 계정 상태를 파악하고 실무자 계정을 만들 수 있습니다.
+- 사용자 row에 회사, 권한, 활성 상태, Excel/AI 권한, 최근 로그인, 본인 계정 여부가 한 화면에 표시됩니다.
+- 생성/수정 폼이 React에 들어와 Django template 화면으로 빠지지 않습니다.
+- 기존 북마크 `/reporting/users/`, `/reporting/manager/users/`는 React 직원관리 화면으로 이동합니다.
+
+### 기존 기능 보존
+
+- 기존 Django `User`, `UserProfile`, `UserCompany` 모델과 기존 template view는 삭제하지 않았습니다.
+- 기존 POST fallback route는 전환 기간 호환을 위해 유지했습니다.
+- hard delete는 React에 넣지 않고 활성/비활성 처리만 제공했습니다.
+- admin의 전체 사용자 관리와 manager의 same-company 제한 정책을 분리했습니다.
+- salesman은 사용자/직원관리 API 접근이 차단됩니다.
+
+### 실행한 명령과 결과
+
+```text
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.ReactNavigationApiTests reporting.tests.EmployeeManagementApiTests
+→ Ran 18 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Browser/local smoke on frontend server :5173
+→ unauthenticated /employees/ redirected to login without console errors
+→ temporary local admin login opened /employees/
+→ admin user list, filters, React create form rendered without console errors
+→ temporary local smoke user was deleted afterward
+```
+
+### 알려진 제한
+
+- 브라우저 smoke에서는 실제 생성/수정 제출은 하지 않았고, mutation 권한과 결과는 Django API 테스트로 검증했습니다.
+- React에서 hard delete는 의도적으로 제공하지 않았습니다. 삭제는 기존 legacy 보존 및 비활성화 정책으로 남겨두었습니다.
+- Vite large chunk warning은 기존 대형 `App.tsx` 구조 때문에 남아 있으며, 별도 대형 파일 분리 단계에서 다뤄야 합니다.
+
+### 운영 배포 상태
+
+- 배포 예정.
+- Production authenticated UI verification is pending user login/session confirmation after deployment.
+
+### 권장 다음 작업
+
+- 운영 서버에서 P 단계 수동 확인 완료 후 다음 React 완전대체 항목으로 진행합니다.
+
+### 운영 서버 수동 확인 절차
+
+1. admin 계정으로 `https://sales-note-frontend-production.up.railway.app/employees/`에 접속합니다.
+2. 좌측 메뉴에 `사용자관리`가 보이고 `/employees/`로 이동하는지 확인합니다.
+3. 사용자 검색, 권한 필터, 상태 필터, 회사 필터가 동작하는지 확인합니다.
+4. `사용자 추가`를 눌러 생성 폼이 React 화면 안에서 열리는지 확인합니다.
+5. 테스트용 사용자를 하나 만들고, 권한/회사/Excel/AI/비밀번호 수정이 되는지 확인합니다.
+6. 생성한 테스트 사용자를 비활성화했다가 다시 활성화합니다.
+7. manager 계정으로 로그인해 첫 화면 메뉴에 `직원관리`가 보이는지 확인합니다.
+8. manager가 같은 회사 직원만 볼 수 있고, 타 회사 사용자는 보이지 않는지 확인합니다.
+9. manager가 신규 직원을 만들 때 salesman 계정으로만 만들어지는지 확인합니다.
+10. manager가 역할/회사/AI 권한을 바꿀 수 없고, Excel/기본정보/비밀번호/활성상태만 허용되는지 확인합니다.
+11. salesman 계정에서 `/employees/` 접근 시 사용자/직원관리 권한이 차단되는지 확인합니다.
+12. 기존 북마크 `/reporting/users/`, `/reporting/manager/users/`가 React `/employees/`로 이동하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 O단계 업무/댓글/업무하달 완전 대체
 
 ### 요약
