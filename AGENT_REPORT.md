@@ -77,8 +77,20 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전 검증 완료.
-- Runtime commit/push와 Railway 배포 후 이 섹션에 deployment ID와 production smoke 결과를 갱신합니다.
+- 완료.
+- Commit `c3c0eea feat: complete react profile settings parity` is present on `origin/main`.
+- Railway backend `web` deployment `236ae12e-6595-47db-ad8a-e9037efca2b2` succeeded for commit `c3c0eea`.
+- Railway frontend `sales-note-frontend` deployment `83260a36-e222-42d1-893c-16b97ac7e541` succeeded for commit `c3c0eea`.
+- Production smoke passed:
+  - backend `/healthz/`, `/readyz/` OK
+  - frontend `/healthz`, `/profile/` OK
+  - frontend `/reporting/profile/` redirects to `/profile/`
+  - frontend `/reporting/profile/edit/` redirects to `/profile/?edit=1`
+  - frontend `/reporting/imap/connect/` redirects to `/profile/?imap=1`
+  - frontend `/reporting/gmail/disconnect/` redirects to `/profile/`
+  - protected frontend `/reporting/api/profile/` returned `401`
+  - protected IMAP connect POST without session/CSRF returned `403`
+- Authenticated profile edit/password/IMAP credential submission은 배포 후 사용자 로그인 확인이 필요합니다.
 
 ### 권장 다음 작업
 
