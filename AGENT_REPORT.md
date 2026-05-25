@@ -82,7 +82,12 @@ Browser/local smoke
 
 ### 운영 배포 상태
 
-- 배포 예정입니다. commit/push 후 Railway `web` 및 `sales-note-frontend` 배포 상태와 production smoke 결과를 추가 기록합니다.
+- 완료.
+- Commit `f110be2 feat: complete react prepayment replacement` is present on `origin/main`.
+- Railway backend `web` service deployed commit `f110be2` successfully as deployment `9df7cead-9d14-41ef-8ce0-865114f44041`.
+- Railway frontend `sales-note-frontend` service deployed commit `f110be2` successfully as deployment `613309d5-ae48-4868-8e9c-1cacf32b0e96`.
+- Production anonymous smoke passed for health, frontend shell, protected reports API, protected prepayment API, prepayment legacy redirect, and protected prepayment Excel login redirect.
+- Authenticated production UI verification is pending user login/session confirmation.
 
 ### 권장 다음 작업
 
