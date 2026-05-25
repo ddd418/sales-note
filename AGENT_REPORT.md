@@ -82,8 +82,19 @@ Local frontend smoke on :4175
 
 ### 운영 배포 상태
 
-- 로컬 구현/검증 완료.
-- Commit, push, Railway 배포, production smoke는 이어서 진행 예정입니다.
+- 완료.
+- Commit `09d3a1f feat: complete react product document parity` is present on `origin/main`.
+- Railway backend `web` deployment `c67284a0-2b2d-429d-b95f-d719126e0483` succeeded for commit `09d3a1f`.
+- Railway frontend `sales-note-frontend` deployment `21b995b3-0f08-4e88-b490-1cde12fa635d` succeeded for commit `09d3a1f`.
+- Production smoke passed:
+  - backend `/healthz/`, `/readyz/`, login page OK
+  - protected backend `/reporting/api/reports/` returned `401`
+  - frontend `/healthz`, dashboard shell OK
+  - frontend `/products/`, `/documents/` returned `200`
+  - frontend `/reporting/products/create/` redirects to `/products/?create=1`
+  - frontend `/reporting/products/123/edit/` redirects to `/products/?product=123&edit=1`
+  - frontend `/reporting/documents/123/toggle-default/` redirects to `/documents/?template_id=123`
+  - protected frontend/backend product management APIs returned `401` or `403`
 - Authenticated production UI verification은 배포 후 사용자 로그인 확인이 필요합니다.
 
 ### 권장 다음 작업
