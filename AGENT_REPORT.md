@@ -1,5 +1,106 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 Q단계 메일/명함/AI Workspace 완전 대체
+
+### 요약
+
+- `/mailbox/`, `/mailbox/thread/<id>/`, `/mailbox/scheduled/<id>/`, `/mailbox/business-cards/`, `/ai-workspace/`, `/ai-workspace/questions/<id>/`를 Q 단계 React 기준 화면으로 정리했습니다.
+- 메일함 목록/상세/답장/작성/예약 발송은 기존 React API 흐름을 유지하고, legacy GET/HEAD 메일 template URL을 React URL로 넘기도록 연결했습니다.
+- 명함 목록/생성/수정 진입도 React로 이동하게 했고, `/mailbox/business-cards/?create=1`, `?card=<id>&edit=1`이 React 폼을 바로 열도록 보강했습니다.
+- AI 질문 이력 목록 payload와 UI에서 답변 요약/판단 내용을 제거했습니다. 전체 답변은 상세 `/ai-workspace/questions/<id>/`에서만 표시됩니다.
+- AI가 공통 계정 원장 데이터를 볼 때 제품 코드/설명/규격/단위/라벨 메타데이터가 손실되지 않도록 공통 원장 → AI payload 변환을 보강했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/services.py`
+- `reporting/account_ledger.py`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/server.mjs`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+
+### CRM 개선
+
+- 기존 `/reporting/mailbox/*`, `/reporting/gmail/send/mailbox/*`, `/reporting/business-cards/*` 북마크가 React 화면으로 자연스럽게 이동합니다.
+- legacy 답장 링크는 접근 가능한 메일이면 React thread 상세로 이동하고 답장 패널을 자동으로 엽니다.
+- 명함 create/edit legacy 링크도 React 명함 관리 화면 안에서 폼을 바로 열어 Django template로 빠지지 않습니다.
+- AI 질문/답변 기록 목록에서는 질문, 시간, 모델 같은 식별 정보만 보이고 답변 내용은 상세에서만 확인합니다.
+- 공통 원장 기반 AI 납품/제품 근거에서 제품 마스터 설명과 규격이 유지되어 품목 오판 가능성을 줄였습니다.
+
+### 기존 기능 보존
+
+- 기존 Django template view와 POST fallback은 삭제하지 않았습니다.
+- 메일 발송/답장/예약/취소/동기화 API와 명함 CRUD API는 그대로 유지했습니다.
+- Gmail/IMAP 연결, 프로필 연결 링크, 첨부 다운로드 보호 경로는 유지했습니다.
+- AI 권한 차단, 질문 로그 상세/삭제, 피드백, 기억 저장/토글 흐름은 기존 API 정책을 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\gmail_views.py reporting\urls.py reporting\tests.py reporting\account_ledger.py ai_chat\services.py
+→ OK
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.ReactReportsProfileBusinessCardApiTests.test_business_card_api_requires_login_json reporting.tests.ReactReportsProfileBusinessCardApiTests.test_business_card_api_owner_scope_default_and_soft_delete reporting.tests.ReactMailboxApiTests reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_includes_department_question_history_with_pagination reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_includes_all_scope_question_history reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_log_detail_api_returns_full_answer_for_owner reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_product_master_facts reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_splits_delivery_payment_source_from_structured_prepayment reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_ledger_splits_prepayment_deliveries_without_notes_inference reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_delivery_payment_split_bypasses_openai_when_client_available
+→ Ran 47 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local browser smoke on frontend server :4174
+→ /mailbox/ React shell rendered; unauthenticated API 502 alert expected because local Django was not running
+→ /mailbox/business-cards/?create=1 rendered and opened the new-card panel
+→ /ai-workspace/ React shell rendered; unauthenticated API 502 alert expected because local Django was not running
+```
+
+### 알려진 제한
+
+- 로컬 브라우저 smoke는 화면 렌더링 확인 위주이며 실제 메일 발송/답장/명함 저장 제출은 하지 않았습니다. mutation 동작은 Django API 테스트로 검증했습니다.
+- `/reporting/gmail/send/schedule/<id>/`는 일정 기반 문서 첨부 특수 흐름이 남아 있어 이번 Q 범위에서는 기존 fallback을 유지했습니다.
+- Vite large chunk warning은 기존 대형 `App.tsx` 구조 때문에 남아 있으며, 대형 파일 분리 단계에서 다뤄야 합니다.
+
+### 운영 배포 상태
+
+- 배포 전 검증 완료. 커밋/푸시 및 Railway 배포 예정.
+
+### 권장 다음 작업
+
+- 운영 배포 후 Q 단계 수동 확인을 마친 뒤 React 완전대체 다음 항목으로 진행합니다.
+
+### 운영 서버 수동 확인 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/mailbox/`에 접속해 메일함 목록이 React 화면으로 열리는지 확인합니다.
+2. `메일 작성`을 눌러 작성 패널, 고객 선택, 명함 선택, 예약 발송 선택이 보이는지 확인합니다.
+3. 예약메일 탭에서 예약 메일 목록/상세/취소 버튼이 보이는지 확인합니다.
+4. 메일 thread 상세로 들어가 답장 패널이 열리고 제목/수신자 기본값이 채워지는지 확인합니다.
+5. 기존 북마크 `/reporting/mailbox/inbox/`, `/reporting/mailbox/sent/`, `/reporting/gmail/send/mailbox/`가 React 메일함으로 이동하는지 확인합니다.
+6. `https://sales-note-frontend-production.up.railway.app/mailbox/business-cards/`에서 명함 목록/생성/수정/기본 설정/삭제가 React에서 되는지 확인합니다.
+7. 기존 `/reporting/business-cards/`, `/reporting/business-cards/create/`가 React 명함 화면으로 이동하는지 확인합니다.
+8. `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에서 AI Workspace가 열리는지 확인합니다.
+9. 질문/답변 기록 목록에 질문 내용만 보이고 답변 요약이나 추천 판단 문구가 보이지 않는지 확인합니다.
+10. 질문 기록 하나를 클릭해 상세 화면에서 답변 전체, 근거, 판단 내용이 보이는지 확인합니다.
+11. AI 권한 없는 계정에서는 AI Workspace 권한 차단 메시지가 유지되는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 P단계 사용자/직원 관리 완전 대체
 
 ### 요약

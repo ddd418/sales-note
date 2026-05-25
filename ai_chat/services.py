@@ -450,14 +450,29 @@ def _empty_quote_delivery_data():
 def _account_ledger_items_for_ai(items, amount_key):
     payload = []
     for item in items or []:
+        product_code = item.get('productCode') or item.get('product_code') or ''
+        product_description = item.get('productDescription') or item.get('product_description') or ''
+        product_specification = item.get('productSpecification') or item.get('product_specification') or ''
+        product_unit = item.get('productUnit') or item.get('product_unit') or item.get('unit') or ''
+        product_label = item.get('productLabel') or item.get('product_label') or ''
         product_name = (
-            item.get('productCode')
+            product_code
             or item.get('itemName')
-            or item.get('productDescription')
+            or product_description
             or '미정'
         )
         row = {
             'product': product_name,
+            'product_code': product_code,
+            'productCode': product_code,
+            'product_description': product_description,
+            'productDescription': product_description,
+            'product_specification': product_specification,
+            'productSpecification': product_specification,
+            'product_unit': product_unit,
+            'productUnit': product_unit,
+            'product_label': product_label,
+            'productLabel': product_label,
             'quantity': item.get('quantity') or 0,
             'unit_price': item.get('effectiveUnitPrice') or item.get('unitPrice') or 0,
             'subtotal': 0,

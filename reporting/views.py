@@ -16481,6 +16481,26 @@ def _ai_workspace_question_log_payload(log):
     }
 
 
+def _ai_workspace_question_history_item_payload(log):
+    department = log.department
+    return {
+        'id': log.id,
+        'scopeType': log.scope_type,
+        'question': _ai_workspace_question_text(log.question, AI_WORKSPACE_DEPARTMENT_QUESTION_MAX_LENGTH),
+        'source': log.source or '',
+        'model': log.model or '',
+        'modelLabel': _ai_workspace_question_model_label(log.model),
+        'webSearchUsed': bool(log.web_search_used),
+        'department': {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+        } if department else None,
+        'createdAt': _datetime_or_none(log.created_at),
+        'updatedAt': _datetime_or_none(log.updated_at),
+    }
+
+
 def _ai_workspace_question_log_detail_link(log):
     department_id = log.department_id
     return f"/ai-workspace/?department_id={department_id}" if department_id else '/ai-workspace/?question_scope=all'
@@ -16543,7 +16563,7 @@ def _ai_workspace_question_history_payload(user, department=None, page=1, scope_
         'hasNext': bool(page_obj and page_obj.has_next()),
         'hasPrevious': bool(page_obj and page_obj.has_previous()),
         'items': [
-            _ai_workspace_question_log_payload(log)
+            _ai_workspace_question_history_item_payload(log)
             for log in (page_obj.object_list if page_obj else [])
         ],
     }

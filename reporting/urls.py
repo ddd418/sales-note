@@ -1,5 +1,6 @@
 # reporting/urls.py
 from django.urls import path
+from django.db.models import Q
 from . import views
 from . import backup_api
 from . import personal_schedule_views
@@ -22,6 +23,46 @@ def lazy_view(view_path):
     return _wrapped
 
 app_name = 'reporting'  # 앱 네임스페이스 설정
+
+
+def _mailbox_compose_react_page(request, followup_id=None, **kwargs):
+    extra = {'compose': '1'}
+    if followup_id:
+        extra['followup_id'] = followup_id
+    return frontend_url('mailbox/', query_with(request, extra=extra))
+
+
+def _mailbox_box_react_page(box):
+    return static_react_page('mailbox/', extra={'box': box})
+
+
+def _mailbox_thread_react_page(request, thread_id, **kwargs):
+    return frontend_url(f'mailbox/thread/{thread_id}/', query_with(request))
+
+
+def _mailbox_reply_react_page(request, email_log_id, **kwargs):
+    from reporting.models import EmailLog
+
+    email = EmailLog.objects.filter(
+        Q(user=request.user) | Q(sender=request.user) | Q(followup__user=request.user),
+        id=email_log_id,
+    ).only('gmail_thread_id', 'thread_id', 'message_id', 'gmail_message_id').first()
+    thread_id = ''
+    if email:
+        thread_id = email.gmail_thread_id or email.thread_id or email.message_id or email.gmail_message_id or ''
+    if thread_id:
+        return frontend_url(f'mailbox/thread/{thread_id}/', query_with(request, extra={'reply': '1'}))
+    return frontend_url('mailbox/', query_with(request, extra={'reply_email_id': email_log_id}))
+
+
+def _business_card_react_page(request, card_id=None, **kwargs):
+    extra = {}
+    if card_id:
+        extra['card'] = card_id
+        if request.resolver_match and request.resolver_match.url_name == 'business_card_edit':
+            extra['edit'] = '1'
+    return frontend_url('mailbox/business-cards/', query_with(request, extra=extra))
+
 
 urlpatterns = [
     # 팔로우업 URL들
@@ -534,9 +575,18 @@ urlpatterns = [
     
     # 이메일 발송
     path('gmail/send/schedule/<int:schedule_id>/', lazy_view('reporting.gmail_views.send_email_from_schedule'), name='send_email_from_schedule'),
-    path('gmail/send/mailbox/', lazy_view('reporting.gmail_views.send_email_from_mailbox'), name='send_email_from_mailbox'),
-    path('gmail/send/mailbox/<int:followup_id>/', lazy_view('reporting.gmail_views.send_email_from_mailbox'), name='send_email_from_mailbox_with_followup'),
-    path('gmail/reply/<int:email_log_id>/', lazy_view('reporting.gmail_views.reply_email'), name='reply_email'),
+    path('gmail/send/mailbox/', react_page_redirect(
+        lazy_view('reporting.gmail_views.send_email_from_mailbox'),
+        _mailbox_compose_react_page,
+    ), name='send_email_from_mailbox'),
+    path('gmail/send/mailbox/<int:followup_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.send_email_from_mailbox'),
+        _mailbox_compose_react_page,
+    ), name='send_email_from_mailbox_with_followup'),
+    path('gmail/reply/<int:email_log_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.reply_email'),
+        _mailbox_reply_react_page,
+    ), name='reply_email'),
     
     # ============================================
     # IMAP/SMTP 연동 URL들 (커스텀 도메인 지원)
@@ -553,17 +603,50 @@ urlpatterns = [
     path('imap/send/', lazy_view('reporting.imap_views.send_email_imap'), name='send_email_imap'),
     
     # 메일함
-    path('mailbox/inbox/', lazy_view('reporting.gmail_views.mailbox_inbox'), name='mailbox_inbox'),
-    path('mailbox/sent/', lazy_view('reporting.gmail_views.mailbox_sent'), name='mailbox_sent'),
-    path('mailbox/starred/', lazy_view('reporting.gmail_views.mailbox_starred'), name='mailbox_starred'),
-    path('mailbox/trash/', lazy_view('reporting.gmail_views.mailbox_trash'), name='mailbox_trash'),
-    path('mailbox/thread/<str:thread_id>/', lazy_view('reporting.gmail_views.mailbox_thread'), name='mailbox_thread'),
-    path('mailbox/sync/', lazy_view('reporting.gmail_views.sync_received_emails'), name='sync_received_emails'),
-    path('mailbox/delete/<int:email_id>/', lazy_view('reporting.gmail_views.delete_email'), name='delete_email'),
-    path('mailbox/toggle-star/<int:email_id>/', lazy_view('reporting.gmail_views.toggle_star_email'), name='toggle_star_email'),
-    path('mailbox/archive/<int:email_id>/', lazy_view('reporting.gmail_views.archive_email'), name='archive_email'),
-    path('mailbox/move-to-trash/<int:email_id>/', lazy_view('reporting.gmail_views.move_to_trash_email'), name='move_to_trash_email'),
-    path('mailbox/restore/<int:email_id>/', lazy_view('reporting.gmail_views.restore_email'), name='restore_email'),
+    path('mailbox/inbox/', react_page_redirect(
+        lazy_view('reporting.gmail_views.mailbox_inbox'),
+        _mailbox_box_react_page('inbox'),
+    ), name='mailbox_inbox'),
+    path('mailbox/sent/', react_page_redirect(
+        lazy_view('reporting.gmail_views.mailbox_sent'),
+        _mailbox_box_react_page('sent'),
+    ), name='mailbox_sent'),
+    path('mailbox/starred/', react_page_redirect(
+        lazy_view('reporting.gmail_views.mailbox_starred'),
+        _mailbox_box_react_page('starred'),
+    ), name='mailbox_starred'),
+    path('mailbox/trash/', react_page_redirect(
+        lazy_view('reporting.gmail_views.mailbox_trash'),
+        _mailbox_box_react_page('trash'),
+    ), name='mailbox_trash'),
+    path('mailbox/thread/<str:thread_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.mailbox_thread'),
+        _mailbox_thread_react_page,
+    ), name='mailbox_thread'),
+    path('mailbox/sync/', react_page_redirect(
+        lazy_view('reporting.gmail_views.sync_received_emails'),
+        _mailbox_box_react_page('inbox'),
+    ), name='sync_received_emails'),
+    path('mailbox/delete/<int:email_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.delete_email'),
+        _mailbox_box_react_page('trash'),
+    ), name='delete_email'),
+    path('mailbox/toggle-star/<int:email_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.toggle_star_email'),
+        _mailbox_box_react_page('inbox'),
+    ), name='toggle_star_email'),
+    path('mailbox/archive/<int:email_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.archive_email'),
+        _mailbox_box_react_page('archived'),
+    ), name='archive_email'),
+    path('mailbox/move-to-trash/<int:email_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.move_to_trash_email'),
+        _mailbox_box_react_page('trash'),
+    ), name='move_to_trash_email'),
+    path('mailbox/restore/<int:email_id>/', react_page_redirect(
+        lazy_view('reporting.gmail_views.restore_email'),
+        _mailbox_box_react_page('trash'),
+    ), name='restore_email'),
 
     # React 메일함 API
     path('api/mailbox/', lazy_view('reporting.gmail_views.mailbox_api_list'), name='mailbox_api_list'),
@@ -586,11 +669,26 @@ urlpatterns = [
     path('api/business-cards/<int:card_id>/set-default/', lazy_view('reporting.gmail_views.business_card_api_set_default'), name='business_card_api_set_default'),
     
     # 명함 관리
-    path('business-cards/', lazy_view('reporting.gmail_views.business_card_list'), name='business_card_list'),
-    path('business-cards/create/', lazy_view('reporting.gmail_views.business_card_create'), name='business_card_create'),
-    path('business-cards/<int:card_id>/edit/', lazy_view('reporting.gmail_views.business_card_edit'), name='business_card_edit'),
-    path('business-cards/<int:card_id>/delete/', lazy_view('reporting.gmail_views.business_card_delete'), name='business_card_delete'),
-    path('business-cards/<int:card_id>/set-default/', lazy_view('reporting.gmail_views.business_card_set_default'), name='business_card_set_default'),
+    path('business-cards/', react_page_redirect(
+        lazy_view('reporting.gmail_views.business_card_list'),
+        static_react_page('mailbox/business-cards/'),
+    ), name='business_card_list'),
+    path('business-cards/create/', react_page_redirect(
+        lazy_view('reporting.gmail_views.business_card_create'),
+        static_react_page('mailbox/business-cards/', extra={'create': '1'}),
+    ), name='business_card_create'),
+    path('business-cards/<int:card_id>/edit/', react_page_redirect(
+        lazy_view('reporting.gmail_views.business_card_edit'),
+        _business_card_react_page,
+    ), name='business_card_edit'),
+    path('business-cards/<int:card_id>/delete/', react_page_redirect(
+        lazy_view('reporting.gmail_views.business_card_delete'),
+        _business_card_react_page,
+    ), name='business_card_delete'),
+    path('business-cards/<int:card_id>/set-default/', react_page_redirect(
+        lazy_view('reporting.gmail_views.business_card_set_default'),
+        _business_card_react_page,
+    ), name='business_card_set_default'),
     
     # 이미지 업로드
     path('upload-image/', lazy_view('reporting.gmail_views.upload_editor_image'), name='upload_editor_image'),

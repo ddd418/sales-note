@@ -3683,7 +3683,7 @@ export type AIWorkspaceQuestionLog = {
   id: number;
   scopeType: 'all' | 'department' | string;
   question: string;
-  answerSummary: string;
+  answerSummary?: string;
   answer?: AIWorkspaceQuestionAnswer | Record<string, unknown>;
   decision?: AIWorkspaceQuestionAnswer['decision'] | null;
   perspective?: AIWorkspaceQuestionAnswer['perspective'] | null;

@@ -112,6 +112,24 @@ def _quote_group_label(value):
     return str(value or '').strip()[:100] or '기본 견적서'
 
 
+def _product_label(product, fallback_name=''):
+    if not product:
+        return str(fallback_name or '').strip()
+    code = str(product.product_code or '').strip()
+    details = [
+        str(value or '').strip()
+        for value in [
+            product.description,
+            product.specification,
+            f'단위 {product.unit}' if product.unit else '',
+        ]
+        if str(value or '').strip()
+    ]
+    if not code:
+        return str(fallback_name or '').strip()
+    return f"{code} ({', '.join(details[:3])})" if details else code
+
+
 def _delivery_item_discount_unit_price_or_none(item):
     if item.discount_unit_price is None:
         return None
@@ -135,6 +153,9 @@ def delivery_item_payload(item):
         'productId': item.product_id,
         'productCode': product.product_code if product else '',
         'productDescription': (product.description or '') if product else '',
+        'productSpecification': (product.specification or '') if product else '',
+        'productUnit': (product.unit or '') if product else item.unit or '',
+        'productLabel': _product_label(product, item.item_name),
         'itemName': item.item_name,
         'quantity': item.quantity,
         'unit': item.unit or '',
@@ -276,6 +297,9 @@ def quote_item_payload(item):
         'productId': item.product_id,
         'productCode': product.product_code if product else '',
         'productDescription': (product.description or '') if product else '',
+        'productSpecification': (product.specification or '') if product else '',
+        'productUnit': (product.unit or '') if product else '',
+        'productLabel': _product_label(product, product.product_code if product else ''),
         'itemName': product.product_code if product else '제품명 없음',
         'quantity': item.quantity,
         'unit': product.unit if product else '',

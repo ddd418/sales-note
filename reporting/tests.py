@@ -363,6 +363,57 @@ class CoreCrmLegacyRedirectTests(TestCase):
             f'employees/?employee={self.user.id}&edit=1',
         )
 
+    def test_mail_and_business_card_legacy_routes_redirect_to_react(self):
+        email = EmailLog.objects.create(
+            user=self.user,
+            sender=self.user,
+            email_type='received',
+            sender_email='customer@example.com',
+            recipient_email='sales@example.com',
+            subject='React 전환 메일',
+            body='React 전환 답장 테스트',
+            gmail_thread_id='react-thread-q',
+            followup=self.followup,
+            status='received',
+            received_at=timezone.now(),
+        )
+        card = BusinessCard.objects.create(
+            user=self.user,
+            name='React 전환 명함',
+            full_name='홍길동',
+            company_name='Hana',
+            email='sales@example.com',
+        )
+
+        self.assertReactRedirect(reverse('reporting:send_email_from_mailbox'), 'mailbox/?compose=1')
+        self.assertReactRedirect(
+            reverse('reporting:send_email_from_mailbox_with_followup', args=[self.followup.id]),
+            f'mailbox/?compose=1&followup_id={self.followup.id}',
+        )
+        self.assertReactRedirect(reverse('reporting:reply_email', args=[email.id]), 'mailbox/thread/react-thread-q/?reply=1')
+        self.assertReactRedirect(reverse('reporting:mailbox_inbox'), 'mailbox/?box=inbox')
+        self.assertReactRedirect(reverse('reporting:mailbox_sent'), 'mailbox/?box=sent')
+        self.assertReactRedirect(reverse('reporting:mailbox_starred'), 'mailbox/?box=starred')
+        self.assertReactRedirect(reverse('reporting:mailbox_trash'), 'mailbox/?box=trash')
+        self.assertReactRedirect(
+            reverse('reporting:mailbox_thread', args=['react-thread-q']),
+            'mailbox/thread/react-thread-q/',
+        )
+        self.assertReactRedirect(reverse('reporting:business_card_list'), 'mailbox/business-cards/')
+        self.assertReactRedirect(reverse('reporting:business_card_create'), 'mailbox/business-cards/?create=1')
+        self.assertReactRedirect(
+            reverse('reporting:business_card_edit', args=[card.id]),
+            f'mailbox/business-cards/?card={card.id}&edit=1',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:business_card_delete', args=[card.id]),
+            f'mailbox/business-cards/?card={card.id}',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:business_card_set_default', args=[card.id]),
+            f'mailbox/business-cards/?card={card.id}',
+        )
+
     def test_non_get_legacy_create_action_is_not_redirected_to_react(self):
         response = self.client.post(reverse('reporting:schedule_create'), {
             'followup': str(self.followup.id),
@@ -13464,8 +13515,13 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(len(history['items']), 2)
         history_text = json.dumps(history, ensure_ascii=False)
         self.assertIn('내 질문', history_text)
+        self.assertNotIn('내 답변', history_text)
         self.assertNotIn('동료 질문', history_text)
         self.assertNotIn('다른 부서 질문', history_text)
+        for item in history['items']:
+            self.assertNotIn('answer', item)
+            self.assertNotIn('answerSummary', item)
+            self.assertNotIn('decision', item)
         self.assertNotIn('answerDirection', payload)
 
     def test_ai_workspace_summary_includes_all_scope_question_history(self):
@@ -13521,8 +13577,13 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(len(history['items']), 1)
         history_text = json.dumps(history, ensure_ascii=False)
         self.assertIn('전체 질문', history_text)
+        self.assertNotIn('전체 답변', history_text)
         self.assertNotIn('부서 질문', history_text)
         self.assertNotIn('동료 전체 질문', history_text)
+        for item in history['items']:
+            self.assertNotIn('answer', item)
+            self.assertNotIn('answerSummary', item)
+            self.assertNotIn('decision', item)
 
     def test_ai_workspace_question_feedback_api_requires_ai_permission(self):
         _followup, department = self._create_customer(self.no_ai_user, '질문피드백권한없음')

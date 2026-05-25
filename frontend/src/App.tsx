@@ -19528,9 +19528,6 @@ function AIWorkspaceDepartmentQuestionPanel({
                     <MoveUpRight size={13} />
                   </div>
                   <strong>{item.question}</strong>
-                  {item.decision?.recommendedChoice ? (
-                    <em>{item.decision.recommendedChoice}</em>
-                  ) : null}
                 </a>
                 <button
                   aria-label="질문/답변 기록 삭제"
@@ -21877,7 +21874,9 @@ export function App() {
   const [mailReplyMessage, setMailReplyMessage] = useState('');
   const [businessCardsData, setBusinessCardsData] = useState<BusinessCardsData | null>(null);
   const [businessCardsLoading, setBusinessCardsLoading] = useState(currentView === 'businessCards');
-  const [businessCardFormOpen, setBusinessCardFormOpen] = useState(false);
+  const [businessCardFormOpen, setBusinessCardFormOpen] = useState(
+    currentView === 'businessCards' && new URLSearchParams(window.location.search).get('create') === '1',
+  );
   const [businessCardEditingId, setBusinessCardEditingId] = useState<number | null>(null);
   const [businessCardForm, setBusinessCardForm] = useState<BusinessCardFormState>(() => makeEmptyBusinessCardForm());
   const [businessCardSaving, setBusinessCardSaving] = useState(false);
@@ -23723,6 +23722,30 @@ export function App() {
     }));
     setBusinessCardError('');
   };
+
+  useEffect(() => {
+    if (currentView !== 'businessCards' || !businessCardsData) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const requestedCardId = Number(params.get('card') || 0);
+    const shouldEdit = params.get('edit') === '1';
+    const shouldCreate = params.get('create') === '1';
+    if (requestedCardId && shouldEdit && businessCardEditingId !== requestedCardId) {
+      const card = businessCardsData.cards.find((item) => item.id === requestedCardId);
+      if (card) {
+        setBusinessCardEditingId(card.id);
+        setBusinessCardForm(makeBusinessCardForm(card));
+        setBusinessCardFormOpen(true);
+      }
+      return;
+    }
+    if (shouldCreate && !businessCardFormOpen && !businessCardEditingId) {
+      setBusinessCardForm(makeEmptyBusinessCardForm());
+      setBusinessCardFormOpen(true);
+    }
+  }, [businessCardEditingId, businessCardFormOpen, businessCardsData, currentView]);
+
   const handleBusinessCardSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!businessCardsData || businessCardSaving) {
@@ -24091,6 +24114,16 @@ export function App() {
       followupId: target?.followup.id ? String(target.followup.id) : previous.followupId,
     }));
   };
+
+  useEffect(() => {
+    if (currentView !== 'mail' || !mailboxDetailRoute || !mailboxThreadData || mailReplyOpen) {
+      return;
+    }
+    if (new URLSearchParams(window.location.search).get('reply') === '1') {
+      handleMailReplyOpenChange(true);
+    }
+  }, [currentView, mailboxDetailRoute, mailboxThreadData, mailReplyOpen]);
+
   const handleMailReplyFormChange = (field: MailComposeTextField, value: string) => {
     setMailReplyForm((previous) => ({
       ...previous,

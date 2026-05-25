@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement Q-step mail/business-card/AI workspace replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item Q for mailbox, business cards, and AI Workspace.
+- React already owns `/mailbox/`, `/mailbox/thread/<id>/`, `/mailbox/scheduled/<id>/`, `/mailbox/business-cards/`, `/ai-workspace/`, and `/ai-workspace/questions/<id>/` UI surfaces.
+- Django still exposes legacy template routes for mailbox compose/list/thread/reply and business-card CRUD.
+- User previously requested AI question/answer history lists to show only the question text; answers should be visible only from the detail view.
+
+**DB change required**: No.
+
+- Existing email, scheduled email, business card, AI question log, AI feedback, and AI memory models/APIs support this replacement scope.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Keep mailbox list/detail/reply/compose/scheduled-send workflows in React using the existing `/reporting/api/mailbox/*` APIs.
+- Keep business-card management in React using `/reporting/api/business-cards/*`.
+- Redirect authenticated GET/HEAD legacy mailbox and business-card template URLs to React equivalents, while preserving POST fallback endpoints during transition.
+- Remove visible Django fallback links from React mail/business-card metadata and API fallbacks where they are no longer needed.
+- Ensure the AI question history list renders question text and metadata only; keep full answers available from `/ai-workspace/questions/<id>/`.
+- Confirm AI Workspace APIs and tests are using the shared common account-ledger data source for delivery/prepayment split logic.
+- Add focused tests for legacy mail/business-card redirects, protected React APIs, AI question-history payload/detail behavior, and common-ledger source guardrails.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\gmail_views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.MailboxReactReplacementTests reporting.tests.BusinessCardReactReplacementTests reporting.tests.AIWorkspaceReactReplacementTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/mailbox/`, `/mailbox/thread/<id>/`, `/mailbox/business-cards/`, `/ai-workspace/`, `/ai-workspace/questions/<id>/`, legacy redirects, and protected APIs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement P-step user/employee management plan
 
 **Background**:
