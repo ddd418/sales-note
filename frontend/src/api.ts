@@ -190,11 +190,21 @@ export type ProfileData = {
     lastSyncAt: string | null;
     gmailConnected: boolean;
     imapConnected: boolean;
+    settings: {
+      imapEmail: string;
+      imapHost: string;
+      imapPort: number;
+      imapUseSsl: boolean;
+      smtpHost: string;
+      smtpPort: number;
+      smtpUseTls: boolean;
+    };
     links: {
       mailbox: string;
       businessCards: string;
       gmailConnect: string;
       imapConnect: string;
+      imapConnectApi: string;
       imapSync: string;
       disconnect: string;
     };
@@ -219,6 +229,22 @@ export type ProfilePasswordPayload = {
   oldPassword: string;
   newPassword1: string;
   newPassword2: string;
+};
+
+export type ProfileImapPayload = {
+  action?: 'save' | 'test_imap' | 'test_smtp';
+  provider: string;
+  imapEmail: string;
+  imapHost: string;
+  imapPort: number;
+  imapUsername: string;
+  imapPassword: string;
+  imapUseSsl: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUsername: string;
+  smtpPassword: string;
+  smtpUseTls: boolean;
 };
 
 export type BusinessCardItem = {
@@ -4704,11 +4730,21 @@ const emptyProfileData: ProfileData = {
     lastSyncAt: null,
     gmailConnected: false,
     imapConnected: false,
+    settings: {
+      imapEmail: '',
+      imapHost: '',
+      imapPort: 993,
+      imapUseSsl: true,
+      smtpHost: '',
+      smtpPort: 587,
+      smtpUseTls: true,
+    },
     links: {
       mailbox: '/mailbox/',
       businessCards: '/mailbox/business-cards/',
       gmailConnect: '/reporting/gmail/connect/',
-      imapConnect: '/reporting/imap/connect/',
+      imapConnect: '/profile/?imap=1',
+      imapConnectApi: '/reporting/api/profile/imap/connect/',
       imapSync: '/reporting/imap/sync/',
       disconnect: '/reporting/api/profile/email/disconnect/',
     },
@@ -4721,6 +4757,37 @@ const emptyProfileData: ProfileData = {
     dashboard: '/dashboard/',
   },
 };
+
+function normalizeProfileData(data: Partial<ProfileData>): ProfileData {
+  return {
+    ...emptyProfileData,
+    ...data,
+    user: {
+      ...emptyProfileData.user,
+      ...(data.user ?? {}),
+    },
+    profile: {
+      ...emptyProfileData.profile,
+      ...(data.profile ?? {}),
+    },
+    emailConnection: {
+      ...emptyProfileData.emailConnection,
+      ...(data.emailConnection ?? {}),
+      settings: {
+        ...emptyProfileData.emailConnection.settings,
+        ...(data.emailConnection?.settings ?? {}),
+      },
+      links: {
+        ...emptyProfileData.emailConnection.links,
+        ...(data.emailConnection?.links ?? {}),
+      },
+    },
+    links: {
+      ...emptyProfileData.links,
+      ...(data.links ?? {}),
+    },
+  };
+}
 
 const emptyBusinessCardsData: BusinessCardsData = {
   success: false,
@@ -6402,30 +6469,7 @@ export async function loadProfileData(): Promise<ProfileData> {
     if (!response.ok || payload.success === false || payload.source !== 'django') {
       throw new Error(payload.error || payload.message || `Profile API unavailable: ${response.status}`);
     }
-    return {
-      ...emptyProfileData,
-      ...payload,
-      user: {
-        ...emptyProfileData.user,
-        ...(payload.user ?? {}),
-      },
-      profile: {
-        ...emptyProfileData.profile,
-        ...(payload.profile ?? {}),
-      },
-      emailConnection: {
-        ...emptyProfileData.emailConnection,
-        ...(payload.emailConnection ?? {}),
-        links: {
-          ...emptyProfileData.emailConnection.links,
-          ...(payload.emailConnection?.links ?? {}),
-        },
-      },
-      links: {
-        ...emptyProfileData.links,
-        ...(payload.links ?? {}),
-      },
-    };
+    return normalizeProfileData(payload);
   } catch (error) {
     return {
       ...emptyProfileData,
@@ -6458,30 +6502,7 @@ async function postProfileJson<T>(url: string, payload?: unknown): Promise<T> {
 
 export async function updateProfile(payload: ProfileUpdatePayload, submitUrl = '/reporting/api/profile/update/'): Promise<ProfileData> {
   const data = await postProfileJson<Partial<ProfileData>>(submitUrl, payload);
-  return {
-    ...emptyProfileData,
-    ...data,
-    user: {
-      ...emptyProfileData.user,
-      ...(data.user ?? {}),
-    },
-    profile: {
-      ...emptyProfileData.profile,
-      ...(data.profile ?? {}),
-    },
-    emailConnection: {
-      ...emptyProfileData.emailConnection,
-      ...(data.emailConnection ?? {}),
-      links: {
-        ...emptyProfileData.emailConnection.links,
-        ...(data.emailConnection?.links ?? {}),
-      },
-    },
-    links: {
-      ...emptyProfileData.links,
-      ...(data.links ?? {}),
-    },
-  };
+  return normalizeProfileData(data);
 }
 
 export async function changeProfilePassword(payload: ProfilePasswordPayload, submitUrl = '/reporting/api/profile/password/') {
@@ -6490,30 +6511,15 @@ export async function changeProfilePassword(payload: ProfilePasswordPayload, sub
 
 export async function disconnectProfileEmail(submitUrl = '/reporting/api/profile/email/disconnect/'): Promise<ProfileData> {
   const data = await postProfileJson<Partial<ProfileData>>(submitUrl);
-  return {
-    ...emptyProfileData,
-    ...data,
-    user: {
-      ...emptyProfileData.user,
-      ...(data.user ?? {}),
-    },
-    profile: {
-      ...emptyProfileData.profile,
-      ...(data.profile ?? {}),
-    },
-    emailConnection: {
-      ...emptyProfileData.emailConnection,
-      ...(data.emailConnection ?? {}),
-      links: {
-        ...emptyProfileData.emailConnection.links,
-        ...(data.emailConnection?.links ?? {}),
-      },
-    },
-    links: {
-      ...emptyProfileData.links,
-      ...(data.links ?? {}),
-    },
-  };
+  return normalizeProfileData(data);
+}
+
+export async function connectProfileImap(
+  payload: ProfileImapPayload,
+  submitUrl = '/reporting/api/profile/imap/connect/',
+): Promise<ProfileData> {
+  const data = await postProfileJson<Partial<ProfileData>>(submitUrl, payload);
+  return normalizeProfileData(data);
 }
 
 export async function loadBusinessCardsData(): Promise<BusinessCardsData> {

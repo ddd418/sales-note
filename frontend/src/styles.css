@@ -12783,7 +12783,8 @@ tbody tr:hover {
 
 .business-card-form input,
 .business-card-form textarea,
-.profile-form input {
+.profile-form input,
+.profile-form select {
   width: 100%;
   min-width: 0;
   min-height: 38px;
@@ -12820,6 +12821,7 @@ tbody tr:hover {
 .business-card-default-toggle,
 .profile-readonly-grid,
 .profile-form-wide,
+.profile-imap-actions,
 .profile-permission-row,
 .profile-form .primary-button {
   grid-column: 1 / -1;
@@ -12894,6 +12896,16 @@ tbody tr:hover {
 
 .profile-password-form {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.profile-imap-form {
+  margin-top: 6px;
+}
+
+.profile-imap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .status-pill.neutral {

@@ -29238,11 +29238,21 @@ def _profile_connection_payload(profile):
         'lastSyncAt': last_sync_at.isoformat() if last_sync_at else None,
         'gmailConnected': bool(profile.gmail_token),
         'imapConnected': bool(profile.imap_connected_at),
+        'settings': {
+            'imapEmail': profile.imap_email or '',
+            'imapHost': profile.imap_host or '',
+            'imapPort': profile.imap_port or 993,
+            'imapUseSsl': bool(profile.imap_use_ssl),
+            'smtpHost': profile.smtp_host or '',
+            'smtpPort': profile.smtp_port or 587,
+            'smtpUseTls': bool(profile.smtp_use_tls),
+        },
         'links': {
             'mailbox': '/mailbox/',
             'businessCards': '/mailbox/business-cards/',
             'gmailConnect': reverse('reporting:gmail_connect'),
-            'imapConnect': reverse('reporting:imap_connect'),
+            'imapConnect': '/profile/?imap=1',
+            'imapConnectApi': reverse('reporting:profile_imap_connect_api'),
             'imapSync': reverse('reporting:sync_imap_emails'),
             'disconnect': reverse('reporting:profile_email_disconnect_api'),
         },
@@ -29367,6 +29377,210 @@ def profile_password_api(request):
     })
 
 
+def _profile_bool_payload(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _profile_int_payload(value, default):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _profile_imap_form_payload(payload):
+    from .imap_utils import EMAIL_PRESETS
+
+    provider = (payload.get('provider') or 'imap').strip().lower()
+    if provider not in {'gmail', 'outlook', 'imap'}:
+        provider = 'imap'
+    preset = EMAIL_PRESETS.get(provider, {})
+    imap_email = (payload.get('imapEmail') or payload.get('imap_email') or '').strip()
+    imap_username = (
+        payload.get('imapUsername')
+        or payload.get('imap_username')
+        or imap_email
+        or ''
+    ).strip()
+    imap_password = (payload.get('imapPassword') or payload.get('imap_password') or '').strip()
+    imap_host = (
+        payload.get('imapHost')
+        or payload.get('imap_host')
+        or preset.get('imap_host')
+        or ''
+    ).strip()
+    imap_port = _profile_int_payload(payload.get('imapPort') or payload.get('imap_port'), preset.get('imap_port', 993))
+    imap_use_ssl = _profile_bool_payload(
+        payload.get('imapUseSsl') if 'imapUseSsl' in payload else payload.get('imap_use_ssl'),
+        bool(preset.get('imap_use_ssl', True)),
+    )
+    smtp_host = (
+        payload.get('smtpHost')
+        or payload.get('smtp_host')
+        or preset.get('smtp_host')
+        or ''
+    ).strip()
+    smtp_port = _profile_int_payload(payload.get('smtpPort') or payload.get('smtp_port'), preset.get('smtp_port', 587))
+    smtp_username = (
+        payload.get('smtpUsername')
+        or payload.get('smtp_username')
+        or imap_username
+        or ''
+    ).strip()
+    smtp_password = (
+        payload.get('smtpPassword')
+        or payload.get('smtp_password')
+        or imap_password
+        or ''
+    ).strip()
+    smtp_use_tls = _profile_bool_payload(
+        payload.get('smtpUseTls') if 'smtpUseTls' in payload else payload.get('smtp_use_tls'),
+        bool(preset.get('smtp_use_tls', True)),
+    )
+    return {
+        'provider': provider,
+        'imap_email': imap_email,
+        'imap_host': imap_host,
+        'imap_port': imap_port,
+        'imap_username': imap_username,
+        'imap_password': imap_password,
+        'imap_use_ssl': imap_use_ssl,
+        'smtp_host': smtp_host,
+        'smtp_port': smtp_port,
+        'smtp_username': smtp_username,
+        'smtp_password': smtp_password,
+        'smtp_use_tls': smtp_use_tls,
+    }
+
+
+def _profile_imap_validate(values, existing_profile=None):
+    errors = {}
+    email_field = forms.EmailField(required=True)
+    try:
+        email_field.clean(values['imap_email'])
+    except forms.ValidationError:
+        errors['imapEmail'] = '올바른 이메일 주소를 입력하세요.'
+    if not values['imap_host']:
+        errors['imapHost'] = 'IMAP 서버를 입력하세요.'
+    if not values['smtp_host']:
+        errors['smtpHost'] = 'SMTP 서버를 입력하세요.'
+    if values['imap_port'] <= 0 or values['imap_port'] > 65535:
+        errors['imapPort'] = 'IMAP 포트를 확인하세요.'
+    if values['smtp_port'] <= 0 or values['smtp_port'] > 65535:
+        errors['smtpPort'] = 'SMTP 포트를 확인하세요.'
+    if not values['imap_username']:
+        errors['imapUsername'] = 'IMAP 사용자명을 입력하세요.'
+    if not values['smtp_username']:
+        errors['smtpUsername'] = 'SMTP 사용자명을 입력하세요.'
+    has_existing_password = bool(existing_profile and existing_profile.imap_password)
+    if not values['imap_password'] and not has_existing_password:
+        errors['imapPassword'] = '메일 비밀번호 또는 앱 비밀번호를 입력하세요.'
+    if not values['smtp_password'] and not bool(existing_profile and existing_profile.smtp_password):
+        errors['smtpPassword'] = 'SMTP 비밀번호를 입력하세요.'
+    return errors
+
+
+@never_cache
+@require_http_methods(["POST"])
+def profile_imap_connect_api(request):
+    """React 프로필 화면용 IMAP/SMTP 연결 API."""
+    from .imap_utils import EmailEncryption, test_imap_connection, test_smtp_connection
+
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    profile = get_user_profile(request.user)
+    if profile.role == 'manager':
+        return JsonResponse({
+            'success': False,
+            'error': '매니저 계정은 메일 연동 설정을 변경할 수 없습니다.',
+        }, status=403)
+
+    payload = _react_request_payload(request)
+    action = (payload.get('action') or 'save').strip().lower()
+    values = _profile_imap_form_payload(payload)
+    errors = _profile_imap_validate(values, profile)
+    if errors:
+        return JsonResponse({
+            'success': False,
+            'error': '메일 연동 입력값을 확인하세요.',
+            'errors': errors,
+        }, status=400)
+
+    if action in {'test_imap', 'imap'}:
+        success, message = test_imap_connection(
+            values['imap_host'],
+            values['imap_port'],
+            values['imap_username'],
+            values['imap_password'],
+            values['imap_use_ssl'],
+        )
+        response_payload = _profile_api_payload(request)
+        response_payload.update({
+            'success': success,
+            'message': message,
+            'testType': 'imap',
+        })
+        return JsonResponse(response_payload, encoder=DjangoJSONEncoder, status=200 if success else 400)
+
+    if action in {'test_smtp', 'smtp'}:
+        success, message = test_smtp_connection(
+            values['smtp_host'],
+            values['smtp_port'],
+            values['smtp_username'],
+            values['smtp_password'],
+            values['smtp_use_tls'],
+        )
+        response_payload = _profile_api_payload(request)
+        response_payload.update({
+            'success': success,
+            'message': message,
+            'testType': 'smtp',
+        })
+        return JsonResponse(response_payload, encoder=DjangoJSONEncoder, status=200 if success else 400)
+
+    if action not in {'save', ''}:
+        return JsonResponse({'success': False, 'error': '지원하지 않는 작업입니다.'}, status=400)
+
+    profile.email_provider = values['provider']
+    profile.imap_email = values['imap_email']
+    profile.imap_host = values['imap_host']
+    profile.imap_port = values['imap_port']
+    profile.imap_username = values['imap_username']
+    profile.imap_password = EmailEncryption.encrypt_password(values['imap_password']) if values['imap_password'] else profile.imap_password
+    profile.imap_use_ssl = values['imap_use_ssl']
+    profile.smtp_host = values['smtp_host']
+    profile.smtp_port = values['smtp_port']
+    profile.smtp_username = values['smtp_username']
+    profile.smtp_password = EmailEncryption.encrypt_password(values['smtp_password']) if values['smtp_password'] else profile.smtp_password
+    profile.smtp_use_tls = values['smtp_use_tls']
+    profile.imap_connected_at = timezone.now()
+    profile.save(update_fields=[
+        'email_provider',
+        'imap_email',
+        'imap_host',
+        'imap_port',
+        'imap_username',
+        'imap_password',
+        'imap_use_ssl',
+        'smtp_host',
+        'smtp_port',
+        'smtp_username',
+        'smtp_password',
+        'smtp_use_tls',
+        'imap_connected_at',
+        'updated_at',
+    ])
+    response_payload = _profile_api_payload(request)
+    response_payload['message'] = '회사 이메일 연동을 저장했습니다.'
+    return JsonResponse(response_payload, encoder=DjangoJSONEncoder)
+
+
 @never_cache
 @require_http_methods(["POST"])
 def profile_email_disconnect_api(request):
@@ -29386,10 +29600,12 @@ def profile_email_disconnect_api(request):
     profile.imap_port = 993
     profile.imap_username = ''
     profile.imap_password = ''
+    profile.imap_use_ssl = True
     profile.smtp_host = ''
     profile.smtp_port = 587
     profile.smtp_username = ''
     profile.smtp_password = ''
+    profile.smtp_use_tls = True
     profile.imap_connected_at = None
     profile.imap_last_sync_at = None
     profile.save()

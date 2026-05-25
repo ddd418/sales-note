@@ -368,8 +368,14 @@ urlpatterns = [
     ), name='dashboard'),
     
     # 프로필 관리 URL들
-    path('profile/', views.profile_view, name='profile'),
-    path('profile/edit/', views.profile_edit_view, name='profile_edit'),
+    path('profile/', react_page_redirect(
+        views.profile_view,
+        static_react_page('profile/'),
+    ), name='profile'),
+    path('profile/edit/', react_page_redirect(
+        views.profile_edit_view,
+        static_react_page('profile/', extra={'edit': '1'}),
+    ), name='profile_edit'),
     
     # 백업 API URL들
     path('backup/database/', backup_api.backup_database_api, name='backup_database_api'),
@@ -382,6 +388,7 @@ urlpatterns = [
     path('api/profile/', views.profile_api, name='profile_api'),
     path('api/profile/update/', views.profile_update_api, name='profile_api_update'),
     path('api/profile/password/', views.profile_password_api, name='profile_api_password'),
+    path('api/profile/imap/connect/', views.profile_imap_connect_api, name='profile_imap_connect_api'),
     path('api/profile/email/disconnect/', views.profile_email_disconnect_api, name='profile_email_disconnect_api'),
     path('api/followups/', views.followups_summary_api, name='followups_summary_api'),
     path('api/customers/', views.customers_summary_api, name='customers_summary_api'),
@@ -612,7 +619,10 @@ urlpatterns = [
     # Gmail OAuth2 인증
     path('gmail/connect/', lazy_view('reporting.gmail_views.gmail_connect'), name='gmail_connect'),
     path('gmail/callback/', lazy_view('reporting.gmail_views.gmail_callback'), name='gmail_callback'),
-    path('gmail/disconnect/', lazy_view('reporting.gmail_views.gmail_disconnect'), name='gmail_disconnect'),
+    path('gmail/disconnect/', react_page_redirect(
+        lazy_view('reporting.gmail_views.gmail_disconnect'),
+        static_react_page('profile/'),
+    ), name='gmail_disconnect'),
     
     # 이메일 발송
     path('gmail/send/schedule/<int:schedule_id>/', lazy_view('reporting.gmail_views.send_email_from_schedule'), name='send_email_from_schedule'),
@@ -634,8 +644,14 @@ urlpatterns = [
     # ============================================
     
     # IMAP/SMTP 연결 설정
-    path('imap/connect/', lazy_view('reporting.imap_views.imap_connect'), name='imap_connect'),
-    path('imap/disconnect/', lazy_view('reporting.imap_views.imap_disconnect'), name='imap_disconnect'),
+    path('imap/connect/', react_page_redirect(
+        lazy_view('reporting.imap_views.imap_connect'),
+        static_react_page('profile/', extra={'imap': '1'}),
+    ), name='imap_connect'),
+    path('imap/disconnect/', react_page_redirect(
+        lazy_view('reporting.imap_views.imap_disconnect'),
+        static_react_page('profile/'),
+    ), name='imap_disconnect'),
     
     # IMAP 이메일 동기화
     path('imap/sync/', lazy_view('reporting.imap_views.sync_imap_emails'), name='sync_imap_emails'),

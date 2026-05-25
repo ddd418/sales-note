@@ -1,5 +1,102 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 S단계 프로필/개인 설정 완전 대체
+
+### 요약
+
+- `/profile/`를 프로필/개인 설정의 React 기준 화면으로 정리했습니다.
+- `/reporting/profile/`, `/reporting/profile/edit/`, `/reporting/imap/connect/` legacy GET/HEAD 진입을 React 프로필 화면으로 이동하게 했습니다.
+- 회사 이메일 IMAP/SMTP 연결 저장과 수신/발신 테스트를 React 화면에서 처리하는 API `/reporting/api/profile/imap/connect/`를 추가했습니다.
+- Gmail OAuth 시작 경로는 유지하고, Gmail/IMAP 오류·해제 후 이동은 React `/profile/`로 연결했습니다.
+- 기본정보 수정, 비밀번호 변경, Gmail/IMAP 연결 상태 표시, 연결 해제가 React 화면에서 처리됩니다.
+- manager 계정은 기존 정책대로 메일 연동 설정 변경 API가 차단됩니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/gmail_views.py`
+- `reporting/imap_views.py`
+- `reporting/tests.py`
+- `frontend/server.mjs`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 사용자는 자기 프로필 조회/수정, 비밀번호 변경, 메일 연결 상태 확인, 연결 해제를 Django profile template 없이 수행할 수 있습니다.
+- 회사 이메일 연결 버튼이 Django IMAP 설정 template로 빠지지 않고 React 안에서 서버/포트/계정 정보를 저장합니다.
+- 기존 `/reporting/profile/`, `/reporting/profile/edit/`, `/reporting/imap/connect/` 북마크는 React `/profile/`로 이동합니다.
+- Gmail OAuth 연결 시작은 기존 보안 흐름을 유지하고, 실패/완료 후 React 프로필로 돌아오도록 정리했습니다.
+
+### 기존 기능 보존
+
+- 기존 Django profile/IMAP template view와 POST fallback은 삭제하지 않았습니다.
+- Gmail OAuth, Gmail disconnect POST fallback, IMAP sync/send 경로는 유지했습니다.
+- 프로필 기본정보 수정과 비밀번호 변경 API는 기존 동작을 유지했습니다.
+- manager의 메일 연동 설정 제한은 React UI와 새 API에서 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\gmail_views.py reporting\imap_views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1
+→ Ran 32 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 실제 Gmail OAuth 연결은 운영 OAuth 설정과 사용자 계정 인증이 필요하므로 배포 후 수동 확인이 필요합니다.
+- IMAP/SMTP 수신·발신 테스트는 실제 메일 서버 자격 증명으로 운영에서 확인해야 합니다.
+- Vite large chunk warning은 기존 대형 `App.tsx` 구조 때문에 남아 있으며, 대형 파일 분리 단계에서 다뤄야 합니다.
+
+### 운영 배포 상태
+
+- 배포 전 검증 완료.
+- Runtime commit/push와 Railway 배포 후 이 섹션에 deployment ID와 production smoke 결과를 갱신합니다.
+
+### 권장 다음 작업
+
+- 운영 서버에서 S 단계 수동 확인을 마친 뒤 다음 React 완전대체 항목으로 진행합니다.
+
+### 운영 서버 수동 확인 절차
+
+1. 사용자 계정으로 `https://sales-note-frontend-production.up.railway.app/profile/`에 접속합니다.
+2. 기본 정보가 보이고 사용자명/이메일 수정 저장이 정상인지 확인합니다.
+3. 비밀번호 변경이 정상 처리되는지 확인합니다.
+4. 메일 미연동 상태에서 `회사 이메일` 버튼을 눌러 IMAP/SMTP 폼이 React 화면 안에서 열리는지 확인합니다.
+5. 실제 회사 이메일 또는 앱 비밀번호로 수신 테스트와 발신 테스트를 실행합니다.
+6. `연동 저장` 후 연결 상태, 이메일 주소, 연결일이 표시되는지 확인합니다.
+7. `연결 해제` 후 미연동 상태로 돌아오는지 확인합니다.
+8. Gmail 계정 사용자는 `Gmail 연결`을 눌러 OAuth 화면으로 이동하고, 완료/실패 후 React `/profile/`로 돌아오는지 확인합니다.
+9. 기존 `/reporting/profile/`, `/reporting/profile/edit/`, `/reporting/imap/connect/` 링크가 React 프로필 화면으로 이동하는지 확인합니다.
+10. manager 계정으로 접속해 프로필은 읽히지만 메일 연동 설정이 표시/변경되지 않는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 R단계 제품/서류 템플릿 관리 완전 대체
 
 ### 요약

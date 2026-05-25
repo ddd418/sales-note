@@ -211,6 +211,12 @@ function getCoreCrmReactLocation(requestUrl) {
   if (pathname === '/reporting/analytics/' || pathname === '/reporting/analytics') {
     return buildReactLocation('/reports/', params);
   }
+  if (pathname === '/reporting/profile/' || pathname === '/reporting/profile') {
+    return buildReactLocation('/profile/', params);
+  }
+  if (pathname === '/reporting/profile/edit/' || pathname === '/reporting/profile/edit') {
+    return buildReactLocation('/profile/', params, { extra: { edit: '1' } });
+  }
   if (
     pathname === '/reporting/users/' ||
     pathname === '/reporting/users' ||
@@ -288,6 +294,16 @@ function getCoreCrmReactLocation(requestUrl) {
   match = pathname.match(/^\/reporting\/business-cards\/(\d+)\/(?:delete|set-default)\/?$/);
   if (match) {
     return buildReactLocation('/mailbox/business-cards/', params, { extra: { card: match[1] } });
+  }
+
+  if (pathname === '/reporting/gmail/disconnect/' || pathname === '/reporting/gmail/disconnect') {
+    return buildReactLocation('/profile/', params);
+  }
+  if (pathname === '/reporting/imap/connect/' || pathname === '/reporting/imap/connect') {
+    return buildReactLocation('/profile/', params, { extra: { imap: '1' } });
+  }
+  if (pathname === '/reporting/imap/disconnect/' || pathname === '/reporting/imap/disconnect') {
+    return buildReactLocation('/profile/', params);
   }
 
   if (pathname === '/reporting/prepayment/' || pathname === '/reporting/prepayment') {

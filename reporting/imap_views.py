@@ -13,6 +13,7 @@ from .imap_utils import (
     IMAPEmailService, SMTPEmailService, EmailEncryption,
     test_imap_connection, test_smtp_connection, EMAIL_PRESETS
 )
+from .react_redirects import frontend_url
 import logging
 from datetime import datetime, timedelta
 
@@ -115,7 +116,7 @@ def imap_connect(request):
             user_profile.save()
             
             messages.success(request, f"✓ 이메일 연동 완료: {imap_email}")
-            return redirect('reporting:profile')
+            return redirect(frontend_url('profile/'))
     
     # GET 요청
     context = {
@@ -137,15 +138,17 @@ def imap_disconnect(request):
     user_profile.imap_port = 993
     user_profile.imap_username = ''
     user_profile.imap_password = ''
+    user_profile.imap_use_ssl = True
     user_profile.smtp_host = ''
     user_profile.smtp_port = 587
     user_profile.smtp_username = ''
     user_profile.smtp_password = ''
+    user_profile.smtp_use_tls = True
     user_profile.imap_connected_at = None
     user_profile.save()
     
     messages.success(request, "이메일 연동이 해제되었습니다.")
-    return redirect('reporting:profile')
+    return redirect(frontend_url('profile/'))
 
 
 @login_required
@@ -155,7 +158,7 @@ def sync_imap_emails(request):
     
     if not user_profile.imap_email:
         messages.error(request, "먼저 이메일을 연동해주세요.")
-        return redirect('reporting:profile')
+        return redirect(frontend_url('profile/'))
     
     try:
         # 대상 이메일 목록 가져오기

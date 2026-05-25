@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement S-step profile/settings replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item S for profile and personal settings.
+- React already owns `/profile/` and existing profile JSON APIs support profile lookup/update, password change, and email disconnect.
+- Remaining full-replacement gaps are legacy `/reporting/profile/` and `/reporting/profile/edit/` template entry points, IMAP connect still opening a Django template, and OAuth/IMAP flows redirecting back to Django profile screens.
+
+**DB change required**: No.
+
+- Existing `User`, `UserProfile`, Gmail token fields, and IMAP/SMTP fields support this scope.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Keep `/profile/` as the canonical React personal settings screen.
+- Redirect authenticated GET/HEAD legacy profile/edit and IMAP/Gmail disconnect URLs to React profile while preserving POST fallback behavior where legacy endpoints still mutate state.
+- Add a profile IMAP JSON API for connect/save and connection tests so users can complete company email settings from React.
+- Extend the React profile page with an IMAP/company-email connection panel while preserving Gmail OAuth connect/disconnect behavior.
+- Keep password change, profile update, and email disconnect on existing protected APIs.
+- Remove profile from React fallback metadata so personal settings no longer rely on a Django template.
+- Add focused tests for profile legacy redirects, profile API links, IMAP connect API save/test behavior, and manager email-connection restriction.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\gmail_views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.ReactReportsProfileBusinessCardApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/profile/`, `/reporting/profile/`, `/reporting/profile/edit/`, `/reporting/imap/connect/`, profile update, password change, IMAP save/test, Gmail OAuth entry, and disconnect.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement R-step product/document-template replacement plan
 
 **Background**:

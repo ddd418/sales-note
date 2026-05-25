@@ -288,6 +288,8 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(reverse('reporting:analytics_dashboard'), 'reports/')
         self.assertReactRedirect(reverse('reporting:prepayment_list'), 'prepayments/')
         self.assertReactRedirect(reverse('reporting:product_list'), 'products/')
+        self.assertReactRedirect(reverse('reporting:profile'), 'profile/')
+        self.assertReactRedirect(reverse('reporting:profile_edit'), 'profile/?edit=1')
 
     def test_core_detail_page_redirects(self):
         self.assertReactRedirect(reverse('reporting:followup_detail', args=[self.followup.id]), f'customers/{self.followup.id}/')
@@ -441,6 +443,9 @@ class CoreCrmLegacyRedirectTests(TestCase):
             reverse('reporting:business_card_set_default', args=[card.id]),
             f'mailbox/business-cards/?card={card.id}',
         )
+        self.assertReactRedirect(reverse('reporting:gmail_disconnect'), 'profile/')
+        self.assertReactRedirect(reverse('reporting:imap_connect'), 'profile/?imap=1')
+        self.assertReactRedirect(reverse('reporting:imap_disconnect'), 'profile/')
 
     def test_non_get_legacy_create_action_is_not_redirected_to_react(self):
         response = self.client.post(reverse('reporting:schedule_create'), {
@@ -2157,6 +2162,89 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(password_response.status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('NewPass12345!'))
+
+    def test_profile_api_links_profile_settings_to_react_imap_api(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:profile_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        links = payload['emailConnection']['links']
+        self.assertEqual(links['imapConnect'], '/profile/?imap=1')
+        self.assertEqual(links['imapConnectApi'], reverse('reporting:profile_imap_connect_api'))
+        self.assertEqual(payload['links']['legacy'], reverse('reporting:profile'))
+        self.assertEqual(payload['emailConnection']['settings']['imapPort'], 993)
+
+    def test_profile_imap_connect_api_saves_company_email_settings(self):
+        self.client.force_login(self.user)
+
+        with patch('reporting.imap_utils.EmailEncryption.encrypt_password', return_value='encrypted-secret'):
+            response = self.client.post(
+                reverse('reporting:profile_imap_connect_api'),
+                data=json.dumps({
+                    'provider': 'gmail',
+                    'imapEmail': 'sales@example.com',
+                    'imapUsername': 'sales@example.com',
+                    'imapPassword': 'app-password',
+                    'smtpPassword': 'smtp-app-password',
+                }),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['emailConnection']['connected'])
+        self.assertTrue(payload['emailConnection']['imapConnected'])
+        self.assertEqual(payload['emailConnection']['address'], 'sales@example.com')
+        self.user.userprofile.refresh_from_db()
+        profile = self.user.userprofile
+        self.assertEqual(profile.email_provider, 'gmail')
+        self.assertEqual(profile.imap_email, 'sales@example.com')
+        self.assertEqual(profile.imap_host, 'imap.gmail.com')
+        self.assertEqual(profile.imap_port, 993)
+        self.assertEqual(profile.smtp_host, 'smtp.gmail.com')
+        self.assertEqual(profile.smtp_port, 587)
+        self.assertEqual(profile.imap_password, 'encrypted-secret')
+        self.assertEqual(profile.smtp_password, 'encrypted-secret')
+        self.assertIsNotNone(profile.imap_connected_at)
+
+    def test_profile_imap_connect_api_runs_connection_tests_without_saving(self):
+        self.client.force_login(self.user)
+
+        with patch('reporting.imap_utils.test_imap_connection', return_value=(True, '연결 성공')) as tester:
+            response = self.client.post(
+                reverse('reporting:profile_imap_connect_api'),
+                data=json.dumps({
+                    'action': 'test_imap',
+                    'provider': 'gmail',
+                    'imapEmail': 'sales@example.com',
+                    'imapPassword': 'app-password',
+                }),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['testType'], 'imap')
+        tester.assert_called_once_with('imap.gmail.com', 993, 'sales@example.com', 'app-password', True)
+        self.user.userprofile.refresh_from_db()
+        self.assertIsNone(self.user.userprofile.imap_connected_at)
+
+    def test_profile_imap_connect_api_blocks_manager_email_setting_mutation(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            reverse('reporting:profile_imap_connect_api'),
+            data=json.dumps({
+                'provider': 'gmail',
+                'imapEmail': 'manager@example.com',
+                'imapPassword': 'app-password',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()['success'])
 
     def test_business_card_api_owner_scope_default_and_soft_delete(self):
         other_card = BusinessCard.objects.create(

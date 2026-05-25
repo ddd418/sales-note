@@ -158,6 +158,7 @@ import {
   BusinessCardPayload,
   BusinessCardsData,
   ProfileData,
+  ProfileImapPayload,
   ProfilePasswordPayload,
   ProfileUpdatePayload,
   ReportsData,
@@ -183,6 +184,7 @@ import {
   bulkUpsertProducts,
   cancelPrepayment as cancelCustomerPrepayment,
   changeProfilePassword,
+  connectProfileImap,
   commentTask,
   createCompany as createCompanyRecord,
   createDepartment as createDepartmentRecord,
@@ -466,6 +468,23 @@ type ProfilePasswordFormState = {
   oldPassword: string;
   newPassword1: string;
   newPassword2: string;
+};
+
+type ProfileImapProvider = 'gmail' | 'outlook' | 'imap';
+
+type ProfileImapFormState = {
+  provider: ProfileImapProvider;
+  imapEmail: string;
+  imapHost: string;
+  imapPort: string;
+  imapUsername: string;
+  imapPassword: string;
+  imapUseSsl: boolean;
+  smtpHost: string;
+  smtpPort: string;
+  smtpUsername: string;
+  smtpPassword: string;
+  smtpUseTls: boolean;
 };
 
 type BusinessCardFormState = {
@@ -1181,6 +1200,53 @@ const makeEmptyProfilePasswordForm = (): ProfilePasswordFormState => ({
   newPassword1: '',
   newPassword2: '',
 });
+
+const profileImapPresets: Record<ProfileImapProvider, Pick<ProfileImapFormState, 'imapHost' | 'imapPort' | 'imapUseSsl' | 'smtpHost' | 'smtpPort' | 'smtpUseTls'>> = {
+  gmail: {
+    imapHost: 'imap.gmail.com',
+    imapPort: '993',
+    imapUseSsl: true,
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: '587',
+    smtpUseTls: true,
+  },
+  outlook: {
+    imapHost: 'outlook.office365.com',
+    imapPort: '993',
+    imapUseSsl: true,
+    smtpHost: 'smtp.office365.com',
+    smtpPort: '587',
+    smtpUseTls: true,
+  },
+  imap: {
+    imapHost: '',
+    imapPort: '993',
+    imapUseSsl: true,
+    smtpHost: '',
+    smtpPort: '587',
+    smtpUseTls: true,
+  },
+};
+
+const makeProfileImapForm = (data?: ProfileData | null): ProfileImapFormState => {
+  const provider = (data?.emailConnection.provider || 'gmail') as ProfileImapProvider;
+  const safeProvider: ProfileImapProvider = provider in profileImapPresets ? provider : 'imap';
+  const preset = profileImapPresets[safeProvider];
+  return {
+    provider: safeProvider,
+    imapEmail: data?.emailConnection.settings.imapEmail || data?.emailConnection.address || data?.user.email || '',
+    imapHost: data?.emailConnection.settings.imapHost || preset.imapHost,
+    imapPort: String(data?.emailConnection.settings.imapPort || preset.imapPort),
+    imapUsername: data?.emailConnection.settings.imapEmail || data?.emailConnection.address || data?.user.email || '',
+    imapPassword: '',
+    imapUseSsl: data?.emailConnection.settings.imapUseSsl ?? preset.imapUseSsl,
+    smtpHost: data?.emailConnection.settings.smtpHost || preset.smtpHost,
+    smtpPort: String(data?.emailConnection.settings.smtpPort || preset.smtpPort),
+    smtpUsername: data?.emailConnection.settings.imapEmail || data?.emailConnection.address || data?.user.email || '',
+    smtpPassword: '',
+    smtpUseTls: data?.emailConnection.settings.smtpUseTls ?? preset.smtpUseTls,
+  };
+};
 
 const makeEmptyBusinessCardForm = (): BusinessCardFormState => ({
   name: '',
@@ -2543,7 +2609,7 @@ function WorkspaceRoutePage({
   );
 }
 
-const legacyFallbackViews: MainView[] = ['analytics', 'businessCards', 'profile'];
+const legacyFallbackViews: MainView[] = ['analytics', 'businessCards'];
 
 function LegacyFallbackRoutePage({ view }: { view: MainView }) {
   const meta = routeMeta[view];
@@ -7536,6 +7602,10 @@ function ProfileSettingsPage({
   data,
   error,
   form,
+  imapForm,
+  imapOpen,
+  imapSaving,
+  imapTesting,
   loading,
   message,
   passwordForm,
@@ -7544,6 +7614,10 @@ function ProfileSettingsPage({
   disconnecting,
   onDisconnectEmail,
   onFormChange,
+  onImapAction,
+  onImapFormChange,
+  onImapOpenChange,
+  onImapSubmit,
   onPasswordFormChange,
   onPasswordSubmit,
   onSubmit,
@@ -7551,6 +7625,10 @@ function ProfileSettingsPage({
   data: ProfileData | null;
   error: string;
   form: ProfileFormState;
+  imapForm: ProfileImapFormState;
+  imapOpen: boolean;
+  imapSaving: boolean;
+  imapTesting: 'imap' | 'smtp' | '';
   loading: boolean;
   message: string;
   passwordForm: ProfilePasswordFormState;
@@ -7559,6 +7637,10 @@ function ProfileSettingsPage({
   disconnecting: boolean;
   onDisconnectEmail: () => void;
   onFormChange: (field: keyof ProfileFormState, value: string) => void;
+  onImapAction: (action: ProfileImapPayload['action']) => void;
+  onImapFormChange: (field: keyof ProfileImapFormState, value: string | boolean) => void;
+  onImapOpenChange: (open: boolean) => void;
+  onImapSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onPasswordFormChange: (field: keyof ProfilePasswordFormState, value: string) => void;
   onPasswordSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -7706,8 +7788,81 @@ function ProfileSettingsPage({
               </div>
               <div className="profile-connection-actions">
                 <a className="route-secondary-action" href={connection.links.gmailConnect}>Gmail 연결</a>
-                <a className="route-secondary-action" href={connection.links.imapConnect}>회사 이메일 연결</a>
+                <button className="route-secondary-action" onClick={() => onImapOpenChange(!imapOpen)} type="button">
+                  {imapOpen ? <X size={15} /> : <Plus size={15} />}
+                  회사 이메일
+                </button>
               </div>
+              {imapOpen ? (
+                <form className="profile-form profile-imap-form" onSubmit={onImapSubmit}>
+                  <label>
+                    제공업체
+                    <select value={imapForm.provider} onChange={(event) => onImapFormChange('provider', event.target.value)}>
+                      <option value="gmail">Gmail</option>
+                      <option value="outlook">Outlook/Office365</option>
+                      <option value="imap">Custom IMAP/SMTP</option>
+                    </select>
+                  </label>
+                  <label>
+                    이메일
+                    <input type="email" value={imapForm.imapEmail} onChange={(event) => onImapFormChange('imapEmail', event.target.value)} required />
+                  </label>
+                  <label>
+                    IMAP 사용자명
+                    <input value={imapForm.imapUsername} onChange={(event) => onImapFormChange('imapUsername', event.target.value)} />
+                  </label>
+                  <label>
+                    비밀번호
+                    <input type="password" value={imapForm.imapPassword} onChange={(event) => onImapFormChange('imapPassword', event.target.value)} required />
+                  </label>
+                  <label>
+                    IMAP 서버
+                    <input value={imapForm.imapHost} onChange={(event) => onImapFormChange('imapHost', event.target.value)} required />
+                  </label>
+                  <label>
+                    IMAP 포트
+                    <input inputMode="numeric" value={imapForm.imapPort} onChange={(event) => onImapFormChange('imapPort', event.target.value)} required />
+                  </label>
+                  <label>
+                    SMTP 서버
+                    <input value={imapForm.smtpHost} onChange={(event) => onImapFormChange('smtpHost', event.target.value)} required />
+                  </label>
+                  <label>
+                    SMTP 포트
+                    <input inputMode="numeric" value={imapForm.smtpPort} onChange={(event) => onImapFormChange('smtpPort', event.target.value)} required />
+                  </label>
+                  <label>
+                    SMTP 사용자명
+                    <input value={imapForm.smtpUsername} onChange={(event) => onImapFormChange('smtpUsername', event.target.value)} />
+                  </label>
+                  <label>
+                    SMTP 비밀번호
+                    <input type="password" value={imapForm.smtpPassword} onChange={(event) => onImapFormChange('smtpPassword', event.target.value)} />
+                  </label>
+                  <label className="business-card-default-toggle">
+                    <input type="checkbox" checked={imapForm.imapUseSsl} onChange={(event) => onImapFormChange('imapUseSsl', event.target.checked)} />
+                    IMAP SSL
+                  </label>
+                  <label className="business-card-default-toggle">
+                    <input type="checkbox" checked={imapForm.smtpUseTls} onChange={(event) => onImapFormChange('smtpUseTls', event.target.checked)} />
+                    SMTP TLS
+                  </label>
+                  <div className="profile-imap-actions">
+                    <button className="secondary-button" disabled={imapSaving || Boolean(imapTesting)} onClick={() => onImapAction('test_imap')} type="button">
+                      {imapTesting === 'imap' ? <Loader2 className="spin-icon" size={15} /> : <RefreshCw size={15} />}
+                      수신 테스트
+                    </button>
+                    <button className="secondary-button" disabled={imapSaving || Boolean(imapTesting)} onClick={() => onImapAction('test_smtp')} type="button">
+                      {imapTesting === 'smtp' ? <Loader2 className="spin-icon" size={15} /> : <Send size={15} />}
+                      발신 테스트
+                    </button>
+                    <button className="primary-button" disabled={imapSaving || Boolean(imapTesting)} type="submit">
+                      {imapSaving ? <Loader2 className="spin-icon" size={16} /> : <Check size={16} />}
+                      연동 저장
+                    </button>
+                  </div>
+                </form>
+              ) : null}
             </div>
           )}
         </aside>
@@ -21960,8 +22115,14 @@ export function App() {
   const [profileLoading, setProfileLoading] = useState(currentView === 'profile');
   const [profileForm, setProfileForm] = useState<ProfileFormState>(() => makeProfileForm());
   const [profilePasswordForm, setProfilePasswordForm] = useState<ProfilePasswordFormState>(() => makeEmptyProfilePasswordForm());
+  const [profileImapForm, setProfileImapForm] = useState<ProfileImapFormState>(() => makeProfileImapForm());
+  const [profileImapOpen, setProfileImapOpen] = useState(
+    currentView === 'profile' && new URLSearchParams(window.location.search).get('imap') === '1',
+  );
   const [profileSaving, setProfileSaving] = useState(false);
   const [profilePasswordSaving, setProfilePasswordSaving] = useState(false);
+  const [profileImapSaving, setProfileImapSaving] = useState(false);
+  const [profileImapTesting, setProfileImapTesting] = useState<'imap' | 'smtp' | ''>('');
   const [profileEmailDisconnecting, setProfileEmailDisconnecting] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
@@ -22894,6 +23055,10 @@ export function App() {
       }
       setProfileData(data);
       setProfileForm(makeProfileForm(data));
+      setProfileImapForm(makeProfileImapForm(data));
+      if (new URLSearchParams(window.location.search).get('imap') === '1' && !data.emailConnection.connected) {
+        setProfileImapOpen(true);
+      }
       setProfileLoading(false);
     });
     return () => {
@@ -23902,6 +24067,38 @@ export function App() {
     }));
     setProfileError('');
   };
+  const handleProfileImapFormChange = (field: keyof ProfileImapFormState, value: string | boolean) => {
+    setProfileImapForm((previous) => {
+      if (field === 'provider') {
+        const provider = (value || 'imap') as ProfileImapProvider;
+        const preset = profileImapPresets[provider] || profileImapPresets.imap;
+        return {
+          ...previous,
+          provider,
+          imapHost: preset.imapHost,
+          imapPort: preset.imapPort,
+          imapUseSsl: preset.imapUseSsl,
+          smtpHost: preset.smtpHost,
+          smtpPort: preset.smtpPort,
+          smtpUseTls: preset.smtpUseTls,
+        };
+      }
+      if (field === 'imapEmail') {
+        const nextEmail = String(value);
+        return {
+          ...previous,
+          imapEmail: nextEmail,
+          imapUsername: previous.imapUsername || nextEmail,
+          smtpUsername: previous.smtpUsername || nextEmail,
+        };
+      }
+      return {
+        ...previous,
+        [field]: value,
+      };
+    });
+    setProfileError('');
+  };
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!profileData || profileSaving) {
@@ -23962,6 +24159,56 @@ export function App() {
       setProfilePasswordSaving(false);
     }
   };
+  const buildProfileImapPayload = (action: ProfileImapPayload['action'] = 'save'): ProfileImapPayload => ({
+    action,
+    provider: profileImapForm.provider,
+    imapEmail: profileImapForm.imapEmail.trim(),
+    imapHost: profileImapForm.imapHost.trim(),
+    imapPort: Number(profileImapForm.imapPort || 993),
+    imapUsername: profileImapForm.imapUsername.trim() || profileImapForm.imapEmail.trim(),
+    imapPassword: profileImapForm.imapPassword,
+    imapUseSsl: profileImapForm.imapUseSsl,
+    smtpHost: profileImapForm.smtpHost.trim(),
+    smtpPort: Number(profileImapForm.smtpPort || 587),
+    smtpUsername: profileImapForm.smtpUsername.trim() || profileImapForm.imapUsername.trim() || profileImapForm.imapEmail.trim(),
+    smtpPassword: profileImapForm.smtpPassword || profileImapForm.imapPassword,
+    smtpUseTls: profileImapForm.smtpUseTls,
+  });
+  const handleProfileImapAction = async (action: ProfileImapPayload['action'] = 'save') => {
+    if (!profileData || profileImapSaving || profileImapTesting) {
+      return;
+    }
+    const payload = buildProfileImapPayload(action);
+    if (!payload.imapEmail || !payload.imapPassword) {
+      setProfileError('이메일 주소와 메일 비밀번호를 입력하세요.');
+      return;
+    }
+    setProfileError('');
+    setProfileMessage('');
+    if (action === 'save') {
+      setProfileImapSaving(true);
+    } else {
+      setProfileImapTesting(action === 'test_smtp' ? 'smtp' : 'imap');
+    }
+    try {
+      const data = await connectProfileImap(payload, profileData.emailConnection.links.imapConnectApi);
+      setProfileData(data);
+      if (action === 'save') {
+        setProfileImapForm(makeProfileImapForm(data));
+        setProfileImapOpen(false);
+      }
+      setProfileMessage(data.message || (action === 'save' ? '회사 이메일 연동을 저장했습니다.' : '연결 테스트를 완료했습니다.'));
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : '회사 이메일 연동 처리에 실패했습니다.');
+    } finally {
+      setProfileImapSaving(false);
+      setProfileImapTesting('');
+    }
+  };
+  const handleProfileImapSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void handleProfileImapAction('save');
+  };
   const handleProfileEmailDisconnect = async () => {
     if (!profileData || profileEmailDisconnecting || !window.confirm('이메일 연동을 해제하시겠습니까?')) {
       return;
@@ -23972,6 +24219,8 @@ export function App() {
     try {
       const data = await disconnectProfileEmail(profileData.emailConnection.links.disconnect);
       setProfileData(data);
+      setProfileImapForm(makeProfileImapForm(data));
+      setProfileImapOpen(false);
       setProfileMessage(data.message || '이메일 연동을 해제했습니다.');
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : '이메일 연동 해제에 실패했습니다.');
@@ -24884,6 +25133,10 @@ export function App() {
           disconnecting={profileEmailDisconnecting}
           error={profileError}
           form={profileForm}
+          imapForm={profileImapForm}
+          imapOpen={profileImapOpen}
+          imapSaving={profileImapSaving}
+          imapTesting={profileImapTesting}
           loading={profileLoading}
           message={profileMessage}
           passwordForm={profilePasswordForm}
@@ -24891,6 +25144,10 @@ export function App() {
           saving={profileSaving}
           onDisconnectEmail={handleProfileEmailDisconnect}
           onFormChange={handleProfileFormChange}
+          onImapAction={handleProfileImapAction}
+          onImapFormChange={handleProfileImapFormChange}
+          onImapOpenChange={setProfileImapOpen}
+          onImapSubmit={handleProfileImapSubmit}
           onPasswordFormChange={handleProfilePasswordFormChange}
           onPasswordSubmit={handleProfilePasswordSubmit}
           onSubmit={handleProfileSubmit}

@@ -22,6 +22,7 @@ from .models import (
 )
 from .gmail_utils import GmailService, get_authorization_url, exchange_code_for_token
 from .readonly_api import api_login_required_or_readonly_response
+from .react_redirects import frontend_url
 
 
 # ============================================
@@ -31,6 +32,10 @@ from .readonly_api import api_login_required_or_readonly_response
 def _normalize_email_body_text(value):
     """Normalize textarea line endings before MIME and HTML conversion."""
     return (value or '').replace('\r\n', '\n').replace('\r', '\n')
+
+
+def _redirect_profile_react():
+    return redirect(frontend_url('profile/'))
 
 
 def _reply_target_email(email_log):
@@ -1025,7 +1030,7 @@ def gmail_connect(request):
     # 환경 변수 체크
     if not settings.GMAIL_CLIENT_ID or not settings.GMAIL_CLIENT_SECRET or not settings.GMAIL_REDIRECT_URI:
         messages.error(request, 'Gmail API 설정이 올바르지 않습니다. 관리자에게 문의하세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     try:
         redirect_uri = settings.GMAIL_REDIRECT_URI
@@ -1035,7 +1040,7 @@ def gmail_connect(request):
         return redirect(auth_url)
     except Exception as e:
         messages.error(request, f'Gmail 연결 시작 중 오류: {str(e)}')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
 
 
 @login_required
@@ -1046,11 +1051,11 @@ def gmail_callback(request):
     
     if error:
         messages.error(request, f'Gmail 연결 실패: {error}')
-        return redirect('reporting:profile')  # 프로필 페이지로 리다이렉트
+        return _redirect_profile_react()
     
     if not code:
         messages.error(request, 'Gmail 인증 코드가 없습니다.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     try:
         # 인증 코드를 토큰으로 교환
@@ -1073,11 +1078,11 @@ def gmail_callback(request):
         # 첫 연동 시 메시지만 표시 (동기화는 사용자가 수동으로 또는 나중에)
         messages.success(request, f'Gmail 계정({gmail_email})이 연결되었습니다. 메일함에서 "메일 동기화" 버튼을 눌러 이메일을 가져올 수 있습니다.')
         
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
         
     except Exception as e:
         messages.error(request, f'Gmail 연결 중 오류 발생: {str(e)}')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
 
 
 @login_required
@@ -1096,7 +1101,7 @@ def gmail_disconnect(request):
         except Exception as e:
             messages.error(request, f'연결 해제 중 오류 발생: {str(e)}')
     
-    return redirect('reporting:profile')
+    return _redirect_profile_react()
 
 
 # ============================================
@@ -1117,7 +1122,7 @@ def send_email_from_schedule(request, schedule_id):
     profile = request.user.userprofile
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.error(request, '이메일 계정을 먼저 연결해주세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     auto_attachments = _auto_document_candidates_for_schedule(schedule)
@@ -1168,7 +1173,7 @@ def send_email_from_mailbox(request, followup_id=None):
     profile = request.user.userprofile
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.error(request, '이메일 계정을 먼저 연결해주세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
@@ -1227,7 +1232,7 @@ def reply_email(request, email_log_id):
     profile = request.user.userprofile
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.error(request, '이메일 계정을 먼저 연결해주세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     # 컨텍스트 준비 (GET과 POST 모두 사용)
     context = {
@@ -2544,7 +2549,7 @@ def mailbox_inbox(request):
     # Gmail 또는 IMAP 연결 확인
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.warning(request, '이메일 계정을 연결해주세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     # DB에서 수신 메일 조회 (본인 담당 팔로우업만, 휴지통 제외)
     # 최신순 정렬: received_at이 null이면 created_at 사용
@@ -2588,7 +2593,7 @@ def mailbox_sent(request):
     # Gmail 또는 IMAP 연결 확인
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.warning(request, '이메일 계정을 연결해주세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     emails = EmailLog.objects.filter(
         email_type='sent',
@@ -2620,7 +2625,7 @@ def mailbox_starred(request):
     # Gmail 또는 IMAP 연결 확인
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.warning(request, '이메일 계정을 연결해주세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     emails = EmailLog.objects.filter(
         Q(sender=request.user) | Q(followup__user=request.user),
@@ -2822,7 +2827,7 @@ def mailbox_thread(request, thread_id):
     # Gmail 또는 IMAP 연결 확인
     if not profile.gmail_token and not profile.imap_connected_at:
         messages.warning(request, '이메일 계정을 연결해주세요.')
-        return redirect('reporting:profile')
+        return _redirect_profile_react()
     
     # Gmail에서 최신 스레드 데이터 가져와서 DB 동기화
     if profile.gmail_token:
