@@ -1,5 +1,109 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 X단계 테스트/QA 확대
+
+### 요약
+
+- 기존 Playwright E2E 하네스를 확장해 CRM 핵심 회귀 테스트를 7개에서 11개로 늘렸습니다.
+- 고객 상세, 계정 상세, 리포트, 선결제, 계정 정리 preview, Excel 다운로드 E2E를 계속 통과하도록 확인했습니다.
+- salesman, manager, admin 역할별 navigation/API permission E2E를 추가했습니다.
+- Playwright가 개발용 `db.sqlite3` 대신 `output/e2e/e2e.sqlite3` 전용 SQLite DB를 사용하도록 분리했습니다.
+- 운영 배포 후 smoke script가 대표 React 라우트와 대표 보호 API 전체를 자동 점검하도록 보강했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `docs/OPERATIONS_RUNBOOK.md`
+- `frontend/README.md`
+- `frontend/e2e/permissions-and-downloads.spec.ts`
+- `frontend/playwright.config.ts`
+- `frontend/tsconfig.json`
+- `sales_project/settings.py`
+- `scripts/post_deploy_smoke.py`
+
+### CRM 개선
+
+- React 대체 흐름의 핵심 화면 회귀를 브라우저 테스트로 고정했습니다.
+- 계정 원장 기반 고객 상세/계정 상세, 리포트 drilldown, 선결제 계정 현황, 정리 영향 미리보기, Excel 권한 차이를 한 번에 검증할 수 있습니다.
+- 역할별 메뉴/권한 surface가 E2E로 검증되어 salesman/manager/admin 전환 중 권한 누락이나 노출을 더 빨리 잡을 수 있습니다.
+- 운영 smoke가 `/customers/`, `/reports/`, `/prepayments/`, `/assets/`, `/ai-workspace/`, `/data-cleanup/`, `/downloads/`와 대표 보호 API를 자동 확인합니다.
+
+### 기존 기능 보존
+
+- 운영 DB schema와 Django 모델은 변경하지 않았습니다.
+- 기존 Playwright seed command의 production-like 환경 실행 거부 정책을 유지했습니다.
+- 기존 `/reporting/*` 인증/권한 API 응답은 유지했고, 익명 보호 API는 운영에서 모두 `401 login_required`를 반환합니다.
+- 프론트 build/runtime 코드는 변경하지 않고 QA/test, 로컬 test DB, smoke 자동화만 보강했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile scripts\post_deploy_smoke.py reporting\management\commands\seed_e2e_data.py sales_project\settings.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+$env:E2E_SQLITE_DATABASE='output/e2e/e2e.sqlite3'; python manage.py seed_e2e_data --output output\e2e\seed.json
+→ E2E seed data written to output\e2e\seed.json
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run e2e
+→ 11 passed
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large App bundle
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS backend healthz/readyz/login/protected reports API
+→ PASS frontend healthz/dashboard shell
+→ PASS React routes: /dashboard/, /customers/, /reports/, /prepayments/, /assets/, /ai-workspace/, /data-cleanup/, /downloads/
+→ PASS frontend-proxied and direct backend protected APIs: /customers/, /reports/, /prepayments/, /customer-assets/, /ai-workspace/, /downloads/
+```
+
+### 알려진 제한
+
+- 이번 E2E는 핵심 조회/preview/download/permission 회귀 중심입니다. 고객/계정/선결제 실제 생성·수정·삭제 mutation E2E는 아직 최소화되어 있습니다.
+- Playwright는 로컬에서 Django/Vite 서버를 띄워 검증합니다. GitHub Actions CI 연결은 아직 추가하지 않았습니다.
+- 운영 smoke는 익명 보호와 shell 응답 위주입니다. 운영 로그인 계정 기반 smoke는 `SMOKE_USERNAME`/`SMOKE_PASSWORD`가 있을 때만 profile API까지 확인합니다.
+
+### Production Deployment Status
+
+- Completed.
+- Code commit `6357181 test: expand crm e2e qa coverage` is present on `origin/main`.
+- Railway backend `web` deployment `0c673607-78c9-401f-9b06-a9deec35cc72` succeeded for commit `6357181`.
+- Railway frontend `sales-note-frontend` deployment `ac660d33-048f-4464-ad00-3f9c1eec47b3` succeeded for commit `6357181`.
+- Expanded production smoke passed on the deployed backend/frontend.
+- Authenticated production UI verification is pending user login/session confirmation.
+
+### Recommended Next Task
+
+- 사용자가 운영 서버에서 X단계 수동 검수를 완료한 뒤, GitHub Actions에 `cd frontend && npm run e2e`를 연결하거나 고객/선결제 mutation E2E를 추가합니다.
+
+### Manual Server Test Process
+
+1. 로컬에서 `cd frontend && npm run e2e`를 실행해 11개 Playwright 테스트가 통과하는지 확인합니다.
+2. 운영 프론트 `https://sales-note-frontend-production.up.railway.app/customers/`, `/reports/`, `/prepayments/`, `/assets/`, `/ai-workspace/`, `/data-cleanup/`, `/downloads/`에 로그인 후 대표 화면이 정상 로딩되는지 확인합니다.
+3. manager 계정으로 `/reports/`에서 `현황 엑셀` 다운로드가 되는지 확인합니다.
+4. salesman 계정에서 같은 Excel 버튼이 보이지 않는지 확인합니다.
+5. admin 또는 manager 계정에서 `/employees/` 접근 권한이 역할에 맞게 보이는지 확인합니다.
+6. 시크릿 창 또는 로그아웃 상태에서 `/reporting/api/customers/`, `/reporting/api/reports/`, `/reporting/api/prepayments/`, `/reporting/api/customer-assets/`, `/reporting/api/ai-workspace/`, `/reporting/api/downloads/`가 `401 login_required`를 반환하는지 확인합니다.
+7. 확인 중 화면 오류, 권한 노출, 다운로드 실패가 있으면 계정 역할과 URL을 알려주세요.
+
 ## 2026-05-25 — React 완전대체 W단계 Django view/service layer 정리
 
 ### 요약
