@@ -314,6 +314,9 @@ function getCoreCrmReactLocation(requestUrl) {
   if (pathname === '/reporting/schedules/calendar/' || pathname === '/reporting/schedules/calendar') {
     return buildReactLocation('/schedules/calendar/', params);
   }
+  if (pathname === '/reporting/receivables/' || pathname === '/reporting/receivables') {
+    return buildReactLocation('/receivables/', params);
+  }
   if (pathname === '/reporting/schedules/create/' || pathname === '/reporting/schedules/create') {
     return buildReactLocation('/schedules/', params, { rename: { followup: 'customer' }, extra: { create: '1' } });
   }

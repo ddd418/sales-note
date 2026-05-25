@@ -47,6 +47,15 @@ from datetime import date, timedelta
 logger = logging.getLogger(__name__)
 
 
+def _receivables_only_response():
+    return JsonResponse({
+        'success': False,
+        'error': '세금계산서/외상 상태는 외상고객 메뉴에서만 변경할 수 있습니다.',
+        'message': '외상고객 메뉴에서 품목별 외상, 카드결제, 수금완료 상태를 처리하세요.',
+        'redirect': '/receivables/',
+    }, status=410)
+
+
 def _prepayment_department_filter(department):
     """Compatibility shim for legacy helpers still living in views.py."""
     return prepayment_account_filter(department=department)
@@ -2697,6 +2706,7 @@ def navigation_api(request):
         {'id': 'weeklyReports', 'label': '주간보고', 'href': '/weekly-reports/'},
         {'id': 'documents', 'label': '서류', 'href': '/documents/'},
         {'id': 'products', 'label': '제품', 'href': '/products/'},
+        {'id': 'receivables', 'label': '외상고객', 'href': '/receivables/'},
         {'id': 'prepayments', 'label': '선결제', 'href': '/prepayments/'},
         {'id': 'profile', 'label': '프로필', 'href': '/profile/'},
     ])
@@ -11245,6 +11255,9 @@ def _schedules_delivery_item_payload(item):
         'effectiveUnitPrice': _money_int(effective_unit_price) if effective_unit_price is not None else None,
         'totalPrice': _money_int(item.total_price),
         'taxInvoiceIssued': bool(item.tax_invoice_issued),
+        'cardPaymentReceived': bool(getattr(item, 'card_payment_received', False)),
+        'receivableSettled': bool(getattr(item, 'receivable_settled', False)),
+        'receivableSettledAt': _datetime_or_none(getattr(item, 'receivable_settled_at', None)),
         'quoteGroup': item.quote_group or '',
         'quoteGroupLabel': _quote_group_label(item.quote_group),
         'notes': item.notes or '',
@@ -11295,24 +11308,23 @@ def _schedules_tax_invoice_payload(schedule, can_edit):
         status = 'empty'
         status_label = '품목 없음'
         action_label = ''
-        message = '납품 품목이 등록되면 세금계산서 상태를 관리할 수 있습니다.'
+        message = '납품 품목이 등록되면 외상고객 메뉴에서 외상 상태를 관리할 수 있습니다.'
     elif pending_count == 0:
         status = 'issued'
-        status_label = '전체 발행'
-        action_label = '전체 미발행 처리'
-        message = f'세금계산서 발행 {issued_count}건'
+        status_label = '전체 외상 등록'
+        action_label = ''
+        message = f'외상 등록 {issued_count}건'
     elif issued_count == 0:
         status = 'pending'
-        status_label = '전체 미발행'
-        action_label = '전체 발행 처리'
-        message = f'세금계산서 미발행 {pending_count}건'
+        status_label = '전체 미등록'
+        action_label = ''
+        message = f'외상 미등록 {pending_count}건'
     else:
         status = 'partial'
-        status_label = '일부 발행'
-        action_label = '전체 발행 처리'
-        message = f'발행 {issued_count}건 / 미발행 {pending_count}건'
+        status_label = '일부 외상 등록'
+        action_label = ''
+        message = f'외상 등록 {issued_count}건 / 미등록 {pending_count}건'
 
-    can_toggle = bool(can_edit and total_count > 0)
     return {
         'applies': True,
         'status': status,
@@ -11320,10 +11332,10 @@ def _schedules_tax_invoice_payload(schedule, can_edit):
         'issuedCount': issued_count,
         'pendingCount': pending_count,
         'totalCount': total_count,
-        'canToggle': can_toggle,
-        'toggleUrl': reverse('reporting:toggle_schedule_delivery_tax_invoice', args=[schedule.id]) if can_toggle else '',
-        'actionLabel': action_label if can_toggle else '',
-        'message': message,
+        'canToggle': False,
+        'toggleUrl': '',
+        'actionLabel': action_label,
+        'message': f'{message} · 변경은 외상고객 메뉴에서만 가능합니다.',
     }
 
 
@@ -11626,6 +11638,10 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None, target_schedu
             raw_item.get('sourceQuoteItemId') or raw_item.get('source_quote_item_id'),
             '불러온 원본 견적 품목 정보가 올바르지 않습니다.',
         )
+        existing_item_id = _schedules_parse_positive_id(
+            raw_item.get('id') or raw_item.get('pk'),
+            '납품 품목 정보가 올바르지 않습니다.',
+        )
         unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
         quote_group = str(raw_item.get('quoteGroup') or raw_item.get('quote_group') or '').strip()[:100]
         notes = str(raw_item.get('notes') or '').strip()
@@ -11705,15 +11721,15 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None, target_schedu
             if unit_price is not None and unit_price > 0 and discount_unit_price <= 0 and discount_rate <= 0:
                 discount_unit_price = None
 
-        tax_invoice_issued = raw_item.get('taxInvoiceIssued') in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
         item_data = {
+            '_existing_item_id': existing_item_id,
             'item_name': item_name,
             'quantity': quantity,
             'unit': unit,
             'unit_price': unit_price,
             'discount_rate': discount_rate,
             'discount_unit_price': discount_unit_price,
-            'tax_invoice_issued': tax_invoice_issued,
+            'tax_invoice_issued': False,
             'quote_group': quote_group,
             'notes': notes,
         }
@@ -13262,6 +13278,16 @@ def schedules_delivery_items_update_api(request, schedule_id):
         completed_quote_schedule_ids = []
         prepayment_total = 0
         with transaction.atomic():
+            existing_receivable_status = {
+                item.id: {
+                    'tax_invoice_issued': item.tax_invoice_issued,
+                    'card_payment_received': item.card_payment_received,
+                    'receivable_settled': item.receivable_settled,
+                    'receivable_settled_at': item.receivable_settled_at,
+                    'receivable_settled_by': item.receivable_settled_by,
+                }
+                for item in DeliveryItem.objects.select_for_update().filter(schedule=schedule)
+            }
             existing_source_quote_schedule_ids = []
             for source_id in (
                 DeliveryItem.objects.select_for_update()
@@ -13276,6 +13302,9 @@ def schedules_delivery_items_update_api(request, schedule_id):
             _schedules_validate_source_quote_item_quantities(delivery_items, schedule)
             schedule.delivery_items_set.all().delete()
             for item_data in delivery_items:
+                existing_item_id = item_data.pop('_existing_item_id', None)
+                if existing_item_id in existing_receivable_status:
+                    item_data.update(existing_receivable_status[existing_item_id])
                 DeliveryItem.objects.create(schedule=schedule, **item_data)
             _save_schedule_quote_group_notes(schedule, quote_group_notes)
             schedule.save(update_fields=['quote_extra_notes', 'updated_at'])
@@ -23160,6 +23189,8 @@ def followup_tax_invoices_api(request, followup_id):
         return JsonResponse({'error': '접근 권한이 없습니다.'}, status=403)
 
     if request.method == 'POST':
+        return _receivables_only_response()
+
         # ── 발행 요청 생성 ────────────────────────────────────────────────────
         schedule_id = request.POST.get('schedule_id') or None
         schedule = None
@@ -23279,6 +23310,8 @@ def followup_tax_invoices_api(request, followup_id):
 @require_http_methods(["POST"])
 def tax_invoice_update_status_api(request, request_id):
     """세금계산서 요청 상태 업데이트 (발행완료 / 발행취소 / 보류)."""
+    return _receivables_only_response()
+
     from .models import TaxInvoiceRequest
     from django.utils import timezone
 
@@ -24857,6 +24890,8 @@ def user_toggle_ai(request, user_id):
 @never_cache
 def toggle_tax_invoice(request, history_id):
     """세금계산서 발행 여부 토글 (AJAX)"""
+    return _receivables_only_response()
+
     try:
         history = get_object_or_404(History, id=history_id)
         
@@ -24909,6 +24944,8 @@ def toggle_tax_invoice(request, history_id):
 @login_required
 def toggle_all_tax_invoices(request, followup_id):
     """고객의 모든 미발행 납품을 발행완료로 일괄 변경 (AJAX)"""
+    return _receivables_only_response()
+
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': '잘못된 요청입니다.'}, status=400)
     
@@ -26444,7 +26481,6 @@ def history_update_api(request, history_id):
                 history.delivery_amount = None
             
             history.delivery_items = request.POST.get('delivery_items', '').strip()
-            history.tax_invoice_issued = request.POST.get('tax_invoice_issued') == 'on'
             
         elif history.action_type == 'customer_meeting':
             meeting_date = request.POST.get('meeting_date')
@@ -26624,6 +26660,8 @@ def memo_create_view(request):
 @require_POST
 def history_update_tax_invoice(request, pk):
     """세금계산서 발행 상태 업데이트"""
+    return _receivables_only_response()
+
     try:
         history = get_object_or_404(History, pk=pk)
         
@@ -28078,6 +28116,8 @@ def customer_detail_report_view(request, followup_id):
 @login_required
 def toggle_schedule_delivery_tax_invoice(request, schedule_id):
     """Schedule의 DeliveryItem 세금계산서 발행여부 일괄 토글 API"""
+    return _receivables_only_response()
+
     try:
         schedule = get_object_or_404(Schedule, pk=schedule_id)
         
@@ -28139,6 +28179,8 @@ def toggle_schedule_delivery_tax_invoice(request, schedule_id):
 @require_http_methods(["POST"])
 def toggle_history_delivery_tax_invoice(request, history_id):
     """History의 DeliveryItem 세금계산서 발행여부 일괄 토글 API"""
+    return _receivables_only_response()
+
     try:
         history = get_object_or_404(History, pk=history_id)
         
@@ -29166,6 +29208,8 @@ def department_list_ajax(request, company_id):
 @require_POST
 def update_tax_invoice_status(request):
     """세금계산서 상태 업데이트 API"""
+    return _receivables_only_response()
+
     try:
         data = json.loads(request.body)
         delivery_type = data.get('type')

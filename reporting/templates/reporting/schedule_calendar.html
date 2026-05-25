@@ -3728,84 +3728,18 @@
         }
       }
       
-      // 세금계산서 토글 이벤트 리스너 추가
-      const taxInvoiceCheckbox = document.getElementById(`editTaxInvoice-${history.id}`);
-      if (taxInvoiceCheckbox) {
-        taxInvoiceCheckbox.addEventListener('change', function() {
-          updateTaxInvoiceStatus(history.id, this.checked);
-        });
-      }
+      // 세금계산서/외상 상태는 React 외상고객 메뉴에서만 변경합니다.
     }, 100);
   }
 
   // 세금계산서 상태 업데이트 함수
   function updateTaxInvoiceStatus(historyId, isChecked) {
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    
-    if (!csrfToken) {
-      alert('CSRF 토큰을 찾을 수 없습니다. 페이지를 새로고침해주세요.');
-      return;
-    }
-    
-    const formData = new FormData();
-    formData.append('csrfmiddlewaretoken', csrfToken);
-    formData.append('tax_invoice_issued', isChecked);
-    formData.append('sync_schedule', 'true'); // 연결된 스케줄도 함께 업데이트
-    
-    fetch(`{% url 'reporting:history_update_tax_invoice' 0 %}`.replace('0', historyId), {
-      method: 'POST',
-      body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.success) {
-        showSuccessMessage(isChecked ? '세금계산서 발행으로 변경되었습니다.' : '세금계산서 미발행으로 변경되었습니다.');
-      } else {
-        showErrorMessage(data.error || '세금계산서 상태 변경 중 오류가 발생했습니다.');
-        // 체크박스 상태 되돌리기
-        const checkbox = document.getElementById(`editTaxInvoice-${historyId}`);
-        if (checkbox) {
-          checkbox.checked = !isChecked;
-        }
-      }
-    })
-    .catch(error => {
-      showErrorMessage('세금계산서 상태 변경 중 오류가 발생했습니다.');
-      // 체크박스 상태 되돌리기
-      const checkbox = document.getElementById(`editTaxInvoice-${historyId}`);
-      if (checkbox) {
-        checkbox.checked = !isChecked;
-      }
-    });
+    showErrorMessage('외상/카드/수금 상태는 외상고객 메뉴에서만 변경할 수 있습니다.');
   }
 
   // 세금계산서 상태 백그라운드 동기화 함수 (메시지 없음)
   function updateTaxInvoiceStatusSilent(historyId, isChecked) {
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    
-    if (!csrfToken) {
-      return;
-    }
-    
-    const formData = new FormData();
-    formData.append('csrfmiddlewaretoken', csrfToken);
-    formData.append('tax_invoice_issued', isChecked);
-    formData.append('silent', 'true'); // 자동 동기화임을 표시
-    
-    fetch(`{% url 'reporting:history_update_tax_invoice' 0 %}`.replace('0', historyId), {
-      method: 'POST',
-      body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.success) {
-      } else {
-      }
-    })
-    .catch(error => {
-    });
+    return;
   }
 
   // 스케줄 납품 모달 열기 함수
@@ -6856,11 +6790,8 @@
                             </div>
                             <div class="col-12 activity-field delivery-fields" style="display: none;">
                               <label class="form-label">세금계산서</label>
-                              <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" name="tax_invoice_issued" id="taxInvoice-${schedule.id}">
-                                <label class="form-check-label" for="taxInvoice-${schedule.id}">
-                                  발행 완료
-                                </label>
+                              <div class="alert alert-info py-2 mb-0">
+                                외상/카드/수금 상태는 <a href="/receivables/" class="alert-link">외상고객</a> 메뉴에서만 관리합니다.
                               </div>
                             </div>
                             
@@ -7489,22 +7420,9 @@
                 ${req.issue_memo ? `<div class="small text-success"><i class="fas fa-check me-1"></i>${req.issue_memo}</div>` : ''}
                 ${req.cancel_reason ? `<div class="small text-danger"><i class="fas fa-times me-1"></i>${req.cancel_reason}</div>` : ''}
                 <div class="mt-2 d-flex gap-1 flex-wrap">
-                  ${req.status === 'requested' || req.status === 'on_hold' ? `
-                    <button class="btn btn-success btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'issued', '')">
-                      <i class="fas fa-check me-1"></i>발행완료
-                    </button>
-                    <button class="btn btn-outline-info btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'on_hold', '')">
-                      <i class="fas fa-pause me-1"></i>보류
-                    </button>
-                    <button class="btn btn-outline-danger btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'cancelled', '')">
-                      <i class="fas fa-times me-1"></i>취소
-                    </button>
-                  ` : ''}
-                  ${req.status === 'on_hold' ? `
-                    <button class="btn btn-outline-warning btn-sm" onclick="updateTaxInvoiceStatus(${req.id}, 'requested', '')">
-                      <i class="fas fa-redo me-1"></i>재요청
-                    </button>
-                  ` : ''}
+                  <a class="btn btn-outline-primary btn-sm" href="/receivables/">
+                    <i class="fas fa-external-link-alt me-1"></i>외상고객에서 관리
+                  </a>
                 </div>
               </div>
             </div>`;
@@ -7513,71 +7431,25 @@
         html += `<p class="text-muted small"><i class="fas fa-info-circle me-1"></i>등록된 세금계산서 요청이 없습니다.</p>`;
       }
 
-      // ── 새 요청 생성: 발행 가능한 납품 일정 ────────────────────────────────
+      // ── 신규/변경 처리는 React 외상고객 메뉴로 이동 ───────────────────────
       const available = (data.delivery_schedules || []).filter(s => !s.has_active_request);
       if (available.length > 0) {
         html += `
           <hr>
-          <h6 class="text-muted mb-2"><i class="fas fa-plus me-1"></i>발행 요청</h6>
-          <select class="form-select form-select-sm mb-2" id="taxInvoiceScheduleSelect">
-            <option value="">납품 일정 선택...</option>
-            ${available.map(s => `
-              <option value="${s.id}">
-                ${s.date} — ${s.total_amount.toLocaleString()}원 (${s.status})
-              </option>
-            `).join('')}
-          </select>
-          <textarea class="form-control form-control-sm mb-2" id="taxInvoiceRequestMemo"
-                    rows="2" placeholder="메모 (선택)"></textarea>
-          <button class="btn btn-primary btn-sm w-100" onclick="requestTaxInvoice(${followupId})">
-            <i class="fas fa-file-invoice me-1"></i>세금계산서 발행 요청
-          </button>`;
+          <div class="alert alert-info mb-0">
+            세금계산서/외상/카드/수금 상태는 <a class="alert-link" href="/receivables/">외상고객</a> 메뉴에서만 변경할 수 있습니다.
+          </div>`;
       }
 
       pane.innerHTML = html;
     }
 
     window.requestTaxInvoice = function(followupId) {
-      const scheduleId = document.getElementById('taxInvoiceScheduleSelect')?.value || '';
-      const memo = document.getElementById('taxInvoiceRequestMemo')?.value || '';
-      const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-      const body = new URLSearchParams({ memo });
-      if (scheduleId) body.append('schedule_id', scheduleId);
-      fetch(`/reporting/api/followup/${followupId}/tax-invoices/`, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) {
-          loadTaxInvoiceTab(followupId);
-        } else {
-          alert(data.error || '요청 등록에 실패했습니다.');
-        }
-      })
-      .catch(() => alert('네트워크 오류가 발생했습니다.'));
+      window.location.href = '/receivables/';
     };
 
     window.updateTaxInvoiceStatus = function(requestId, newStatus, memo) {
-      if (!memo && (newStatus === 'cancelled' || newStatus === 'on_hold')) {
-        memo = prompt(newStatus === 'cancelled' ? '취소 사유를 입력하세요 (생략 가능):' : '보류 사유를 입력하세요 (생략 가능):') || '';
-      }
-      const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-      fetch(`/reporting/api/tax-invoice/${requestId}/status/`, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ status: newStatus, memo }).toString(),
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) {
-          loadTaxInvoiceTab(currentFollowupId);
-        } else {
-          alert(data.error || '상태 변경에 실패했습니다.');
-        }
-      })
-      .catch(() => alert('네트워크 오류가 발생했습니다.'));
+      window.location.href = '/receivables/';
     };
 
     // ─────────────────────────────────────────────────────────────────────────

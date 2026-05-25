@@ -2055,6 +2055,9 @@ export type ScheduleDeliveryItem = {
   effectiveUnitPrice: number | null;
   totalPrice: number;
   taxInvoiceIssued: boolean;
+  cardPaymentReceived?: boolean;
+  receivableSettled?: boolean;
+  receivableSettledAt?: string | null;
   quoteGroup: string;
   quoteGroupLabel: string;
   notes: string;
@@ -2071,7 +2074,7 @@ export type ScheduleDeliveryItemPayload = {
   unitPrice?: string | number | null;
   discountRate?: string | number | null;
   discountUnitPrice?: string | number | null;
-  taxInvoiceIssued: boolean;
+  taxInvoiceIssued?: boolean;
   quoteGroup?: string;
   notes?: string;
   sourceQuoteScheduleId?: number | null;

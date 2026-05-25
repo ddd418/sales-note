@@ -1,5 +1,44 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 Credit customer receivables menu plan
+
+**Background**:
+
+- User wants all current scattered tax-invoice input/check controls removed from existing screens.
+- Going forward, tax-invoice and card-payment checks/cancellations must be possible only from one React menu named `외상고객`.
+- This is not real tax-invoice issuance. The purpose is operational receivables/credit-customer tracking.
+- Credit must be trackable per delivery item, even when multiple items belong to the same transaction statement.
+- The screen must show total outstanding credit, sortable credit-customer/item lists, and allow marking items paid when customers settle credit.
+
+**DB change required**: Yes.
+
+- `DeliveryItem.tax_invoice_issued` already exists and will be reused as the per-item `세금계산서/외상 등록` flag.
+- Add per-item card-payment and settlement fields to `DeliveryItem` so the `외상고객` page can track card collection and paid/cancelled status without treating old invoice flags as real issuance.
+- No customer, schedule, history, or prepayment schema changes are planned.
+
+**Implementation scope**:
+
+- Add Django receivables APIs for summary, sortable customer/item lists, and per-delivery-item status updates.
+- Add React `/receivables/` page and left navigation item labeled `외상고객`.
+- Add `/reporting/receivables/` compatibility redirect to React.
+- Remove/hide schedule detail tax-invoice toggle and delivery-item edit checkbox from existing React screens.
+- Make legacy tax-invoice mutation endpoints return `410 Gone` with a message pointing users to `외상고객`.
+- Preserve read-only historical tax-invoice fields for compatibility and display where needed.
+- Keep file/Excel/prepayment/schedule APIs and authentication/authorization behavior intact.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\api\receivables.py reporting\urls.py reporting\views.py reporting\tests.py`
+- `python manage.py makemigrations --check --dry-run` before schema edits, then create migration and re-run.
+- Focused Django tests for receivables API listing/update permissions and disabled legacy tax-invoice endpoints.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && node --check server.mjs`
+- `cd frontend && npm run build`
+- Production smoke after Railway deployment plus manual authenticated `/receivables/` test.
+- `git diff --check`
+
 ## 2026-05-25 React menu/navigation speed improvement plan
 
 **Background**:

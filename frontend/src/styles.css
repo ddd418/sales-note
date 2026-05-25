@@ -1064,6 +1064,171 @@ h2 {
   grid-template-columns: minmax(260px, 1fr) 170px 150px 180px;
 }
 
+.receivables-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.receivables-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.receivables-summary-strip > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.receivables-summary-strip span,
+.receivable-customer-row span,
+.receivable-items-table small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.receivables-summary-strip strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.receivables-filter-bar {
+  grid-template-columns: minmax(260px, 1fr) 150px 140px 110px 118px;
+}
+
+.receivables-layout {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.receivable-customers-panel,
+.receivable-items-panel {
+  min-width: 0;
+}
+
+.receivable-customer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.receivable-customer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.receivable-customer-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.receivable-customer-row strong {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receivable-customer-row > div:last-child {
+  align-items: flex-end;
+}
+
+.receivable-items-table-wrap {
+  overflow-x: auto;
+}
+
+.receivable-items-table {
+  width: 100%;
+  min-width: 940px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.receivable-items-table th,
+.receivable-items-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.receivable-items-table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.receivable-items-table td > a,
+.receivable-items-table td > strong {
+  display: block;
+  color: var(--text);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.receivable-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.receivable-status.open {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.receivable-status.settled,
+.receivable-status.card {
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+}
+
+.receivable-status.unregistered {
+  background: rgba(100, 116, 139, 0.13);
+  color: #475569;
+}
+
+.receivable-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 72px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.receivable-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
 .assets-filter-bar {
   grid-template-columns: minmax(280px, 1fr) 150px 160px 160px 170px;
 }
@@ -9921,12 +10086,17 @@ tbody tr:hover {
   .route-stat-grid,
   .route-content-grid,
   .dashboard-layout,
-  .dashboard-team-grid {
+  .dashboard-team-grid,
+  .receivables-layout {
     grid-template-columns: 1fr;
   }
 
   .dashboard-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .receivables-filter-bar {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(130px, 1fr));
   }
 
   .ai-department-summary-stats {
@@ -9997,6 +10167,16 @@ tbody tr:hover {
 
   .dashboard-metric-grid {
     grid-template-columns: 1fr;
+  }
+
+  .receivables-summary-strip,
+  .receivables-filter-bar,
+  .receivable-customer-row {
+    grid-template-columns: 1fr;
+  }
+
+  .receivable-customer-row > div:last-child {
+    align-items: flex-start;
   }
 
   .ai-department-summary-stats {

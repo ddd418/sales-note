@@ -1450,6 +1450,17 @@ class DeliveryItem(models.Model):
     discount_unit_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="할인단가")
     total_price = models.DecimalField(max_digits=15, decimal_places=0, blank=True, null=True, verbose_name="총액")
     tax_invoice_issued = models.BooleanField(default=False, verbose_name="세금계산서 발행여부")
+    card_payment_received = models.BooleanField(default=False, verbose_name="카드결제 확인")
+    receivable_settled = models.BooleanField(default=False, verbose_name="외상 수금 완료")
+    receivable_settled_at = models.DateTimeField(null=True, blank=True, verbose_name="외상 수금 완료일시")
+    receivable_settled_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='receivable_settled_items',
+        verbose_name="외상 수금 처리자",
+    )
     quote_group = models.CharField(max_length=100, blank=True, default='', verbose_name="견적서 구분")
     notes = models.TextField(blank=True, null=True, verbose_name="비고")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
@@ -1530,6 +1541,11 @@ class DeliveryItem(models.Model):
         verbose_name = "납품 품목"
         verbose_name_plural = "납품 품목 목록"
         ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['tax_invoice_issued', 'receivable_settled'], name='delivery_receivable_idx'),
+            models.Index(fields=['card_payment_received'], name='delivery_card_paid_idx'),
+            models.Index(fields=['schedule', 'tax_invoice_issued'], name='delivery_sched_tax_idx'),
+        ]
 
 
 # ============================================

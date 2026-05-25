@@ -467,6 +467,17 @@ urlpatterns = [
     path('api/companies/change-creator/', views.api_change_company_creator, name='api_change_company_creator'),
     path('api/companies/<int:company_id>/departments/', views.api_company_departments, name='api_company_departments'),
     path('api/companies/<int:company_id>/customers/', views.api_company_customers, name='api_company_customers'),
+
+    # 외상고객 URL/API
+    path('receivables/', react_page_retired(
+        static_react_page('receivables/'),
+    ), name='receivables'),
+    path('api/receivables/', lazy_view('reporting.api.receivables.receivables_api'), name='receivables_api'),
+    path(
+        'api/receivables/items/<int:item_id>/status/',
+        lazy_view('reporting.api.receivables.receivable_item_status_api'),
+        name='receivable_item_status_api',
+    ),
     
     # 선결제 URL들
     path('prepayment/', react_page_redirect(

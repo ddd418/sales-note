@@ -44,6 +44,7 @@ export type MainView =
   | 'weeklyReports'
   | 'documents'
   | 'products'
+  | 'receivables'
   | 'prepayments'
   | 'profile'
   | 'ai'
@@ -70,6 +71,7 @@ const reactRoutePrefixes = [
   '/weekly-reports/',
   '/documents/',
   '/products/',
+  '/receivables/',
   '/prepayments/',
   '/profile/',
   '/ai-workspace/',
@@ -91,6 +93,7 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
   { id: 'products', label: '제품', icon: Archive, href: '/products/' },
+  { id: 'receivables', label: '외상고객', icon: CircleDollarSign, href: '/receivables/' },
   { id: 'prepayments', label: '선결제', icon: CircleDollarSign, href: '/prepayments/' },
   { id: 'profile', label: '프로필', icon: Users, href: '/profile/' },
   { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
@@ -115,6 +118,7 @@ const navIconMap: Record<string, LucideIcon> = {
   weeklyReports: ListChecks,
   documents: FileSpreadsheet,
   products: Archive,
+  receivables: CircleDollarSign,
   prepayments: CircleDollarSign,
   profile: Users,
   ai: Sparkles,
@@ -137,6 +141,7 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   weeklyReports: { eyebrow: 'Sales CRM / Weekly', title: '주간보고' },
   documents: { eyebrow: 'Sales CRM / Documents', title: '서류' },
   products: { eyebrow: 'Sales CRM / Products', title: '제품' },
+  receivables: { eyebrow: 'Sales CRM / Receivables', title: '외상고객' },
   prepayments: { eyebrow: 'Sales CRM / Prepayment', title: '선결제' },
   profile: { eyebrow: 'Sales CRM / Profile', title: '프로필' },
   ai: { eyebrow: 'Sales CRM / AI', title: 'AI 업무도구' },

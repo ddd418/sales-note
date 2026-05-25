@@ -181,7 +181,6 @@ import {
   runMailboxSync,
   sendMailboxEmail,
   toggleEmployeeActive,
-  toggleScheduleTaxInvoice,
   toggleNoteReviewed,
   updateEmployee,
   updateNote as updateSalesNote,
@@ -331,6 +330,7 @@ import { emptyPipelineData, type Deal, type PipelineData, type PipelineStage, ty
 import {
   AccountCleanupPreviewPage,
   CompanyManagementPage,
+  ReceivablesPage,
   ReportsPage,
 } from './pages/lazyPages';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
@@ -444,14 +444,13 @@ type ScheduleDeliveryEditRow = {
   unitPrice: string;
   discountRate: string;
   discountUnitPrice: string;
-  taxInvoiceIssued: boolean;
   quoteGroup: string;
   notes: string;
   sourceQuoteScheduleId: string;
   sourceQuoteItemId: string;
 };
 
-type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'taxInvoiceIssued' | 'quoteGroup' | 'notes';
+type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'quoteGroup' | 'notes';
 
 type ScheduleQuoteGroupNoteState = Record<string, string>;
 
@@ -1009,7 +1008,6 @@ const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): Sc
   unitPrice: item && item.unitPrice !== undefined && item.unitPrice !== null ? String(item.unitPrice) : '',
   discountRate: item?.discountRate ? String(item.discountRate) : '',
   discountUnitPrice: item?.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? String(item.discountUnitPrice) : '',
-  taxInvoiceIssued: Boolean(item?.taxInvoiceIssued),
   quoteGroup: item?.quoteGroup || '',
   notes: item?.notes || '',
   sourceQuoteScheduleId: item?.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : '',
@@ -1154,7 +1152,6 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
     unitPrice: unitPrice > 0 ? moneyInputValue(unitPrice) : '',
     discountRate: usesOriginalUnitPrice && item.discountRate ? rateInputValue(item.discountRate) : '',
     discountUnitPrice: hasExplicitDiscount ? moneyInputValue(item.discountUnitPrice ?? 0) : '',
-    taxInvoiceIssued: Boolean(item.taxInvoiceIssued),
     quoteGroup: item.quoteGroup || '',
     notes: item.notes || '',
     sourceQuoteScheduleId: item.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : String(quote.scheduleId || ''),
@@ -1943,6 +1940,18 @@ const routeMeta: Record<
       { label: '일정', href: '/schedules/' },
     ],
   },
+  receivables: {
+    eyebrow: 'Sales CRM / Receivables',
+    title: '외상고객',
+    summary: '납품 품목별 외상, 카드결제, 수금완료 상태를 한 곳에서 처리합니다.',
+    primaryHref: '/receivables/',
+    primaryLabel: '외상고객 열기',
+    actions: [
+      { label: '외상고객', href: '/receivables/', primary: true },
+      { label: '납품 일정', href: '/schedules/' },
+      { label: '고객 목록', href: '/customers/' },
+    ],
+  },
   prepayments: {
     eyebrow: 'Sales CRM / Prepayments',
     title: '선결제',
@@ -2014,6 +2023,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/weekly-reports/')) return 'weeklyReports';
   if (pathname.startsWith('/documents/')) return 'documents';
   if (pathname.startsWith('/products/')) return 'products';
+  if (pathname.startsWith('/receivables/')) return 'receivables';
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/profile/')) return 'profile';
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
@@ -11046,7 +11056,6 @@ function ScheduleDetailPage({
   const [documentPreviewData, setDocumentPreviewData] = useState<ScheduleDocumentPreviewData | null>(null);
   const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
   const [documentPreviewError, setDocumentPreviewError] = useState('');
-  const [taxInvoiceToggling, setTaxInvoiceToggling] = useState(false);
   const [scheduleNoteOpen, setScheduleNoteOpen] = useState(false);
   const [scheduleNoteForm, setScheduleNoteForm] = useState<NoteCreateFormState>(() => makeScheduleNoteCreateForm(currentSchedule));
   const [scheduleNoteSaving, setScheduleNoteSaving] = useState(false);
@@ -11094,7 +11103,6 @@ function ScheduleDetailPage({
     setDocumentPreviewData(null);
     setDocumentPreviewLoading(false);
     setDocumentPreviewError('');
-    setTaxInvoiceToggling(false);
     setScheduleNoteOpen(false);
     setScheduleNoteForm(makeScheduleNoteCreateForm(data?.schedule ?? null));
     setScheduleNoteSaving(false);
@@ -11884,7 +11892,6 @@ function ScheduleDetailPage({
         unitPrice: unitPrice || null,
         discountRate: discountRate || null,
         discountUnitPrice: discountUnitPrice || null,
-        taxInvoiceIssued: row.taxInvoiceIssued,
         quoteGroup: row.quoteGroup.trim(),
         notes: row.notes.trim(),
         sourceQuoteScheduleId: row.sourceQuoteScheduleId ? Number(row.sourceQuoteScheduleId) : null,
@@ -12035,31 +12042,6 @@ function ScheduleDetailPage({
       setDocumentPreviewError(error instanceof Error ? error.message : '등록 서류 삭제에 실패했습니다.');
     } finally {
       setDocumentDeletingKey('');
-    }
-  };
-
-  const handleTaxInvoiceToggle = async () => {
-    if (taxInvoiceToggling) {
-      return;
-    }
-    const taxInvoice = data?.taxInvoice;
-    const toggleUrl = taxInvoice?.toggleUrl || data?.links.toggleTaxInvoice || '';
-    if (!currentSchedule?.canEdit || !taxInvoice?.canToggle || !toggleUrl) {
-      setDeliveryError('세금계산서 상태 변경 권한이 없습니다.');
-      setDeliveryMessage('');
-      return;
-    }
-    setTaxInvoiceToggling(true);
-    setDeliveryError('');
-    setDeliveryMessage('');
-    try {
-      const result = await toggleScheduleTaxInvoice(toggleUrl);
-      await onRefresh();
-      setDeliveryMessage(result.message || `세금계산서 상태를 ${result.statusText || result.status_text || '변경'}했습니다.`);
-    } catch (error) {
-      setDeliveryError(error instanceof Error ? error.message : '세금계산서 상태 변경에 실패했습니다.');
-    } finally {
-      setTaxInvoiceToggling(false);
     }
   };
 
@@ -12664,24 +12646,17 @@ function ScheduleDetailPage({
               <div>
                 <FileText size={15} />
                 <span>
-                  <strong>세금계산서 {taxInvoice.statusLabel}</strong>
+                  <strong>외상 {taxInvoice.statusLabel}</strong>
                   <small>{[
                     taxInvoice.message,
                     taxInvoice.totalCount ? `총 ${formatNumber(taxInvoice.totalCount)}개 품목` : '',
                   ].filter(Boolean).join(' · ')}</small>
                 </span>
               </div>
-              {taxInvoice.canToggle ? (
-                <button
-                  className="customer-row-action schedule-tax-invoice-toggle"
-                  disabled={taxInvoiceToggling}
-                  onClick={handleTaxInvoiceToggle}
-                  type="button"
-                >
-                  {taxInvoiceToggling ? <Loader2 className="spin-icon" size={14} /> : <CheckCircle2 size={14} />}
-                  <span>{taxInvoice.actionLabel || '상태 변경'}</span>
-                </button>
-              ) : null}
+              <a className="customer-row-action schedule-tax-invoice-toggle" href="/receivables/">
+                <CircleDollarSign size={14} />
+                <span>외상고객</span>
+              </a>
             </div>
           ) : null}
           {!isQuoteSchedule && quoteImportOpen ? (
@@ -12881,14 +12856,6 @@ function ScheduleDetailPage({
                           value={row.discountUnitPrice}
                         />
                       </label>
-                      <label className="schedule-edit-inline-check schedule-delivery-tax-check">
-                        <input
-                          checked={row.taxInvoiceIssued}
-                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'taxInvoiceIssued', event.target.checked)}
-                          type="checkbox"
-                        />
-                        <span>세금계산서</span>
-                      </label>
                       <label className="schedule-delivery-notes-field">
                         <span>적요</span>
                         <input
@@ -13062,7 +13029,7 @@ function ScheduleDetailPage({
                     `${formatNumber(item.quantity)}${item.unit}`,
                     item.discountUnitPrice !== null ? `할인단가 ${formatWon(item.discountUnitPrice)}` : '',
                     item.totalPrice ? formatWon(item.totalPrice) : '',
-                    item.taxInvoiceIssued ? '세금계산서 발행' : '미발행',
+                    item.cardPaymentReceived ? '카드결제' : item.receivableSettled ? '수금완료' : item.taxInvoiceIssued ? '외상 등록' : '외상 미등록',
                   ].filter(Boolean).join(' · ')}</span>
                   {item.notes ? <p>{item.notes}</p> : null}
                 </div>
@@ -21847,6 +21814,10 @@ export function App() {
   useRouteChangeSignal();
 
   const currentView = getCurrentView();
+  useEffect(() => {
+    document.title = `${routeMeta[currentView].title} - 영업 보고 시스템`;
+  }, [currentView]);
+
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const accountDetailId = currentView === 'customers' ? getAccountDetailId() : null;
   const accountCleanupPreviewId = currentView === 'customers' ? getAccountCleanupPreviewId() : null;
@@ -25027,6 +24998,17 @@ export function App() {
           sort={productSort}
           status={productStatus}
         />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'receivables') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <LazyPageBoundary>
+          <ReceivablesPage />
+        </LazyPageBoundary>
       </AppShell>
     );
   }

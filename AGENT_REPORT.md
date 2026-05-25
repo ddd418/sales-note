@@ -1,5 +1,109 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — 외상고객 메뉴와 품목별 외상/카드/수금 관리
+
+### 요약
+
+- 새 React 메뉴 `/receivables/`를 `외상고객`으로 추가했습니다.
+- 납품 품목(`DeliveryItem`) 단위로 외상 등록, 카드결제 확인, 수금완료/취소를 처리하는 Django API를 추가했습니다.
+- 같은 거래명세서/일정 안에서도 품목별로 외상 상태를 다르게 관리할 수 있도록 했습니다.
+- 외상 총액, 외상 고객 수, 외상 품목 수, 수금/카드 처리 금액을 요약하고 고객/품목 리스트를 검색·정렬할 수 있게 했습니다.
+- 기존 세금계산서 입력/토글 위치는 React와 legacy Django 화면 모두에서 변경 입력을 제거하고 `외상고객`으로 이동하도록 바꿨습니다.
+- 기존 세금계산서 변경 API는 `410 Gone`으로 막아, 상태 변경은 새 외상고객 API에서만 가능하게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `frontend/server.mjs`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/api/receivables.ts`
+- `frontend/src/api/shared.ts`
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/pages/lazyPages.ts`
+- `frontend/src/pages/receivables/ReceivablesPage.tsx`
+- `frontend/src/styles.css`
+- `reporting/api/receivables.py`
+- `reporting/migrations/0114_deliveryitem_card_payment_received_and_more.py`
+- `reporting/models.py`
+- `reporting/templates/reporting/customer_detail_report.html`
+- `reporting/templates/reporting/history_list.html`
+- `reporting/templates/reporting/schedule_calendar.html`
+- `reporting/tests.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 세금계산서라는 표현을 실제 발행 기능이 아니라 외상 고객 관리 흐름으로 분리했습니다.
+- 납품 품목별 외상/카드/수금 상태가 한 화면에 모이고, 잘못 체크한 상태도 같은 화면에서 취소할 수 있습니다.
+- 외상 체크된 품목만 외상 총액에 반영되며, 카드결제 또는 수금완료 시 미수금에서 빠집니다.
+- 기존 일정/고객/히스토리 화면에서는 세금계산서 상태를 직접 바꾸지 못하고 외상고객 메뉴로 안내합니다.
+
+### 기존 기능 보존
+
+- `/reporting/*` 인증, 권한, 일정, 고객, 파일/Excel, 선결제 API는 유지했습니다.
+- 기존 `DeliveryItem.tax_invoice_issued` 값은 외상 등록 플래그로 재사용해 과거 데이터와 호환되도록 했습니다.
+- 세금계산서 요청 GET 조회는 읽기 전용으로 유지하고, 생성/상태변경만 차단했습니다.
+- 일정 납품 품목 수정 시 기존 외상/카드/수금 상태가 덮어써지지 않도록 보존했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python manage.py makemigrations reporting
+→ OK, migration 0114 생성
+
+python -m py_compile reporting\api\receivables.py reporting\urls.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.ReceivablesApiTests reporting.tests.ReactNavigationApiTests reporting.tests.SchedulesSummaryApiTests reporting.tests.TaxInvoiceRequestAPITests --verbosity=1
+→ Ran 85 tests, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing App chunk still reports Vite >500 kB warning
+
+Local browser smoke
+→ `/receivables/` rendered through the React shell
+→ title updated to `외상고객 - 영업 보고 시스템`
+→ 외상고객/외상 요약 text visible
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- legacy Django 화면에는 과거 상태 표시 문구로 `세금계산서` 라벨이 일부 남아 있지만, 변경 버튼/폼은 제거했고 변경 API도 `410 Gone`입니다.
+- 외상고객 API는 초기 안정성을 위해 최근 납품 품목 최대 1000건을 화면 처리 대상으로 사용합니다. 운영 데이터가 더 커지면 서버 사이드 페이지네이션을 추가하는 것이 좋습니다.
+
+### Production Deployment Status
+
+- Pending. Runtime behavior changed, so this task must be committed, pushed, deployed to Railway, and smoke-tested.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 왼쪽 메뉴에 `외상고객`이 보이는지 확인합니다.
+2. `/receivables/`에서 총 외상, 외상 고객, 외상 품목, 수금/카드 요약이 보이는지 확인합니다.
+3. 납품 품목 하나에서 `외상`을 체크하고 총 외상 금액에 반영되는지 확인합니다.
+4. 같은 거래/일정의 다른 품목은 별도로 `카드` 또는 `수금` 체크가 가능한지 확인합니다.
+5. 잘못 체크한 품목을 다시 해제했을 때 상태와 금액이 되돌아오는지 확인합니다.
+6. 기존 일정 상세/고객 상세/히스토리 화면에서 세금계산서 체크 입력이 사라지고 `외상고객` 이동 안내만 보이는지 확인합니다.
+
 ## 2026-05-25 — 메뉴 이동/새로고침 속도 개선
 
 ### 요약

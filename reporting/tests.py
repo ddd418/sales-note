@@ -487,6 +487,8 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
         self.assertEqual(items_by_id['services']['href'], '/services/')
         self.assertEqual(items_by_id['services']['label'], '서비스')
+        self.assertEqual(items_by_id['receivables']['href'], '/receivables/')
+        self.assertEqual(items_by_id['receivables']['label'], '외상고객')
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
         self.assertEqual(items_by_id['profile']['label'], '프로필')
         self.assertNotIn('employees', items_by_id)
@@ -531,6 +533,7 @@ class ReactNavigationApiTests(TestCase):
         self.assertNotIn('dataCleanup', salesman_ids)
         self.assertNotIn('downloads', salesman_ids)
         self.assertIn('tasks', salesman_ids)
+        self.assertIn('receivables', salesman_ids)
         self.assertIn('mail', salesman_ids)
         self.assertNotIn('tasksManager', salesman_ids)
         self.assertNotIn('employees', salesman_ids)
@@ -545,6 +548,7 @@ class ReactNavigationApiTests(TestCase):
         self.assertNotIn('downloads', manager_ids)
         self.assertIn('tasks', manager_ids)
         self.assertIn('tasksManager', manager_ids)
+        self.assertIn('receivables', manager_ids)
         self.assertIn('employees', manager_ids)
         self.assertNotIn('mail', manager_ids)
         self.assertNotIn('userAdmin', manager_ids)
@@ -559,6 +563,7 @@ class ReactNavigationApiTests(TestCase):
         self.assertNotIn('downloads', admin_ids)
         self.assertIn('tasks', admin_ids)
         self.assertIn('mail', admin_ids)
+        self.assertIn('receivables', admin_ids)
         self.assertIn('userAdmin', admin_ids)
         self.assertNotIn('tasksManager', admin_ids)
         self.assertNotIn('employees', admin_ids)
@@ -574,6 +579,151 @@ class RemovedStandaloneMenuRouteTests(TestCase):
         self.assertEqual(self.client.get('/reporting/data-cleanup/').status_code, 404)
         self.assertEqual(self.client.get('/reporting/downloads/').status_code, 404)
         self.assertEqual(self.client.get('/reporting/api/downloads/').status_code, 404)
+
+
+class ReceivablesApiTests(TestCase):
+    """외상고객 React API tests."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user_company = UserCompany.objects.create(name='외상API소속')
+        self.company = Company.objects.create(name='외상API업체', created_by=None)
+        self.department = Department.objects.create(company=self.company, name='외상API부서')
+        self.user = make_user('receivable-owner', company=self.user_company)
+        self.manager = make_user('receivable-manager', role='manager', company=self.user_company)
+        self.other_company = UserCompany.objects.create(name='외상API타사')
+        self.other_user = make_user('receivable-other', company=self.other_company)
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.user_company,
+            company=self.company,
+            department=self.department,
+            customer_name='외상 담당자',
+            manager='외상 PI',
+        )
+        self.schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.user_company,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+
+    def test_receivables_api_lists_open_items_and_summary(self):
+        DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='Open Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            tax_invoice_issued=True,
+        )
+        DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='Unregistered Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=50000,
+            tax_invoice_issued=False,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:receivables_api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['summary']['itemCount'], 1)
+        self.assertEqual(payload['summary']['openItemCount'], 1)
+        self.assertEqual(payload['summary']['totalOutstanding'], 110000)
+        self.assertEqual(payload['items'][0]['itemName'], 'Open Kit')
+        self.assertEqual(payload['items'][0]['statusLabel'], '외상 진행중')
+        self.assertEqual(payload['customers'][0]['outstandingAmount'], 110000)
+
+    def test_receivable_item_status_api_checks_card_and_cancels(self):
+        item = DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='Status Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=100000,
+            tax_invoice_issued=False,
+        )
+        history = History.objects.create(
+            user=self.user,
+            company=self.user_company,
+            followup=self.followup,
+            schedule=self.schedule,
+            action_type='delivery_schedule',
+            tax_invoice_issued=False,
+        )
+        url = reverse('reporting:receivable_item_status_api', args=[item.id])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            url,
+            data=json.dumps({'taxInvoiceIssued': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        item.refresh_from_db()
+        history.refresh_from_db()
+        self.assertTrue(item.tax_invoice_issued)
+        self.assertFalse(item.receivable_settled)
+        self.assertTrue(history.tax_invoice_issued)
+        self.assertEqual(response.json()['item']['outstandingAmount'], 220000)
+
+        card_response = self.client.post(
+            url,
+            data=json.dumps({'cardPaymentReceived': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(card_response.status_code, 200)
+        item.refresh_from_db()
+        self.assertTrue(item.tax_invoice_issued)
+        self.assertTrue(item.card_payment_received)
+        self.assertTrue(item.receivable_settled)
+        self.assertEqual(item.receivable_settled_by, self.user)
+        self.assertEqual(card_response.json()['item']['outstandingAmount'], 0)
+
+        cancel_response = self.client.post(
+            url,
+            data=json.dumps({'taxInvoiceIssued': False}),
+            content_type='application/json',
+        )
+        self.assertEqual(cancel_response.status_code, 200)
+        item.refresh_from_db()
+        self.assertFalse(item.tax_invoice_issued)
+        self.assertFalse(item.card_payment_received)
+        self.assertFalse(item.receivable_settled)
+
+    def test_receivable_item_status_api_blocks_manager_and_other_company(self):
+        item = DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='Blocked Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+        )
+        url = reverse('reporting:receivable_item_status_api', args=[item.id])
+
+        self.client.force_login(self.manager)
+        manager_response = self.client.post(
+            url,
+            data=json.dumps({'taxInvoiceIssued': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(manager_response.status_code, 403)
+
+        self.client.force_login(self.other_user)
+        other_response = self.client.post(
+            url,
+            data=json.dumps({'taxInvoiceIssued': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(other_response.status_code, 403)
 
 
 class EmployeeManagementApiTests(TestCase):
@@ -9181,7 +9331,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
-        self.assertEqual(payload['links']['toggleTaxInvoice'], reverse('reporting:toggle_schedule_delivery_tax_invoice', args=[schedule.id]))
+        self.assertEqual(payload['links']['toggleTaxInvoice'], '')
         self.assertEqual(payload['links']['prepayments'], reverse('reporting:prepayment_api_list'))
         self.assertEqual(payload['links']['deleteSchedule'], reverse('reporting:schedule_delete', args=[schedule.id]))
         self.assertTrue(payload['taxInvoice']['applies'])
@@ -9189,8 +9339,8 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['taxInvoice']['totalCount'], 1)
         self.assertEqual(payload['taxInvoice']['issuedCount'], 0)
         self.assertEqual(payload['taxInvoice']['pendingCount'], 1)
-        self.assertTrue(payload['taxInvoice']['canToggle'])
-        self.assertEqual(payload['taxInvoice']['toggleUrl'], reverse('reporting:toggle_schedule_delivery_tax_invoice', args=[schedule.id]))
+        self.assertFalse(payload['taxInvoice']['canToggle'])
+        self.assertEqual(payload['taxInvoice']['toggleUrl'], '')
         self.assertEqual(payload['schedule']['files'][0]['id'], schedule_file.id)
         self.assertEqual(payload['schedule']['files'][0]['deleteHref'], reverse('reporting:schedule_file_delete', args=[schedule_file.id]))
         document_types = [item['type'] for item in payload['documents']['items']]
@@ -9477,7 +9627,7 @@ class SchedulesSummaryApiTests(TestCase):
         denied = self.client.get(reverse('reporting:schedules_detail_api', args=[schedule.id]))
         self.assertEqual(denied.status_code, 403)
 
-    def test_schedule_tax_invoice_toggle_updates_delivery_items_and_history_owner_only(self):
+    def test_schedule_tax_invoice_toggle_is_removed_in_favor_of_receivables_menu(self):
         from reporting.models import DeliveryItem, History
 
         schedule = self._create_schedule(self.user, '세금계산서토글', activity_type='delivery')
@@ -9509,30 +9659,18 @@ class SchedulesSummaryApiTests(TestCase):
 
         self.client.force_login(self.manager)
         manager_response = self.client.post(toggle_url)
-        self.assertEqual(manager_response.status_code, 403)
+        self.assertEqual(manager_response.status_code, 410)
+        self.assertIn('/receivables/', manager_response.json()['redirect'])
 
         self.client.force_login(self.user)
         response = self.client.post(toggle_url)
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertTrue(payload['success'])
-        self.assertTrue(payload['newStatus'])
-        self.assertEqual(payload['updatedCount'], 2)
-        first.refresh_from_db()
-        second.refresh_from_db()
-        history.refresh_from_db()
-        self.assertTrue(first.tax_invoice_issued)
-        self.assertTrue(second.tax_invoice_issued)
-        self.assertTrue(history.tax_invoice_issued)
-
-        second_response = self.client.post(toggle_url)
-        self.assertEqual(second_response.status_code, 200)
-        self.assertFalse(second_response.json()['newStatus'])
+        self.assertEqual(response.status_code, 410)
+        self.assertFalse(response.json()['success'])
         first.refresh_from_db()
         second.refresh_from_db()
         history.refresh_from_db()
         self.assertFalse(first.tax_invoice_issued)
-        self.assertFalse(second.tax_invoice_issued)
+        self.assertTrue(second.tax_invoice_issued)
         self.assertFalse(history.tax_invoice_issued)
 
     def test_schedule_delete_ajax_allows_owner_and_removes_related_history(self):
@@ -9954,7 +10092,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(items[0].discount_unit_price), 90000)
         self.assertEqual(int(items[0].get_effective_unit_price()), 90000)
         self.assertEqual(int(items[0].total_price), 198000)
-        self.assertTrue(items[0].tax_invoice_issued)
+        self.assertFalse(items[0].tax_invoice_issued)
         self.assertEqual(items[0].quote_group, '보상판매')
         self.assertEqual(items[0].notes, 'PCR 적요')
         self.assertIsNone(items[1].unit_price)
@@ -9985,6 +10123,51 @@ class SchedulesSummaryApiTests(TestCase):
             {note['quoteGroup']: note['notes'] for note in payload['schedule']['quoteGroupNotes']},
             {'보상판매': '보상판매 기타사항', '수리': '수리 기타사항'},
         )
+
+    def test_schedule_delivery_items_update_api_preserves_existing_receivable_status(self):
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem
+
+        schedule = self._create_schedule(self.user, '외상상태보존', activity_type='delivery')
+        item = DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Receivable Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            tax_invoice_issued=True,
+            card_payment_received=True,
+            receivable_settled=True,
+            receivable_settled_at=timezone.now(),
+            receivable_settled_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'items': [
+                    {
+                        'id': item.id,
+                        'itemName': 'Receivable Kit Updated',
+                        'quantity': 2,
+                        'unit': 'EA',
+                        'unitPrice': '100000',
+                        'taxInvoiceIssued': False,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        updated = DeliveryItem.objects.get(schedule=schedule)
+        self.assertEqual(updated.item_name, 'Receivable Kit Updated')
+        self.assertTrue(updated.tax_invoice_issued)
+        self.assertTrue(updated.card_payment_received)
+        self.assertTrue(updated.receivable_settled)
+        self.assertEqual(updated.receivable_settled_by, self.user)
 
     def test_schedule_delivery_items_update_api_applies_reapplies_and_restores_prepayment(self):
         import json
@@ -18409,19 +18592,19 @@ class TaxInvoiceRequestAPITests(TestCase):
 
     # ── POST: 요청 생성 ────────────────────────────────────────────────────
 
-    def test_post_create_request_success(self):
-        """영업사원이 납품 일정에 세금계산서 발행 요청 생성 성공"""
+    def test_post_create_request_removed(self):
+        """세금계산서 요청 생성은 외상고객 메뉴 전환 후 차단"""
         r = self.client.post(self._url_list(), {
             'schedule_id': self.delivery_schedule.pk,
             'memo': '발행 부탁드립니다',
         })
-        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 410)
         data = r.json()
-        self.assertTrue(data.get('success'), f'success가 True여야 합니다: {data}')
-        self.assertEqual(data.get('status'), 'requested')
+        self.assertFalse(data.get('success'))
+        self.assertEqual(data.get('redirect'), '/receivables/')
 
-    def test_post_create_duplicate_blocked(self):
-        """이미 요청 중인 일정에 중복 요청 시 400 반환"""
+    def test_post_create_duplicate_blocked_by_removed_flow(self):
+        """기존 요청 여부와 관계없이 신규 요청 생성은 차단"""
         from reporting.models import TaxInvoiceRequest
         TaxInvoiceRequest.objects.create(
             followup=self.followup,
@@ -18432,29 +18615,27 @@ class TaxInvoiceRequestAPITests(TestCase):
         r = self.client.post(self._url_list(), {
             'schedule_id': self.delivery_schedule.pk,
         })
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 410)
 
-    def test_post_without_schedule_succeeds(self):
-        """일정 없이 followup만으로도 요청 생성 가능"""
+    def test_post_without_schedule_removed(self):
+        """일정 없는 세금계산서 요청 생성도 차단"""
         r = self.client.post(self._url_list(), {'memo': '일정 없는 요청'})
-        self.assertEqual(r.status_code, 200)
-        data = r.json()
-        self.assertTrue(data.get('success'))
+        self.assertEqual(r.status_code, 410)
 
     # ── 상태 변경: 발행완료 ────────────────────────────────────────────────
 
     def test_salesman_cannot_issue(self):
-        """영업사원은 발행완료 처리 불가 → 403"""
+        """구 세금계산서 상태 변경 API는 차단"""
         from reporting.models import TaxInvoiceRequest
         req = TaxInvoiceRequest.objects.create(
             followup=self.followup, status='requested',
             requested_by=self.salesman,
         )
         r = self.client.post(self._url_status(req.pk), {'status': 'issued'})
-        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 410)
 
-    def test_manager_can_issue(self):
-        """매니저는 발행완료 처리 가능"""
+    def test_manager_issue_removed(self):
+        """매니저도 구 세금계산서 상태 변경 API를 사용할 수 없음"""
         from reporting.models import TaxInvoiceRequest
         req = TaxInvoiceRequest.objects.create(
             followup=self.followup, status='requested',
@@ -18464,15 +18645,12 @@ class TaxInvoiceRequestAPITests(TestCase):
         r = self.client.post(self._url_status(req.pk), {
             'status': 'issued', 'memo': '발행 처리함'
         })
-        self.assertEqual(r.status_code, 200)
-        data = r.json()
-        self.assertTrue(data.get('success'))
-        self.assertEqual(data.get('status'), 'issued')
+        self.assertEqual(r.status_code, 410)
 
     # ── 상태 변경: 취소 ───────────────────────────────────────────────────
 
-    def test_requester_can_cancel_own_request(self):
-        """요청자 본인은 자신의 요청 취소 가능"""
+    def test_requester_cancel_removed(self):
+        """요청자 본인도 구 세금계산서 요청 취소 API를 사용할 수 없음"""
         from reporting.models import TaxInvoiceRequest
         req = TaxInvoiceRequest.objects.create(
             followup=self.followup, status='requested',
@@ -18481,10 +18659,7 @@ class TaxInvoiceRequestAPITests(TestCase):
         r = self.client.post(self._url_status(req.pk), {
             'status': 'cancelled', 'memo': '취소 사유'
         })
-        self.assertEqual(r.status_code, 200)
-        data = r.json()
-        self.assertTrue(data.get('success'))
-        self.assertEqual(data.get('status'), 'cancelled')
+        self.assertEqual(r.status_code, 410)
 
     def test_other_salesman_cannot_cancel_others_request(self):
         """다른 영업사원은 타인의 요청을 취소 불가 → 403"""
@@ -18497,12 +18672,12 @@ class TaxInvoiceRequestAPITests(TestCase):
         r = self.client.post(self._url_status(req.pk), {
             'status': 'cancelled', 'memo': '취소'
         })
-        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.status_code, 410)
 
     # ── 보류 처리 ─────────────────────────────────────────────────────────
 
-    def test_manager_can_set_on_hold(self):
-        """매니저는 보류 처리 가능"""
+    def test_manager_set_on_hold_removed(self):
+        """구 세금계산서 보류 API는 차단"""
         from reporting.models import TaxInvoiceRequest
         req = TaxInvoiceRequest.objects.create(
             followup=self.followup, status='requested',
@@ -18512,9 +18687,7 @@ class TaxInvoiceRequestAPITests(TestCase):
         r = self.client.post(self._url_status(req.pk), {
             'status': 'on_hold', 'memo': '검토 중'
         })
-        self.assertEqual(r.status_code, 200)
-        data = r.json()
-        self.assertEqual(data.get('status'), 'on_hold')
+        self.assertEqual(r.status_code, 410)
 
     # ── 잘못된 상태값 ─────────────────────────────────────────────────────
 
@@ -18527,7 +18700,7 @@ class TaxInvoiceRequestAPITests(TestCase):
         )
         self.client.force_login(self.manager)
         r = self.client.post(self._url_status(req.pk), {'status': 'INVALID'})
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 410)
 
     # ── 404 처리 ─────────────────────────────────────────────────────────
 
@@ -18547,7 +18720,7 @@ class TaxInvoiceRequestAPITests(TestCase):
                     kwargs={'request_id': 99999}),
             {'status': 'issued'},
         )
-        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.status_code, 410)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

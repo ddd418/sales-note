@@ -189,6 +189,9 @@ export function normalizeCoreCrmHref(href?: string | null): string {
   if (pathname === '/reporting/schedules/calendar/' || pathname === '/reporting/schedules/calendar') {
     return buildReactHref('/schedules/calendar/', params);
   }
+  if (pathname === '/reporting/receivables/' || pathname === '/reporting/receivables') {
+    return buildReactHref('/receivables/', params);
+  }
   if (pathname === '/reporting/schedules/create/' || pathname === '/reporting/schedules/create') {
     return buildReactHref('/schedules/', params, { rename: { followup: 'customer' }, extra: { create: '1' } });
   }

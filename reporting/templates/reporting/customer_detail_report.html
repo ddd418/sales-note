@@ -538,43 +538,43 @@ a.text-decoration-none {
                             {% if delivery.type == 'history' %}
                               {% if delivery.history_tax_status.has_items %}
                                 {% if delivery.history_tax_status.all_issued %}
-                                  <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                  <div class="tax-invoice-readonly" title="외상/카드/수금 상태는 외상고객 메뉴에서만 관리합니다.">
                                     <span class="badge bg-primary"><i class="fas fa-check me-1"></i>발행완료</span>
                                   </div>
-                                  <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
+                                  <small class="text-muted d-block mt-1"><a href="/receivables/">외상고객에서 관리</a></small>
                                 {% elif delivery.history_tax_status.none_issued %}
-                                  <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                  <div class="tax-invoice-readonly" title="외상/카드/수금 상태는 외상고객 메뉴에서만 관리합니다.">
                                     <span class="badge bg-secondary"><i class="fas fa-times me-1"></i>미발행</span>
                                   </div>
-                                  <small class="text-muted d-block mt-1">클릭시 일괄변경</small>
+                                  <small class="text-muted d-block mt-1"><a href="/receivables/">외상고객에서 관리</a></small>
                                 {% else %}
                                   <span class="badge bg-primary">발행완료</span>
                                   <span class="badge bg-secondary">미발행</span>
                                   <br />
-                                  <button class="btn btn-sm btn-outline-primary mt-1" onclick="showDeliveryItemsModal('{{ delivery.id }}', '{{ delivery.date }}')">
-                                    <i class="fas fa-edit me-1"></i>개별 편집
-                                  </button>
+                                  <a class="btn btn-sm btn-outline-primary mt-1" href="/receivables/">
+                                    <i class="fas fa-external-link-alt me-1"></i>외상고객
+                                  </a>
                                 {% endif %}
                               {% else %}
-                                <div class="tax-invoice-toggle" data-type="history" data-id="{{ delivery.id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                <div class="tax-invoice-readonly" title="외상/카드/수금 상태는 외상고객 메뉴에서만 관리합니다.">
                                   <span class="badge bg-{% if delivery.tax_invoice_issued %}primary{% else %}secondary{% endif %}">
                                     <i class="fas fa-{% if delivery.tax_invoice_issued %}check{% else %}times{% endif %} me-1"></i>
                                     {% if delivery.tax_invoice_issued %}발행완료{% else %}미발행{% endif %}
                                   </span>
                                 </div>
-                                <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
+                                <small class="text-muted d-block mt-1"><a href="/receivables/">외상고객에서 관리</a></small>
                               {% endif %}
                             {% else %}
                               {% if delivery.schedule_tax_status.total_count == 0 %}
                                 <span class="text-muted">품목 없음</span>
                               {% else %}
-                                <div class="tax-invoice-toggle" data-type="schedule_bulk" data-id="{{ delivery.schedule_id }}" style="cursor: pointer" title="클릭하여 상태 변경">
+                                <div class="tax-invoice-readonly" title="외상/카드/수금 상태는 외상고객 메뉴에서만 관리합니다.">
                                   <span class="badge bg-{% if delivery.schedule_tax_status.all_issued %}primary{% else %}secondary{% endif %}">
                                     <i class="fas fa-{% if delivery.schedule_tax_status.all_issued %}check{% else %}times{% endif %} me-1"></i>
                                     {% if delivery.schedule_tax_status.all_issued %}발행완료{% else %}미발행{% endif %}
                                   </span>
                                 </div>
-                                <small class="text-muted d-block mt-1">클릭시 상태 변경</small>
+                                <small class="text-muted d-block mt-1"><a href="/receivables/">외상고객에서 관리</a></small>
                               {% endif %}
                             {% endif %}
                           </td>
@@ -2127,7 +2127,7 @@ a.text-decoration-none {
   }
 </style>
 
-<!-- 세금계산서 편집 모달 -->
+<!-- 세금계산서/외상 상태는 React 외상고객 메뉴에서만 편집합니다. -->
 <div
   class="modal fade"
   id="taxInvoiceModal"
@@ -2139,7 +2139,7 @@ a.text-decoration-none {
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="taxInvoiceModalLabel">
-          <i class="fas fa-file-invoice me-2"></i>세금계산서 상태 편집
+          <i class="fas fa-file-invoice me-2"></i>외상 상태 안내
         </h5>
         <button
           type="button"
@@ -2150,16 +2150,18 @@ a.text-decoration-none {
       </div>
       <div class="modal-body">
         <div id="taxInvoiceContent">
-          <!-- 동적으로 내용이 채워짐 -->
+          <div class="alert alert-info mb-0">
+            세금계산서/외상/카드/수금 상태는 외상고객 메뉴에서만 변경할 수 있습니다.
+          </div>
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
           취소
         </button>
-        <button type="button" class="btn btn-primary" id="saveTaxInvoiceBtn">
-          <i class="fas fa-save me-1"></i>저장
-        </button>
+        <a class="btn btn-primary" href="/receivables/">
+          <i class="fas fa-external-link-alt me-1"></i>외상고객 열기
+        </a>
       </div>
     </div>
   </div>
@@ -2183,231 +2185,44 @@ a.text-decoration-none {
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    console.log('세금계산서 토글 이벤트 등록 시작');
-    console.log('토글 요소 개수:', document.querySelectorAll(".tax-invoice-toggle").length);
-    
-    // 이벤트 위임 방식으로 변경 - 테이블 전체에 클릭 이벤트 등록
     document.addEventListener('click', function(e) {
       const toggleElement = e.target.closest('.tax-invoice-toggle');
       if (!toggleElement) return;
-      
       e.preventDefault();
       e.stopPropagation();
-      
-      console.log('토글 클릭됨:', toggleElement);
-      
-      const type = toggleElement.dataset.type;
-      const id = toggleElement.dataset.id;
-      const badge = toggleElement.querySelector(".badge");
-      const currentStatus = badge ? badge.classList.contains("bg-primary") : false;
-
-      console.log('type:', type, 'id:', id, 'currentStatus:', currentStatus);
-
-      // 확인 메시지
-      const statusText = currentStatus ? "미발행" : "발행완료";
-      let message;
-
-      if (type === "history") {
-        message = `이 납품의 세금계산서를 "${statusText}"로 변경하시겠습니까?`;
-      } else if (type === "schedule_bulk") {
-        message = `이 일정의 모든 품목을 "${statusText}"로 변경하시겠습니까?`;
-      } else {
-        message = `세금계산서를 "${statusText}"로 변경하시겠습니까?`;
-      }
-
-      if (confirm(message)) {
-        updateTaxInvoiceStatus(type, id, !currentStatus);
-      }
+      window.location.href = "/receivables/";
     });
 
-    // 세금계산서 상태 업데이트 함수
-    function updateTaxInvoiceStatus(type, id, status) {
-      console.log('updateTaxInvoiceStatus 호출:', type, id, status);
-      
-      // 로딩 표시
-      const loadingText = status ? "발행 처리중..." : "미발행 처리중...";
-      const loadingDiv = document.createElement("div");
-      loadingDiv.className = "alert alert-info";
-      loadingDiv.textContent = loadingText;
-      document.body.appendChild(loadingDiv);
-
-      console.log('fetch 요청 시작:', '{% url "reporting:update_tax_invoice_status" %}');
-      fetch('{% url "reporting:update_tax_invoice_status" %}', {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": getCookie('csrftoken'),
-        },
-        body: JSON.stringify({
-          type: type,
-          id: parseInt(id),
-          tax_invoice_issued: status,
-        }),
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.success) {
-            // 성공 메시지와 함께 페이지 새로고침
-            if (data.updated_count) {
-              alert(
-                `성공: ${data.updated_count}개 품목의 세금계산서 상태가 변경되었습니다.`
-              );
-            } else {
-              alert("세금계산서 상태가 성공적으로 변경되었습니다.");
-            }
-            window.location.reload();
-          } else {
-            if (data.error.includes("권한")) {
-              alert(
-                "권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다. 관리자나 영업사원에게 문의해주세요."
-              );
-            } else {
-              alert("오류: " + data.error);
-            }
-          }
-        })
-        .catch((error) => {
-          if (error.message.includes("403")) {
-            alert("권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.");
-          } else {
-            alert("서버 오류가 발생했습니다.");
-          }
-        })
-        .finally(() => {
-          // 로딩 표시 제거
-          if (loadingDiv.parentNode) {
-            loadingDiv.parentNode.removeChild(loadingDiv);
-          }
-        });
+    function openReceivablesOnlyModal() {
+      const modalContent = document.getElementById("taxInvoiceContent");
+      if (modalContent) {
+        modalContent.innerHTML = `
+          <div class="alert alert-info mb-0">
+            세금계산서/외상/카드/수금 상태는 외상고객 메뉴에서만 변경할 수 있습니다.
+            <div class="mt-2"><a class="btn btn-primary btn-sm" href="/receivables/">외상고객 열기</a></div>
+          </div>
+        `;
+      }
+      const modalElement = document.getElementById("taxInvoiceModal");
+      if (modalElement) {
+        new bootstrap.Modal(modalElement).show();
+      }
     }
 
-    // Schedule 타입 세금계산서 편집 함수
+    function updateTaxInvoiceStatus(type, id, status) {
+      window.location.href = "/receivables/";
+    }
+
     window.editScheduleTaxInvoice = function (scheduleId) {
-      fetch(`/reporting/api/schedules/${scheduleId}/delivery-items/`)
-        .then((response) => {
-          if (response.status === 403) {
-            alert("권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다.");
-            return;
-          }
-          return response.json();
-        })
-        .then((data) => {
-          if (data && data.success) {
-            showScheduleTaxModal(scheduleId, data.items);
-          } else if (data) {
-            if (data.error && data.error.includes("권한")) {
-              alert(
-                "권한 오류: 매니저 계정은 세금계산서를 편집할 수 없습니다."
-              );
-            } else {
-              alert("데이터를 불러오는데 실패했습니다.");
-            }
-          }
-        })
-        .catch((error) => {
-          alert("서버 오류가 발생했습니다.");
-        });
+      window.location.href = "/receivables/";
     };
 
-    // Schedule 세금계산서 모달 표시
     function showScheduleTaxModal(scheduleId, items) {
-      const modalContent = document.getElementById("taxInvoiceContent");
-
-      let html = `<h6 class="mb-3">납품 품목별 세금계산서 상태</h6>`;
-      html += `<div class="delivery-items-list">`;
-
-      items.forEach((item) => {
-        html += `
-                <div class="border rounded p-3 mb-3">
-                    <div class="row align-items-center">
-                        <div class="col-md-6">
-                            <strong>${item.item_name}</strong>
-                            <br><small class="text-muted">수량: ${
-                              item.quantity
-                            }개, 단가: ${item.unit_price.toLocaleString()}원</small>
-                            <br><small class="text-success">총액: ${item.total_price.toLocaleString()}원</small>
-                        </div>
-                        <div class="col-md-6 text-end">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" 
-                                       id="tax_${item.id}" 
-                                       data-item-id="${item.id}"
-                                       ${
-                                         item.tax_invoice_issued
-                                           ? "checked"
-                                           : ""
-                                       }>
-                                <label class="form-check-label" for="tax_${
-                                  item.id
-                                }">
-                                    세금계산서 발행
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-      });
-
-      html += `</div>`;
-      modalContent.innerHTML = html;
-
-      // 모달 표시
-      const modal = new bootstrap.Modal(
-        document.getElementById("taxInvoiceModal")
-      );
-      modal.show();
-
-      // 저장 버튼 이벤트
-      document.getElementById("saveTaxInvoiceBtn").onclick = function () {
-        saveBatchTaxInvoiceStatus();
-      };
+      openReceivablesOnlyModal();
     }
 
-    // 일괄 세금계산서 상태 저장
     function saveBatchTaxInvoiceStatus() {
-      const checkboxes = document.querySelectorAll(
-        '#taxInvoiceContent input[type="checkbox"]'
-      );
-      const updates = [];
-
-      checkboxes.forEach((checkbox) => {
-        updates.push({
-          type: "delivery_item",
-          id: parseInt(checkbox.dataset.itemId),
-          tax_invoice_issued: checkbox.checked,
-        });
-      });
-
-      Promise.all(
-        updates.map((update) =>
-          fetch('{% url "reporting:update_tax_invoice_status" %}', {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CSRFToken": document.querySelector(
-                "[name=csrfmiddlewaretoken]"
-              ).value,
-            },
-            body: JSON.stringify(update),
-          }).then((response) => response.json())
-        )
-      )
-        .then((responses) => {
-          const hasError = responses.some((response) => !response.success);
-          if (hasError) {
-            alert("일부 항목 저장에 실패했습니다.");
-          } else {
-            // 모달 닫기 및 페이지 새로고침
-            bootstrap.Modal.getInstance(
-              document.getElementById("taxInvoiceModal")
-            ).hide();
-            window.location.reload();
-          }
-        })
-        .catch((error) => {
-          alert("서버 오류가 발생했습니다.");
-        });
+      window.location.href = "/receivables/";
     }
   });
 
