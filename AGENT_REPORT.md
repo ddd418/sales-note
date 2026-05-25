@@ -60,6 +60,22 @@ cd frontend && npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --json
+→ Latest web deployment `c30be4e7-6f17-4bb9-887b-c23db897392d` SUCCESS for commit `bb50251`
+
+railway deployment list --service sales-note-frontend --json
+→ Latest frontend deployment `6471d5fb-0961-46de-94d7-f996d39f1aeb` SUCCESS for commit `bb50251`
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ PASS, including `/data-cleanup/` and `/downloads/` returning 404
+
+Production removed-route smoke
+→ frontend `/data-cleanup/`: 404
+→ frontend `/downloads/`: 404
+→ backend `/reporting/data-cleanup/`: 404
+→ backend `/reporting/downloads/`: 404
+→ backend `/reporting/api/downloads/`: 404
 ```
 
 ### 알려진 제한
@@ -69,8 +85,11 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending deployment.
-- Runtime route behavior changed, so Railway backend/frontend deployment and production smoke are required.
+- Completed.
+- Code commit `bb50251 refactor: remove forbidden cleanup download menus` is present on `origin/main`.
+- Railway backend `web` deployment `c30be4e7-6f17-4bb9-887b-c23db897392d` succeeded for commit `bb50251`.
+- Railway frontend `sales-note-frontend` deployment `6471d5fb-0961-46de-94d7-f996d39f1aeb` succeeded for commit `bb50251`.
+- Production smoke passed and confirmed `/data-cleanup/`, `/downloads/`, `/reporting/data-cleanup/`, `/reporting/downloads/`, and `/reporting/api/downloads/` are removed.
 
 ### Manual Server Test Process
 
