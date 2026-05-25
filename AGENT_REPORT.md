@@ -1,5 +1,110 @@
 # AGENT_REPORT.md
 
+## 2026-05-25 — React 완전대체 R단계 제품/서류 템플릿 관리 완전 대체
+
+### 요약
+
+- `/products/`와 `/documents/`를 제품/서류 템플릿 관리의 React 기준 화면으로 정리했습니다.
+- `/reporting/products/*` legacy GET/HEAD 진입을 React `/products/`로 넘기도록 연결했습니다.
+- `/reporting/documents/<id>/toggle-default/` legacy GET/HEAD도 React `/documents/`로 이동하게 했고, 기존 POST fallback은 유지했습니다.
+- 제품 React 화면에서 보이던 Django 수정 fallback 링크를 제거했습니다.
+- 제품 `.xlsx` 업로드 API `/reporting/api/products/import.xlsx`와 React 업로드 버튼을 추가했습니다. 업로드는 기존 제품 upsert 규칙을 재사용합니다.
+- 서류 템플릿 목록/등록/수정/삭제/기본값 설정/다운로드 흐름은 기존 React API를 유지했습니다.
+- DB/model/migration 변경은 없습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `frontend/server.mjs`
+- `frontend/src/api.ts`
+- `frontend/src/App.tsx`
+
+### CRM 개선
+
+- 제품 목록, 검색, 등록, 수정, 일괄 붙여넣기, 일괄 삭제, 참조 제품 대체, 엑셀 다운로드, 엑셀 업로드가 React `/products/`에서 처리됩니다.
+- 기존 `/reporting/products/`, `/reporting/products/create/`, `/reporting/products/<id>/edit/`, `/reporting/products/<id>/delete/` 북마크가 React 제품 화면으로 이동합니다.
+- legacy 제품 수정 링크로 들어오면 React 제품 화면에서 해당 제품을 포함해 불러오고 수정 패널을 열 수 있게 보강했습니다.
+- manager 계정은 제품을 회사 범위로 조회할 수 있지만 등록/수정/삭제/업로드 API는 계속 차단됩니다.
+- 서류 템플릿 기본값 설정 legacy 링크도 React 화면으로 연결되어 Django template로 빠지는 진입점을 줄였습니다.
+
+### 기존 기능 보존
+
+- 기존 Django template view와 POST fallback은 삭제하지 않았습니다.
+- 기존 제품 JSON bulk-upsert, bulk-delete, 참조 대체, export API는 유지했습니다.
+- 기존 제품 일반 POST 생성/수정 테스트는 계속 통과합니다.
+- 서류 템플릿 파일 다운로드, 생성 서류 다운로드/삭제, 일정 기반 서류 생성 API는 유지했습니다.
+- salesman/manager/admin 권한 정책은 기존 API 테스트 기준을 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.ProductManagementReactApiTests --verbosity=1
+→ Ran 33 tests, OK
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local frontend smoke on :4175
+→ /healthz/ 200
+→ /reporting/products/create/ redirects to /products/?create=1
+→ /reporting/documents/12/toggle-default/ redirects to /documents/?template_id=12
+→ Browser opened /products/?create=1 and /documents/?create=1 React shells without load errors
+```
+
+### 알려진 제한
+
+- 제품 엑셀 업로드는 `.xlsx` 파일을 지원합니다. 구형 `.xls`는 현재 서버 파서 범위 밖입니다.
+- 브라우저 smoke는 비로그인 React shell 확인 위주이며, 실제 운영 계정으로 제품/서류 저장 제출은 배포 후 수동 확인이 필요합니다.
+- Vite large chunk warning은 기존 대형 `App.tsx` 구조 때문에 남아 있으며, 대형 파일 분리 단계에서 다뤄야 합니다.
+
+### 운영 배포 상태
+
+- 로컬 구현/검증 완료.
+- Commit, push, Railway 배포, production smoke는 이어서 진행 예정입니다.
+- Authenticated production UI verification은 배포 후 사용자 로그인 확인이 필요합니다.
+
+### 권장 다음 작업
+
+- 운영 서버에서 R 단계 수동 확인을 마친 뒤 다음 React 완전대체 항목으로 진행합니다.
+
+### 운영 서버 수동 확인 절차
+
+1. admin 또는 salesman 계정으로 `https://sales-note-frontend-production.up.railway.app/products/`에 접속합니다.
+2. 제품 검색, 상태 필터, 정렬, 페이지 이동이 동작하는지 확인합니다.
+3. `제품 등록`을 눌러 제품을 하나 생성하고, 같은 화면에서 수정합니다.
+4. 제품 엑셀 다운로드가 정상 파일로 내려오는지 확인합니다.
+5. 제품 `.xlsx` 파일을 업로드해 신규/수정 건수가 표시되고 목록이 갱신되는지 확인합니다.
+6. 사용 이력이 없는 테스트 제품을 일괄 삭제합니다.
+7. 견적/납품에 사용된 제품 삭제 시 차단 내역과 대체 제품 선택 UI가 보이는지 확인합니다.
+8. manager 계정으로 `/products/`에 접속해 회사 제품은 보이지만 등록/수정/삭제/업로드 버튼이 막혀 있는지 확인합니다.
+9. 기존 `/reporting/products/`, `/reporting/products/create/`, `/reporting/products/<id>/edit/` 북마크가 React 제품 화면으로 이동하는지 확인합니다.
+10. `https://sales-note-frontend-production.up.railway.app/documents/`에서 서류 템플릿 목록, 등록, 수정, 기본값 설정, 삭제, 다운로드를 확인합니다.
+11. salesman 계정에서 서류 템플릿 등록/수정/삭제는 막히고, 목록/다운로드/기본값 접근 정책이 기존과 같은지 확인합니다.
+12. 기존 `/reporting/documents/`, `/reporting/documents/create/`, `/reporting/documents/<id>/edit/`, `/reporting/documents/<id>/toggle-default/`가 React 서류 화면으로 이동하는지 확인합니다.
+
 ## 2026-05-25 — React 완전대체 Q단계 메일/명함/AI Workspace 완전 대체
 
 ### 요약

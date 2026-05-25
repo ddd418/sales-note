@@ -313,6 +313,46 @@ function getCoreCrmReactLocation(requestUrl) {
     return buildReactLocation(`/prepayments/${match[1]}/`, params);
   }
 
+  if (pathname === '/reporting/products/' || pathname === '/reporting/products') {
+    const status = params.get('is_active');
+    if (status === 'true') params.set('status', 'active');
+    if (status === 'false') params.set('status', 'inactive');
+    params.delete('is_active');
+    const sort = params.get('sort');
+    if (sort === 'quote_count') params.set('sort', 'quoteCount');
+    if (sort === 'delivery_count') params.set('sort', 'deliveryCount');
+    return buildReactLocation('/products/', params, { rename: { search: 'q' } });
+  }
+  if (pathname === '/reporting/products/create/' || pathname === '/reporting/products/create') {
+    return buildReactLocation('/products/', params, { extra: { create: '1' }, rename: { search: 'q' } });
+  }
+  if (pathname === '/reporting/products/bulk-create/' || pathname === '/reporting/products/bulk-create') {
+    return buildReactLocation('/products/', params, { extra: { import: '1' }, rename: { search: 'q' } });
+  }
+  match = pathname.match(/^\/reporting\/products\/(\d+)\/edit\/?$/);
+  if (match) {
+    return buildReactLocation('/products/', params, { extra: { product: match[1], edit: '1' }, rename: { search: 'q' } });
+  }
+  match = pathname.match(/^\/reporting\/products\/(\d+)\/delete\/?$/);
+  if (match) {
+    return buildReactLocation('/products/', params, { extra: { product: match[1], delete: '1' }, rename: { search: 'q' } });
+  }
+
+  if (pathname === '/reporting/documents/' || pathname === '/reporting/documents') {
+    return buildReactLocation('/documents/', params);
+  }
+  if (pathname === '/reporting/documents/create/' || pathname === '/reporting/documents/create') {
+    return buildReactLocation('/documents/', params, { extra: { create: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/documents\/(\d+)\/edit\/?$/);
+  if (match) {
+    return buildReactLocation('/documents/', params, { extra: { template_id: match[1], edit: '1' } });
+  }
+  match = pathname.match(/^\/reporting\/documents\/(\d+)\/(?:delete|toggle-default)\/?$/);
+  if (match) {
+    return buildReactLocation('/documents/', params, { extra: { template_id: match[1] } });
+  }
+
   if (pathname === '/todos/' || pathname === '/todos') {
     return buildReactLocation('/tasks/', params);
   }

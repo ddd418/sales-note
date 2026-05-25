@@ -2203,6 +2203,7 @@ export type ProductManagementData = {
   links: {
     djangoList: string;
     excelDownload: string;
+    excelImport: string;
     bulkUpsert: string;
     bulkDelete: string;
     save: string;
@@ -2325,6 +2326,7 @@ const emptyProductManagementData: ProductManagementData = {
   links: {
     djangoList: '/reporting/products/',
     excelDownload: '/reporting/api/products/export.xlsx',
+    excelImport: '/reporting/api/products/import.xlsx',
     bulkUpsert: '/reporting/api/products/bulk-upsert/',
     bulkDelete: '/reporting/api/products/bulk-delete/',
     save: '/reporting/api/products/save/',
@@ -8516,6 +8518,7 @@ export async function loadProductManagementData(params: {
   order?: string;
   page?: number;
   pageSize?: number;
+  selectedProductId?: number | null;
 } = {}): Promise<ProductManagementData> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
@@ -8524,6 +8527,7 @@ export async function loadProductManagementData(params: {
   if (params.order) query.set('order', params.order);
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('page_size', String(params.pageSize));
+  if (params.selectedProductId) query.set('selected_product_id', String(params.selectedProductId));
 
   try {
     const response = await fetch(`/reporting/api/products/manage/${query.toString() ? `?${query.toString()}` : ''}`, {
@@ -8617,6 +8621,36 @@ export async function saveProduct(
 
 export async function bulkUpsertProducts(products: ProductMutationPayload[]): Promise<ProductBulkUpsertResult> {
   const data = await postProductJson<ProductBulkUpsertResult>('/reporting/api/products/bulk-upsert/', { products });
+  if (!data.results) {
+    data.results = [];
+  }
+  return data;
+}
+
+export async function importProductsExcel(file: File, url = '/reporting/api/products/import.xlsx'): Promise<ProductBulkUpsertResult> {
+  const csrfToken = getCookie('csrftoken');
+  const formData = new FormData();
+  formData.set('file', file);
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: formData,
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Product Excel import API unavailable: ${response.status}`);
+  }
+  const data = (await response.json()) as ProductBulkUpsertResult;
+  redirectIfLoginRequired(response, data);
+  if (!response.ok) {
+    throw new Error(data.error || data.message || `Product Excel import failed: ${response.status}`);
+  }
   if (!data.results) {
     data.results = [];
   }

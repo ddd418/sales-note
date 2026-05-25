@@ -32285,6 +32285,86 @@ def _product_payload(product):
     }
 
 
+def _normalize_product_excel_header(value):
+    return re.sub(r'[\s_\-()]+', '', str(value or '').strip().lower())
+
+
+PRODUCT_EXCEL_HEADER_ALIASES = {
+    'product_code': {'품번', '품목코드', '제품코드', '제품번호', '코드', 'productcode', 'code', 'sku'},
+    'description': {'제품설명', '품목명', '제품명', '설명', 'description', 'name'},
+    'specification': {'규격', '사양', 'specification', 'spec', 'model'},
+    'unit': {'단위', 'unit', 'uom'},
+    'standard_price': {'기준단가', '출고단가', '단가', '가격', '정상가', 'standardprice', 'price', 'unitprice'},
+    'is_active': {'상태', '활성', '판매가능', '사용여부', 'isactive', 'active', 'status'},
+}
+
+
+def _product_excel_header_map(row):
+    normalized = [_normalize_product_excel_header(cell) for cell in row]
+    header_map = {}
+    for index, header in enumerate(normalized):
+        if not header:
+            continue
+        for field, aliases in PRODUCT_EXCEL_HEADER_ALIASES.items():
+            if header in aliases and field not in header_map:
+                header_map[field] = index
+                break
+    return header_map
+
+
+def _product_excel_cell(value):
+    if value is None:
+        return ''
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _product_excel_active_value(value):
+    text = _product_excel_cell(value).lower()
+    if not text:
+        return True
+    if text in {'false', '0', 'n', 'no', 'inactive', 'disabled', '비활성', '중지', '사용안함', '판매중지'}:
+        return False
+    return True
+
+
+def _product_excel_payload_from_row(row, header_map=None):
+    cells = [_product_excel_cell(value) for value in row]
+    if not any(cells):
+        return None
+
+    if header_map:
+        return {
+            'productCode': cells[header_map['product_code']] if 'product_code' in header_map and header_map['product_code'] < len(cells) else '',
+            'description': cells[header_map['description']] if 'description' in header_map and header_map['description'] < len(cells) else '',
+            'specification': cells[header_map['specification']] if 'specification' in header_map and header_map['specification'] < len(cells) else '',
+            'unit': cells[header_map['unit']] if 'unit' in header_map and header_map['unit'] < len(cells) else 'EA',
+            'standardPrice': cells[header_map['standard_price']] if 'standard_price' in header_map and header_map['standard_price'] < len(cells) else '0',
+            'isActive': _product_excel_active_value(cells[header_map['is_active']]) if 'is_active' in header_map and header_map['is_active'] < len(cells) else True,
+        }
+
+    if len(cells) >= 5:
+        product_code, description, specification, unit, price = cells[:5]
+    elif len(cells) >= 4:
+        product_code, specification, unit, price = cells[:4]
+        description = ''
+    elif len(cells) >= 3:
+        product_code, specification, price = cells[:3]
+        description = ''
+        unit = 'EA'
+    else:
+        return None
+    return {
+        'productCode': product_code,
+        'description': description,
+        'specification': specification,
+        'unit': unit or 'EA',
+        'standardPrice': price or '0',
+        'isActive': True,
+    }
+
+
 def _product_delete_usage_counts(product):
     return {
         'deliveryItemCount': product.delivery_items.count(),
@@ -33188,6 +33268,17 @@ def products_management_api(request):
         page_size = 50
     paginator = Paginator(products, page_size)
     page_obj = paginator.get_page(request.GET.get('page') or 1)
+    page_products = list(page_obj)
+    try:
+        selected_product_id = int(request.GET.get('selected_product_id') or request.GET.get('product') or 0)
+    except (TypeError, ValueError):
+        selected_product_id = 0
+    if selected_product_id and all(product.id != selected_product_id for product in page_products):
+        selected_product = _product_usage_annotations(
+            _product_scope_queryset(request, include_inactive=True).filter(id=selected_product_id),
+        ).first()
+        if selected_product:
+            page_products.insert(0, selected_product)
 
     return JsonResponse({
         'success': True,
@@ -33202,7 +33293,7 @@ def products_management_api(request):
             'inactiveProducts': inactive_count,
             'filteredProducts': filtered_count,
         },
-        'products': [_product_payload(product) for product in page_obj],
+        'products': [_product_payload(product) for product in page_products],
         'pagination': {
             'page': page_obj.number,
             'pageSize': page_size,
@@ -33217,6 +33308,7 @@ def products_management_api(request):
             'bulkUpsert': reverse('reporting:products_bulk_upsert_api') if can_manage else '',
             'bulkDelete': reverse('reporting:products_bulk_delete_api') if can_manage else '',
             'save': reverse('reporting:product_save_api') if can_manage else '',
+            'excelImport': reverse('reporting:products_excel_import_api') if can_manage else '',
         },
     })
 
@@ -33336,6 +33428,99 @@ def products_bulk_upsert_api(request):
         'errorCount': error_count,
         'results': results[:200],
         'message': f'등록 {created_count}건, 수정 {updated_count}건, 변경 없음 {unchanged_count}건, 오류 {error_count}건',
+    }, status=200 if error_count == 0 else 207)
+
+
+@require_http_methods(["POST"])
+def products_excel_import_api(request):
+    """Uploaded XLSX product import using the same upsert rules as React paste."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    if not _product_can_manage(request):
+        return JsonResponse({'success': False, 'error': _product_manage_denied_message(request)}, status=403)
+
+    uploaded_file = request.FILES.get('file') or request.FILES.get('excel') or request.FILES.get('xlsx')
+    if not uploaded_file:
+        return JsonResponse({'success': False, 'error': '업로드할 엑셀 파일을 선택하세요.'}, status=400)
+    if not str(uploaded_file.name).lower().endswith('.xlsx'):
+        return JsonResponse({'success': False, 'error': '제품 업로드는 .xlsx 파일만 지원합니다.'}, status=400)
+
+    workbook = None
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
+        worksheet = workbook.active
+        rows = list(worksheet.iter_rows(values_only=True))
+    except Exception as exc:
+        logger.error('제품 엑셀 업로드 파싱 실패: %s', exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': '엑셀 파일을 읽지 못했습니다.'}, status=400)
+    finally:
+        if workbook:
+            try:
+                workbook.close()
+            except Exception:
+                pass
+
+    if not rows:
+        return JsonResponse({'success': False, 'error': '엑셀 파일에 제품 데이터가 없습니다.'}, status=400)
+
+    first_row_map = _product_excel_header_map(rows[0])
+    has_header = 'product_code' in first_row_map and 'standard_price' in first_row_map
+    header_map = first_row_map if has_header else None
+    data_rows = rows[1:] if has_header else rows
+
+    created_count = 0
+    updated_count = 0
+    unchanged_count = 0
+    error_count = 0
+    results = []
+
+    for row_offset, row in enumerate(data_rows, start=2 if has_header else 1):
+        raw_payload = _product_excel_payload_from_row(row, header_map=header_map)
+        if raw_payload is None:
+            continue
+        try:
+            payload = _product_payload_from_dict(raw_payload)
+            product, created, updated, changed_fields = _upsert_product_from_payload(request, payload)
+            if product is None:
+                raise PermissionError('권한 없음')
+            if created:
+                created_count += 1
+                status = 'created'
+            elif updated:
+                updated_count += 1
+                status = 'updated'
+            else:
+                unchanged_count += 1
+                status = 'unchanged'
+            results.append({
+                'row': row_offset,
+                'productCode': payload['product_code'],
+                'status': status,
+                'changedFields': changed_fields,
+            })
+        except Exception as exc:
+            error_count += 1
+            results.append({
+                'row': row_offset,
+                'productCode': str(raw_payload.get('productCode') or '').strip(),
+                'status': 'error',
+                'error': str(exc),
+            })
+
+    if not results:
+        return JsonResponse({'success': False, 'error': '엑셀 파일에서 제품 행을 찾지 못했습니다.'}, status=400)
+
+    return JsonResponse({
+        'success': error_count == 0,
+        'createdCount': created_count,
+        'updatedCount': updated_count,
+        'unchangedCount': unchanged_count,
+        'errorCount': error_count,
+        'results': results[:500],
+        'message': f'엑셀 반영: 등록 {created_count}건, 수정 {updated_count}건, 변경 없음 {unchanged_count}건, 오류 {error_count}건',
     }, status=200 if error_count == 0 else 207)
 
 

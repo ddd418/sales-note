@@ -241,6 +241,15 @@ class CoreCrmLegacyRedirectTests(TestCase):
             payer_name='React전환입금자',
             created_by=self.user,
         )
+        from reporting.models import Product
+        self.product = Product.objects.create(
+            product_code='REACT-PRODUCT-001',
+            description='React 전환 제품',
+            specification='전환규격',
+            unit='EA',
+            standard_price=1000,
+            created_by=self.user,
+        )
         self.personal_schedule = PersonalSchedule.objects.create(
             user=self.user,
             company=self.company_profile,
@@ -278,6 +287,7 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(reverse('reporting:funnel_pipeline'), 'pipeline/')
         self.assertReactRedirect(reverse('reporting:analytics_dashboard'), 'reports/')
         self.assertReactRedirect(reverse('reporting:prepayment_list'), 'prepayments/')
+        self.assertReactRedirect(reverse('reporting:product_list'), 'products/')
 
     def test_core_detail_page_redirects(self):
         self.assertReactRedirect(reverse('reporting:followup_detail', args=[self.followup.id]), f'customers/{self.followup.id}/')
@@ -312,6 +322,18 @@ class CoreCrmLegacyRedirectTests(TestCase):
             reverse('reporting:document_template_delete', args=[self.document_template.id]),
             f'documents/?template_id={self.document_template.id}&delete=1',
         )
+        self.assertReactRedirect(
+            reverse('reporting:document_template_toggle_default', args=[self.document_template.id]),
+            f'documents/?template_id={self.document_template.id}',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:product_edit', args=[self.product.id]),
+            f'products/?product={self.product.id}&edit=1',
+        )
+        self.assertReactRedirect(
+            reverse('reporting:product_delete', args=[self.product.id]),
+            f'products/?product={self.product.id}&delete=1',
+        )
 
     def test_core_create_page_redirects_preserve_relevant_query(self):
         self.assertReactRedirect(reverse('reporting:followup_create'), 'customers/?create=1')
@@ -329,6 +351,8 @@ class CoreCrmLegacyRedirectTests(TestCase):
             'schedules/calendar/?date=2026-05-20&time=10%3A30&create=personal',
         )
         self.assertReactRedirect(reverse('reporting:document_template_create'), 'documents/?create=1')
+        self.assertReactRedirect(reverse('reporting:product_create'), 'products/?create=1')
+        self.assertReactRedirect(reverse('reporting:product_bulk_create'), 'products/?import=1')
 
     def test_core_filter_query_is_translated(self):
         self.assertReactRedirect(
@@ -342,6 +366,10 @@ class CoreCrmLegacyRedirectTests(TestCase):
         self.assertReactRedirect(
             f"{reverse('reporting:prepayment_list')}?search=입금자&status=active&data_filter=all",
             'prepayments/?q=%EC%9E%85%EA%B8%88%EC%9E%90&status=active&data_filter=all',
+        )
+        self.assertReactRedirect(
+            f"{reverse('reporting:product_list')}?search=PCR&is_active=true&sort=delivery_count",
+            'products/?q=PCR&status=active&sort=deliveryCount',
         )
 
     def test_user_management_legacy_routes_redirect_to_react_employees(self):
@@ -17192,6 +17220,24 @@ class ProductManagementReactApiTests(TestCase):
         self.manager = make_user('product-react-manager', role='manager', company=self.company)
         self.client.force_login(self.salesman)
 
+    def _uploaded_products_xlsx(self, rows, filename='products-upload.xlsx'):
+        from io import BytesIO
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        for row in rows:
+            sheet.append(row)
+        output = BytesIO()
+        workbook.save(output)
+        workbook.close()
+        output.seek(0)
+        return SimpleUploadedFile(
+            filename,
+            output.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
     def test_product_bulk_upsert_updates_existing_ecount_overlap_and_disables_promo(self):
         import json
         from decimal import Decimal
@@ -17344,6 +17390,7 @@ class ProductManagementReactApiTests(TestCase):
         self.assertEqual(payload['links']['save'], '')
         self.assertEqual(payload['links']['bulkUpsert'], '')
         self.assertEqual(payload['links']['bulkDelete'], '')
+        self.assertEqual(payload['links']['excelImport'], '')
         product_codes = {item['productCode'] for item in payload['products']}
         self.assertIn(product.product_code, product_codes)
         self.assertNotIn('MANAGER-READONLY-OTHER', product_codes)
@@ -17385,6 +17432,71 @@ class ProductManagementReactApiTests(TestCase):
         self.assertEqual(delete_response.status_code, 403)
         product.refresh_from_db()
         self.assertEqual(product.standard_price, 1000)
+
+        import_response = self.client.post(
+            reverse('reporting:products_excel_import_api'),
+            {'file': self._uploaded_products_xlsx([['품번', '기준단가'], ['MANAGER-XLSX', 1000]])},
+        )
+        self.assertEqual(import_response.status_code, 403)
+
+    def test_product_management_includes_selected_product_outside_first_page(self):
+        from reporting.models import Product
+
+        for index in range(55):
+            Product.objects.create(
+                product_code=f'PAGE-PRODUCT-{index:03d}',
+                standard_price=1000 + index,
+                created_by=self.salesman,
+            )
+        selected = Product.objects.create(
+            product_code='ZZZ-SELECTED-LEGACY',
+            standard_price=9999,
+            created_by=self.salesman,
+        )
+
+        response = self.client.get(reverse('reporting:products_management_api'), {
+            'page_size': '10',
+            'selected_product_id': selected.id,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['products'][0]['id'], selected.id)
+        self.assertIn('excelImport', payload['links'])
+
+    def test_products_excel_import_creates_and_updates_rows(self):
+        from decimal import Decimal
+        from reporting.models import Product
+
+        existing = Product.objects.create(
+            product_code='XLSX-UP-001',
+            description='기존',
+            specification='OLD',
+            unit='EA',
+            standard_price=Decimal('1000'),
+            created_by=self.salesman,
+        )
+        upload = self._uploaded_products_xlsx([
+            ['품번', '제품설명', '규격', '단위', '기준단가', '상태'],
+            ['XLSX-UP-001', '수정 설명', 'NEW', 'BOX', 1500, '활성'],
+            ['XLSX-UP-002', '신규 설명', 'SPEC', 'SET', 2500, '비활성'],
+        ])
+
+        response = self.client.post(reverse('reporting:products_excel_import_api'), {'file': upload})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['createdCount'], 1)
+        self.assertEqual(payload['updatedCount'], 1)
+        self.assertEqual(payload['errorCount'], 0)
+        existing.refresh_from_db()
+        self.assertEqual(existing.description, '수정 설명')
+        self.assertEqual(existing.specification, 'NEW')
+        self.assertEqual(existing.unit, 'BOX')
+        self.assertEqual(existing.standard_price, Decimal('1500'))
+        created = Product.objects.get(product_code='XLSX-UP-002')
+        self.assertEqual(created.created_by, self.salesman)
+        self.assertFalse(created.is_active)
 
     def test_product_bulk_delete_deletes_unused_and_blocks_used_product(self):
         import json

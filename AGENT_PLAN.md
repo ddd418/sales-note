@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement R-step product/document-template replacement plan
+
+**Background**:
+
+- User asked to complete React full replacement item R for product management and document-template management.
+- React already owns `/products/` and `/documents/`, and Django already exposes JSON APIs for product list/save/bulk delete/reference replacement/export and document-template list/create/update/delete/default-toggle.
+- Remaining full-replacement gaps are legacy `/reporting/products/*` GET pages still opening Django templates, visible product Django edit fallback links, actual product XLSX upload from React, and explicit legacy/default-route regression coverage.
+
+**DB change required**: No.
+
+- Existing `Product`, `DocumentTemplate`, and `DocumentGenerationLog` models support this scope.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Keep `/products/` as the canonical React product-management screen.
+- Redirect authenticated GET/HEAD legacy product list/create/edit/delete URLs to React equivalents while preserving POST fallback routes and existing bulk JSON compatibility.
+- Add a protected product XLSX import API that parses uploaded workbook rows into the same product upsert service used by the React paste flow.
+- Add a React product XLSX upload control that uses the new API and reloads the product list without changing existing paste, search, edit, delete, replacement, or export behavior.
+- Remove visible Django product edit fallback links from React rows.
+- Keep `/documents/` as the canonical React document-template screen and preserve template upload/download/default-toggle APIs.
+- Redirect authenticated GET/HEAD legacy document-template default-toggle URL to React, preserving POST fallback behavior.
+- Add focused tests for product legacy redirects, product XLSX import/export protection and mutation permissions, manager read-only scope, document-template legacy redirects/default toggle, and existing document-template role policy.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\urls.py reporting\tests.py`
+- `python manage.py test reporting.tests.CoreCrmLegacyRedirectTests reporting.tests.DocumentTemplatesReactApiTests reporting.tests.ProductManagementReactApiTests --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Local/production smoke for `/products/`, `/documents/`, product/document legacy redirects, product XLSX import/export login protection, and protected mutation APIs.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement Q-step mail/business-card/AI workspace replacement plan
 
 **Background**:

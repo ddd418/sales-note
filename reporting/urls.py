@@ -64,6 +64,28 @@ def _business_card_react_page(request, card_id=None, **kwargs):
     return frontend_url('mailbox/business-cards/', query_with(request, extra=extra))
 
 
+def _products_react_page(request, product_id=None, action=None, **kwargs):
+    query = query_with(
+        request,
+        rename={'search': 'q', 'is_active': 'status'},
+    )
+    status = query.get('status')
+    if status == 'true':
+        query['status'] = 'active'
+    elif status == 'false':
+        query['status'] = 'inactive'
+    sort = query.get('sort')
+    if sort == 'quote_count':
+        query['sort'] = 'quoteCount'
+    elif sort == 'delivery_count':
+        query['sort'] = 'deliveryCount'
+    if product_id:
+        query['product'] = product_id
+    if action:
+        query[action] = '1'
+    return frontend_url('products/', query)
+
+
 urlpatterns = [
     # 팔로우업 URL들
     path('followups/', react_page_redirect(
@@ -484,11 +506,26 @@ urlpatterns = [
     path('api/department/<int:department_id>/memo/', views.department_memo_api, name='department_memo_api'),
     
     # 제품 관리 URL들
-    path('products/', views.product_list, name='product_list'),
-    path('products/create/', views.product_create, name='product_create'),
-    path('products/bulk-create/', views.product_bulk_create, name='product_bulk_create'),
-    path('products/<int:product_id>/edit/', views.product_edit, name='product_edit'),
-    path('products/<int:product_id>/delete/', views.product_delete, name='product_delete'),
+    path('products/', react_page_redirect(
+        views.product_list,
+        _products_react_page,
+    ), name='product_list'),
+    path('products/create/', react_page_redirect(
+        views.product_create,
+        lambda request: _products_react_page(request, action='create'),
+    ), name='product_create'),
+    path('products/bulk-create/', react_page_redirect(
+        views.product_bulk_create,
+        lambda request: _products_react_page(request, action='import'),
+    ), name='product_bulk_create'),
+    path('products/<int:product_id>/edit/', react_page_redirect(
+        views.product_edit,
+        lambda request, product_id: _products_react_page(request, product_id=product_id, action='edit'),
+    ), name='product_edit'),
+    path('products/<int:product_id>/delete/', react_page_redirect(
+        views.product_delete,
+        lambda request, product_id: _products_react_page(request, product_id=product_id, action='delete'),
+    ), name='product_delete'),
     
     # 제품 API
     path('api/products/', views.product_api_list, name='product_api_list'),
@@ -499,6 +536,7 @@ urlpatterns = [
     path('api/products/bulk-delete/', views.products_bulk_delete_api, name='products_bulk_delete_api'),
     path('api/products/replace-reference/', views.product_replace_reference_api, name='product_replace_reference_api'),
     path('api/products/export.xlsx', views.products_excel_export_api, name='products_excel_export_api'),
+    path('api/products/import.xlsx', views.products_excel_import_api, name='products_excel_import_api'),
     
     # 개인 일정 URL들
     path('personal-schedules/create/', react_page_redirect(
@@ -553,7 +591,10 @@ urlpatterns = [
         lambda request, pk: frontend_url('documents/', query_with(request, extra={'template_id': pk, 'delete': '1'})),
     ), name='document_template_delete'),
     path('documents/<int:pk>/download/', views.document_template_download, name='document_template_download'),
-    path('documents/<int:pk>/toggle-default/', views.document_template_toggle_default, name='document_template_toggle_default'),
+    path('documents/<int:pk>/toggle-default/', react_page_redirect(
+        views.document_template_toggle_default,
+        lambda request, pk: frontend_url('documents/', query_with(request, extra={'template_id': pk})),
+    ), name='document_template_toggle_default'),
     path('documents/generated/<int:log_id>/download/', views.generated_document_download, name='generated_document_download'),
     path('documents/generated/<int:log_id>/delete/', views.generated_document_delete, name='generated_document_delete'),
     

@@ -203,6 +203,7 @@ import {
   changeManagerTaskStatus,
   changeTaskStatus,
   deletePrepayment as deleteCustomerPrepayment,
+  importProductsExcel,
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
   deleteNoteReply,
@@ -18249,6 +18250,9 @@ function ProductManagementPage({
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResult, setBulkResult] = useState<ProductBulkUpsertResult | null>(null);
   const [bulkError, setBulkError] = useState('');
+  const [importSaving, setImportSaving] = useState(false);
+  const [importResult, setImportResult] = useState<ProductBulkUpsertResult | null>(null);
+  const [importError, setImportError] = useState('');
   const [deleteText, setDeleteText] = useState('');
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteResult, setDeleteResult] = useState<ProductBulkDeleteResult | null>(null);
@@ -18260,6 +18264,8 @@ function ProductManagementPage({
   const [deleteReplacementSearch, setDeleteReplacementSearch] = useState('');
   const [deleteReplacementMessage, setDeleteReplacementMessage] = useState('');
   const [replacingReferenceKey, setReplacingReferenceKey] = useState('');
+  const [handledProductAction, setHandledProductAction] = useState('');
+  const productImportInputRef = useRef<HTMLInputElement | null>(null);
 
   const products = data?.products ?? [];
   const pagination = data?.pagination;
@@ -18282,6 +18288,34 @@ function ProductManagementPage({
     setFormError('');
     setFormMessage('');
   }, [canManage, data, formOpen]);
+
+  useEffect(() => {
+    if (!data || !canManage || !products.length) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const productId = Number(params.get('product') || 0);
+    const action = params.get('edit') === '1' ? 'edit' : params.get('delete') === '1' ? 'delete' : '';
+    const signature = productId && action ? `${productId}:${action}` : '';
+    if (!signature || handledProductAction === signature) {
+      return;
+    }
+    const product = products.find((item) => item.id === productId);
+    if (!product) {
+      return;
+    }
+    setHandledProductAction(signature);
+    if (action === 'edit') {
+      openEdit(product);
+    } else if (action === 'delete') {
+      setDeleteText(product.productCode);
+      setDeleteResult(null);
+      setDeleteError('');
+    }
+    ['product', 'edit', 'delete'].forEach((key) => params.delete(key));
+    const queryString = params.toString();
+    window.history.replaceState(null, '', `/products/${queryString ? `?${queryString}` : ''}`);
+  }, [canManage, data, handledProductAction, products]);
 
   useEffect(() => {
     if (!replaceableDeleteRows.length || deleteReplacementOptions.length) {
@@ -18446,6 +18480,27 @@ function ProductManagementPage({
       setBulkError(error instanceof Error ? error.message : '일괄 반영에 실패했습니다.');
     } finally {
       setBulkSaving(false);
+    }
+  };
+
+  const handleProductExcelImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = '';
+    if (!file || importSaving) return;
+    setImportSaving(true);
+    setImportError('');
+    setImportResult(null);
+    try {
+      const result = await importProductsExcel(file, data?.links.excelImport || '/reporting/api/products/import.xlsx');
+      setImportResult(result);
+      if (result.errorCount > 0) {
+        setImportError(result.message);
+      }
+      await onReload();
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : '엑셀 업로드에 실패했습니다.');
+    } finally {
+      setImportSaving(false);
     }
   };
 
@@ -18721,7 +18776,6 @@ function ProductManagementPage({
                             {canManage ? (
                               <>
                                 <button className="route-secondary-action" onClick={() => openEdit(product)} type="button">수정</button>
-                                {product.djangoEditHref ? <a className="icon-button" aria-label="Django 수정" href={product.djangoEditHref}><MoveUpRight size={16} /></a> : null}
                               </>
                             ) : (
                               <span className="customer-muted-cell">읽기 전용</span>
@@ -18758,7 +18812,24 @@ function ProductManagementPage({
                 <p className="eyebrow">Ecount / Excel</p>
                 <h2>붙여넣기 반영</h2>
               </div>
-              <Upload size={18} />
+              <div className="product-import-actions">
+                <input
+                  accept=".xlsx"
+                  hidden
+                  onChange={handleProductExcelImport}
+                  ref={productImportInputRef}
+                  type="file"
+                />
+                <button
+                  className="icon-button"
+                  disabled={importSaving}
+                  onClick={() => productImportInputRef.current?.click()}
+                  title="엑셀 업로드"
+                  type="button"
+                >
+                  {importSaving ? <Loader2 className="spin-icon" size={16} /> : <Upload size={16} />}
+                </button>
+              </div>
             </div>
             <textarea
               onChange={(event) => {
@@ -18775,6 +18846,8 @@ function ProductManagementPage({
                 <small key={item.productCode}>{item.productCode} · {item.unit} · {formatWon(Number(item.standardPrice) || 0)}</small>
               ))}
             </div>
+            {importError ? <p className="form-error">{importError}</p> : null}
+            {importResult && !importError ? <p className="form-success">{importResult.message}</p> : null}
             {bulkError ? <p className="form-error">{bulkError}</p> : null}
             {bulkResult && !bulkError ? <p className="form-success">{bulkResult.message}</p> : null}
             <button className="route-primary-action" disabled={bulkSaving || !pastedProducts.length} onClick={handleBulkUpsert} type="button">
@@ -22622,12 +22695,15 @@ export function App() {
       return;
     }
     let alive = true;
+    const currentParams = new URLSearchParams(window.location.search);
+    const selectedProductId = Number(currentParams.get('product') || 0) || null;
     setProductsLoading(true);
     loadProductManagementData({
       order: productOrder,
       page: productPage,
       pageSize: 50,
       q: productQuery,
+      selectedProductId,
       sort: productSort,
       status: productStatus,
     }).then((data) => {
@@ -22644,6 +22720,12 @@ export function App() {
     if (productSort !== 'code') params.set('sort', productSort);
     if (productOrder !== 'asc') params.set('order', productOrder);
     if (productPage > 1) params.set('page', String(productPage));
+    ['create', 'import', 'product', 'edit', 'delete'].forEach((key) => {
+      const value = currentParams.get(key);
+      if (value) {
+        params.set(key, value);
+      }
+    });
     const queryString = params.toString();
     window.history.replaceState(null, '', `/products/${queryString ? `?${queryString}` : ''}`);
 
