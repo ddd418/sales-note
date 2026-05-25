@@ -8,6 +8,19 @@ export function getCookie(name: string): string {
   return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : '';
 }
 
+export type ApiJsonResult<T> = {
+  response: Response;
+  payload: T;
+};
+
+export function csrfHeaders(headers: HeadersInit = {}): HeadersInit {
+  const csrfToken = getCookie('csrftoken');
+  return {
+    ...headers,
+    ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+  };
+}
+
 class LoginRequiredRedirectError extends Error {
   constructor() {
     super('login_required');
@@ -51,6 +64,52 @@ export function redirectIfLoginRequired(response: Response, payload?: unknown): 
 
   if (redirectedToLogin || jsonLoginRequired) {
     redirectToLogin();
+  }
+}
+
+export async function fetchJson<T>(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  unavailableLabel = 'API unavailable',
+): Promise<ApiJsonResult<T>> {
+  const response = await fetch(input, {
+    ...init,
+    credentials: init.credentials ?? 'include',
+    headers: {
+      Accept: 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`${unavailableLabel}: ${response.status}`);
+  }
+  const payload = (await response.json()) as T;
+  redirectIfLoginRequired(response, payload);
+  return { response, payload };
+}
+
+export function getPayloadMessage(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') {
+    return '';
+  }
+  const record = payload as { error?: unknown; message?: unknown };
+  if (typeof record.error === 'string') {
+    return record.error;
+  }
+  return typeof record.message === 'string' ? record.message : '';
+}
+
+export function assertSuccessfulJsonPayload(
+  response: Response,
+  payload: { success?: boolean; source?: string } | undefined,
+  errorLabel: string,
+  options: { requireDjangoSource?: boolean } = {},
+): void {
+  const invalidSource = options.requireDjangoSource && payload?.source !== 'django';
+  if (!response.ok || payload?.success === false || invalidSource) {
+    throw new Error(getPayloadMessage(payload) || `${errorLabel}: ${response.status}`);
   }
 }
 

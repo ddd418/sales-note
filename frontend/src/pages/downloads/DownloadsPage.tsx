@@ -14,7 +14,7 @@ import {
   Server,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { DownloadRegistryItem, DownloadsData } from '../../api';
+import type { DownloadRegistryItem, DownloadsData } from '../../api/downloads';
 import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from '../../components/shared/FeedbackStates';
 import { formatDateTimeLabel, formatNumber } from '../../components/shared/formatters';
 

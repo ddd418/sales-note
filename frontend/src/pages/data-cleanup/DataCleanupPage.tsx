@@ -16,18 +16,20 @@ import type {
   AccountCleanupDecisionPayload,
   AccountCleanupMergeResponse,
   AccountCleanupSearchResult,
+} from '../../api/accountCleanup';
+import type {
   ReportsData,
   ReportsDataQualityContact,
   ReportsDuplicateAccountGroup,
   ReportsDuplicateContactGroup,
-} from '../../api';
+} from '../../api/reports';
 import {
   assignDataQualityContactAccount,
   runContactCleanupMerge,
   runDepartmentCleanupMerge,
   saveAccountCleanupDecision,
   searchAccountCleanupTargets,
-} from '../../api';
+} from '../../api/accountCleanup';
 import { DashboardEmpty } from '../../components/shared/DashboardEmpty';
 import { formatDateTimeLabel, formatNumber } from '../../components/shared/formatters';
 

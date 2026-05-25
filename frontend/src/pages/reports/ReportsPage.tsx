@@ -18,8 +18,9 @@ import {
   Wrench,
 } from 'lucide-react';
 import { Fragment, useState } from 'react';
-import type { AccountCleanupDecisionPayload, AccountCleanupSearchResult, ReportsData, ReportsDataQualityContact } from '../../api';
-import { assignDataQualityContactAccount, saveAccountCleanupDecision, searchAccountCleanupTargets } from '../../api';
+import type { AccountCleanupDecisionPayload, AccountCleanupSearchResult } from '../../api/accountCleanup';
+import { assignDataQualityContactAccount, saveAccountCleanupDecision, searchAccountCleanupTargets } from '../../api/accountCleanup';
+import type { ReportsData, ReportsDataQualityContact } from '../../api/reports';
 import { DashboardEmpty } from '../../components/shared/DashboardEmpty';
 import { DashboardMetricCard } from '../../components/shared/DashboardMetricCard';
 import { formatDateLabel, formatDateTimeLabel, formatNumber, formatSignedNumber, formatSignedWon, formatWon } from '../../components/shared/formatters';

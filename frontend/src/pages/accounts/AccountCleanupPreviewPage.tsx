@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowRightLeft, CheckCircle2, Download, FileSpreadsheet, Loader2, ShieldCheck, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { AccountCleanupMergeReadiness, AccountCleanupPreviewData, AccountCleanupSearchResult } from '../../api';
-import { searchAccountCleanupTargets } from '../../api';
+import type { AccountCleanupMergeReadiness, AccountCleanupPreviewData, AccountCleanupSearchResult } from '../../api/accountCleanup';
+import { searchAccountCleanupTargets } from '../../api/accountCleanup';
 import { DashboardEmpty } from '../../components/shared/DashboardEmpty';
 import { formatNumber, formatWon } from '../../components/shared/formatters';
 

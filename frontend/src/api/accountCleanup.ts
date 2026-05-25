@@ -1,5 +1,11 @@
 import type { ReportsDataQualityContact } from './reports';
-import { getCookie, normalizeCoreCrmHref, normalizeHrefFields, redirectIfLoginRequired } from './shared';
+import {
+  assertSuccessfulJsonPayload,
+  csrfHeaders,
+  fetchJson,
+  normalizeCoreCrmHref,
+  normalizeHrefFields,
+} from './shared';
 
 export type AccountCleanupAffectedRecord = {
   key: string;
@@ -310,22 +316,12 @@ export async function loadAccountCleanupPreviewData(
   }
 
   try {
-    const response = await fetch(`/reporting/api/accounts/${departmentId}/cleanup-preview/${query.toString() ? `?${query.toString()}` : ''}`, {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Account cleanup preview API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as Partial<AccountCleanupPreviewData>;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Account cleanup preview API unavailable: ${response.status}`);
-    }
+    const { response, payload } = await fetchJson<Partial<AccountCleanupPreviewData>>(
+      `/reporting/api/accounts/${departmentId}/cleanup-preview/${query.toString() ? `?${query.toString()}` : ''}`,
+      {},
+      'Account cleanup preview API unavailable',
+    );
+    assertSuccessfulJsonPayload(response, payload, 'Account cleanup preview API unavailable', { requireDjangoSource: true });
     const sourceAccount = normalizeAccountCleanupPreviewAccount(payload.sourceAccount) ?? emptyAccountCleanupPreviewAccount;
     const targetAccount = normalizeAccountCleanupPreviewAccount(payload.targetAccount);
     return {
@@ -385,28 +381,18 @@ export async function searchAccountCleanupTargets(
   }
 
   try {
-    const response = await fetch(`/reporting/api/accounts/search/${params.toString() ? `?${params.toString()}` : ''}`, {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Account search API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as {
+    const { response, payload } = await fetchJson<{
       success?: boolean;
       source?: string;
       error?: string;
       message?: string;
       results?: AccountCleanupSearchResult[];
-    };
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Account search API unavailable: ${response.status}`);
-    }
+    }>(
+      `/reporting/api/accounts/search/${params.toString() ? `?${params.toString()}` : ''}`,
+      {},
+      'Account search API unavailable',
+    );
+    assertSuccessfulJsonPayload(response, payload, 'Account search API unavailable', { requireDjangoSource: true });
     return (payload.results ?? emptyAccountCleanupSearchResult.results).map((result) => ({
       ...result,
       href: normalizeCoreCrmHref(result.href),
@@ -425,27 +411,18 @@ export async function searchAccountCleanupTargets(
 export async function saveAccountCleanupDecision(
   payload: AccountCleanupDecisionPayload,
 ): Promise<AccountCleanupDecisionResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch(payload.decisionUrl || '/reporting/api/accounts/cleanup-decision/', {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+  const { response, payload: data } = await fetchJson<AccountCleanupDecisionResponse>(
+    payload.decisionUrl || '/reporting/api/accounts/cleanup-decision/',
+    {
+      method: 'POST',
+      headers: csrfHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Cleanup decision API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as AccountCleanupDecisionResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Cleanup decision failed: ${response.status}`);
-  }
+    'Cleanup decision API unavailable',
+  );
+  assertSuccessfulJsonPayload(response, data, 'Cleanup decision failed');
   return data;
 }
 
@@ -453,27 +430,18 @@ async function postAccountCleanupMerge(
   url: string,
   payload: AccountCleanupMergePayload,
 ): Promise<AccountCleanupMergeResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+  const { response, payload: data } = await fetchJson<AccountCleanupMergeResponse>(
+    url,
+    {
+      method: 'POST',
+      headers: csrfHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Cleanup merge API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as AccountCleanupMergeResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Cleanup merge failed: ${response.status}`);
-  }
+    'Cleanup merge API unavailable',
+  );
+  assertSuccessfulJsonPayload(response, data, 'Cleanup merge failed');
   return {
     ...data,
     warnings: data.warnings ?? [],
@@ -506,27 +474,18 @@ export async function assignDataQualityContactAccount(
   followupId: number,
   departmentId: number,
 ): Promise<DataQualityContactAssignResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch(`/reporting/api/data-quality/contacts/${followupId}/assign-account/`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+  const { response, payload: data } = await fetchJson<DataQualityContactAssignResponse>(
+    `/reporting/api/data-quality/contacts/${followupId}/assign-account/`,
+    {
+      method: 'POST',
+      headers: csrfHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ departmentId }),
     },
-    body: JSON.stringify({ departmentId }),
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Data quality assign API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as DataQualityContactAssignResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Data quality assign failed: ${response.status}`);
-  }
+    'Data quality assign API unavailable',
+  );
+  assertSuccessfulJsonPayload(response, data, 'Data quality assign failed');
   return {
     ...data,
     contact: data.contact ? normalizeHrefFields(data.contact, ['href', 'accountHref']) : undefined,

@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-25 React full replacement V-step API layer modularization plan
+
+**Background**:
+
+- User asked to split the frontend API layer by domain and clean common fetch/CSRF/login/error handling.
+- `frontend/src/api.ts` is still a large mixed API surface while some newer domains already live under `frontend/src/api/`.
+- React screens currently import most domain APIs from the central barrel, which makes account, report, prepayment, asset, and AI contracts harder to maintain independently.
+
+**DB change required**: No.
+
+- This task only changes TypeScript API organization and frontend imports.
+- Existing Django JSON/API response contracts remain unchanged.
+
+**Implementation scope**:
+
+- Turn `frontend/src/api.ts` into a compatibility barrel and move the legacy mixed implementation to `frontend/src/api/legacy.ts`.
+- Add stable domain entry modules for accounts, assets, prepayments, and AI while preserving existing named exports for backward compatibility.
+- Keep reports, downloads, and account cleanup domain modules as first-class exports.
+- Add shared JSON fetch helpers for content-type validation, login redirect handling, CSRF headers, and consistent error messages.
+- Update React screens touched by these domains to import from domain modules instead of the central mixed API where practical.
+- Preserve old `from './api'` imports through the barrel so API response compatibility and incremental migration are safe.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- Focused Django/API smoke for protected reports/customers/prepayments/assets/AI endpoints.
+- Browser/local smoke for `/customers/`, `/reports/`, `/prepayments/`, `/assets/`, `/ai-workspace/`, and `/downloads/` anonymous/login routing.
+- `git diff --check`
+
 ## 2026-05-25 React full replacement U-step file/excel/download commonization plan
 
 **Background**:

@@ -24,7 +24,7 @@ import {
   loadCompanyManagementData,
   updateCompany as updateCompanyRecord,
   updateDepartment as updateDepartmentRecord,
-} from '../../api';
+} from '../../api/accounts';
 import { DashboardEmpty } from '../../components/shared/FeedbackStates';
 
 const formatNumber = (value: number | null | undefined) => new Intl.NumberFormat('ko-KR').format(value ?? 0);

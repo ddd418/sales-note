@@ -1,4 +1,4 @@
-import { normalizeCoreCrmHref, normalizeHrefFields, redirectIfLoginRequired } from './shared';
+import { assertSuccessfulJsonPayload, fetchJson, normalizeCoreCrmHref, normalizeHrefFields } from './shared';
 
 export type ReportsCustomerRecentDelivery = {
   id?: number | null;
@@ -458,22 +458,12 @@ export async function loadReportsData(params: {
   if (params.userId) query.set('user_id', params.userId);
 
   try {
-    const response = await fetch(`/reporting/api/reports/${query.toString() ? `?${query.toString()}` : ''}`, {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Reports API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as Partial<ReportsData>;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Reports API unavailable: ${response.status}`);
-    }
+    const { response, payload } = await fetchJson<Partial<ReportsData>>(
+      `/reporting/api/reports/${query.toString() ? `?${query.toString()}` : ''}`,
+      {},
+      'Reports API unavailable',
+    );
+    assertSuccessfulJsonPayload(response, payload, 'Reports API unavailable', { requireDjangoSource: true });
     return {
       ...emptyReportsData,
       ...payload,

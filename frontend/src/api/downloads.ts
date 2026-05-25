@@ -1,4 +1,4 @@
-import { redirectIfLoginRequired } from './shared';
+import { assertSuccessfulJsonPayload, fetchJson } from './shared';
 
 export type DownloadRegistryItem = {
   id: string;
@@ -71,22 +71,12 @@ const emptyDownloadsData: DownloadsData = {
 
 export async function loadDownloadsData(): Promise<DownloadsData> {
   try {
-    const response = await fetch('/reporting/api/downloads/', {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Downloads API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as Partial<DownloadsData>;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Downloads API unavailable: ${response.status}`);
-    }
+    const { response, payload } = await fetchJson<Partial<DownloadsData>>(
+      '/reporting/api/downloads/',
+      {},
+      'Downloads API unavailable',
+    );
+    assertSuccessfulJsonPayload(response, payload, 'Downloads API unavailable', { requireDjangoSource: true });
     return {
       ...emptyDownloadsData,
       ...payload,
