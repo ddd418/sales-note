@@ -31,8 +31,14 @@ const formatDateLabel = (value: string | null | undefined) => {
 const receivableItemStateClass = (item: ReceivableItem) => {
   if (item.cardPaymentReceived) return 'card';
   if (item.receivableSettled) return 'settled';
-  if (item.taxInvoiceIssued) return 'open';
-  return 'unregistered';
+  return 'open';
+};
+
+const normalizeReceivableStatus = (value: string | null): ReceivableStatus => {
+  if (value === 'all' || value === 'settled' || value === 'card') {
+    return value;
+  }
+  return 'open';
 };
 
 type ReceivableCheckboxProps = {
@@ -61,7 +67,7 @@ export function ReceivablesPage() {
   const [data, setData] = useState<ReceivablesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(() => initialParams.get('q') || '');
-  const [status, setStatus] = useState<ReceivableStatus>(() => initialParams.get('status') || 'open');
+  const [status, setStatus] = useState<ReceivableStatus>(() => normalizeReceivableStatus(initialParams.get('status')));
   const [sort, setSort] = useState<ReceivableSort>(() => initialParams.get('sort') || 'outstanding');
   const [order, setOrder] = useState<ReceivableOrder>(() => initialParams.get('order') || 'desc');
   const [error, setError] = useState('');
@@ -153,7 +159,6 @@ export function ReceivablesPage() {
           {(data?.filters.statuses.length ? data.filters.statuses : [
             { value: 'open', label: '외상 진행중' },
             { value: 'all', label: '외상 관리 대상 전체' },
-            { value: 'unregistered', label: '미등록' },
             { value: 'settled', label: '수금완료' },
             { value: 'card', label: '카드결제' },
           ]).map((option) => (
@@ -238,14 +243,13 @@ export function ReceivablesPage() {
                   <th>품목</th>
                   <th>금액</th>
                   <th>상태</th>
-                  <th>외상</th>
                   <th>카드</th>
                   <th>수금</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && !data ? (
-                  <tr><td colSpan={8}><Loader2 className="spin-icon" size={18} /> 데이터를 불러오는 중입니다</td></tr>
+                  <tr><td colSpan={7}><Loader2 className="spin-icon" size={18} /> 데이터를 불러오는 중입니다</td></tr>
                 ) : data?.items.length ? data.items.map((item) => {
                   const disabled = updatingId === item.id || !item.canEdit;
                   return (
@@ -266,17 +270,9 @@ export function ReceivablesPage() {
                       <td><span className={`receivable-status ${receivableItemStateClass(item)}`}>{item.statusLabel}</span></td>
                       <td>
                         <ReceivableCheckbox
-                          checked={item.taxInvoiceIssued}
-                          disabled={disabled}
-                          label={updatingId === item.id ? '저장중' : '외상'}
-                          onChange={(checked) => void handleUpdate(item, { taxInvoiceIssued: checked })}
-                        />
-                      </td>
-                      <td>
-                        <ReceivableCheckbox
                           checked={item.cardPaymentReceived}
                           disabled={disabled}
-                          label="카드"
+                          label={updatingId === item.id ? '저장중' : '카드'}
                           onChange={(checked) => void handleUpdate(item, { cardPaymentReceived: checked })}
                         />
                       </td>
@@ -291,7 +287,7 @@ export function ReceivablesPage() {
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan={8}>표시할 납품 품목이 없습니다</td></tr>
+                  <tr><td colSpan={7}>표시할 납품 품목이 없습니다</td></tr>
                 )}
               </tbody>
             </table>

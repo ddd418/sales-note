@@ -12961,7 +12961,7 @@ function ScheduleDetailPage({
                     `${formatNumber(item.quantity)}${item.unit}`,
                     item.discountUnitPrice !== null ? `할인단가 ${formatWon(item.discountUnitPrice)}` : '',
                     item.totalPrice ? formatWon(item.totalPrice) : '',
-                    item.cardPaymentReceived ? '카드결제' : item.receivableSettled ? '수금완료' : item.taxInvoiceIssued ? '외상 등록' : '외상 미등록',
+                    item.cardPaymentReceived ? '카드결제' : item.receivableSettled ? '수금완료' : '외상 진행중',
                   ].filter(Boolean).join(' · ')}</span>
                   {item.notes ? <p>{item.notes}</p> : null}
                 </div>

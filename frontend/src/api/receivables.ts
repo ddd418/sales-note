@@ -1,6 +1,6 @@
 import { assertSuccessfulJsonPayload, csrfHeaders, fetchJson, normalizeCoreCrmHref } from './shared';
 
-export type ReceivableStatus = 'open' | 'all' | 'settled' | 'unregistered' | 'card' | string;
+export type ReceivableStatus = 'open' | 'all' | 'settled' | 'card' | string;
 export type ReceivableSort = 'outstanding' | 'customer' | 'date' | 'amount' | string;
 export type ReceivableOrder = 'asc' | 'desc' | string;
 

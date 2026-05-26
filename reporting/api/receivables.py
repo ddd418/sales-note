@@ -1,7 +1,8 @@
 """Credit customer receivables APIs.
 
-The system does not issue real tax invoices here. The existing tax-invoice flag is
-used as an internal receivable marker for delivered items.
+The system does not issue real tax invoices here. Non-prepayment delivered items
+are managed as receivables by default; the old tax-invoice flag is kept for
+backward compatibility.
 """
 
 import json
@@ -30,7 +31,7 @@ from reporting.views import (
 )
 
 
-RECEIVABLE_STATUSES = {'open', 'all', 'settled', 'unregistered', 'card'}
+RECEIVABLE_STATUSES = {'open', 'all', 'settled', 'card'}
 RECEIVABLE_SORTS = {'outstanding', 'customer', 'date', 'amount'}
 RECEIVABLE_ORDERS = {'asc', 'desc'}
 
@@ -141,15 +142,13 @@ def _receivables_item_status_label(item):
         return '카드결제 완료'
     if item.receivable_settled:
         return '수금완료'
-    if item.tax_invoice_issued:
-        return '외상 진행중'
-    return '미등록'
+    return '외상 진행중'
 
 
 def _receivables_item_payload(item, request_user=None):
     context = _receivables_item_context(item)
     amount = _receivables_item_amount(item)
-    outstanding_amount = amount if item.tax_invoice_issued and not item.receivable_settled and not item.card_payment_received else 0
+    outstanding_amount = amount if not item.receivable_settled and not item.card_payment_received else 0
     schedule = context['schedule']
     history = context['history']
     owner = context['owner']
@@ -162,7 +161,7 @@ def _receivables_item_payload(item, request_user=None):
         'unitPrice': _money_int(item.unit_price) if item.unit_price is not None else None,
         'totalPrice': amount,
         'outstandingAmount': outstanding_amount,
-        'taxInvoiceIssued': bool(item.tax_invoice_issued),
+        'taxInvoiceIssued': True,
         'cardPaymentReceived': bool(item.card_payment_received),
         'receivableSettled': bool(item.receivable_settled),
         'receivableSettledAt': _datetime_or_none(item.receivable_settled_at),
@@ -195,13 +194,12 @@ def _receivables_sync_history(item):
     schedule = item.schedule
     if not schedule:
         if item.history_id:
-            item.history.tax_invoice_issued = bool(item.tax_invoice_issued)
+            item.history.tax_invoice_issued = True
             item.history.save(update_fields=['tax_invoice_issued'])
         return
 
-    delivery_items = list(schedule.delivery_items_set.all())
-    schedule_issued = bool(delivery_items) and all(delivery_item.tax_invoice_issued for delivery_item in delivery_items)
-    History.objects.filter(schedule=schedule, action_type='delivery_schedule').update(tax_invoice_issued=schedule_issued)
+    if schedule.delivery_items_set.exists():
+        History.objects.filter(schedule=schedule, action_type='delivery_schedule').update(tax_invoice_issued=True)
 
 
 def _receivables_scope_users(request):
@@ -256,11 +254,9 @@ def _receivables_queryset(request):
 
 def _receivables_status_filter(queryset, status):
     if status == 'open':
-        return queryset.filter(tax_invoice_issued=True, card_payment_received=False, receivable_settled=False)
+        return queryset.filter(card_payment_received=False, receivable_settled=False)
     if status == 'settled':
-        return queryset.filter(tax_invoice_issued=True).filter(Q(receivable_settled=True) | Q(card_payment_received=True))
-    if status == 'unregistered':
-        return queryset.filter(tax_invoice_issued=False, card_payment_received=False, receivable_settled=False)
+        return queryset.filter(Q(receivable_settled=True) | Q(card_payment_received=True))
     if status == 'card':
         return queryset.filter(card_payment_received=True)
     return queryset
@@ -327,7 +323,7 @@ def _receivables_customer_rows(items):
         row['itemCount'] += 1
         row['totalAmount'] += item['totalPrice'] or 0
         row['outstandingAmount'] += item['outstandingAmount'] or 0
-        if item['taxInvoiceIssued'] and not item['receivableSettled'] and not item['cardPaymentReceived']:
+        if not item['receivableSettled'] and not item['cardPaymentReceived']:
             row['openItemCount'] += 1
         if item['receivableSettled']:
             row['settledItemCount'] += 1
@@ -364,7 +360,7 @@ def receivables_api(request):
     customer_rows = _receivables_customer_rows(item_payloads)
 
     total_outstanding = sum(item['outstandingAmount'] or 0 for item in item_payloads)
-    total_credit_amount = sum(item['totalPrice'] or 0 for item in item_payloads if item['taxInvoiceIssued'])
+    total_credit_amount = sum(item['totalPrice'] or 0 for item in item_payloads)
     settled_amount = sum(item['totalPrice'] or 0 for item in item_payloads if item['receivableSettled'] or item['cardPaymentReceived'])
 
     return JsonResponse({
@@ -379,7 +375,7 @@ def receivables_api(request):
             'itemCount': len(item_payloads),
             'openItemCount': len([
                 item for item in item_payloads
-                if item['taxInvoiceIssued'] and not item['receivableSettled'] and not item['cardPaymentReceived']
+                if not item['receivableSettled'] and not item['cardPaymentReceived']
             ]),
         },
         'filters': {
@@ -390,7 +386,6 @@ def receivables_api(request):
             'statuses': [
                 {'value': 'open', 'label': '외상 진행중'},
                 {'value': 'all', 'label': '외상 관리 대상 전체'},
-                {'value': 'unregistered', 'label': '미등록'},
                 {'value': 'settled', 'label': '수금완료'},
                 {'value': 'card', 'label': '카드결제'},
             ],
@@ -453,12 +448,7 @@ def receivable_item_status_api(request, item_id):
         settled_value = _receivables_bool_payload(payload, 'receivableSettled', 'receivable_settled')
 
         if tax_value is not None:
-            item.tax_invoice_issued = tax_value
-            if not tax_value:
-                item.card_payment_received = False
-                item.receivable_settled = False
-                item.receivable_settled_at = None
-                item.receivable_settled_by = None
+            item.tax_invoice_issued = True
 
         if card_value is not None:
             item.card_payment_received = card_value
@@ -487,6 +477,8 @@ def receivable_item_status_api(request, item_id):
             item.receivable_settled = True
             item.receivable_settled_at = item.receivable_settled_at or timezone.now()
             item.receivable_settled_by = item.receivable_settled_by or request.user
+
+        item.tax_invoice_issued = True
 
         item.save(update_fields=[
             'tax_invoice_issued',

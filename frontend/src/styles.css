@@ -1208,11 +1208,6 @@ h2 {
   color: #047857;
 }
 
-.receivable-status.unregistered {
-  background: rgba(100, 116, 139, 0.13);
-  color: #475569;
-}
-
 .receivable-check {
   display: inline-flex;
   align-items: center;

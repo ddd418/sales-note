@@ -1,5 +1,89 @@
 # AGENT_REPORT.md
 
+## 2026-05-26 — 외상고객 미등록 상태 제거
+
+### 요약
+
+- `/receivables/`에서 `미등록` 상태와 필터를 제거했습니다.
+- 선결제가 아닌 모든 납품 품목은 기존 DB의 `tax_invoice_issued` 값과 무관하게 처음부터 `외상 진행중`으로 계산합니다.
+- 외상고객 화면의 별도 `외상` 체크박스를 제거하고, 사용자는 `카드`와 `수금`만 체크/취소하도록 바꿨습니다.
+- 일정 상세 납품 품목 상태에서도 `외상 미등록` 문구가 보이지 않도록 `외상 진행중`으로 표시합니다.
+- 선결제 차감 납품은 이전처럼 외상고객에서 제외하고 직접 변경도 차단합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/receivables.ts`
+- `frontend/src/pages/receivables/ReceivablesPage.tsx`
+- `frontend/src/styles.css`
+- `reporting/api/receivables.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 납품받은 고객은 별도 외상 등록 체크 없이 바로 외상 고객으로 잡힙니다.
+- 운영자는 외상 여부를 분류하는 대신 카드결제/수금완료 여부만 처리하면 됩니다.
+- 기존에 `미등록`으로 숨어 있던 납품 품목도 총 외상과 외상 품목 수에 반영됩니다.
+
+### 기존 기능 보존
+
+- 카드결제/수금완료 체크와 취소는 유지했습니다.
+- 선결제 차감 납품 제외와 선결제 직접 변경 차단은 유지했습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\api\receivables.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReceivablesApiTests --verbosity=2
+→ Ran 6 tests, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite chunk size warning only
+
+rg 미등록/unregistered markers in receivables-related frontend/backend files
+→ No remaining user-facing markers in checked files
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 기존 DB의 `DeliveryItem.tax_invoice_issued=False` 값을 일괄 업데이트하지는 않았습니다. 대신 외상고객 API에서 납품 품목을 기본 외상으로 계산하고, 상태 변경 시 해당 플래그를 `True`로 맞춥니다.
+
+### 추천 다음 작업
+
+- 운영에서 `/receivables/` 기본 화면에 기존 `미등록` 납품 품목이 `외상 진행중`으로 포함되는지 확인합니다.
+
+### Production Deployment Status
+
+- Pending. Commit, push, Railway 배포 확인과 production smoke를 진행할 예정입니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/receivables/`를 엽니다.
+2. 상태 필터에 `미등록`이 없는지 확인합니다.
+3. 품목 테이블에 `외상` 체크박스가 없고 `카드`, `수금`만 있는지 확인합니다.
+4. 기존에 미등록처럼 보이던 납품 품목이 `외상 진행중`으로 보이고 총 외상에 포함되는지 확인합니다.
+5. 카드결제 또는 수금완료를 체크하면 총 외상에서 빠지고, 체크를 해제하면 다시 외상 진행중으로 돌아오는지 확인합니다.
+6. 선결제 차감 납품은 외상고객에 나타나지 않는지 확인합니다.
+
 ## 2026-05-26 — 외상고객 카드/수금 변경 500 hotfix
 
 ### 요약

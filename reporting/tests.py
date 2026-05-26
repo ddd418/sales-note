@@ -622,7 +622,7 @@ class ReceivablesApiTests(TestCase):
         )
         DeliveryItem.objects.create(
             schedule=self.schedule,
-            item_name='Unregistered Kit',
+            item_name='Default Credit Kit',
             quantity=1,
             unit='EA',
             unit_price=50000,
@@ -635,12 +635,19 @@ class ReceivablesApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload['success'])
-        self.assertEqual(payload['summary']['itemCount'], 1)
-        self.assertEqual(payload['summary']['openItemCount'], 1)
-        self.assertEqual(payload['summary']['totalOutstanding'], 110000)
-        self.assertEqual(payload['items'][0]['itemName'], 'Open Kit')
-        self.assertEqual(payload['items'][0]['statusLabel'], '외상 진행중')
-        self.assertEqual(payload['customers'][0]['outstandingAmount'], 110000)
+        self.assertEqual(payload['summary']['itemCount'], 2)
+        self.assertEqual(payload['summary']['openItemCount'], 2)
+        self.assertEqual(payload['summary']['totalOutstanding'], 165000)
+        self.assertEqual(payload['summary']['totalCreditAmount'], 165000)
+        self.assertNotIn('unregistered', [status['value'] for status in payload['filters']['statuses']])
+        item_names = [item['itemName'] for item in payload['items']]
+        self.assertIn('Open Kit', item_names)
+        self.assertIn('Default Credit Kit', item_names)
+        default_item = next(item for item in payload['items'] if item['itemName'] == 'Default Credit Kit')
+        self.assertTrue(default_item['taxInvoiceIssued'])
+        self.assertEqual(default_item['statusLabel'], '외상 진행중')
+        self.assertEqual(default_item['outstandingAmount'], 55000)
+        self.assertEqual(payload['customers'][0]['outstandingAmount'], 165000)
 
     def test_receivables_api_excludes_prepayment_delivery_items(self):
         DeliveryItem.objects.create(
@@ -751,29 +758,31 @@ class ReceivablesApiTests(TestCase):
 
         response = self.client.post(
             url,
-            data=json.dumps({'taxInvoiceIssued': True}),
+            data=json.dumps({'cardPaymentReceived': True}),
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 200)
         item.refresh_from_db()
         history.refresh_from_db()
         self.assertTrue(item.tax_invoice_issued)
-        self.assertFalse(item.receivable_settled)
+        self.assertTrue(item.card_payment_received)
+        self.assertTrue(item.receivable_settled)
         self.assertTrue(history.tax_invoice_issued)
-        self.assertEqual(response.json()['item']['outstandingAmount'], 220000)
+        self.assertEqual(response.json()['item']['outstandingAmount'], 0)
+        self.assertEqual(response.json()['item']['statusLabel'], '카드결제 완료')
 
         card_response = self.client.post(
             url,
-            data=json.dumps({'cardPaymentReceived': True}),
+            data=json.dumps({'cardPaymentReceived': False}),
             content_type='application/json',
         )
         self.assertEqual(card_response.status_code, 200)
         item.refresh_from_db()
         self.assertTrue(item.tax_invoice_issued)
-        self.assertTrue(item.card_payment_received)
-        self.assertTrue(item.receivable_settled)
-        self.assertEqual(item.receivable_settled_by, self.user)
-        self.assertEqual(card_response.json()['item']['outstandingAmount'], 0)
+        self.assertFalse(item.card_payment_received)
+        self.assertFalse(item.receivable_settled)
+        self.assertEqual(card_response.json()['item']['outstandingAmount'], 220000)
+        self.assertEqual(card_response.json()['item']['statusLabel'], '외상 진행중')
 
         cancel_response = self.client.post(
             url,
@@ -782,9 +791,10 @@ class ReceivablesApiTests(TestCase):
         )
         self.assertEqual(cancel_response.status_code, 200)
         item.refresh_from_db()
-        self.assertFalse(item.tax_invoice_issued)
+        self.assertTrue(item.tax_invoice_issued)
         self.assertFalse(item.card_payment_received)
         self.assertFalse(item.receivable_settled)
+        self.assertEqual(cancel_response.json()['item']['outstandingAmount'], 220000)
 
     def test_receivable_item_status_api_locks_item_without_nullable_outer_joins(self):
         item = DeliveryItem.objects.create(

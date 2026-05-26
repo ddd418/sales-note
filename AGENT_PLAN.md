@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-26 Remove receivables unregistered state plan
+
+**Background**:
+
+- User clarified there should be no `미등록` state in `외상고객`.
+- Every non-prepayment delivered item should start as an outstanding receivable/customer item.
+- Only card payment and settlement should remove an item from outstanding receivables.
+
+**DB change required**: No.
+
+- This task changes API default classification, React filters/controls, tests, and docs only.
+- Existing `DeliveryItem.tax_invoice_issued` values remain for backward compatibility, but the receivables API treats eligible delivered items as receivable-managed by default.
+
+**Implementation scope**:
+
+- Remove the `unregistered` API status/filter option.
+- Treat every non-prepayment, non-card, non-settled delivered item as `외상 진행중`.
+- Remove the separate `외상` checkbox column from `/receivables/`; users should only change `카드` and `수금`.
+- Keep 선결제 exclusion and mutation blocking intact.
+- Avoid showing `외상 미등록` in React delivery-item status text.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\api\receivables.py reporting\tests.py`
+- `python manage.py test reporting.tests.ReceivablesApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Production smoke after Railway deployment for `/receivables/` and protected APIs.
+- `git diff --check`
+
 ## 2026-05-26 Receivables status update 500 hotfix plan
 
 **Background**:
