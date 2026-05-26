@@ -1,5 +1,71 @@
 # AGENT_REPORT.md
 
+## 2026-05-26 — 고객 빠른 등록 섹션 제거
+
+### 요약
+
+- `/customers/?create=1`에서 고객 목록 상단에 열리던 `고객 빠른 등록` 섹션을 제거했습니다.
+- 고객 화면 상단의 `새 고객 등록` 버튼을 제거해 목록/필터/우선 계정 영역이 바로 보이도록 했습니다.
+- 대시보드/라우트 액션에서 `/customers/?create=1`로 가는 `새 고객 등록` 바로가기를 제거하고 `장비 디렉터리`를 고객 화면의 주요 보조 액션으로 유지했습니다.
+- 고객 화면 URL 정리 로직에서 `create=1`을 더 이상 보존하지 않도록 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+
+### CRM 개선
+
+- 고객 목록 화면에 들어갔을 때 큰 등록 패널이 먼저 보이지 않아 아래 고객 목록과 우선 계정을 바로 확인할 수 있습니다.
+- `/customers/?create=1`로 접근해도 고객 목록 화면으로 자연스럽게 정리됩니다.
+
+### 기존 기능 보존
+
+- 고객 목록, 검색/필터, 계정/담당자 보기 전환, 엑셀 다운로드, 고객 상세 진입은 유지했습니다.
+- Django 고객/업체/부서 API는 변경하지 않았습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+rg "/customers/?create=1|고객 빠른 등록|새 고객 등록" frontend/src/App.tsx frontend/src/styles.css
+→ No matches
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite chunk size warning only
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 빠른 등록 UI만 제거했습니다. 백엔드 고객 생성 API와 관련 상태/핸들러는 다른 흐름과의 호환성을 위해 이번 변경에서 삭제하지 않았습니다.
+
+### 추천 다음 작업
+
+- 운영에서 `/customers/?create=1`로 접속했을 때 고객 목록/필터가 바로 보이고 `고객 빠른 등록` 섹션이 없는지 확인합니다.
+
+### Production Deployment Status
+
+- Pending commit, push, and production smoke.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/customers/?create=1`로 접속합니다.
+2. 상단에 `고객 빠른 등록` 섹션과 `새 고객 등록` 버튼이 없는지 확인합니다.
+3. 고객 핵심 지표, 필터, 고객 목록, 우선 계정 영역이 바로 보이는지 확인합니다.
+4. 검색/필터/고객 상세 진입이 기존처럼 동작하는지 확인합니다.
+
 ## 2026-05-26 — 견적서 기준단가 열 숨김
 
 ### 요약

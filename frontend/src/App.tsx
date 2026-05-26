@@ -1773,8 +1773,7 @@ const routeMeta: Record<
     primaryHref: '/customers/',
     primaryLabel: '프론트 고객 보기',
     actions: [
-      { label: '새 고객 등록', href: '/customers/?create=1', primary: true },
-      { label: '장비 디렉터리', href: '/assets/' },
+      { label: '장비 디렉터리', href: '/assets/', primary: true },
       { label: '파이프라인', href: '/pipeline/' },
     ],
   },
@@ -5613,316 +5612,7 @@ function CustomersPage({
           <h2>{data.scope.label || '계정 관리'}</h2>
           <p>부서/연구실 계정 기준으로 담당자, 일정, 활동, 후속조치를 확인합니다.</p>
         </div>
-        <button
-          className={canCreateCustomers ? 'route-primary-action' : 'route-secondary-action'}
-          onClick={() => onCreateOpenChange(!createOpen)}
-          type="button"
-        >
-          {canCreateCustomers ? '새 고객 등록' : '등록 권한 없음'}
-          <Plus size={16} />
-        </button>
       </div>
-
-      {createOpen ? (
-        <section className="dashboard-panel notes-create-panel customer-create-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Quick customer</span>
-              <h2>고객 빠른 등록</h2>
-            </div>
-            {creating ? <Loader2 className="spin-icon" size={18} /> : <Users size={18} />}
-          </div>
-          {createMessage ? (
-            <div className="notes-action-feedback success">
-              <span>{createMessage}</span>
-              {createDetailHref ? <a href={createDetailHref}>상세 열기</a> : null}
-            </div>
-          ) : null}
-          {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
-          {!canCreateCustomers ? (
-            <DashboardEmpty label={createConfig.message || '고객 등록 권한이 없습니다'} />
-          ) : (
-            <form className="notes-create-form" onSubmit={onCreateSubmit}>
-              <div className="customer-inline-create-grid">
-                <label>
-                  <span>새 업체/학교</span>
-                  <div className="customer-inline-create-row">
-                    <input
-                      onChange={(event) => onCompanyCreateNameChange(event.target.value)}
-                      placeholder="업체/학교명"
-                      value={companyCreateName}
-                    />
-                    <button
-                      className="route-secondary-action"
-                      disabled={companyCreating || !companyCreateName.trim()}
-                      onClick={onCompanyCreateSubmit}
-                      type="button"
-                    >
-                      {companyCreating ? <Loader2 className="spin-icon" size={14} /> : <Plus size={14} />}
-                      추가
-                    </button>
-                  </div>
-                </label>
-                <label>
-                  <span>새 부서/연구실</span>
-                  <div className="customer-inline-create-row">
-                    <input
-                      disabled={!createForm.companyId}
-                      onChange={(event) => onDepartmentCreateNameChange(event.target.value)}
-                      placeholder={createForm.companyId ? '부서/연구실명' : '업체를 먼저 선택'}
-                      value={createDepartmentName}
-                    />
-                    <button
-                      className="route-secondary-action"
-                      disabled={departmentCreateDisabled || !createDepartmentName.trim()}
-                      onClick={onDepartmentCreateSubmit}
-                      type="button"
-                    >
-                      {departmentCreating ? <Loader2 className="spin-icon" size={14} /> : <Plus size={14} />}
-                      추가
-                    </button>
-                  </div>
-                </label>
-              </div>
-              <div className="customer-manage-panel">
-                <div className="customer-manage-heading">
-                  <div>
-                    <span className="eyebrow">Manage</span>
-                    <strong>업체/부서 수정 · 삭제</strong>
-                  </div>
-                  <span className="customer-manage-count">
-                    업체 {formatNumber(manageableCompanies.length)} · 부서 {formatNumber(manageableDepartments.length)}
-                  </span>
-                </div>
-                <div className="customer-manage-grid">
-                  <div className="customer-manage-list">
-                    <span className="customer-manage-title">업체/학교</span>
-                    {manageableCompanies.length === 0 ? (
-                      <DashboardEmpty label="수정 가능한 업체/학교가 없습니다" />
-                    ) : (
-                      manageableCompanies.map((company) => {
-                        const isEditing = companyEditId === company.id;
-                        const saving = managementSavingKey === `company-${company.id}`;
-                        return (
-                          <div className="customer-manage-item" key={company.id}>
-                            {isEditing ? (
-                              <input
-                                aria-label="업체/학교명 수정"
-                                onChange={(event) => onCompanyEditNameChange(event.target.value)}
-                                value={companyEditName}
-                              />
-                            ) : (
-                              <div className="customer-manage-label">
-                                <strong>{company.name}</strong>
-                                <span>{formatNumber(company.departmentCount || 0)}개 부서 · {formatNumber(company.followupCount || 0)}명</span>
-                              </div>
-                            )}
-                            <div className="customer-manage-actions">
-                              {isEditing ? (
-                                <>
-                                  <button
-                                    className="route-secondary-action"
-                                    disabled={saving || !companyEditName.trim()}
-                                    onClick={() => onCompanyEditSubmit(company)}
-                                    type="button"
-                                  >
-                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
-                                    저장
-                                  </button>
-                                  <button className="route-secondary-action" onClick={onCompanyEditCancel} type="button">
-                                    취소
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button className="route-secondary-action" onClick={() => onCompanyEditStart(company)} type="button">
-                                    <Pencil size={14} />
-                                    수정
-                                  </button>
-                                  <button
-                                    className="route-secondary-action danger"
-                                    disabled={saving || !company.canDelete}
-                                    onClick={() => onCompanyDelete(company)}
-                                    title={company.deleteMessage || company.manageMessage || ''}
-                                    type="button"
-                                  >
-                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
-                                    삭제
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                            {!company.canDelete && company.deleteMessage ? <small>{company.deleteMessage}</small> : null}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                  <div className="customer-manage-list">
-                    <span className="customer-manage-title">부서/연구실</span>
-                    {manageableDepartments.length === 0 ? (
-                      <DashboardEmpty label="수정 가능한 부서/연구실이 없습니다" />
-                    ) : (
-                      manageableDepartments.map((department) => {
-                        const isEditing = departmentEditId === department.id;
-                        const saving = managementSavingKey === `department-${department.id}`;
-                        return (
-                          <div className="customer-manage-item" key={department.id}>
-                            {isEditing ? (
-                              <input
-                                aria-label="부서/연구실명 수정"
-                                onChange={(event) => onDepartmentEditNameChange(event.target.value)}
-                                value={departmentEditName}
-                              />
-                            ) : (
-                              <div className="customer-manage-label">
-                                <strong>{department.name}</strong>
-                                <span>{department.companyName} · 담당자 {formatNumber(department.followupCount || 0)}명</span>
-                              </div>
-                            )}
-                            <div className="customer-manage-actions">
-                              {isEditing ? (
-                                <>
-                                  <button
-                                    className="route-secondary-action"
-                                    disabled={saving || !departmentEditName.trim()}
-                                    onClick={() => onDepartmentEditSubmit(department)}
-                                    type="button"
-                                  >
-                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
-                                    저장
-                                  </button>
-                                  <button className="route-secondary-action" onClick={onDepartmentEditCancel} type="button">
-                                    취소
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button className="route-secondary-action" onClick={() => onDepartmentEditStart(department)} type="button">
-                                    <Pencil size={14} />
-                                    수정
-                                  </button>
-                                  <button
-                                    className="route-secondary-action danger"
-                                    disabled={saving || !department.canDelete}
-                                    onClick={() => onDepartmentDelete(department)}
-                                    title={department.deleteMessage || department.manageMessage || ''}
-                                    type="button"
-                                  >
-                                    {saving ? <Loader2 className="spin-icon" size={14} /> : <Trash2 size={14} />}
-                                    삭제
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                            {!department.canDelete && department.deleteMessage ? <small>{department.deleteMessage}</small> : null}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="notes-create-grid customer-create-grid">
-                <div className="form-field">
-                  <span>업체/학교</span>
-                  <SearchableSelect
-                    ariaLabel="업체/학교 선택"
-                    onChange={(nextValue) => onCreateFormChange('companyId', nextValue)}
-                    options={createCompanies.map(makeCompanySelectOption)}
-                    placeholder="업체/학교 검색"
-                    value={createForm.companyId}
-                  />
-                </div>
-                <div className="form-field">
-                  <span>부서/연구실</span>
-                  <SearchableSelect
-                    ariaLabel="부서/연구실 선택"
-                    disabled={!createForm.companyId}
-                    onChange={(nextValue) => onCreateFormChange('departmentId', nextValue)}
-                    options={createDepartments.map(makeDepartmentSelectOption)}
-                    placeholder={createForm.companyId ? '부서/연구실 검색' : '업체를 먼저 선택'}
-                    value={createForm.departmentId}
-                  />
-                </div>
-                <label>
-                  <span>고객명</span>
-                  <input
-                    onChange={(event) => onCreateFormChange('customerName', event.target.value)}
-                    placeholder="담당자명"
-                    required
-                    value={createForm.customerName}
-                  />
-                </label>
-                <label>
-                  <span>우선순위</span>
-                  <select
-                    onChange={(event) => onCreateFormChange('priority', event.target.value)}
-                    required
-                    value={createForm.priority}
-                  >
-                    {createPriorities.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>책임자</span>
-                  <input
-                    onChange={(event) => onCreateFormChange('manager', event.target.value)}
-                    placeholder="책임자명"
-                    value={createForm.manager}
-                  />
-                </label>
-                <label>
-                  <span>연락처</span>
-                  <input
-                    onChange={(event) => onCreateFormChange('phoneNumber', event.target.value)}
-                    placeholder="010-0000-0000"
-                    value={createForm.phoneNumber}
-                  />
-                </label>
-                <label>
-                  <span>이메일</span>
-                  <input
-                    onChange={(event) => onCreateFormChange('email', event.target.value)}
-                    placeholder="name@example.com"
-                    type="email"
-                    value={createForm.email}
-                  />
-                </label>
-                <label>
-                  <span>상세주소</span>
-                  <input
-                    onChange={(event) => onCreateFormChange('address', event.target.value)}
-                    placeholder="방문 주소"
-                    value={createForm.address}
-                  />
-                </label>
-              </div>
-              <label>
-                <span>상세 내용</span>
-                <textarea
-                  onChange={(event) => onCreateFormChange('notes', event.target.value)}
-                  placeholder="관심 품목, 거래 맥락, 특이사항"
-                  rows={3}
-                  value={createForm.notes}
-                />
-              </label>
-              <div className="notes-create-actions">
-                <a className="route-secondary-action" href={createConfig.advancedUrl}>
-                  상세 등록
-                  <MoveUpRight size={15} />
-                </a>
-                <button className="route-primary-action" disabled={creating} type="submit">
-                  {creating ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
-                  저장
-                </button>
-              </div>
-            </form>
-          )}
-        </section>
-      ) : null}
 
       <section className="dashboard-metric-grid customers-metric-grid" aria-label="고객 핵심 지표">
         {metrics.map((metric) => (
@@ -21351,7 +21041,7 @@ export function App() {
   const [serviceCaseType, setServiceCaseType] = useState(
     () => new URLSearchParams(window.location.search).get('case_type') || new URLSearchParams(window.location.search).get('caseType') || '',
   );
-  const [customerCreateOpen, setCustomerCreateOpen] = useState(currentView === 'customers' && !customerDetailId && !accountDetailId && !accountCleanupPreviewId && shouldOpenCreatePanel());
+  const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
   const [customerCreating, setCustomerCreating] = useState(false);
   const [customerCreateError, setCustomerCreateError] = useState('');
@@ -21711,7 +21401,6 @@ export function App() {
     if (customerLevel) params.set('level', customerLevel);
     if (customerRowMode !== 'account') params.set('mode', customerRowMode);
     if (customerPage > 1) params.set('page', String(customerPage));
-    if (customerCreateOpen) params.set('create', '1');
     const queryString = params.toString();
     window.history.replaceState(null, '', `/customers/${queryString ? `?${queryString}` : ''}`);
   }, [
@@ -21719,7 +21408,6 @@ export function App() {
     accountDetailId,
     currentView,
     customerCompany,
-    customerCreateOpen,
     customerDetailId,
     customerGrade,
     customerLevel,

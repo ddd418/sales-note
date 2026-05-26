@@ -1,5 +1,32 @@
 # AGENT_PLAN.md
 
+## 2026-05-26 Remove customer quick create panel plan
+
+**Background**:
+
+- User asked to remove the `고객 빠른 등록` section from `/customers/?create=1` because it makes the customer list below harder to view.
+- The React customers page currently opens the inline quick-create panel when the `create=1` query parameter is present and also exposes a top summary button for that panel.
+
+**DB change required**: No.
+
+- This task changes React route/query behavior, visible customer page actions, tests/checks, and docs only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Stop auto-opening the customer quick-create panel from `?create=1`.
+- Remove the visible `새 고객 등록` summary button from the customers page.
+- Remove the dashboard/route quick action that links to `/customers/?create=1`.
+- Preserve customer list, filters, account detail, exports, permissions, and existing backend APIs.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `python manage.py check`
+- `git diff --check`
+- Production smoke after push/deploy window.
+
 ## 2026-05-26 Hide quote base unit price column plan
 
 **Background**:
