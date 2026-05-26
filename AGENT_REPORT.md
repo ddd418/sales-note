@@ -67,7 +67,20 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending. Commit, push, Railway 배포 확인과 production smoke를 진행할 예정입니다.
+- Completed.
+- Code commit pushed to `origin/main`:
+  - `f342205 fix: exclude prepayments from receivables`
+- Railway production deployments:
+  - Backend `web`: `b15cfe76-2c00-47a6-bcfb-c4ecd1c93edc`, commit `f342205`, `SUCCESS`
+  - Frontend `sales-note-frontend`: `7ed2bafc-d155-47e0-8296-00150b06b05c`, commit `f342205`, `SUCCESS`
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+  - Confirmed `/data-cleanup/` and `/downloads/` remain `404`
+  - Confirmed protected API endpoints remain `401 login_required`
+- Production receivables route smoke:
+  - Frontend `/receivables/`: `200`
+  - Frontend `/reporting/api/receivables/`: `401`
 
 ### Manual Server Test Process
 
