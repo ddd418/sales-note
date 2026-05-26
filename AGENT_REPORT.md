@@ -70,7 +70,22 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending commit, push, and Railway deployment.
+- Completed.
+- Code commit pushed to `origin/main`:
+  - `87972ca feat: hide quote base unit price in documents`
+- Railway production deployments for the runtime change:
+  - Backend `web`: `95436d62-7e66-40c5-86f0-329cac4be4e3`, commit `87972ca`, `SUCCESS`
+  - Frontend `sales-note-frontend`: `0a581528-aa65-4339-ac16-41adc2f3e553`, commit `87972ca`, `SUCCESS`
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+  - Confirmed `/schedules/1/` and `/documents/` React routes return `200`
+  - Confirmed `/data-cleanup/` and `/downloads/` remain `404`
+  - Confirmed protected APIs return `401 login_required` when unauthenticated
+- Production log check:
+  - `railway logs --service web --environment production --http --status 500..599 --since 10m --json`
+  - `railway logs --service sales-note-frontend --environment production --http --status 500..599 --since 10m --json`
+  - No new 500 logs in either service after deployment.
 
 ### Manual Server Test Process
 
