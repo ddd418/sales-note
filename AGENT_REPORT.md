@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-05-26 — 견적서 기준단가 열 숨김
+
+### 요약
+
+- `기준단가 가리기`를 켠 견적서 생성 시 값만 비우는 데서 끝나지 않고, `{{품목N_기준단가}}` 토큰이 들어있는 엑셀 열 자체를 숨기도록 확장했습니다.
+- XLSX를 PDF로 변환하기 전에 열 숨김을 적용하므로 Excel 다운로드와 PDF 출력 둘 다 같은 방식으로 기준단가 열이 빠집니다.
+- 템플릿이 열 구조가 아니거나 토큰을 찾지 못하는 경우에도 기존처럼 기준단가 값은 빈칸으로 유지됩니다.
+- 로컬 FileField 템플릿 생성 후 정리 단계에서 불필요한 `file_url` 오류 로그가 남던 부분도 같이 보정했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 고객에게 전달하는 견적서에서 기준단가 열 헤더와 값이 함께 사라져, 내부 가격 정보가 더 자연스럽게 노출되지 않습니다.
+- 기존 템플릿을 크게 바꾸지 않아도 `{{품목N_기준단가}}`가 들어간 열이면 자동으로 숨겨집니다.
+
+### 기존 기능 보존
+
+- `기준단가 가리기`를 체크하지 않으면 기존처럼 기준단가 열과 값이 표시됩니다.
+- 견적 단가, 할인단가, 금액, 부가세, 견적 묶음, 권한 체크는 변경하지 않았습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_base_unit_price_column_helper_hides_token_column reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_hides_base_unit_price_column_when_requested reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_hides_quotation_base_unit_price_when_requested --verbosity=2
+→ Ran 3 tests, OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=2
+→ Ran 20 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 열 숨김은 `{{품목1_기준단가}}`, `{{품목2_기준단가}}`처럼 기준단가 변수 토큰이 들어있는 열을 기준으로 작동합니다. 기준단가가 고정 텍스트나 다른 임의 변수명으로만 구성된 템플릿은 열 위치를 자동 판별할 수 없으므로 값 비우기만 적용됩니다.
+
+### 추천 다음 작업
+
+- 운영 배포 후 실제 견적서 템플릿에서 `기준단가 가리기`를 체크하고 PDF/Excel 모두에서 기준단가 열이 빠지는지 확인합니다.
+
+### Production Deployment Status
+
+- Pending commit, push, and Railway deployment.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 견적 일정 상세(`/schedules/{id}/`)를 엽니다.
+2. `서류 다운로드` 영역에서 `기준단가 가리기`를 체크합니다.
+3. `Excel`을 내려받아 기준단가 열이 숨겨져 있는지 확인합니다.
+4. 같은 상태로 `PDF 등록/다운로드`를 실행해 PDF에서도 기준단가 열이 보이지 않는지 확인합니다.
+5. 체크를 해제하고 다시 생성하면 기준단가 열과 값이 기존처럼 표시되는지 확인합니다.
+
 ## 2026-05-26 — 견적서 기준단가 가리기 옵션
 
 ### 요약

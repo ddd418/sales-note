@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## 2026-05-26 Hide quote base unit price column plan
+
+**Background**:
+
+- User asked whether `기준단가 가리기` can remove the whole column, not only blank the values.
+- Quotation documents are generated from Excel templates and then optionally converted to PDF, so hiding the column in the XLSX before conversion will affect both Excel and PDF output.
+
+**DB change required**: No.
+
+- This task changes XLSX template post-processing, tests, and docs only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Detect worksheet columns containing `{{품목N_기준단가}}` template tokens.
+- When quotation `hide_base_unit_price` is enabled, mark those columns hidden in the generated XLSX before Excel download or PDF conversion.
+- Preserve the existing value-blanking behavior as a fallback for templates that are not column-structured.
+- Keep transaction statements, delivery notes, permissions, and calculations unchanged.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused Django tests for XLSX base-unit-price column hiding and existing preview behavior.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Production smoke after Railway deployment.
+
 ## 2026-05-26 Quote base unit price hide option plan
 
 **Background**:

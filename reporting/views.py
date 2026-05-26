@@ -33136,6 +33136,185 @@ def _strip_xlsx_bold_formatting(xlsx_path):
     return changed
 
 
+def _hide_xlsx_template_columns(xlsx_path, token_patterns):
+    """템플릿 토큰이 들어있는 열을 숨겨 Excel/PDF 출력에서 열 자체를 제외한다."""
+    import os
+    import re
+    import shutil
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    compiled_patterns = [re.compile(pattern) for pattern in token_patterns]
+    if not compiled_patterns:
+        return False
+
+    spreadsheet_ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    ET.register_namespace('', spreadsheet_ns)
+
+    def qname(name):
+        return f'{{{spreadsheet_ns}}}{name}'
+
+    cell_ref_pattern = re.compile(r'^([A-Z]+)(\d+)$')
+
+    def split_cell_ref(ref):
+        normalized = str(ref or '').replace('$', '').upper()
+        match = cell_ref_pattern.match(normalized)
+        if not match:
+            return None
+        col_letters, row_text = match.groups()
+        col_idx = 0
+        for char in col_letters:
+            col_idx = col_idx * 26 + (ord(char) - ord('A') + 1)
+        return col_idx, int(row_text)
+
+    def text_content(node):
+        return ''.join(text_node.text or '' for text_node in node.iter(qname('t')))
+
+    def cell_text(cell, shared_strings):
+        if cell.get('t') == 's':
+            value_node = cell.find(qname('v'))
+            if value_node is not None:
+                return shared_strings.get(value_node.text or '', '')
+        if cell.get('t') == 'inlineStr':
+            return text_content(cell)
+        value_node = cell.find(qname('v'))
+        return value_node.text or '' if value_node is not None else ''
+
+    def text_matches(text):
+        return any(pattern.search(text or '') for pattern in compiled_patterns)
+
+    def ensure_cols_node(root):
+        cols_node = root.find(qname('cols'))
+        if cols_node is not None:
+            return cols_node
+
+        cols_node = ET.Element(qname('cols'))
+        children = list(root)
+        insert_index = 0
+        for preferred_name in ('sheetPr', 'dimension', 'sheetViews', 'sheetFormatPr'):
+            preferred = root.find(qname(preferred_name))
+            if preferred is not None:
+                insert_index = max(insert_index, children.index(preferred) + 1)
+        sheet_data = root.find(qname('sheetData'))
+        if sheet_data is not None:
+            insert_index = min(insert_index, children.index(sheet_data))
+        root.insert(insert_index, cols_node)
+        return cols_node
+
+    def clone_col(original, min_col, max_col, hidden=False):
+        attrs = dict(original.attrib) if original is not None else {}
+        attrs['min'] = str(min_col)
+        attrs['max'] = str(max_col)
+        if hidden:
+            attrs['hidden'] = '1'
+            attrs['customWidth'] = attrs.get('customWidth') or '1'
+        return ET.Element(qname('col'), attrs)
+
+    def contiguous_ranges(values):
+        ordered = sorted(values)
+        if not ordered:
+            return []
+        ranges = []
+        start = previous = ordered[0]
+        for value in ordered[1:]:
+            if value == previous + 1:
+                previous = value
+                continue
+            ranges.append((start, previous))
+            start = previous = value
+        ranges.append((start, previous))
+        return ranges
+
+    def rebuild_cols_node(root, target_cols):
+        cols_node = ensure_cols_node(root)
+        old_nodes = list(cols_node.findall(qname('col')))
+        covered_targets = set()
+        new_nodes = []
+
+        for old_node in old_nodes:
+            try:
+                min_col = int(old_node.get('min'))
+                max_col = int(old_node.get('max'))
+            except (TypeError, ValueError):
+                new_nodes.append(old_node)
+                continue
+
+            targets_in_range = {col for col in target_cols if min_col <= col <= max_col}
+            if not targets_in_range:
+                new_nodes.append(old_node)
+                continue
+
+            covered_targets.update(targets_in_range)
+            non_targets = set(range(min_col, max_col + 1)) - targets_in_range
+            for start, end in contiguous_ranges(non_targets):
+                new_nodes.append(clone_col(old_node, start, end, hidden=False))
+            for start, end in contiguous_ranges(targets_in_range):
+                new_nodes.append(clone_col(old_node, start, end, hidden=True))
+
+        for start, end in contiguous_ranges(target_cols - covered_targets):
+            new_nodes.append(clone_col(None, start, end, hidden=True))
+
+        new_nodes.sort(key=lambda node: (int(node.get('min') or 0), int(node.get('max') or 0)))
+        for old_node in old_nodes:
+            cols_node.remove(old_node)
+        for new_node in new_nodes:
+            cols_node.append(new_node)
+        return True
+
+    temp_output = xlsx_path.replace('.xlsx', '_hidden_columns.xlsx')
+    changed = False
+
+    with zipfile.ZipFile(xlsx_path, 'r') as zip_in:
+        files = {item.filename: zip_in.read(item.filename) for item in zip_in.infolist()}
+        infos = zip_in.infolist()
+
+    shared_strings = {}
+    shared_strings_data = files.get('xl/sharedStrings.xml')
+    if shared_strings_data:
+        try:
+            shared_root = ET.fromstring(shared_strings_data)
+            for index, shared_item in enumerate(shared_root.findall(qname('si'))):
+                shared_strings[str(index)] = text_content(shared_item)
+        except Exception as shared_error:
+            logger.warning(f"[서류생성] 숨김 열 sharedStrings 분석 실패: {shared_error}")
+
+    for filename, data in list(files.items()):
+        if not (filename.startswith('xl/worksheets/sheet') and filename.endswith('.xml')):
+            continue
+        try:
+            root = ET.fromstring(data)
+            target_cols = set()
+            for row in root.findall(f'.//{qname("row")}'):
+                for cell in row.findall(qname('c')):
+                    if not text_matches(cell_text(cell, shared_strings)):
+                        continue
+                    parsed_ref = split_cell_ref(cell.get('r'))
+                    if parsed_ref:
+                        target_cols.add(parsed_ref[0])
+            if not target_cols:
+                continue
+            rebuild_cols_node(root, target_cols)
+            files[filename] = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+            changed = True
+        except Exception as sheet_error:
+            logger.warning(f"[서류생성] 템플릿 열 숨김 실패({filename}): {sheet_error}")
+
+    if not changed:
+        return False
+
+    with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+        for item in infos:
+            zip_out.writestr(item, files[item.filename])
+
+    os.unlink(xlsx_path)
+    shutil.move(temp_output, xlsx_path)
+    return True
+
+
+def _hide_xlsx_base_unit_price_columns(xlsx_path):
+    return _hide_xlsx_template_columns(xlsx_path, [r'\{\{품목\d+_기준단가\}\}'])
+
+
 def _expand_xlsx_template_text_rows(xlsx_path, data_map):
     """치환될 텍스트가 셀 폭보다 길면 줄바꿈과 행 높이를 보정한다."""
     import copy
@@ -34085,6 +34264,12 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     _expand_xlsx_template_text_rows(temp_path, data_map)
                 except Exception as text_layout_error:
                     logger.warning(f"[서류생성] 템플릿 텍스트 행 높이 보정 실패: {text_layout_error}")
+
+                if hide_base_unit_price:
+                    try:
+                        _hide_xlsx_base_unit_price_columns(temp_path)
+                    except Exception as hide_column_error:
+                        logger.warning(f"[서류생성] 기준단가 열 숨김 실패: {hide_column_error}")
                 
                 # 1단계: ZIP에서 이미지/차트/미디어 파일 백업
                 media_files = {}  # {filename: (ZipInfo, data)}
@@ -34328,7 +34513,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     if 'temp_path' in locals() and os.path.exists(temp_path):
                         os.unlink(temp_path)
                     # Cloudinary에서 다운로드한 임시 파일 정리
-                    if 'cloudinary' in file_url or file_url.startswith('http'):
+                    if 'file_url' in locals() and ('cloudinary' in file_url or file_url.startswith('http')):
                         if os.path.exists(template_file_path):
                             os.unlink(template_file_path)
                 except Exception as cleanup_error:
@@ -34342,7 +34527,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
             # 성공 시에도 Cloudinary 임시 파일 정리
             finally:
                 try:
-                    if 'cloudinary' in file_url or file_url.startswith('http'):
+                    if 'file_url' in locals() and ('cloudinary' in file_url or file_url.startswith('http')):
                         if 'template_file_path' in locals() and os.path.exists(template_file_path):
                             os.unlink(template_file_path)
                 except Exception as cleanup_error:

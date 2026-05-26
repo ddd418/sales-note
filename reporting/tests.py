@@ -11879,6 +11879,100 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertIn('fitToHeight="0"', sheet_xml)
         self.assertIn('left="0.25"', sheet_xml)
 
+    def test_document_base_unit_price_column_helper_hides_token_column(self):
+        import os
+        import tempfile
+        import zipfile
+        from xml.etree import ElementTree as ET
+        from openpyxl import Workbook
+        from reporting.views import _hide_xlsx_base_unit_price_columns
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '품목'
+        sheet['B1'] = '기준단가'
+        sheet['C1'] = '단가'
+        sheet['A2'] = '{{품목1_이름}}'
+        sheet['B2'] = '{{품목1_기준단가}}'
+        sheet['C2'] = '{{품목1_단가}}'
+        sheet.column_dimensions['B'].width = 14
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
+        self.addCleanup(lambda: os.path.exists(temp_path) and os.unlink(temp_path))
+        workbook.save(temp_path)
+
+        changed = _hide_xlsx_base_unit_price_columns(temp_path)
+
+        self.assertTrue(changed)
+        with zipfile.ZipFile(temp_path, 'r') as archive:
+            sheet_root = ET.fromstring(archive.read('xl/worksheets/sheet1.xml'))
+
+        namespace = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        hidden_cols = [
+            col for col in sheet_root.findall('.//s:cols/s:col', namespace)
+            if col.get('hidden') == '1'
+        ]
+        self.assertEqual([(col.get('min'), col.get('max')) for col in hidden_cols], [('2', '2')])
+
+    def test_document_generate_xlsx_hides_base_unit_price_column_when_requested(self):
+        import io
+        import zipfile
+        from xml.etree import ElementTree as ET
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook
+        from reporting.models import DeliveryItem
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '품목'
+        sheet['B1'] = '기준단가'
+        sheet['C1'] = '단가'
+        sheet['A2'] = '{{품목1_이름}}'
+        sheet['B2'] = '{{품목1_기준단가}}'
+        sheet['C2'] = '{{품목1_단가}}'
+        output = io.BytesIO()
+        workbook.save(output)
+        template = DocumentTemplate.objects.create(
+            company=self.company,
+            document_type='quotation',
+            name='열숨김견적서',
+            file=SimpleUploadedFile(
+                'column-hide-quote.xlsx',
+                output.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ),
+            file_type='xlsx',
+            is_default=True,
+            created_by=self.manager,
+        )
+        self.addCleanup(template.file.delete, False)
+        schedule = self._create_schedule(self.manager, name='열숨김', activity_type='quote')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Column Hidden Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            discount_rate=10,
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.post(
+            reverse('reporting:generate_document_pdf_format', args=['quotation', schedule.id, 'xlsx']),
+            {'hide_base_unit_price': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(io.BytesIO(response.content), 'r') as archive:
+            sheet_root = ET.fromstring(archive.read('xl/worksheets/sheet1.xml'))
+
+        namespace = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        hidden_cols = [
+            col for col in sheet_root.findall('.//s:cols/s:col', namespace)
+            if col.get('hidden') == '1'
+        ]
+        self.assertEqual([(col.get('min'), col.get('max')) for col in hidden_cols], [('2', '2')])
+
     def test_document_item_note_layout_helper_wraps_and_expands_note_rows(self):
         import os
         import tempfile
