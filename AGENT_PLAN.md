@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-26 Exclude prepayment deliveries from receivables plan
+
+**Background**:
+
+- User clarified that prepayment deliveries must not be treated as receivables.
+- The `/receivables/` API currently starts from delivered `DeliveryItem` rows and filters by receivable/card/settlement flags, so prepayment-deduction schedules can be counted if an old invoice/receivable flag is set.
+- Prepayment delivery status is already represented structurally by `Schedule.use_prepayment`, `Schedule.prepayment`, `Schedule.prepayment_amount`, `Schedule.delivery_payment_type`, `Schedule.delivery_payment_status`, and `PrepaymentUsage`.
+
+**DB change required**: No.
+
+- This task changes API filtering, direct mutation guardrails, labels, tests, and docs only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Exclude schedule-linked and history-linked prepayment-deduction delivery items from the `외상고객` list, summary, customer rollups, and all status filters.
+- Reject direct receivable status updates for prepayment-deduction delivery items even if a stale item update URL is called.
+- Keep normal non-prepayment receivable/card/settled behavior unchanged.
+- Clarify the React filter label so “all” means all receivable-management 대상, not all delivery items including prepayment.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\api\receivables.py reporting\tests.py`
+- Focused Django tests for receivables listing, prepayment exclusion, direct mutation guardrail, and existing permission/status behavior.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Production smoke after Railway deployment for `/receivables/` and protected APIs.
+- `git diff --check`
+
 ## 2026-05-25 AI nano briefing-only conversion plan
 
 **Background**:

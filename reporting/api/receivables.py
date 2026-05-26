@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
-from reporting.models import DeliveryItem, History
+from reporting.models import DeliveryItem, History, Schedule
 from reporting.views import (
     _api_login_required_response,
     _date_or_none,
@@ -104,6 +104,38 @@ def _receivables_item_context(item):
     }
 
 
+def _receivables_item_payment_schedule(item):
+    if item.schedule_id:
+        return item.schedule
+    if item.history_id and getattr(item.history, 'schedule_id', None):
+        return item.history.schedule
+    return None
+
+
+def _receivables_schedule_uses_prepayment(schedule):
+    if not schedule:
+        return False
+    if (
+        getattr(schedule, 'use_prepayment', False)
+        or getattr(schedule, 'prepayment_id', None)
+        or _money_int(getattr(schedule, 'prepayment_amount', None)) > 0
+        or getattr(schedule, 'delivery_payment_type', '') == Schedule.DELIVERY_PAYMENT_TYPE_PREPAYMENT
+        or getattr(schedule, 'delivery_payment_status', '') == Schedule.DELIVERY_PAYMENT_STATUS_PREPAYMENT
+    ):
+        return True
+    return schedule.prepayment_usages.exists()
+
+
+def _receivables_item_uses_prepayment(item):
+    schedule = _receivables_item_payment_schedule(item)
+    if _receivables_schedule_uses_prepayment(schedule):
+        return True
+    try:
+        return item.prepaymentusage_set.exists()
+    except Exception:
+        return False
+
+
 def _receivables_item_status_label(item):
     if item.card_payment_received:
         return '카드결제 완료'
@@ -181,6 +213,20 @@ def _receivables_scope_users(request):
 
 def _receivables_queryset(request):
     scope_users = _receivables_scope_users(request)
+    prepayment_filter = (
+        Q(schedule__use_prepayment=True)
+        | Q(schedule__prepayment__isnull=False)
+        | Q(schedule__prepayment_amount__gt=0)
+        | Q(schedule__delivery_payment_type=Schedule.DELIVERY_PAYMENT_TYPE_PREPAYMENT)
+        | Q(schedule__delivery_payment_status=Schedule.DELIVERY_PAYMENT_STATUS_PREPAYMENT)
+        | Q(schedule__prepayment_usages__isnull=False)
+        | Q(history__schedule__use_prepayment=True)
+        | Q(history__schedule__prepayment__isnull=False)
+        | Q(history__schedule__prepayment_amount__gt=0)
+        | Q(history__schedule__delivery_payment_type=Schedule.DELIVERY_PAYMENT_TYPE_PREPAYMENT)
+        | Q(history__schedule__delivery_payment_status=Schedule.DELIVERY_PAYMENT_STATUS_PREPAYMENT)
+        | Q(history__schedule__prepayment_usages__isnull=False)
+    )
     return (
         DeliveryItem.objects
         .select_related(
@@ -191,6 +237,7 @@ def _receivables_queryset(request):
             'schedule__followup__department',
             'schedule__followup__department__company',
             'history',
+            'history__schedule',
             'history__user',
             'history__followup',
             'history__followup__company',
@@ -202,6 +249,8 @@ def _receivables_queryset(request):
             Q(schedule__activity_type='delivery', schedule__user__in=scope_users)
             | Q(schedule__isnull=True, history__action_type='delivery_schedule', history__user__in=scope_users)
         )
+        .exclude(prepayment_filter)
+        .distinct()
     )
 
 
@@ -340,7 +389,7 @@ def receivables_api(request):
             'order': order,
             'statuses': [
                 {'value': 'open', 'label': '외상 진행중'},
-                {'value': 'all', 'label': '전체 납품 품목'},
+                {'value': 'all', 'label': '외상 관리 대상 전체'},
                 {'value': 'unregistered', 'label': '미등록'},
                 {'value': 'settled', 'label': '수금완료'},
                 {'value': 'card', 'label': '카드결제'},
@@ -380,7 +429,7 @@ def receivable_item_status_api(request, item_id):
         item = (
             DeliveryItem.objects
             .select_for_update()
-            .select_related('schedule', 'schedule__user', 'history', 'history__user')
+            .select_related('schedule', 'schedule__user', 'history', 'history__user', 'history__schedule')
             .filter(id=item_id)
             .first()
         )
@@ -392,6 +441,13 @@ def receivable_item_status_api(request, item_id):
             return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
         if not can_modify_user_data(request.user, owner):
             return JsonResponse({'success': False, 'error': '외상 상태를 변경할 권한이 없습니다.'}, status=403)
+        if _receivables_item_uses_prepayment(item):
+            return JsonResponse({
+                'success': False,
+                'error': '선결제 차감 납품은 외상고객에서 처리할 수 없습니다.',
+                'message': '선결제 사용 내역은 선결제 메뉴에서 확인하세요.',
+                'redirect': '/prepayments/',
+            }, status=409)
 
         tax_value = _receivables_bool_payload(payload, 'taxInvoiceIssued', 'tax_invoice_issued')
         card_value = _receivables_bool_payload(payload, 'cardPaymentReceived', 'card_payment_received')

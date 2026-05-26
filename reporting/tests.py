@@ -642,6 +642,93 @@ class ReceivablesApiTests(TestCase):
         self.assertEqual(payload['items'][0]['statusLabel'], '외상 진행중')
         self.assertEqual(payload['customers'][0]['outstandingAmount'], 110000)
 
+    def test_receivables_api_excludes_prepayment_delivery_items(self):
+        DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='Normal Credit Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            tax_invoice_issued=True,
+        )
+        prepayment_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.user_company,
+            followup=self.followup,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+            use_prepayment=True,
+            prepayment_amount=250000,
+            delivery_payment_type=Schedule.DELIVERY_PAYMENT_TYPE_PREPAYMENT,
+            delivery_payment_status=Schedule.DELIVERY_PAYMENT_STATUS_PREPAYMENT,
+        )
+        DeliveryItem.objects.create(
+            schedule=prepayment_schedule,
+            item_name='Prepaid Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=250000,
+            tax_invoice_issued=True,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:receivables_api'), {'status': 'all'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        item_names = [item['itemName'] for item in payload['items']]
+        self.assertIn('Normal Credit Kit', item_names)
+        self.assertNotIn('Prepaid Kit', item_names)
+        self.assertEqual(payload['summary']['itemCount'], 1)
+        self.assertEqual(payload['summary']['totalOutstanding'], 110000)
+
+    def test_receivable_item_status_api_blocks_prepayment_usage_item(self):
+        item = DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='Prepayment Usage Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            tax_invoice_issued=False,
+        )
+        prepayment = Prepayment.objects.create(
+            department=self.department,
+            customer=self.followup,
+            company=self.company,
+            amount=200000,
+            balance=90000,
+            payment_date=timezone.localdate(),
+            payment_method='transfer',
+            payer_name='외상API 선결제',
+            created_by=self.user,
+        )
+        PrepaymentUsage.objects.create(
+            prepayment=prepayment,
+            schedule=self.schedule,
+            schedule_item=item,
+            product_name=item.item_name,
+            quantity=item.quantity,
+            amount=110000,
+            remaining_balance=90000,
+        )
+        url = reverse('reporting:receivable_item_status_api', args=[item.id])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            url,
+            data=json.dumps({'taxInvoiceIssued': True}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 409)
+        payload = response.json()
+        self.assertFalse(payload['success'])
+        self.assertIn('선결제', payload['error'])
+        item.refresh_from_db()
+        self.assertFalse(item.tax_invoice_issued)
+
     def test_receivable_item_status_api_checks_card_and_cancels(self):
         item = DeliveryItem.objects.create(
             schedule=self.schedule,

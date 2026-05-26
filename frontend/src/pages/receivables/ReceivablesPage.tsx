@@ -152,7 +152,7 @@ export function ReceivablesPage() {
         <select onChange={(event) => setStatus(event.target.value)} value={status}>
           {(data?.filters.statuses.length ? data.filters.statuses : [
             { value: 'open', label: '외상 진행중' },
-            { value: 'all', label: '전체 납품 품목' },
+            { value: 'all', label: '외상 관리 대상 전체' },
             { value: 'unregistered', label: '미등록' },
             { value: 'settled', label: '수금완료' },
             { value: 'card', label: '카드결제' },

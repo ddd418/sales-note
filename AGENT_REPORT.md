@@ -1,5 +1,82 @@
 # AGENT_REPORT.md
 
+## 2026-05-26 — 선결제 납품 외상고객 제외
+
+### 요약
+
+- 선결제 차감 납품 품목은 `/receivables/` 외상고객 목록, 고객별 집계, 총외상, `status=all` 조회에서 제외했습니다.
+- 오래된 외상 체크 값이 남아 있더라도 선결제 일정/선결제 사용 내역이면 외상고객 API가 보여주지 않도록 막았습니다.
+- 선결제 품목에 대해 외상 상태 변경 API를 직접 호출해도 `409 Conflict`로 차단하고 `/prepayments/` 확인을 안내합니다.
+- React 필터의 `전체` 의미를 `외상 관리 대상 전체`로 명확히 바꿨습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/pages/receivables/ReceivablesPage.tsx`
+- `reporting/api/receivables.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 선결제는 이미 받은 돈으로 처리되므로 외상 고객/총외상에 섞이지 않게 했습니다.
+- 일반 납품 외상, 카드결제, 수금완료 흐름과 선결제 흐름이 화면과 API에서 분리됩니다.
+- 실수로 선결제 품목을 외상 처리하는 운영 리스크를 서버에서 한 번 더 막습니다.
+
+### 기존 기능 보존
+
+- 일반 비선결제 납품 품목의 외상 등록, 카드결제 확인, 수금완료/취소 동작은 유지했습니다.
+- 기존 권한 체크와 로그인 보호는 그대로 유지했습니다.
+- 모델 필드와 DB 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\api\receivables.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReceivablesApiTests --verbosity=2
+→ Ran 5 tests, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite chunk size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 기존 데이터에 남아 있는 선결제 품목의 오래된 `tax_invoice_issued` 값은 이번 작업에서 일괄 삭제하지 않았습니다. 대신 외상고객 조회와 상태 변경을 서버에서 제외/차단합니다.
+- 선결제 일부 사용 후 잔액을 별도 외상으로 쪼개는 요구가 생기면 품목별 결제 배분 모델을 별도 설계해야 합니다.
+
+### 추천 다음 작업
+
+- 운영에서 선결제 납품이 외상고객 목록과 총외상에서 사라지는지 확인한 뒤, 필요하면 legacy 외상 플래그 감사/정리 작업을 별도로 진행합니다.
+
+### Production Deployment Status
+
+- Pending. Commit, push, Railway 배포 확인과 production smoke를 진행할 예정입니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/receivables/?status=all`을 엽니다.
+2. 선결제 차감 납품이 외상고객 목록, 총외상, 고객별 외상 집계에 잡히지 않는지 확인합니다.
+3. `/prepayments/`에서 해당 선결제 사용 내역이 계속 확인되는지 봅니다.
+4. 일반 납품 품목은 외상 체크, 카드결제 체크, 수금완료/취소가 기존처럼 동작하는지 확인합니다.
+5. 새 선결제 사용 납품을 생성한 뒤 외상고객에 나타나지 않는지 확인합니다.
+
 ## 2026-05-25 — AI nano 전환 및 브리핑 전용화
 
 ### 요약
