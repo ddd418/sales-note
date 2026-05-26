@@ -17284,12 +17284,63 @@ def _ai_workspace_question_delivery_item_text(items):
     return ', '.join(labels[:4])
 
 
+def _ai_workspace_question_schedule_href(schedule_id):
+    return f'/schedules/{schedule_id}/' if schedule_id else ''
+
+
+def _ai_workspace_question_history_href(history_id):
+    return f'/notes/{history_id}/' if history_id else ''
+
+
+def _ai_workspace_question_customer_href(followup_id):
+    return f'/customers/{followup_id}/' if followup_id else ''
+
+
+def _ai_workspace_question_record_href(record, *, schedule_id=None, history_id=None, followup_id=None):
+    if isinstance(record, dict):
+        href = _ai_workspace_question_text(
+            record.get('href')
+            or record.get('url')
+            or record.get('link')
+            or record.get('scheduleHref')
+            or record.get('historyHref')
+            or record.get('customerHref'),
+            260,
+        )
+        if href:
+            return href
+        hrefs = record.get('hrefs')
+        if isinstance(hrefs, dict):
+            for key in ['schedule', 'note', 'customer', 'assets', 'mailboxThread', 'report', 'ai', 'aiHub']:
+                href = _ai_workspace_question_text(hrefs.get(key), 260)
+                if href:
+                    return href
+    if schedule_id:
+        return _ai_workspace_question_schedule_href(schedule_id)
+    if history_id:
+        return _ai_workspace_question_history_href(history_id)
+    if followup_id:
+        return _ai_workspace_question_customer_href(followup_id)
+    return ''
+
+
+def _ai_workspace_question_evidence_link_label(record, fallback='CRM 열기'):
+    if isinstance(record, dict):
+        return _ai_workspace_question_text(
+            record.get('linkLabel') or record.get('link_label') or record.get('hrefLabel') or record.get('urlLabel'),
+            80,
+        ) or fallback
+    return fallback
+
+
 def _ai_workspace_question_delivery_payload(delivery):
     if not isinstance(delivery, dict):
         return None
     date_value = str(delivery.get('date') or '').strip()
     if not date_value:
         return None
+    schedule_id = delivery.get('schedule_id') or delivery.get('scheduleId')
+    history_id = delivery.get('history_id') or delivery.get('historyId')
     items_text = _ai_workspace_question_delivery_item_text(delivery.get('items') or [])
     payment_source = _ai_workspace_question_text(
         delivery.get('paymentSource') or delivery.get('payment_source') or 'without_prepayment',
@@ -17336,7 +17387,10 @@ def _ai_workspace_question_delivery_payload(delivery):
         'amountLabel': _ai_workspace_money(delivery.get('amount') or 0),
         'items': items_text,
         'source': _ai_workspace_question_text(delivery.get('source'), 80),
-        'scheduleId': delivery.get('schedule_id'),
+        'scheduleId': schedule_id,
+        'historyId': history_id,
+        'href': _ai_workspace_question_record_href(delivery, schedule_id=schedule_id, history_id=history_id),
+        'linkLabel': _ai_workspace_question_evidence_link_label(delivery, '납품 일정'),
         'paymentSource': payment_source,
         'paymentSourceLabel': payment_label,
         'paymentStatus': payment_status,
@@ -17370,6 +17424,9 @@ def _ai_workspace_question_delivery_payment_payload(delivery):
         'items': payload['items'],
         'source': payload['source'],
         'scheduleId': payload['scheduleId'],
+        'historyId': payload['historyId'],
+        'href': payload['href'],
+        'linkLabel': payload['linkLabel'],
         'paymentSource': payload['paymentSource'],
         'paymentSourceLabel': payload['paymentSourceLabel'],
         'paymentStatus': payload['paymentStatus'],
@@ -17433,17 +17490,25 @@ def _ai_workspace_question_delivery_payment_split(deliveries, limit_per_bucket=2
 def _ai_workspace_question_evidence_payload(items, limit=10, value_limit=700):
     evidence = []
     for item in _ai_json_list(items)[:limit]:
+        href = ''
+        link_label = ''
         if isinstance(item, dict):
             label = _ai_workspace_question_text(item.get('label') or item.get('title') or '근거', 90)
             value = _ai_workspace_question_text(
                 item.get('value') or item.get('text') or item.get('detail') or item.get('summary'),
                 value_limit,
             )
+            href = _ai_workspace_question_record_href(item)
+            link_label = _ai_workspace_question_evidence_link_label(item, '열기')
         else:
             label = '근거'
             value = _ai_workspace_question_text(item, value_limit)
         if label and value:
-            evidence.append({'label': label, 'value': value})
+            payload = {'label': label, 'value': value}
+            if href:
+                payload['href'] = href
+                payload['linkLabel'] = link_label or '열기'
+            evidence.append(payload)
     return evidence
 
 
@@ -17935,12 +18000,15 @@ def _ai_workspace_department_question_context(department, user):
         activity_date = history.meeting_date or history.delivery_date
         date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
         recent_histories.append({
+            'id': history.id,
             'date': date_label,
             'type': history.get_action_type_display(),
             'customer': history.followup.customer_name if history.followup else '',
             'content': _ai_workspace_question_text(_history_activity_content(history), 700),
             'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 260),
             'nextActionDate': _date_or_none(history.next_action_date),
+            'href': _ai_workspace_question_history_href(history.id),
+            'linkLabel': '영업노트',
         })
 
     recent_schedules = []
@@ -17950,6 +18018,7 @@ def _ai_workspace_department_question_context(department, user):
     ).exclude(status='cancelled').select_related('followup').order_by('-visit_date', '-visit_time')[:10]
     for schedule in schedule_qs:
         recent_schedules.append({
+            'id': schedule.id,
             'date': _date_or_none(schedule.visit_date),
             'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
             'type': schedule.get_activity_type_display(),
@@ -17958,6 +18027,8 @@ def _ai_workspace_department_question_context(department, user):
             'amount': _money_int(schedule.expected_revenue),
             'purchaseConfirmed': bool(schedule.purchase_confirmed),
             'notes': _ai_workspace_question_text(schedule.notes, 300),
+            'href': _ai_workspace_question_schedule_href(schedule.id),
+            'linkLabel': f'{schedule.get_activity_type_display()} 일정',
         })
 
     today = timezone.localdate()
@@ -18016,6 +18087,14 @@ def _ai_workspace_department_question_context(department, user):
                 'stage': _ai_workspace_question_text(item.get('stage'), 80),
                 'amount': _money_int(item.get('total_amount') or 0),
                 'source': _ai_workspace_question_text(item.get('source'), 80),
+                'scheduleId': item.get('schedule_id') or item.get('scheduleId'),
+                'historyId': item.get('history_id') or item.get('historyId'),
+                'href': _ai_workspace_question_record_href(
+                    item,
+                    schedule_id=item.get('schedule_id') or item.get('scheduleId'),
+                    history_id=item.get('history_id') or item.get('historyId'),
+                ),
+                'linkLabel': _ai_workspace_question_evidence_link_label(item, '견적 일정'),
                 'items': _ai_workspace_question_delivery_item_text(item.get('items') or []),
                 'notes': _ai_workspace_question_text(item.get('notes'), 240),
             }
@@ -18048,14 +18127,8 @@ def _ai_workspace_question_action_payload(action):
         'priorityScore': action.get('priorityScore') or 0,
         'dueDate': action.get('dueDate') or None,
         'moneyImpact': _money_int(action.get('moneyImpact') or 0),
-        'evidence': [
-            {
-                'label': _ai_workspace_question_text(item.get('label'), 80),
-                'value': _ai_workspace_question_text(item.get('value'), 240),
-            }
-            for item in _ai_json_list(action.get('evidence'))[:4]
-            if isinstance(item, dict)
-        ],
+        'evidence': _ai_workspace_question_evidence_payload(action.get('evidence'), limit=4, value_limit=240),
+        'href': _ai_workspace_question_record_href(action),
     }
 
 
@@ -18179,6 +18252,109 @@ def _ai_workspace_delivery_payment_line(item):
     return ' / '.join(part for part in parts if part)
 
 
+def _ai_workspace_question_record_link_value(item, *, fallback='CRM 기록'):
+    if not isinstance(item, dict):
+        return fallback
+    amount = item.get('amount')
+    if amount is None:
+        amount = item.get('total_amount') or item.get('moneyImpact')
+    amount_label = item.get('amountLabel') or (_ai_workspace_money(amount) if amount else '')
+    value = ' · '.join(_ai_prompt_context(
+        item.get('date') or item.get('dueDate'),
+        item.get('time'),
+        item.get('company'),
+        item.get('department'),
+        item.get('customer'),
+        item.get('type') or item.get('stage') or item.get('source') or item.get('kind'),
+        item.get('status') or item.get('priority'),
+        amount_label,
+        item.get('items'),
+        item.get('title'),
+        item.get('recommendedAction') or item.get('nextAction'),
+        item.get('notes') or item.get('content') or item.get('note'),
+    ))
+    return _ai_workspace_question_text(value, 700) or fallback
+
+
+def _ai_workspace_question_context_link_candidates(context, text, limit=8):
+    normalized = re.sub(r'\s+', '', str(text or '').lower())
+    if not normalized:
+        return []
+
+    def mentions(*keywords):
+        return any(keyword in normalized for keyword in keywords)
+
+    candidates = []
+
+    def add(label, items, fallback_label):
+        for item in _ai_json_list(items):
+            if not isinstance(item, dict):
+                continue
+            href = _ai_workspace_question_record_href(
+                item,
+                schedule_id=item.get('scheduleId') or item.get('schedule_id'),
+                history_id=item.get('historyId') or item.get('history_id') or item.get('id'),
+                followup_id=item.get('followupId') or item.get('followup_id'),
+            )
+            if not href:
+                continue
+            candidates.append({
+                'label': label,
+                'value': _ai_workspace_question_record_link_value(item, fallback=fallback_label),
+                'href': href,
+                'linkLabel': _ai_workspace_question_evidence_link_label(item, fallback_label),
+            })
+            if len(candidates) >= limit:
+                return
+
+    if mentions('견적', 'quote'):
+        add('관련 견적', context.get('recentQuotes'), '견적 보기')
+    if len(candidates) < limit and mentions('납품', '주문', '구매', 'delivery'):
+        latest_delivery = context.get('lastDelivery')
+        if isinstance(latest_delivery, dict):
+            add('관련 납품', [latest_delivery], '납품 보기')
+        add('관련 납품', context.get('recentDeliveries'), '납품 보기')
+    if len(candidates) < limit and mentions('미팅', '회의', '방문', '노트', '영업노트', 'meeting'):
+        add('관련 노트', context.get('recentNotes'), '노트 보기')
+    if len(candidates) < limit and mentions('일정', '스케줄', 'schedule', '견적', '납품', '미팅', '방문'):
+        add('관련 일정', context.get('recentSchedules'), '일정 보기')
+    if len(candidates) < limit and mentions('후속', '액션', '할일', '해야할', '연락'):
+        add('관련 후속', context.get('recommendedActions'), 'CRM 보기')
+        add('관련 후속', context.get('openFollowups'), '노트 보기')
+
+    return candidates[:limit]
+
+
+def _ai_workspace_append_context_record_links(answer, context, limit=10):
+    if not isinstance(answer, dict):
+        return answer
+    result = dict(answer)
+    evidence = _ai_workspace_question_evidence_payload(result.get('evidence'), limit=limit, value_limit=700)
+    existing_hrefs = {item.get('href') for item in evidence if isinstance(item, dict) and item.get('href')}
+    context_text = ' '.join([
+        _ai_workspace_question_text(result.get('summary') or result.get('answer'), 1800),
+        ' '.join(
+            _ai_workspace_question_text(item, 700)
+            for item in _ai_json_list(result.get('bullets'))
+        ),
+        ' '.join(
+            f"{item.get('label', '')} {item.get('value', '')}"
+            for item in evidence
+            if isinstance(item, dict)
+        ),
+    ])
+    for item in _ai_workspace_question_context_link_candidates(context or {}, context_text, limit=limit):
+        href = item.get('href')
+        if not href or href in existing_hrefs:
+            continue
+        evidence.append(item)
+        existing_hrefs.add(href)
+        if len(evidence) >= limit:
+            break
+    result['evidence'] = evidence
+    return result
+
+
 def _ai_workspace_global_question_context(user):
     from datetime import timedelta
     from ai_chat.services import gather_quote_delivery_data_for_followup_ids
@@ -18233,6 +18409,7 @@ def _ai_workspace_global_question_context(user):
         date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
         followup = history.followup
         recent_histories.append({
+            'id': history.id,
             'date': date_label,
             'type': history.get_action_type_display(),
             'customer': followup.customer_name if followup else '',
@@ -18241,6 +18418,8 @@ def _ai_workspace_global_question_context(user):
             'content': _ai_workspace_question_text(_history_activity_content(history), 560),
             'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 240),
             'nextActionDate': _date_or_none(history.next_action_date),
+            'href': _ai_workspace_question_history_href(history.id),
+            'linkLabel': '영업노트',
         })
 
     open_followups = []
@@ -18258,6 +18437,7 @@ def _ai_workspace_global_question_context(user):
     for history in open_history_qs:
         followup = history.followup
         open_followups.append({
+            'id': history.id,
             'date': _date_or_none(history.next_action_date),
             'overdue': bool(history.next_action_date and history.next_action_date < today),
             'customer': followup.customer_name if followup else '',
@@ -18265,6 +18445,8 @@ def _ai_workspace_global_question_context(user):
             'department': followup.department.name if followup and followup.department else '',
             'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 300),
             'note': _ai_workspace_question_text(_history_activity_content(history), 360),
+            'href': _ai_workspace_question_history_href(history.id),
+            'linkLabel': '후속 노트',
         })
 
     recent_schedules = []
@@ -18279,6 +18461,7 @@ def _ai_workspace_global_question_context(user):
     for schedule in schedule_qs:
         followup = schedule.followup
         recent_schedules.append({
+            'id': schedule.id,
             'date': _date_or_none(schedule.visit_date),
             'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
             'type': schedule.get_activity_type_display(),
@@ -18288,6 +18471,8 @@ def _ai_workspace_global_question_context(user):
             'department': followup.department.name if followup and followup.department else '',
             'notes': _ai_workspace_question_text(schedule.notes, 260),
             'amount': _money_int(schedule.expected_revenue),
+            'href': _ai_workspace_question_schedule_href(schedule.id),
+            'linkLabel': f'{schedule.get_activity_type_display()} 일정',
         })
 
     action_queue = _ai_workspace_build_action_queue(user, week_start, week_end, limit=14)
@@ -18345,6 +18530,14 @@ def _ai_workspace_global_question_context(user):
                 'stage': _ai_workspace_question_text(item.get('stage'), 80),
                 'amount': _money_int(item.get('total_amount') or 0),
                 'source': _ai_workspace_question_text(item.get('source'), 80),
+                'scheduleId': item.get('schedule_id') or item.get('scheduleId'),
+                'historyId': item.get('history_id') or item.get('historyId'),
+                'href': _ai_workspace_question_record_href(
+                    item,
+                    schedule_id=item.get('schedule_id') or item.get('scheduleId'),
+                    history_id=item.get('history_id') or item.get('historyId'),
+                ),
+                'linkLabel': _ai_workspace_question_evidence_link_label(item, '견적 일정'),
                 'items': _ai_workspace_question_delivery_item_text(item.get('items') or []),
                 'notes': _ai_workspace_question_text(item.get('notes'), 240),
             }
@@ -19084,6 +19277,7 @@ def _ai_workspace_normalize_department_question_answer(data, fallback, context=N
         'actionItems': [],
         'confidence': confidence,
     }
+    result = _ai_workspace_append_context_record_links(result, context or {})
     return _ai_workspace_apply_product_fact_guard(result, context or {})
 
 
@@ -19201,7 +19395,7 @@ def _ai_workspace_generate_department_question_answer(
     allow_web_search=True,
     prompt_cache_key='sales-note:ai-workspace-question:v1',
 ):
-    fallback = _ai_workspace_question_fallback(question, context)
+    fallback = _ai_workspace_append_context_record_links(_ai_workspace_question_fallback(question, context), context)
     if _ai_workspace_question_is_delivery_payment_split(question):
         fallback.setdefault('actionItems', [])
         return _ai_workspace_apply_product_fact_guard(fallback, context), 'ledger', False
@@ -19254,6 +19448,8 @@ def _ai_workspace_generate_department_question_answer(
                 '질문이 마지막 주문/납품/구매일을 묻는 경우 crmContext.lastDelivery.date를 우선 사용한다.',
                 '질문이 실행할 작업/다음 액션을 묻는다면 범위가 전체 부서든 선택 부서든 crmContext.recommendedActions와 openFollowups를 우선 보고 후보를 골라준다.',
                 '주문이라는 표현은 이 CRM에서는 납품/수주 기록과 연결해 해석하되, 근거 출처를 명시한다.',
+                '견적, 납품, 주문, 미팅, 방문, 일정, 영업노트 같은 CRM 레코드를 언급하면 해당 crmContext 항목의 href를 evidence 항목에 넣는다.',
+                'evidence에는 {"label": string, "value": string, "href": string, "linkLabel": string} 형태를 사용할 수 있다. href가 없는 레코드는 링크를 만들지 않는다.',
                 '웹 검색은 사용하지 않는다. 내부 CRM 고객명/영업내용을 외부 검색어로 노출하지 않는다.',
                 '데이터가 없으면 없다고 답하고 추측하지 않는다.',
                 'CRM 근거가 있는 해석도 추정임을 표시하고, 고객 마음을 단정하지 않는다.',
@@ -19266,7 +19462,7 @@ def _ai_workspace_generate_department_question_answer(
                 'decision, perspective, actionItems 필드는 사용하지 않는다.',
                 'bullets는 보조 요약만 넣는다.',
                 '이 애플리케이션은 JSON 객체만 파싱한다. JSON 바깥의 Markdown 본문은 쓰지 않는다.',
-                '반드시 JSON 객체만 반환한다. 기본 형태는 {"answer": string, "bullets": string[], "evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"} 이다.',
+                '반드시 JSON 객체만 반환한다. 기본 형태는 {"answer": string, "bullets": string[], "evidence": [{"label": string, "value": string, "href": string, "linkLabel": string}], "confidence": "high|medium|low"} 이다.',
                 '"decision", "perspective", "actionItems"는 추가하지 않는다.',
             ],
         }
@@ -19348,6 +19544,8 @@ def _customer_ai_primary_context(followup):
         'email': followup.email or '',
         'phone': followup.phone_number or '',
         'notes': _ai_workspace_question_text(followup.notes, 700),
+        'href': _ai_workspace_question_customer_href(followup.id),
+        'linkLabel': '고객 보기',
     }
 
 
@@ -19391,11 +19589,14 @@ def _schedule_ai_coach_context(schedule, actor):
         activity_date = history.meeting_date or history.delivery_date
         date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
         related_notes.append({
+            'id': history.id,
             'date': date_label,
             'type': history.get_action_type_display(),
             'content': _ai_workspace_question_text(_history_activity_content(history), 760),
             'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 320),
             'nextActionDate': _date_or_none(history.next_action_date),
+            'href': _ai_workspace_question_history_href(history.id),
+            'linkLabel': '영업노트',
         })
 
     return {
@@ -19410,6 +19611,8 @@ def _schedule_ai_coach_context(schedule, actor):
             'scheduleId': schedule.id,
             'followupId': followup.id if followup else None,
             'departmentId': department.id if department else None,
+            'href': _ai_workspace_question_schedule_href(schedule.id),
+            'linkLabel': '일정 보기',
         },
         'schedule': {
             'id': schedule.id,
@@ -19428,6 +19631,8 @@ def _schedule_ai_coach_context(schedule, actor):
             'vatMode': schedule.vat_mode,
             'usePrepayment': bool(schedule.use_prepayment),
             'prepaymentAmount': _money_int(schedule.prepayment_amount),
+            'href': _ai_workspace_question_schedule_href(schedule.id),
+            'linkLabel': f'{schedule.get_activity_type_display()} 일정',
         },
         'customer': _customer_ai_primary_context(followup) if followup else {},
         'deliverySummary': {
@@ -19473,6 +19678,8 @@ def _schedule_ai_evidence_from_context(context):
                 schedule.get('activityLabel'),
                 schedule.get('statusLabel'),
             )),
+            'href': schedule.get('href') or _ai_workspace_question_schedule_href(schedule.get('id')),
+            'linkLabel': schedule.get('linkLabel') or '일정 보기',
         },
         {
             'label': '고객',
@@ -19482,6 +19689,8 @@ def _schedule_ai_evidence_from_context(context):
                 customer.get('name'),
                 customer.get('pipelineStage'),
             )),
+            'href': customer.get('href') or _ai_workspace_question_customer_href(customer.get('id')),
+            'linkLabel': customer.get('linkLabel') or '고객 보기',
         },
     ]
     if delivery_summary.get('itemsText'):
@@ -19622,6 +19831,16 @@ def _normalize_schedule_ai_coach(data, fallback):
     if confidence not in {'high', 'medium', 'low'}:
         confidence = fallback.get('confidence') or 'low'
 
+    evidence = _ai_workspace_question_evidence_payload(data.get('evidence'), limit=6, value_limit=700) or fallback.get('evidence', [])
+    existing_hrefs = {item.get('href') for item in evidence if isinstance(item, dict) and item.get('href')}
+    for item in fallback.get('evidence', []):
+        if not isinstance(item, dict):
+            continue
+        href = item.get('href')
+        if href and href not in existing_hrefs and len(evidence) < 6:
+            evidence.append(item)
+            existing_hrefs.add(href)
+
     result = {
         'summary': _ai_workspace_question_text(data.get('summary') or data.get('answer'), 1400) or fallback.get('summary', ''),
         'priority': _ai_workspace_question_text(data.get('priority'), 40) or fallback.get('priority', 'medium'),
@@ -19643,7 +19862,7 @@ def _normalize_schedule_ai_coach(data, fallback):
             'subject': '',
             'body': '',
         },
-        'evidence': _ai_workspace_question_evidence_payload(data.get('evidence'), limit=6, value_limit=700) or fallback.get('evidence', []),
+        'evidence': evidence,
         'confidence': confidence,
     }
     return result
@@ -19673,6 +19892,7 @@ def _generate_schedule_ai_coach(context, model=None):
                 '일정 유형이 견적이면 견적 조건, 금액, 유효기간, 확인되지 않은 정보를 브리핑한다.',
                 '일정 유형이 납품이면 품목, 수량, 외상/카드/선결제 등 확인된 결제 맥락만 브리핑한다.',
                 '일정 유형이 서비스이면 증상, 근거, 처리 예정일 등 기록된 사실만 브리핑한다.',
+                '견적, 납품, 미팅, 방문, 일정, 영업노트 레코드를 언급하면 crmContext의 href를 evidence에 포함한다.',
                 'afterMeetingNoteDraft와 mailDraft는 빈 값으로 둔다.',
                 '없는 구매 의사, 납품 완료, 고객 마음을 만들어내지 않는다.',
                 '웹 검색은 사용하지 않는다.',
@@ -19691,8 +19911,8 @@ def _generate_schedule_ai_coach(context, model=None):
                     'nextAction': 'string',
                 },
                 'mailDraft': {'subject': 'string', 'body': 'string'},
-                    'evidence': [{'label': 'string', 'value': 'string'}],
-                    'confidence': 'high|medium|low',
+                'evidence': [{'label': 'string', 'value': 'string', 'href': 'string', 'linkLabel': 'string'}],
+                'confidence': 'high|medium|low',
             },
         }
         response = create_openai_chat_completion(

@@ -3510,6 +3510,7 @@ export type AIWorkspaceActionEvidence = {
   label: string;
   value: string;
   href?: string;
+  linkLabel?: string;
 };
 
 export type AIWorkspaceActionFeedback = {

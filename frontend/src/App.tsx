@@ -283,6 +283,7 @@ import {
 } from './api/prepayments';
 import type {
   AIWorkspaceData,
+  AIWorkspaceActionEvidence,
   AIWorkspaceDepartment,
   AIWorkspaceDepartmentQuestionResponse,
   AIWorkspaceMemoriesData,
@@ -10892,6 +10893,37 @@ function ScheduleDocumentsPanel({
   );
 }
 
+function AIEvidenceList({
+  className = '',
+  items,
+  limit = 6,
+}: {
+  className?: string;
+  items: AIWorkspaceActionEvidence[];
+  limit?: number;
+}) {
+  const rows = items.slice(0, limit).filter((item) => item.label || item.value);
+  if (!rows.length) {
+    return null;
+  }
+  return (
+    <div className={['ai-evidence-list', className].filter(Boolean).join(' ')}>
+      {rows.map((item, index) => (
+        <span className="ai-evidence-row" key={`${item.label}-${item.value}-${item.href || index}`}>
+          <b>{item.label}</b>
+          {item.value}
+          {item.href ? (
+            <a className="ai-evidence-link" href={item.href}>
+              <Link2 size={12} />
+              {item.linkLabel || '열기'}
+            </a>
+          ) : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ScheduleAICoachPanel({
   canUseAi,
   error,
@@ -10964,14 +10996,7 @@ function ScheduleAICoachPanel({
             </div>
           ) : null}
           {evidence.length > 0 ? (
-            <div className="ai-evidence-list schedule-ai-coach-evidence">
-              {evidence.slice(0, 5).map((item) => (
-                <span key={`${item.label}-${item.value}`}>
-                  <b>{item.label}</b>
-                  {item.value}
-                </span>
-              ))}
-            </div>
+            <AIEvidenceList className="schedule-ai-coach-evidence" items={evidence} limit={5} />
           ) : null}
         </div>
       ) : (
@@ -19241,14 +19266,7 @@ function AIWorkspaceDepartmentQuestionPanel({
             </div>
           ) : null}
           {answer.evidence.length > 0 ? (
-            <div className="ai-evidence-list">
-              {answer.evidence.slice(0, 6).map((item) => (
-                <span key={`${item.label}-${item.value}`}>
-                  <b>{item.label}</b>
-                  {item.value}
-                </span>
-              ))}
-            </div>
+            <AIEvidenceList items={answer.evidence} limit={6} />
           ) : null}
           <section className="ai-question-feedback-box">
             <div className="ai-question-feedback-head">
@@ -19404,9 +19422,15 @@ function AIWorkspaceDepartmentQuestionPanel({
   );
 }
 
+type AIQuestionDetailLine = {
+  text: string;
+  href?: string;
+  linkLabel?: string;
+};
+
 type AIQuestionDetailBlock = {
   title: string;
-  lines: string[];
+  lines: AIQuestionDetailLine[];
 };
 
 function aiQuestionRecord(value: unknown): Record<string, unknown> {
@@ -19448,21 +19472,23 @@ function makeAIQuestionDetailAnswer(log: AIWorkspaceQuestionLog): { lead: string
   const blocks: AIQuestionDetailBlock[] = [];
   const bullets = aiQuestionTextList(answer.bullets);
   if (bullets.length > 0) {
-    blocks.push({ title: '핵심 포인트', lines: bullets });
+    blocks.push({ title: '핵심 포인트', lines: bullets.map((text) => ({ text })) });
   }
 
   const evidenceLines = aiQuestionRecordList(answer.evidence).map((item) => {
     const label = aiQuestionText(item.label) || '근거';
     const value = aiQuestionText(item.value);
-    return value ? `${label}: ${value}` : '';
+    const href = aiQuestionText(item.href);
+    const linkLabel = aiQuestionText(item.linkLabel) || '열기';
+    return value ? { text: `${label}: ${value}`, href, linkLabel } : null;
   }).filter(Boolean);
   if (evidenceLines.length > 0) {
-    blocks.push({ title: '근거', lines: evidenceLines });
+    blocks.push({ title: '근거', lines: evidenceLines as AIQuestionDetailLine[] });
   }
 
   const confidence = aiQuestionText(answer.confidence);
   if (confidence) {
-    blocks.push({ title: '신뢰도', lines: [confidence] });
+    blocks.push({ title: '신뢰도', lines: [{ text: confidence }] });
   }
 
   return { lead, blocks };
@@ -19543,7 +19569,15 @@ function AIWorkspaceQuestionDetailPage({
               <strong>{block.title}</strong>
               <ul>
                 {block.lines.map((line) => (
-                  <li key={line}>{line}</li>
+                  <li key={`${line.text}-${line.href || ''}`}>
+                    {line.text}
+                    {line.href ? (
+                      <a className="ai-evidence-inline-link" href={line.href}>
+                        <Link2 size={12} />
+                        {line.linkLabel || '열기'}
+                      </a>
+                    ) : null}
+                  </li>
                 ))}
               </ul>
             </section>

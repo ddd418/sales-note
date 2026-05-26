@@ -1,5 +1,94 @@
 # AGENT_REPORT.md
 
+## 2026-05-26 — AI 브리핑 CRM 레코드 링크 제공
+
+### 요약
+
+- AI 브리핑이 견적, 납품, 주문, 미팅, 방문, 일정, 영업노트 같은 CRM 레코드를 언급할 때 관련 React 링크를 evidence에 함께 담도록 했습니다.
+- 공통 계정 원장과 히스토리 기반 견적/납품 수집 데이터에 `/schedules/{id}/` 또는 `/notes/{id}/` 링크를 유지합니다.
+- AI 질문 컨텍스트의 최근 견적, 최근 납품, 최근 노트, 최근 일정, 후속 후보에 링크 메타데이터를 추가했습니다.
+- OpenAI 응답이 링크를 빼먹어도 답변 내용이 관련 레코드를 언급하면 서버가 컨텍스트의 링크 evidence를 보강합니다.
+- React AI 브리핑 화면, 일정 브리핑, 저장된 브리핑 상세 화면에서 evidence 링크를 클릭 가능한 `열기` 링크로 표시합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/services.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- AI가 “최근 납품”, “견적 일정”, “미팅 노트”를 말할 때 사용자가 바로 해당 일정/노트/고객 화면으로 이동할 수 있습니다.
+- 브리핑 답변과 저장된 브리핑 기록 모두 같은 링크 evidence를 보존합니다.
+- 일정 상세의 AI 브리핑도 현재 일정과 고객 링크를 함께 보여줍니다.
+
+### 기존 기능 보존
+
+- AI는 계속 `gpt-5.4-nano` 기반 브리핑 전용 도구로 유지했습니다.
+- 창작/전략/메일 초안 생성 금지 규칙은 유지했습니다.
+- 인증, AI 권한 체크, `/reporting/*` API, DB 모델, 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests --verbosity=2
+→ Local timeout after 184s before class completion
+
+python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_evidence_payload_preserves_crm_link reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_crm_record_links reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_answers_last_order_from_delivery_context reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_prompt_and_answer_preserve_record_links reporting.tests.AIWorkspaceSummaryApiTests.test_schedule_ai_coach_returns_unsaved_fallback_for_accessible_schedule --verbosity=2
+→ Ran 5 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite chunk size warning only
+
+Local browser smoke: http://127.0.0.1:5174/ai-workspace/
+→ React shell and AI route rendered
+→ Expected local API unavailable/login-required state because no local Django session/API proxy was running
+→ Browser console errors: none
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 로컬 브라우저 smoke는 인증된 운영 데이터까지 확인하지 않았습니다. 실제 링크 클릭은 운영 로그인 세션에서 수동 확인이 필요합니다.
+- 전체 `AIWorkspaceSummaryApiTests` 클래스는 로컬 제한 시간 안에 끝나지 않아, 변경 영향이 있는 핵심 테스트 5개를 별도로 통과시켰습니다.
+
+### 추천 다음 작업
+
+- 운영 배포 후 `/ai-workspace/`에서 최근 납품/견적/미팅을 묻고, 답변 하단 evidence의 링크가 해당 일정/노트로 이동하는지 확인합니다.
+
+### Production Deployment Status
+
+- Pending. Commit/push and Railway deployment will be completed for this runtime change.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/ai-workspace/`를 엽니다.
+2. 특정 부서를 선택하고 “최근 납품 브리핑해줘”, “최근 견적 알려줘”, “최근 미팅 내용 알려줘”처럼 질문합니다.
+3. 답변 하단 근거 영역에 `납품 일정`, `견적 일정`, `영업노트` 같은 링크가 보이는지 확인합니다.
+4. 링크를 클릭했을 때 `/schedules/{id}/` 또는 `/notes/{id}/` 상세 화면으로 이동하는지 확인합니다.
+5. 일정 상세 화면에서 `브리핑 보기`를 눌러 evidence에 현재 일정/고객 링크가 보이는지 확인합니다.
+
 ## 2026-05-26 — 외상고객 미등록 상태 제거
 
 ### 요약

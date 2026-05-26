@@ -12747,6 +12747,91 @@ class AIWorkspaceSummaryApiTests(TestCase):
         evidence_text = ' '.join(item['value'] for item in payload['answer']['evidence'])
         self.assertIn(latest_date, evidence_text)
         self.assertIn('qPCR Mix', evidence_text)
+        evidence_hrefs = {item.get('href') for item in payload['answer']['evidence']}
+        self.assertIn(f'/schedules/{latest_schedule.id}/', evidence_hrefs)
+
+    def test_ai_workspace_question_evidence_payload_preserves_crm_link(self):
+        from reporting.views import _ai_workspace_question_evidence_payload
+
+        evidence = _ai_workspace_question_evidence_payload([{
+            'label': '납품',
+            'value': '최근 납품 일정',
+            'href': '/schedules/77/',
+            'linkLabel': '납품 일정',
+        }])
+
+        self.assertEqual(evidence, [{
+            'label': '납품',
+            'value': '최근 납품 일정',
+            'href': '/schedules/77/',
+            'linkLabel': '납품 일정',
+        }])
+
+    def test_ai_workspace_question_context_includes_crm_record_links(self):
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.views import _ai_workspace_department_question_context
+
+        followup, department = self._create_customer(self.user, '링크부서')
+        today = timezone.localdate()
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today - timedelta(days=2),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+            expected_revenue=Decimal('88000'),
+            notes='링크 견적 일정',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='QuoteLinkKit',
+            quantity=1,
+            unit='EA',
+            unit_price=Decimal('88000'),
+            total_price=Decimal('88000'),
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=today - timedelta(days=1),
+            visit_time=time(14, 0),
+            activity_type='delivery',
+            status='completed',
+            expected_revenue=Decimal('99000'),
+            notes='링크 납품 일정',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            item_name='DeliveryLinkKit',
+            quantity=1,
+            unit='EA',
+            unit_price=Decimal('99000'),
+            total_price=Decimal('99000'),
+        )
+        meeting_note = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            action_type='customer_meeting',
+            content='링크 미팅 노트',
+            meeting_date=today,
+        )
+
+        context = _ai_workspace_department_question_context(department, self.user)
+
+        quote_payload = next(item for item in context['recentQuotes'] if item['scheduleId'] == quote_schedule.id)
+        delivery_payload = next(item for item in context['recentDeliveries'] if item['scheduleId'] == delivery_schedule.id)
+        note_payload = next(item for item in context['recentNotes'] if item['id'] == meeting_note.id)
+        schedule_hrefs = {item['href'] for item in context['recentSchedules']}
+        self.assertEqual(quote_payload['href'], f'/schedules/{quote_schedule.id}/')
+        self.assertEqual(delivery_payload['href'], f'/schedules/{delivery_schedule.id}/')
+        self.assertEqual(note_payload['href'], f'/notes/{meeting_note.id}/')
+        self.assertIn(f'/schedules/{quote_schedule.id}/', schedule_hrefs)
+        self.assertIn(f'/schedules/{delivery_schedule.id}/', schedule_hrefs)
 
     def test_ai_workspace_question_context_splits_delivery_payment_source_from_structured_prepayment(self):
         from reporting.views import _ai_workspace_department_question_context
@@ -13449,6 +13534,75 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('메일/이메일/회신/답장', rules_text)
 
     @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_department_question_prompt_and_answer_preserve_record_links(self, mock_client):
+        from datetime import time
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        followup, department = self._create_customer(self.user, '링크프롬프트')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(15, 0),
+            activity_type='delivery',
+            status='completed',
+            expected_revenue=Decimal('120000'),
+            notes='AI 링크 납품',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='PromptLinkKit',
+            quantity=1,
+            unit='EA',
+            unit_price=Decimal('120000'),
+            total_price=Decimal('120000'),
+        )
+        expected_href = f'/schedules/{schedule.id}/'
+        captured = {}
+
+        class FakeCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                content = json.dumps({
+                    'answer': '최근 납품은 AI 링크 납품 일정 기준으로 확인됩니다.',
+                    'bullets': ['납품 레코드 링크를 함께 확인합니다.'],
+                    'evidence': [{
+                        'label': '납품 일정',
+                        'value': 'AI 링크 납품',
+                        'href': expected_href,
+                        'linkLabel': '납품 일정',
+                    }],
+                    'confidence': 'high',
+                })
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+        mock_client.return_value = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_department_question_api'),
+            data=json.dumps({
+                'departmentId': department.id,
+                'question': '최근 납품 브리핑해줘',
+                'model': 'gpt-5.4-nano',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        prompt_payload = json.loads(captured['messages'][1]['content'])
+        rules_text = '\n'.join(prompt_payload['rules'])
+        self.assertIn('href', rules_text)
+        self.assertIn('견적, 납품, 주문, 미팅', rules_text)
+        self.assertEqual(prompt_payload['crmContext']['recentDeliveries'][0]['href'], expected_href)
+        evidence = payload['answer']['evidence']
+        self.assertTrue(any(item.get('href') == expected_href for item in evidence))
+        self.assertEqual(payload['questionLog']['answer']['evidence'][0]['href'], expected_href)
+
+    @patch('ai_chat.services.get_openai_client')
     def test_ai_workspace_department_question_prompt_request_stays_briefing_only(self, mock_client):
         from types import SimpleNamespace
 
@@ -13672,6 +13826,9 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(payload['coach']['afterMeetingNoteDraft']['actionType'], 'delivery_schedule')
         self.assertEqual(payload['coach']['mailDraft']['subject'], '')
         self.assertEqual(payload['coach']['mailDraft']['body'], '')
+        evidence_hrefs = {item.get('href') for item in payload['coach']['evidence']}
+        self.assertIn(f'/schedules/{schedule.id}/', evidence_hrefs)
+        self.assertIn(f'/customers/{followup.id}/', evidence_hrefs)
         self.assertEqual(AIWorkspaceQuestionLog.objects.count(), 0)
 
     def test_ai_workspace_department_question_requires_ai_permission(self):

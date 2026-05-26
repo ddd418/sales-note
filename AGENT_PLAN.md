@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-05-26 AI briefing CRM record links plan
+
+**Background**:
+
+- User asked that when AI briefing mentions quotes, deliveries, meetings, and similar CRM records, it should also provide the relevant link.
+- AI Workspace and schedule briefing already return structured evidence, but question contexts and fallback evidence do not consistently carry React CRM links.
+- React evidence blocks currently render label/value text only, so even linked evidence is not visible as a clickable target.
+
+**DB change required**: No.
+
+- This task only changes AI context payloads, answer/evidence normalization, React rendering, tests, and docs.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add link metadata to AI Workspace question context for recent notes, schedules, quote records, delivery records, delivery payment split rows, and schedule briefing scope/evidence.
+- Preserve `href` and optional link label fields through AI evidence normalization and saved question logs.
+- Instruct the briefing prompt to include evidence links when citing CRM quote, delivery, meeting, schedule, or note records.
+- Render evidence links in the AI Workspace question answer, question history detail, and schedule briefing panel.
+- Keep briefing-only behavior, nano model selection, permissions, and `/reporting/*` APIs unchanged.
+
+**Validation plan**:
+
+- `python -m py_compile ai_chat\services.py reporting\views.py reporting\tests.py`
+- Focused Django tests for AI evidence link preservation and CRM context links.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Production smoke after Railway deployment for `/ai-workspace/` and schedule/AI protected APIs.
+- `git diff --check`
+
 ## 2026-05-26 Remove receivables unregistered state plan
 
 **Background**:

@@ -613,6 +613,8 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
                 'items': _account_ledger_items_for_ai(record.get('items'), 'subtotal'),
                 'source': record.get('source') or '공통 견적 원장',
                 'schedule_id': schedule_id,
+                'href': record.get('href') or (f'/schedules/{schedule_id}/' if schedule_id else ''),
+                'link_label': '견적 일정',
                 'notes': record.get('notes') or '',
             })
         for record in ledger.get('deliveryRecords') or []:
@@ -626,6 +628,8 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
                 'items': _account_ledger_items_for_ai(record.get('items'), 'total_price'),
                 'source': record.get('source') or '공통 납품 원장',
                 'schedule_id': schedule_id,
+                'href': record.get('href') or (f'/schedules/{schedule_id}/' if schedule_id else ''),
+                'link_label': '납품 일정',
                 'notes': record.get('notes') or '',
                 **_account_ledger_payment_payload_for_ai(record),
             })
@@ -669,6 +673,9 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
             'items': items,
             'source': '견적 활동',
             'schedule_id': history.schedule_id,
+            'history_id': history.id,
+            'href': f'/schedules/{history.schedule_id}/' if history.schedule_id else f'/notes/{history.id}/',
+            'link_label': '견적 일정' if history.schedule_id else '견적 노트',
             'notes': history.content or '',
         })
 
@@ -712,6 +719,9 @@ def _gather_quote_delivery_data_for_followup_ids(followup_ids, user):
             'items': items,
             'source': '납품 활동',
             'schedule_id': history.schedule_id,
+            'history_id': history.id,
+            'href': f'/schedules/{history.schedule_id}/' if history.schedule_id else f'/notes/{history.id}/',
+            'link_label': '납품 일정' if history.schedule_id else '납품 노트',
             'notes': history.content or '',
             **_schedule_prepayment_payload(history.schedule if history.schedule_id else None),
         })
