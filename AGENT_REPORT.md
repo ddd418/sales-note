@@ -79,7 +79,22 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending. Commit/push and Railway deployment will be completed for this runtime change.
+- Completed.
+- Code commit pushed to `origin/main`:
+  - `4aa0aba feat: link ai briefings to crm records`
+- Railway production deployments:
+  - Backend `web`: `ab6ed1c3-9cb1-4b99-8ad2-895794422696`, commit `4aa0aba`, `SUCCESS`
+  - Frontend `sales-note-frontend`: `2a2774a7-1ba4-465f-82bc-34d1fc93cc7f`, commit `4aa0aba`, `SUCCESS`
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+  - Confirmed `/ai-workspace/` React route returns `200`
+  - Confirmed protected AI Workspace APIs return `401 login_required` when unauthenticated
+  - Confirmed `/data-cleanup/` and `/downloads/` remain `404`
+- Production log check:
+  - `railway logs --service web --environment production --http --status 500..599 --since 10m --json`
+  - `railway logs --service sales-note-frontend --environment production --http --status 500..599 --since 10m --json`
+  - No new 500 logs in either service after deployment.
 
 ### Manual Server Test Process
 
