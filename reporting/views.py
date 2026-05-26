@@ -32917,6 +32917,35 @@ def _document_money(value):
     return f"{int(value or 0):,}"
 
 
+def _document_truthy_request_option(request, *names):
+    truthy_values = {'1', 'true', 'yes', 'on'}
+    for source in (getattr(request, 'GET', None), getattr(request, 'POST', None)):
+        if not source:
+            continue
+        for name in names:
+            if name in source:
+                return str(source.get(name)).strip().lower() in truthy_values
+    return False
+
+
+def _document_hide_base_unit_price(request, document_type):
+    if document_type != 'quotation':
+        return False
+    return _document_truthy_request_option(
+        request,
+        'hide_base_unit_price',
+        'hideBaseUnitPrice',
+        'hide_standard_price',
+        'hideStandardPrice',
+    )
+
+
+def _document_base_unit_price_display(price_info, hide_base_unit_price=False):
+    if hide_base_unit_price:
+        return ''
+    return _document_money(price_info['base_unit_price'])
+
+
 def _document_item_prices(item):
     from decimal import Decimal, ROUND_HALF_UP
 
@@ -33430,6 +33459,7 @@ def get_document_template_data(request, document_type, schedule_id):
 
         quote_group, quote_group_selected = _document_quote_group_selection(request)
         quote_group_label = _quote_group_label(quote_group) if quote_group_selected else ''
+        hide_base_unit_price = _document_hide_base_unit_price(request, document_type)
         
         # 해당 회사의 기본 서류 템플릿 찾기
         company = request.user.userprofile.company
@@ -33623,7 +33653,7 @@ def get_document_template_data(request, document_type, schedule_id):
                 f'품목{idx}_설명': item.product.description if item.product and item.product.description else '',
                 f'품목{idx}_적요': item.notes or '',
                 f'품목{idx}_비고': item.notes or '',
-                f'품목{idx}_기준단가': _document_money(price_info['base_unit_price']),
+                f'품목{idx}_기준단가': _document_base_unit_price_display(price_info, hide_base_unit_price),
                 f'품목{idx}_할인율': _document_discount_rate_label(price_info['discount_rate']),
                 f'품목{idx}_할인단가': _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else '',
                 f'품목{idx}_공급가액': f"{int(item_subtotal):,}",
@@ -33640,7 +33670,10 @@ def get_document_template_data(request, document_type, schedule_id):
                 'unit': item_unit,
                 'unit_price': int(price_info['effective_unit_price']),
                 'unitPrice': int(price_info['effective_unit_price']),
-                'baseUnitPrice': int(price_info['base_unit_price']),
+                'base_unit_price': None if hide_base_unit_price else int(price_info['base_unit_price']),
+                'baseUnitPrice': None if hide_base_unit_price else int(price_info['base_unit_price']),
+                'base_unit_price_hidden': hide_base_unit_price,
+                'baseUnitPriceHidden': hide_base_unit_price,
                 'discountUnitPrice': int(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else None,
                 'discountRate': float(price_info['discount_rate']),
                 'quoteGroup': item.quote_group or '',
@@ -33682,6 +33715,7 @@ def get_document_template_data(request, document_type, schedule_id):
             'item_count': len(delivery_items),
             'quote_group': quote_group,
             'quote_group_label': quote_group_label,
+            'hide_base_unit_price': hide_base_unit_price,
         })
         
     except Exception as e:
@@ -33730,6 +33764,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
 
         quote_group, quote_group_selected = _document_quote_group_selection(request, quote_group)
         quote_group_label = _quote_group_label(quote_group) if quote_group_selected else ''
+        hide_base_unit_price = _document_hide_base_unit_price(request, document_type)
         
         # 해당 회사의 기본 서류 템플릿 찾기
         company = request.user.userprofile.company
@@ -34037,7 +34072,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
                     data_map[f'품목{idx}_적요'] = item.notes or ''
                     data_map[f'품목{idx}_비고'] = item.notes or ''
-                    data_map[f'품목{idx}_기준단가'] = _document_money(price_info['base_unit_price'])
+                    data_map[f'품목{idx}_기준단가'] = _document_base_unit_price_display(price_info, hide_base_unit_price)
                     data_map[f'품목{idx}_할인율'] = _document_discount_rate_label(price_info['discount_rate'])
                     data_map[f'품목{idx}_할인단가'] = _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else ''
                     data_map[f'품목{idx}_공급가액'] = f"{int(_item_supply_display):,}"

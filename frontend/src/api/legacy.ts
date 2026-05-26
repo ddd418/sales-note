@@ -2762,6 +2762,10 @@ export type ScheduleDocumentFormatAction = {
   href: string;
 };
 
+export type ScheduleDocumentRequestOptions = {
+  hideBaseUnitPrice?: boolean;
+};
+
 export type ScheduleDocumentAction = {
   type: string;
   label: string;
@@ -2922,6 +2926,7 @@ export type ScheduleDocumentPreviewData = {
     unit: string;
     unitPrice: number;
     baseUnitPrice: number;
+    baseUnitPriceHidden: boolean;
     discountRate: number;
     discountUnitPrice: number | null;
     quoteGroup?: string;
@@ -9433,7 +9438,15 @@ export async function loadFollowupQuoteItems(followupId: number): Promise<Follow
   };
 }
 
-export async function loadScheduleDocumentPreview(previewUrl: string): Promise<ScheduleDocumentPreviewData> {
+function scheduleDocumentUrlWithOptions(url: string, options?: ScheduleDocumentRequestOptions): string {
+  if (!options?.hideBaseUnitPrice) {
+    return url;
+  }
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}hide_base_unit_price=1`;
+}
+
+export async function loadScheduleDocumentPreview(previewUrl: string, options?: ScheduleDocumentRequestOptions): Promise<ScheduleDocumentPreviewData> {
   type RawScheduleDocumentPreviewData = {
     success?: boolean;
     error?: string;
@@ -9460,8 +9473,10 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       unit?: string;
       unit_price?: number;
       unitPrice?: number;
-      base_unit_price?: number;
-      baseUnitPrice?: number;
+      base_unit_price?: number | null;
+      baseUnitPrice?: number | null;
+      base_unit_price_hidden?: boolean;
+      baseUnitPriceHidden?: boolean;
       discount_rate?: number;
       discountRate?: number;
       discount_unit_price?: number | null;
@@ -9477,7 +9492,7 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
     item_count?: number;
   };
 
-  const response = await fetch(previewUrl, {
+  const response = await fetch(scheduleDocumentUrlWithOptions(previewUrl, options), {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
@@ -9509,20 +9524,29 @@ export async function loadScheduleDocumentPreview(previewUrl: string): Promise<S
       quoteGroup: rawFileInfo.quoteGroup ?? snakeFileInfo.quote_group,
       quoteGroupLabel: rawFileInfo.quoteGroupLabel ?? snakeFileInfo.quote_group_label,
     },
-    items: (data.items ?? []).map((item, index) => ({
-      index: item.index ?? index + 1,
-      name: item.name ?? '',
-      quantity: item.quantity ?? 0,
-      unit: item.unit ?? '',
-      unitPrice: item.unitPrice ?? item.unit_price ?? 0,
-      baseUnitPrice: item.baseUnitPrice ?? item.base_unit_price ?? item.unitPrice ?? item.unit_price ?? 0,
-      discountRate: item.discountRate ?? item.discount_rate ?? 0,
-      discountUnitPrice: item.discountUnitPrice ?? item.discount_unit_price ?? null,
-      quoteGroup: item.quoteGroup ?? item.quote_group ?? '',
-      quoteGroupLabel: item.quoteGroupLabel ?? item.quote_group_label ?? '',
-      notes: item.notes ?? '',
-      subtotal: item.subtotal ?? 0,
-    })),
+    items: (data.items ?? []).map((item, index) => {
+      const rawBaseUnitPrice = item.baseUnitPrice !== undefined
+        ? item.baseUnitPrice
+        : item.base_unit_price !== undefined
+          ? item.base_unit_price
+          : item.unitPrice ?? item.unit_price ?? 0;
+      const baseUnitPriceHidden = Boolean(item.baseUnitPriceHidden ?? item.base_unit_price_hidden ?? rawBaseUnitPrice === null);
+      return {
+        index: item.index ?? index + 1,
+        name: item.name ?? '',
+        quantity: item.quantity ?? 0,
+        unit: item.unit ?? '',
+        unitPrice: item.unitPrice ?? item.unit_price ?? 0,
+        baseUnitPrice: rawBaseUnitPrice ?? 0,
+        baseUnitPriceHidden,
+        discountRate: item.discountRate ?? item.discount_rate ?? 0,
+        discountUnitPrice: item.discountUnitPrice ?? item.discount_unit_price ?? null,
+        quoteGroup: item.quoteGroup ?? item.quote_group ?? '',
+        quoteGroupLabel: item.quoteGroupLabel ?? item.quote_group_label ?? '',
+        notes: item.notes ?? '',
+        subtotal: item.subtotal ?? 0,
+      };
+    }),
     itemCount: data.itemCount ?? data.item_count ?? 0,
     templateUrl: data.templateUrl ?? data.template_url,
     templateFilename: data.templateFilename ?? data.template_filename,
@@ -9542,9 +9566,9 @@ function filenameFromContentDisposition(value: string): string {
   return quotedMatch?.[1]?.trim() || '';
 }
 
-export async function downloadScheduleDocument(downloadUrl: string): Promise<ScheduleDocumentDownloadResult> {
+export async function downloadScheduleDocument(downloadUrl: string, options?: ScheduleDocumentRequestOptions): Promise<ScheduleDocumentDownloadResult> {
   const csrfToken = getCookie('csrftoken');
-  const response = await fetch(downloadUrl, {
+  const response = await fetch(scheduleDocumentUrlWithOptions(downloadUrl, options), {
     method: 'POST',
     credentials: 'include',
     headers: {

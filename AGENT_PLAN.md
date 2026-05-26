@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-26 Quote base unit price hide option plan
+
+**Background**:
+
+- User asked for a `기준단가 가리기` option when creating quotation documents.
+- When checked, the base/standard unit price should not appear in quotation PDF or Excel output.
+- Existing document generation already exposes `품목N_기준단가` and preview `baseUnitPrice`, so this can be handled as a generation-time option.
+
+**DB change required**: No.
+
+- This task changes React document controls, API request parameters, document variable mapping, tests, and docs only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a quotation-only `기준단가 가리기` checkbox in the React schedule document download panel.
+- Send the option to both document preview and PDF/XLSX generation requests.
+- For quotation documents with the option enabled, blank `품목N_기준단가` and hide `baseUnitPrice` in preview payloads while preserving quote price, discount price, totals, VAT, and quote-group behavior.
+- Keep transaction statement and delivery note document output unchanged.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused Django tests for document preview base unit price hiding.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Production smoke after Railway deployment for schedule detail document APIs.
+- `git diff --check`
+
 ## 2026-05-26 AI briefing CRM record links plan
 
 **Background**:

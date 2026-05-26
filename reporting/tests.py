@@ -11731,6 +11731,67 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['items'][0]['discountRate'], 10.0)
         self.assertEqual(payload['items'][0]['notes'], '품목 적요')
 
+    def test_document_template_data_hides_quotation_base_unit_price_when_requested(self):
+        from reporting.models import DeliveryItem
+
+        self._create_template(self.company, '견적기본', is_default=True)
+        schedule = self._create_schedule(self.manager, name='기준단가숨김', activity_type='quote')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Hidden Base Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=100000,
+            discount_rate=10,
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.get(
+            reverse('reporting:get_document_template_data', args=['quotation', schedule.id]),
+            {'hide_base_unit_price': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['hide_base_unit_price'])
+        variables = payload['variables']
+        self.assertEqual(variables['품목1_기준단가'], '')
+        self.assertEqual(variables['품목1_할인단가'], '90,000')
+        self.assertEqual(variables['품목1_단가'], '90,000')
+        self.assertEqual(variables['공급가액'], '180,000')
+        self.assertIsNone(payload['items'][0]['baseUnitPrice'])
+        self.assertTrue(payload['items'][0]['baseUnitPriceHidden'])
+        self.assertEqual(payload['items'][0]['unitPrice'], 90000)
+        self.assertEqual(payload['items'][0]['discountUnitPrice'], 90000)
+
+    def test_document_template_data_keeps_transaction_statement_base_unit_price(self):
+        from reporting.models import DeliveryItem
+
+        self._create_template(self.company, '거래명세서기본', document_type='transaction_statement', is_default=True)
+        schedule = self._create_schedule(self.manager, name='거래기준단가', activity_type='delivery')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Visible Base Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            discount_rate=10,
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.get(
+            reverse('reporting:get_document_template_data', args=['transaction_statement', schedule.id]),
+            {'hide_base_unit_price': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['hide_base_unit_price'])
+        self.assertEqual(payload['variables']['품목1_기준단가'], '100,000')
+        self.assertEqual(payload['items'][0]['baseUnitPrice'], 100000)
+        self.assertFalse(payload['items'][0]['baseUnitPriceHidden'])
+
     def test_document_template_data_normalizes_legacy_reversed_korean_salesperson_name(self):
         self.manager.first_name = '안'
         self.manager.last_name = '재현'

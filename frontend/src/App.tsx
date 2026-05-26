@@ -93,6 +93,7 @@ import {
   ScheduleDeliveryItemPayload,
   ScheduleDocumentAction,
   ScheduleDocumentFormatAction,
+  ScheduleDocumentRequestOptions,
   ScheduleGeneratedDocument,
   ScheduleDocumentPreviewData,
   ScheduleFileItem,
@@ -10536,6 +10537,19 @@ function saveDownloadedBlob(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(objectUrl);
 }
 
+function scheduleDocumentDownloadKey(
+  action: ScheduleDocumentAction,
+  formatAction: ScheduleDocumentFormatAction,
+  options?: ScheduleDocumentRequestOptions,
+) {
+  return [
+    action.type,
+    formatAction.format,
+    formatAction.href,
+    options?.hideBaseUnitPrice ? 'hide-base-unit-price' : 'show-base-unit-price',
+  ].join('-');
+}
+
 function commercialCheckStatusClass(status?: string) {
   if (status === 'warning' || status === 'error') return 'warning';
   if (status === 'ok') return 'ok';
@@ -10702,9 +10716,10 @@ function ScheduleDocumentsPanel({
   previewLoading: boolean;
   onClosePreview: () => void;
   onDelete: (document: ScheduleGeneratedDocument) => void;
-  onDownload: (action: ScheduleDocumentAction, formatAction: ScheduleDocumentFormatAction) => void;
-  onPreview: (action: ScheduleDocumentAction) => void;
+  onDownload: (action: ScheduleDocumentAction, formatAction: ScheduleDocumentFormatAction, options?: ScheduleDocumentRequestOptions) => void;
+  onPreview: (action: ScheduleDocumentAction, options?: ScheduleDocumentRequestOptions) => void;
 }) {
+  const [hideBaseUnitPriceByAction, setHideBaseUnitPriceByAction] = useState<Record<string, boolean>>({});
   const registeredDocuments = documents.registeredDocuments.length > 0
     ? documents.registeredDocuments
     : documents.registeredQuotations;
@@ -10728,6 +10743,9 @@ function ScheduleDocumentsPanel({
         {documents.items.map((action) => {
           const hasTemplate = action.templateCount > 0;
           const actionListKey = `${action.type}-${action.quoteGroup ?? ''}-${action.previewHref}`;
+          const supportsHideBaseUnitPrice = action.type === 'quotation';
+          const hideBaseUnitPrice = supportsHideBaseUnitPrice && Boolean(hideBaseUnitPriceByAction[actionListKey]);
+          const documentOptions = hideBaseUnitPrice ? { hideBaseUnitPrice: true } : undefined;
           return (
             <div className="schedule-document-card" key={actionListKey}>
               <div className="schedule-document-card-main">
@@ -10739,25 +10757,38 @@ function ScheduleDocumentsPanel({
                   {hasTemplate ? `${formatNumber(action.templateCount)}개 템플릿` : '템플릿 없음'}
                 </span>
               </div>
+              {supportsHideBaseUnitPrice ? (
+                <label className="schedule-document-option-check">
+                  <input
+                    checked={hideBaseUnitPrice}
+                    onChange={(event) => setHideBaseUnitPriceByAction((previous) => ({
+                      ...previous,
+                      [actionListKey]: event.target.checked,
+                    }))}
+                    type="checkbox"
+                  />
+                  <span>기준단가 가리기</span>
+                </label>
+              ) : null}
               <div className="schedule-document-actions">
                 <button
                   className="customer-row-action schedule-document-action-button"
                   disabled={!hasTemplate || previewLoading}
-                  onClick={() => onPreview(action)}
+                  onClick={() => onPreview(action, documentOptions)}
                   type="button"
                 >
                   {previewLoading && previewAction?.previewHref === action.previewHref ? <Loader2 className="spin-icon" size={14} /> : <Eye size={14} />}
                   <span>미리보기</span>
                 </button>
                 {action.formats.map((formatAction) => {
-                  const actionKey = `${action.type}-${formatAction.format}-${formatAction.href}`;
+                  const actionKey = scheduleDocumentDownloadKey(action, formatAction, documentOptions);
                   const downloading = downloadingKey === actionKey;
                   return (
                     <button
                       className="customer-row-action schedule-document-action-button"
                       disabled={!hasTemplate || Boolean(downloadingKey)}
                       key={formatAction.format}
-                      onClick={() => onDownload(action, formatAction)}
+                      onClick={() => onDownload(action, formatAction, documentOptions)}
                       type="button"
                     >
                       {downloading ? (
@@ -10874,7 +10905,7 @@ function ScheduleDocumentsPanel({
                       <strong>{item.quoteGroupLabel ? `[${item.quoteGroupLabel}] ${item.name || `품목 ${item.index}`}` : item.name || `품목 ${item.index}`}</strong>
                       <span>{[
                         `${formatNumber(item.quantity)}${item.unit || ''}`,
-                        item.discountUnitPrice !== null ? `기준 ${formatWon(item.baseUnitPrice)}` : '',
+                        !item.baseUnitPriceHidden && item.discountUnitPrice !== null ? `기준 ${formatWon(item.baseUnitPrice)}` : '',
                         item.discountUnitPrice !== null ? `할인 ${formatWon(item.discountUnitPrice)}` : formatWon(item.unitPrice),
                         formatWon(item.subtotal),
                         item.notes,
@@ -11944,7 +11975,7 @@ function ScheduleDetailPage({
     }
   };
 
-  const handleDocumentPreview = async (action: ScheduleDocumentAction) => {
+  const handleDocumentPreview = async (action: ScheduleDocumentAction, options?: ScheduleDocumentRequestOptions) => {
     if (documentPreviewLoading) {
       return;
     }
@@ -11953,7 +11984,7 @@ function ScheduleDetailPage({
     setDocumentPreviewLoading(true);
     setDocumentPreviewError('');
     try {
-      const preview = await loadScheduleDocumentPreview(action.previewHref);
+      const preview = await loadScheduleDocumentPreview(action.previewHref, options);
       setDocumentPreviewData(preview);
     } catch (error) {
       setDocumentPreviewError(error instanceof Error ? error.message : '서류 변수 미리보기에 실패했습니다.');
@@ -11962,15 +11993,19 @@ function ScheduleDetailPage({
     }
   };
 
-  const handleDocumentDownload = async (action: ScheduleDocumentAction, formatAction: ScheduleDocumentFormatAction) => {
+  const handleDocumentDownload = async (
+    action: ScheduleDocumentAction,
+    formatAction: ScheduleDocumentFormatAction,
+    options?: ScheduleDocumentRequestOptions,
+  ) => {
     if (documentDownloadingKey) {
       return;
     }
-    const actionKey = `${action.type}-${formatAction.format}-${formatAction.href}`;
+    const actionKey = scheduleDocumentDownloadKey(action, formatAction, options);
     setDocumentDownloadingKey(actionKey);
     setDocumentPreviewError('');
     try {
-      const result = await downloadScheduleDocument(formatAction.href);
+      const result = await downloadScheduleDocument(formatAction.href, options);
       saveDownloadedBlob(result.blob, result.filename);
     } catch (error) {
       setDocumentPreviewError(error instanceof Error ? error.message : `${action.label} 다운로드에 실패했습니다.`);

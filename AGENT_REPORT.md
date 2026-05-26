@@ -1,5 +1,86 @@
 # AGENT_REPORT.md
 
+## 2026-05-26 — 견적서 기준단가 가리기 옵션
+
+### 요약
+
+- 일정 상세의 견적서 서류 다운로드 카드에 `기준단가 가리기` 체크 옵션을 추가했습니다.
+- 옵션을 켜면 견적서 미리보기와 PDF/Excel 생성 요청에 `hide_base_unit_price=1`이 전달됩니다.
+- Django 문서 생성은 견적서일 때만 `품목N_기준단가` 값을 빈칸으로 만들고, 실제 견적 단가/할인단가/합계/부가세 계산은 유지합니다.
+- 거래명세서와 납품서는 같은 파라미터가 와도 기존처럼 기준단가를 표시합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 고객에게 전달할 견적서에서 내부 기준단가를 숨기고, 실제 제시 단가만 보이도록 생성할 수 있습니다.
+- 같은 견적 묶음별 PDF/Excel 다운로드 흐름을 그대로 유지하면서 옵션만 추가했습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 견적 금액 계산, 할인단가, VAT 모드, 견적 묶음 필터, 등록 PDF 저장 흐름은 유지했습니다.
+- 인증/권한 체크와 `/reporting/*` 문서 API는 기존 정책을 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_hides_quotation_base_unit_price_when_requested reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_keeps_transaction_statement_base_unit_price --verbosity=2
+→ Ran 2 tests, OK
+
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests --verbosity=2
+→ Ran 18 tests, OK
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite chunk size warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 옵션은 템플릿 변수 `{{품목N_기준단가}}`에 들어가는 값만 빈칸으로 만듭니다. 템플릿 파일에 `기준단가`라는 고정 텍스트를 직접 적어둔 경우, 그 고정 문구는 템플릿 자체를 수정해야 사라집니다.
+
+### 추천 다음 작업
+
+- 운영에서 견적 일정 상세를 열고 `기준단가 가리기` 체크 후 PDF와 Excel을 내려받아 기준단가 값이 비어 있는지 확인합니다.
+
+### Production Deployment Status
+
+- Pending commit, push, and Railway deployment.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 견적 일정 상세(`/schedules/{id}/`)를 엽니다.
+2. `서류 다운로드` 영역의 견적서 카드에서 `기준단가 가리기`를 체크합니다.
+3. `미리보기`를 눌러 `품목1_기준단가` 값이 미입력/빈칸으로 표시되는지 확인합니다.
+4. 같은 상태로 `PDF 등록/다운로드`와 `Excel`을 각각 내려받습니다.
+5. 파일에서 기준단가 값은 보이지 않고, 실제 단가/금액/총액은 유지되는지 확인합니다.
+6. 체크를 해제하고 다시 생성하면 기준단가 값이 기존처럼 표시되는지 확인합니다.
+
 ## 2026-05-26 — AI 브리핑 CRM 레코드 링크 제공
 
 ### 요약

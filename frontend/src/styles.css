@@ -3521,6 +3521,29 @@ h2 {
   color: #9a3412 !important;
 }
 
+.schedule-document-option-check {
+  display: inline-grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.schedule-document-option-check input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.schedule-document-option-check span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .schedule-document-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
