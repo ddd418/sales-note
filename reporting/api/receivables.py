@@ -429,7 +429,6 @@ def receivable_item_status_api(request, item_id):
         item = (
             DeliveryItem.objects
             .select_for_update()
-            .select_related('schedule', 'schedule__user', 'history', 'history__user', 'history__schedule')
             .filter(id=item_id)
             .first()
         )

@@ -786,6 +786,38 @@ class ReceivablesApiTests(TestCase):
         self.assertFalse(item.card_payment_received)
         self.assertFalse(item.receivable_settled)
 
+    def test_receivable_item_status_api_locks_item_without_nullable_outer_joins(self):
+        item = DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='Join Safe Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            tax_invoice_issued=True,
+        )
+        url = reverse('reporting:receivable_item_status_api', args=[item.id])
+        self.client.force_login(self.user)
+
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.post(
+                url,
+                data=json.dumps({'cardPaymentReceived': True}),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        item.refresh_from_db()
+        self.assertTrue(item.card_payment_received)
+        delivery_item_queries = [
+            query['sql']
+            for query in captured.captured_queries
+            if 'FROM "reporting_deliveryitem"' in query['sql']
+        ]
+        self.assertTrue(delivery_item_queries)
+        self.assertNotIn('JOIN', delivery_item_queries[0].upper())
+
     def test_receivable_item_status_api_blocks_manager_and_other_company(self):
         item = DeliveryItem.objects.create(
             schedule=self.schedule,

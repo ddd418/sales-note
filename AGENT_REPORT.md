@@ -1,5 +1,76 @@
 # AGENT_REPORT.md
 
+## 2026-05-26 — 외상고객 카드/수금 변경 500 hotfix
+
+### 요약
+
+- 운영 `/receivables/`에서 카드결제 또는 수금완료 변경 시 `Receivable item update unavailable: 500`이 뜨던 문제를 수정했습니다.
+- 원인은 PostgreSQL에서 `select_for_update()`가 nullable `schedule/history` 관계의 outer join까지 포함한 쿼리에 적용되며 `FOR UPDATE cannot be applied to the nullable side of an outer join` 예외가 발생한 것입니다.
+- 상태 변경 API가 잠금 단계에서는 대상 `DeliveryItem` 한 행만 조회하고, 관계 데이터는 이후 필요한 시점에 읽도록 바꿨습니다.
+- 같은 문제가 재발하지 않도록 업데이트 첫 `DeliveryItem` 조회에 JOIN이 붙지 않는 회귀 테스트를 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/api/receivables.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 외상고객 화면에서 일반 납품 품목을 카드결제/수금완료로 변경하는 운영 흐름이 다시 정상 동작하도록 복구했습니다.
+- 이전 작업의 선결제 제외/차단 로직은 유지했습니다.
+
+### 기존 기능 보존
+
+- 외상 등록, 카드결제, 수금완료/취소, 권한 체크, 선결제 차단 동작은 유지했습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+railway logs --service web --environment production --since 30m --lines 1000
+→ Confirmed production 500 stack:
+→ django.db.utils.NotSupportedError: FOR UPDATE cannot be applied to the nullable side of an outer join
+
+python -m py_compile reporting\api\receivables.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReceivablesApiTests --verbosity=2
+→ Ran 6 tests, OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 로컬 테스트 DB는 SQLite라 PostgreSQL의 `FOR UPDATE` 제한을 그대로 재현하지는 못합니다. 대신 문제가 된 잠금 쿼리에서 JOIN이 제거됐는지 회귀 테스트로 확인했습니다.
+
+### 추천 다음 작업
+
+- 운영 배포 후 실제 로그인 세션에서 외상고객 품목 하나를 카드결제/수금완료로 바꾸고 새로고침 후 상태가 유지되는지 확인합니다.
+
+### Production Deployment Status
+
+- Pending. Commit, push, Railway 배포 확인과 production smoke를 진행할 예정입니다.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `/receivables/`를 엽니다.
+2. 일반 외상 품목 하나의 `카드결제` 체크를 켰다가 꺼 봅니다.
+3. 일반 외상 품목 하나의 `수금완료` 체크를 켰다가 꺼 봅니다.
+4. 화면에 `Receivable item update unavailable: 500` 오류가 더 이상 뜨지 않는지 확인합니다.
+5. 새로고침 후 변경한 상태가 의도대로 유지되는지 확인합니다.
+6. 선결제 차감 납품은 여전히 외상고객 목록에 잡히지 않는지 확인합니다.
+
 ## 2026-05-26 — 선결제 납품 외상고객 제외
 
 ### 요약

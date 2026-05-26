@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## 2026-05-26 Receivables status update 500 hotfix plan
+
+**Background**:
+
+- User reported `Receivable item update unavailable: 500` when changing a receivable item to card payment or settled from production `/receivables/`.
+- Railway logs show PostgreSQL raised `FOR UPDATE cannot be applied to the nullable side of an outer join` in `receivable_item_status_api`.
+- The API locks a `DeliveryItem` with `select_for_update()` while also using `select_related()` across nullable `schedule` and `history` relationships.
+
+**DB change required**: No.
+
+- This is an API query-shape fix only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Lock only the target `DeliveryItem` row during status mutation.
+- Read related schedule/history data lazily after the item lock instead of joining nullable relations in the `FOR UPDATE` query.
+- Add a regression test that status updates succeed and the first DeliveryItem lookup query does not join nullable relations.
+- Preserve the prepayment exclusion and mutation block added in the previous task.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\api\receivables.py reporting\tests.py`
+- `python manage.py test reporting.tests.ReceivablesApiTests --verbosity=2`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Deploy to Railway and verify production smoke plus `/receivables/` update behavior where possible.
+
 ## 2026-05-26 Exclude prepayment deliveries from receivables plan
 
 **Background**:
