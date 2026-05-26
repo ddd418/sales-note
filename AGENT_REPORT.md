@@ -57,7 +57,18 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending commit, push, and production smoke.
+- Completed by GitHub push and production smoke.
+- Code commit pushed to `origin/main`:
+  - `6d3a164 feat: remove customer quick create panel`
+- Railway deployment ID/log lookup:
+  - Direct Railway CLI verification is still blocked by expired OAuth token (`Unauthorized. Please run railway login again.`).
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+- Production bundle check:
+  - `https://sales-note-frontend-production.up.railway.app/customers/?create=1`
+  - React shell HTML did not contain `고객 빠른 등록`.
+  - Current production JS bundle did not contain `고객 빠른 등록` or `새 고객 등록`.
 
 ### Manual Server Test Process
 
