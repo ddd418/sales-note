@@ -60,7 +60,23 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending. Commit, push, Railway 배포 확인과 production smoke를 진행할 예정입니다.
+- Completed.
+- Code commit pushed to `origin/main`:
+  - `6262d7f fix: avoid receivable status update join locks`
+- Railway production deployments:
+  - Backend `web`: `6964e022-6ec8-4b34-86a6-74c8f707b894`, commit `6262d7f`, `SUCCESS`
+  - Frontend `sales-note-frontend`: `ac53b732-b044-4c1d-b76f-48fb6c141fa0`, commit `6262d7f`, `SUCCESS`
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+  - Confirmed `/data-cleanup/` and `/downloads/` remain `404`
+  - Confirmed protected API endpoints remain `401 login_required`
+- Production receivables route smoke:
+  - Frontend `/receivables/`: `200`
+  - Frontend `/reporting/api/receivables/`: `401`
+- Production log check:
+  - `railway logs --service web --environment production --http --status 500..599 --since 10m --json`
+  - No new 500 logs after deployment.
 
 ### Manual Server Test Process
 
