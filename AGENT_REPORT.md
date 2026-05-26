@@ -60,7 +60,16 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending commit, push, and Railway deployment.
+- Code commit pushed to `origin/main`:
+  - `bab14a5 feat: hide quote base unit price column`
+- Railway deployment status:
+  - Direct Railway deployment list/log verification was blocked because the local Railway CLI OAuth token expired (`Unauthorized. Please run railway login again.`).
+  - GitHub push completed, and the production endpoints remained healthy after waiting for the automatic deployment window.
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+  - Confirmed protected APIs return `401 login_required` when unauthenticated.
+  - Confirmed `/data-cleanup/` and `/downloads/` remain `404`.
 
 ### Manual Server Test Process
 
