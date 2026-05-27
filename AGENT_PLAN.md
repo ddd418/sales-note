@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## 2026-05-27 AI contact evidence strengthening plan
+
+**Background**:
+
+- User asked why the AI listed KOTITI as a currently-contacted customer without enough evidence; the hidden reason was a recent sent email.
+- The AI workspace question context currently exposes recent email history separately, but the customer list mostly exposes stage/status fields, so the model can list customers by pipeline stage without explaining the source.
+
+**DB change required**: No.
+
+- This task strengthens AI question context, deterministic briefing behavior, prompt rules, and tests only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add per-customer contact evidence to AI question context from recent email, schedule, sales note, quote/delivery signals, plus the pipeline/status fallback.
+- Preserve CRM links for those evidence rows, including mailbox thread, customer, schedule, and note links.
+- For "currently contacting / contact in progress customer list" questions, return a CRM-data-based briefing that lists customers with evidence instead of relying on model inference.
+- Update AI prompt rules so any customer list must include why each customer was included and identify stage-only rows clearly.
+
+**Validation plan**:
+
+- Focused Django tests for AI contact evidence context and contact-progress answer behavior.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.AIWorkspaceSummaryApiTests`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## 2026-05-26 Remove customer quick create panel plan
 
 **Background**:

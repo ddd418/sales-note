@@ -1,5 +1,76 @@
 # AGENT_REPORT.md
 
+## 2026-05-27 — AI 접촉 진행 고객 근거 강화
+
+### 요약
+
+- AI 워크스페이스 질문 컨텍스트의 고객 목록에 고객별 `contactEvidence`를 추가했습니다.
+- 최근 메일, 일정, 영업노트, 견적, CRM 상태/파이프라인을 고객별 근거로 묶어 AI가 왜 해당 고객을 언급했는지 설명할 수 있게 했습니다.
+- `현재 내가 접촉을 진행중인 고객을 리스트업 해줘` 같은 질문은 OpenAI 추론에 맡기지 않고 CRM 근거 기반 결정형 브리핑으로 답하도록 했습니다.
+- 메일 근거는 메일함 스레드 링크를 evidence 링크로 보존합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- KOTITI처럼 최근 보낸 메일 때문에 접촉 진행 중으로 잡힌 고객은 답변에 `최근 메일`, 제목, 요약, 메일함 링크가 함께 표시됩니다.
+- 근거가 파이프라인/상태뿐인 고객은 `최근 활동 근거 없음, 단계/상태만 확인됨`으로 분리해 과잉 해석을 줄였습니다.
+- AI 브리핑 프롬프트에도 고객 리스트는 고객별 포함 사유와 링크를 반드시 포함하도록 규칙을 강화했습니다.
+
+### 기존 기능 보존
+
+- AI 권한, 질문 로그, 기존 메일/납품/선결제/링크 evidence 흐름은 유지했습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 브리핑 전용 정책과 nano 모델 기본값은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py test reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_contact_evidence_from_recent_sent_email reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_contact_progress_question_returns_customer_evidence_without_openai
+→ OK, 2 tests
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py test reporting.tests.AIWorkspaceSummaryApiTests
+→ OK, 101 tests
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py check
+→ System check identified no issues
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 로컬 기본 `sales_project.settings`는 현재 Django 정적파일 설정에서 `STORAGES`와 `STATICFILES_STORAGE`가 함께 정의되어 있어 plain `python manage.py test/check`가 먼저 막힙니다. 이번 검증은 운영 설정 모듈에 테스트용 `SECRET_KEY`를 지정해 실행했습니다.
+- 로컬 Python 환경에 `requirements.txt`의 `openai` 패키지가 빠져 있어 테스트 실행 전 `openai>=1.68.0`을 설치했습니다. 저장소 파일 변경은 없습니다.
+
+### 추천 다음 작업
+
+- 운영 AI 워크스페이스에서 같은 질문을 다시 던져 KOTITI 같은 고객이 `최근 메일` 근거와 메일함 링크를 같이 표시하는지 확인합니다.
+
+### Production Deployment Status
+
+- Pending commit/push and production smoke.
+
+### Manual Server Test Process
+
+1. 운영 프론트에서 로그인 후 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`로 이동합니다.
+2. 질문 범위를 `전체`로 두고 `현재 내가 접촉을 진행중인 고객을 리스트업 해줘`를 입력합니다.
+3. KOTITI처럼 최근 메일이 있는 고객이 `최근 메일`, 메일 제목, 메일함 링크 근거와 함께 표시되는지 확인합니다.
+4. 최근 활동이 없는 고객은 단계/상태만 근거라고 분리되어 표시되는지 확인합니다.
+5. evidence 링크를 눌러 메일함/고객/일정/노트 화면으로 이동되는지 확인합니다.
+
 ## 2026-05-26 — 고객 빠른 등록 섹션 제거
 
 ### 요약

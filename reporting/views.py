@@ -16371,6 +16371,9 @@ AI_WORKSPACE_BRIEFING_SYSTEM_PROMPT = """
 - 한국어로 답한다.
 - 데이터에 없는 고객 의도, 구매 확정, 다음 행동을 만들어내지 않는다.
 - 추정이 필요하면 추정이라고 표시하고 근거를 분리한다.
+- 고객/거래처/담당자를 리스트업할 때는 각 행마다 왜 포함했는지 CRM 근거를 함께 쓴다.
+- 최근 메일, 일정, 영업노트, 견적, 납품 근거가 있으면 파이프라인 단계보다 그 근거를 우선하고 링크를 evidence에 포함한다.
+- 파이프라인/상태만 근거인 고객은 "최근 활동 근거 없음, 단계/상태만 확인됨"이라고 표시한다.
 - 답변은 JSON 객체만 반환한다.
 - 기본 형태는 {"answer": string, "bullets": string[], "evidence": [{"label": string, "value": string}], "confidence": "high|medium|low"} 이다.
 - decision, perspective, actionItems 같은 전략/실행 카드 필드는 만들지 않는다.
@@ -17315,6 +17318,10 @@ def _ai_workspace_question_record_href(record, *, schedule_id=None, history_id=N
                 href = _ai_workspace_question_text(hrefs.get(key), 260)
                 if href:
                     return href
+        for key in ['threadHref', 'emailHref', 'mailboxThreadHref']:
+            href = _ai_workspace_question_text(record.get(key), 260)
+            if href:
+                return href
     if schedule_id:
         return _ai_workspace_question_schedule_href(schedule_id)
     if history_id:
@@ -17931,10 +17938,13 @@ def _ai_workspace_email_context_payload(email):
         'cc': _ai_workspace_question_text(email.cc_emails, 220),
         'preview': _ai_workspace_question_text(preview, 260),
         'body': _ai_workspace_question_text(body_text, 1600),
+        'followupId': followup.id if followup else None,
         'customer': _ai_workspace_question_text(followup.customer_name if followup else '', 120),
         'company': _ai_workspace_question_text(followup.company.name if followup and followup.company else '', 120),
         'department': _ai_workspace_question_text(followup.department.name if followup and followup.department else '', 120),
         'threadHref': f'/mailbox/thread/{thread_id}/' if thread_id else '',
+        'href': f'/mailbox/thread/{thread_id}/' if thread_id else '',
+        'linkLabel': '메일 보기',
         'attachments': [item for item in attachments if item],
     }
 
@@ -17973,6 +17983,209 @@ def _ai_workspace_recent_email_context(user, followup_ids=None, department_id=No
     ]
 
 
+def _ai_workspace_contact_evidence_date(value):
+    if not value:
+        return ''
+    if hasattr(value, 'date') and not isinstance(value, date):
+        value = timezone.localtime(value).date() if timezone.is_aware(value) else value.date()
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    return str(value)
+
+
+def _ai_workspace_contact_evidence_context(user, followups, limit_per_customer=4):
+    followups = list(followups or [])
+    followup_ids = [followup.id for followup in followups if followup and followup.id]
+    if not user or not followup_ids:
+        return {}
+
+    followup_id_set = set(followup_ids)
+    evidence_map = {followup_id: [] for followup_id in followup_ids}
+
+    def add_evidence(followup_id, label, value, happened_at=None, href='', link_label='열기', source_type='activity'):
+        if followup_id not in followup_id_set:
+            return
+        value = _ai_workspace_question_text(value, 520)
+        if not value:
+            return
+        row = {
+            'label': _ai_workspace_question_text(label, 90),
+            'value': value,
+            'date': _ai_workspace_contact_evidence_date(happened_at),
+            'href': _ai_workspace_question_text(href, 260),
+            'linkLabel': _ai_workspace_question_text(link_label, 80) or '열기',
+            'sourceType': source_type,
+        }
+        evidence_map.setdefault(followup_id, []).append(row)
+
+    owned_q = Q(user=user) | Q(sender=user) | Q(followup__user=user) | Q(schedule__user=user)
+    email_qs = list(EmailLog.objects.filter(
+        owned_q,
+        is_trashed=False,
+    ).filter(
+        Q(followup_id__in=followup_ids) |
+        Q(schedule__followup_id__in=followup_ids)
+    ).select_related(
+        'followup',
+        'followup__company',
+        'followup__department',
+        'schedule',
+        'schedule__followup',
+        'schedule__followup__company',
+        'schedule__followup__department',
+    ).distinct().order_by('-received_at', '-sent_at', '-created_at')[:max(len(followup_ids) * 4, 80)])
+    email_qs.sort(key=lambda email: _ai_workspace_email_happened_at(email), reverse=True)
+    seen_email_followups = set()
+    for email in email_qs:
+        followup = _ai_workspace_email_followup(email)
+        if not followup or followup.id in seen_email_followups:
+            continue
+        payload = _ai_workspace_email_context_payload(email)
+        happened_at = _ai_workspace_email_happened_at(email)
+        subject = payload.get('subject') or '제목 없음'
+        preview = payload.get('preview') or payload.get('body') or ''
+        direction = payload.get('directionLabel') or '메일'
+        add_evidence(
+            followup.id,
+            '최근 메일',
+            ' / '.join(_ai_prompt_context(
+                _ai_workspace_contact_evidence_date(happened_at),
+                direction,
+                subject,
+                preview,
+            )),
+            happened_at,
+            payload.get('threadHref') or payload.get('href') or _ai_workspace_question_customer_href(followup.id),
+            '메일 보기' if payload.get('threadHref') or payload.get('href') else '고객 보기',
+            'email',
+        )
+        seen_email_followups.add(followup.id)
+
+    seen_history_followups = set()
+    history_qs = History.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related('followup').order_by('-created_at')[:max(len(followup_ids) * 3, 80)]
+    for history in history_qs:
+        if history.followup_id in seen_history_followups:
+            continue
+        activity_date = history.meeting_date or history.delivery_date or timezone.localtime(history.created_at).date()
+        add_evidence(
+            history.followup_id,
+            '최근 영업노트',
+            ' / '.join(_ai_prompt_context(
+                _ai_workspace_contact_evidence_date(activity_date),
+                history.get_action_type_display(),
+                _history_activity_content(history),
+                history.next_action or history.meeting_next_action,
+            )),
+            activity_date,
+            _ai_workspace_question_history_href(history.id),
+            '영업노트 보기',
+            'note',
+        )
+        seen_history_followups.add(history.followup_id)
+
+    seen_schedule_followups = set()
+    schedule_qs = Schedule.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+    ).exclude(status='cancelled').select_related('followup').order_by('-visit_date', '-visit_time')[:max(len(followup_ids) * 3, 80)]
+    for schedule in schedule_qs:
+        if schedule.followup_id in seen_schedule_followups:
+            continue
+        add_evidence(
+            schedule.followup_id,
+            '최근 일정',
+            ' / '.join(_ai_prompt_context(
+                _ai_workspace_contact_evidence_date(schedule.visit_date),
+                schedule.get_activity_type_display(),
+                schedule.get_status_display(),
+                _ai_workspace_money(schedule.expected_revenue) if schedule.expected_revenue else '',
+                schedule.notes,
+            )),
+            schedule.visit_date,
+            _ai_workspace_question_schedule_href(schedule.id),
+            f'{schedule.get_activity_type_display()} 일정',
+            'schedule',
+        )
+        seen_schedule_followups.add(schedule.followup_id)
+
+    seen_quote_followups = set()
+    quote_qs = Quote.objects.filter(
+        user=user,
+        followup_id__in=followup_ids,
+    ).select_related('schedule', 'followup').order_by('-quote_date', '-created_at')[:max(len(followup_ids) * 2, 60)]
+    for quote in quote_qs:
+        if quote.followup_id in seen_quote_followups:
+            continue
+        add_evidence(
+            quote.followup_id,
+            '최근 견적',
+            ' / '.join(_ai_prompt_context(
+                _ai_workspace_contact_evidence_date(quote.quote_date),
+                quote.quote_number,
+                quote.get_stage_display(),
+                _ai_workspace_money(quote.total_amount or quote.subtotal),
+                quote.notes or quote.customer_feedback,
+            )),
+            quote.quote_date,
+            _ai_workspace_question_schedule_href(quote.schedule_id) or _ai_workspace_question_customer_href(quote.followup_id),
+            '견적 일정' if quote.schedule_id else '고객 보기',
+            'quote',
+        )
+        seen_quote_followups.add(quote.followup_id)
+
+    result = {}
+    for followup in followups:
+        customer_href = _ai_workspace_question_customer_href(followup.id)
+        stage_label = followup.get_pipeline_stage_display()
+        status_label = followup.get_status_display()
+        add_evidence(
+            followup.id,
+            'CRM 상태',
+            f"상태 {status_label} / 파이프라인 {stage_label}",
+            followup.updated_at,
+            customer_href,
+            '고객 보기',
+            'pipeline',
+        )
+        rows = evidence_map.get(followup.id, [])
+        non_pipeline = [row for row in rows if row.get('sourceType') != 'pipeline']
+        pipeline_row = next((row for row in rows if row.get('sourceType') == 'pipeline'), None)
+        ordered_rows = sorted(
+            non_pipeline,
+            key=lambda row: row.get('date') or '',
+            reverse=True,
+        )
+        if pipeline_row:
+            ordered_rows.append(pipeline_row)
+        ordered_rows = ordered_rows[:limit_per_customer]
+        primary = ordered_rows[0] if ordered_rows else None
+        primary_is_pipeline = bool(primary and primary.get('sourceType') == 'pipeline')
+        if primary and not primary_is_pipeline:
+            why = f"{primary.get('label')}: {primary.get('value')}"
+            if pipeline_row:
+                why = f"{why} / {pipeline_row.get('value')}"
+        elif pipeline_row:
+            why = f"최근 활동 근거 없음, {pipeline_row.get('value')}만 확인됨"
+        else:
+            why = 'CRM 접촉 근거가 부족합니다.'
+        result[followup.id] = {
+            'href': customer_href,
+            'linkLabel': '고객 보기',
+            'whyIncluded': _ai_workspace_question_text(why, 760),
+            'evidenceStrength': 'pipeline_only' if primary_is_pipeline or not non_pipeline else 'activity',
+            'lastSignalDate': primary.get('date') if primary else '',
+            'contactEvidence': [
+                {key: value for key, value in row.items() if value}
+                for row in ordered_rows
+            ],
+        }
+    return result
+
+
 def _ai_workspace_department_question_context(department, user):
     from ai_chat.services import gather_quote_delivery_data
 
@@ -17984,6 +18197,7 @@ def _ai_workspace_department_question_context(department, user):
         'department',
     ).order_by('-ai_score', '-updated_at'))
     followup_ids = [followup.id for followup in followups]
+    contact_evidence = _ai_workspace_contact_evidence_context(user, followups)
     quote_delivery = gather_quote_delivery_data(department, user)
     deliveries = quote_delivery.get('deliveries') or []
     quotes = quote_delivery.get('quotes') or []
@@ -18065,9 +18279,16 @@ def _ai_workspace_department_question_context(department, user):
                 'id': followup.id,
                 'name': followup.customer_name or followup.manager or '고객명 미정',
                 'manager': followup.manager or '',
+                'company': followup.company.name if followup.company else '',
+                'department': followup.department.name if followup.department else '',
+                'status': followup.get_status_display(),
+                'statusCode': followup.status or '',
                 'priority': followup.get_priority_display(),
+                'priorityCode': followup.priority or '',
                 'grade': followup.customer_grade or '',
                 'pipelineStage': followup.get_pipeline_stage_display(),
+                'pipelineStageCode': followup.pipeline_stage or '',
+                **(contact_evidence.get(followup.id) or {}),
             }
             for followup in followups[:20]
         ],
@@ -18370,6 +18591,7 @@ def _ai_workspace_global_question_context(user):
         'department',
     ).order_by('-updated_at', '-ai_score')[:120])
     followup_ids = [followup.id for followup in followups]
+    contact_evidence = _ai_workspace_contact_evidence_context(user, followups)
 
     departments = {}
     for followup in followups:
@@ -18382,6 +18604,7 @@ def _ai_workspace_global_question_context(user):
             'company': department.company.name if department.company else '',
             'customerCount': 0,
             'customers': [],
+            'customerEvidence': [],
             'urgentCustomers': 0,
             'pipelineStages': {},
         })
@@ -18389,6 +18612,15 @@ def _ai_workspace_global_question_context(user):
         customer_name = followup.customer_name or followup.manager or '고객명 미정'
         if len(row['customers']) < 5:
             row['customers'].append(customer_name)
+        if len(row['customerEvidence']) < 5:
+            row['customerEvidence'].append({
+                'id': followup.id,
+                'name': customer_name,
+                'href': _ai_workspace_question_customer_href(followup.id),
+                'whyIncluded': (contact_evidence.get(followup.id) or {}).get('whyIncluded') or '',
+                'evidenceStrength': (contact_evidence.get(followup.id) or {}).get('evidenceStrength') or '',
+                'lastSignalDate': (contact_evidence.get(followup.id) or {}).get('lastSignalDate') or '',
+            })
         if followup.priority == 'urgent':
             row['urgentCustomers'] += 1
         stage_label = followup.get_pipeline_stage_display()
@@ -18502,9 +18734,14 @@ def _ai_workspace_global_question_context(user):
                 'manager': followup.manager or '',
                 'company': followup.company.name if followup.company else '',
                 'department': followup.department.name if followup.department else '',
+                'status': followup.get_status_display(),
+                'statusCode': followup.status or '',
                 'priority': followup.get_priority_display(),
+                'priorityCode': followup.priority or '',
                 'grade': followup.customer_grade or '',
                 'pipelineStage': followup.get_pipeline_stage_display(),
+                'pipelineStageCode': followup.pipeline_stage or '',
+                **(contact_evidence.get(followup.id) or {}),
             }
             for followup in followups[:40]
         ],
@@ -18559,6 +18796,107 @@ def _ai_workspace_global_question_context(user):
             'start': week_start.isoformat(),
             'end': week_end.isoformat(),
         },
+    }
+
+
+def _ai_workspace_question_is_contact_progress_list(question):
+    compact = _ai_workspace_compact_match_text(question)
+    if not compact:
+        return False
+    progress_terms = [
+        '접촉진행중',
+        '접촉을진행중',
+        '접촉중',
+        '연락중',
+        '관리중',
+        '팔로업중',
+        '진행중인고객',
+        '진행중고객',
+    ]
+    target_terms = ['고객', '담당자', '거래처', '부서', '연구실']
+    list_terms = ['리스트', '리스트업', '목록', '보여', '알려', '누구']
+    return (
+        any(term in compact for term in progress_terms)
+        and any(term in compact for term in target_terms)
+        and any(term in compact for term in list_terms)
+    )
+
+
+def _ai_workspace_contact_progress_answer(question, context):
+    scope = context.get('scope') or {}
+    scope_label = scope.get('label') or '전체 부서'
+    raw_customers = [item for item in _ai_json_list(context.get('customers')) if isinstance(item, dict)]
+    customers = []
+    for customer in raw_customers:
+        status_code = customer.get('statusCode') or ''
+        if status_code in {'completed', 'paused'}:
+            continue
+        customers.append(customer)
+
+    def sort_key(customer):
+        strength = 0 if customer.get('evidenceStrength') == 'activity' else 1
+        date_value = customer.get('lastSignalDate') or ''
+        parsed_date = _parse_iso_date_or_none(date_value[:10]) if date_value else None
+        date_rank = parsed_date.toordinal() if parsed_date else 0
+        priority_order = {'urgent': 0, 'followup': 1, 'scheduled': 2, 'long_term': 3}
+        priority = priority_order.get(customer.get('priorityCode') or '', 9)
+        return (strength, -date_rank, priority, customer.get('name') or '')
+
+    customers.sort(key=sort_key)
+    activity_count = len([item for item in customers if item.get('evidenceStrength') == 'activity'])
+    stage_only_count = len(customers) - activity_count
+    email_count = 0
+    evidence_rows = []
+    lines = [
+        f"{scope_label} 기준으로 현재 접촉 진행 중으로 볼 수 있는 활성 고객/담당자 {len(customers)}명을 CRM 근거와 함께 정리했습니다.",
+        "CRM에는 '현재 접촉 진행중' 단일 플래그가 없어서 활성 상태 고객을 기준으로 보되, 각 고객마다 최근 메일/일정/영업노트/견적/납품 근거를 붙였습니다.",
+        "",
+        "고객별 근거",
+    ]
+    for customer in customers[:60]:
+        evidence_items = [
+            item for item in _ai_json_list(customer.get('contactEvidence'))
+            if isinstance(item, dict)
+        ]
+        primary = evidence_items[0] if evidence_items else {}
+        if any(item.get('sourceType') == 'email' for item in evidence_items):
+            email_count += 1
+        identity = ' / '.join(_ai_prompt_context(
+            customer.get('company'),
+            customer.get('department'),
+            customer.get('name'),
+        ))
+        why = customer.get('whyIncluded') or 'CRM 상태/파이프라인 근거만 확인됨'
+        lines.append(f"- {identity or customer.get('name') or '고객명 미정'}: {why}")
+        evidence_rows.append({
+            'label': customer.get('name') or '고객',
+            'value': ' / '.join(_ai_prompt_context(identity, why)),
+            'href': primary.get('href') or customer.get('href') or '',
+            'linkLabel': primary.get('linkLabel') or customer.get('linkLabel') or '고객 보기',
+        })
+    omitted_count = max(len(customers) - 60, 0)
+    if omitted_count:
+        lines.append(f"- 외 {omitted_count}명은 답변 길이 제한으로 생략했습니다.")
+    if not customers:
+        lines.append("- 접근 가능한 활성 고객/담당자가 없습니다.")
+
+    confidence = 'medium'
+    if customers and stage_only_count == 0:
+        confidence = 'high'
+    elif not customers:
+        confidence = 'low'
+
+    return {
+        'summary': '\n'.join(lines),
+        'bullets': [
+            f"총 고객/담당자: {len(customers)}명",
+            f"최근 활동 근거 있음: {activity_count}명",
+            f"최근 메일 근거 있음: {email_count}명",
+            f"단계/상태만 확인됨: {stage_only_count}명",
+        ],
+        'evidence': _ai_workspace_question_evidence_payload(evidence_rows, limit=10, value_limit=700),
+        'actionItems': [],
+        'confidence': confidence,
     }
 
 
@@ -18716,7 +19054,12 @@ def _ai_workspace_question_fallback(question, context):
                     subject,
                     body,
                 ))
-                email_evidence.append({'label': label, 'value': value})
+                email_evidence.append({
+                    'label': label,
+                    'value': value,
+                    'href': email_item.get('threadHref') or email_item.get('href') or '',
+                    'linkLabel': email_item.get('linkLabel') or '메일 보기',
+                })
 
             latest_body = latest_email.get('body') or latest_email.get('preview') or ''
             latest_subject = latest_email.get('subject') or '제목 없음'
@@ -19399,6 +19742,12 @@ def _ai_workspace_generate_department_question_answer(
     if _ai_workspace_question_is_delivery_payment_split(question):
         fallback.setdefault('actionItems', [])
         return _ai_workspace_apply_product_fact_guard(fallback, context), 'ledger', False
+    if _ai_workspace_question_is_contact_progress_list(question):
+        answer = _ai_workspace_append_context_record_links(
+            _ai_workspace_contact_progress_answer(question, context),
+            context,
+        )
+        return _ai_workspace_apply_product_fact_guard(answer, context), 'contact_evidence', False
 
     use_web_search = False
     try:
@@ -19430,6 +19779,9 @@ def _ai_workspace_generate_department_question_answer(
                 'crmContext.recentEmails는 CRM에 연결된 최근 메일 이력이다. 메일/이메일/회신/답장을 참고하라는 질문에서는 recentEmails의 subject, body, directionLabel, date를 우선 근거로 사용한다.',
                 'recentEmails가 있는데 "메일 기록을 볼 수 없다"고 답하지 않는다. recentEmails가 비어 있을 때만 연결된 메일 기록이 없다고 말한다.',
                 '메일은 보낸 메일과 받은 메일을 구분하고, 본문에 없는 구매 의도/확정 일정/회신 여부를 추측하지 않는다.',
+                'crmContext.customers[].contactEvidence는 고객별 최근 접촉 근거다. 접촉 진행 중 고객, 연락 중 고객, 관리 중 고객을 묻는 질문에서는 contactEvidence와 whyIncluded를 고객별 근거로 우선 사용한다.',
+                '고객 리스트를 만들 때는 각 고객명 옆에 왜 포함했는지 근거를 함께 쓰고, contactEvidence.href 또는 고객 href를 evidence에 포함한다.',
+                'contactEvidence가 CRM 상태/파이프라인뿐인 고객은 최근 활동 근거가 없고 단계/상태만 확인된다고 명시한다.',
                 'crmContext.verifiedMemories는 사용자가 검수해서 저장한 장기 기억이다. 같은 주제에서는 원본 AI 답변 기록보다 verifiedMemories를 우선 적용한다.',
                 'verifiedMemories가 CRM 원자료나 제품 마스터와 충돌하면 충돌을 숨기지 말고 어느 근거가 최신/검수 근거인지 분리해서 설명한다.',
                 'crmContext.actionFilter는 질문의 제외 조건, 검수 기억상 해결된 고객, 최근 보낸 메일로 이미 접촉한 고객을 반영해 실행 후보를 걸러낸 결과다.',

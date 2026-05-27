@@ -13594,6 +13594,84 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('10박스', context['recentEmails'][0]['body'])
         self.assertEqual(context['recentEmails'][0]['customer'], followup.customer_name)
 
+    def test_ai_workspace_question_context_includes_contact_evidence_from_recent_sent_email(self):
+        from reporting.models import EmailLog
+        from reporting.views import _ai_workspace_global_question_context
+
+        followup, _department = self._create_customer(self.user, 'KOTITI')
+        followup.pipeline_stage = 'potential'
+        followup.save(update_fields=['pipeline_stage'])
+        EmailLog.objects.create(
+            user=self.user,
+            followup=followup,
+            email_type='sent',
+            status='sent',
+            from_email='sales@example.com',
+            sender_email='sales@example.com',
+            to_email='kotiti@example.com',
+            recipient_email='kotiti@example.com',
+            subject='KOTITI 샘플 견적 안내',
+            body='최근 보낸 메일 본문: 담당자에게 견적 검토와 샘플 필요 여부를 문의했습니다.',
+            gmail_thread_id='kotiti-thread-1',
+            sent_at=timezone.now(),
+        )
+
+        context = _ai_workspace_global_question_context(self.user)
+
+        customer_payload = next(item for item in context['customers'] if item['id'] == followup.id)
+        evidence_text = json.dumps(customer_payload['contactEvidence'], ensure_ascii=False)
+        self.assertEqual(customer_payload['evidenceStrength'], 'activity')
+        self.assertIn('최근 메일', evidence_text)
+        self.assertIn('KOTITI 샘플 견적 안내', evidence_text)
+        self.assertIn('/mailbox/thread/kotiti-thread-1/', evidence_text)
+        self.assertIn('파이프라인 잠재', customer_payload['whyIncluded'])
+
+    @patch('ai_chat.services.get_openai_client')
+    def test_ai_workspace_contact_progress_question_returns_customer_evidence_without_openai(self, mock_client):
+        from reporting.models import EmailLog
+
+        kotiti_followup, _kotiti_department = self._create_customer(self.user, 'KOTITI')
+        stage_only_followup, _stage_only_department = self._create_customer(self.user, '단계만')
+        EmailLog.objects.create(
+            user=self.user,
+            followup=kotiti_followup,
+            email_type='sent',
+            status='sent',
+            from_email='sales@example.com',
+            sender_email='sales@example.com',
+            to_email='kotiti@example.com',
+            recipient_email='kotiti@example.com',
+            subject='KOTITI 최근 견적 메일',
+            body='최근 발송 메일: 샘플과 견적 검토 일정을 확인했습니다.',
+            gmail_thread_id='kotiti-contact-progress',
+            sent_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:ai_workspace_question_api'),
+            data=json.dumps({
+                'scopeType': 'all',
+                'question': '현재 내가 접촉을 진행중인 고객을 리스트업 해줘',
+                'model': 'gpt-5.4-nano',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['source'], 'contact_evidence')
+        mock_client.assert_not_called()
+        answer_text = payload['answer']['summary']
+        self.assertIn('KOTITI 담당자', answer_text)
+        self.assertIn('최근 메일', answer_text)
+        self.assertIn('KOTITI 최근 견적 메일', answer_text)
+        self.assertIn('단계만 담당자', answer_text)
+        self.assertIn('최근 활동 근거 없음', answer_text)
+        evidence_hrefs = {item.get('href') for item in payload['answer']['evidence']}
+        self.assertIn('/mailbox/thread/kotiti-contact-progress/', evidence_hrefs)
+        self.assertEqual(payload['questionLog']['source'], 'contact_evidence')
+
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_department_question_fallback_uses_recent_email_when_requested(self, _mock_client):
         from reporting.models import EmailLog
