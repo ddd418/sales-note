@@ -61,7 +61,17 @@ git diff --check
 
 ### Production Deployment Status
 
-- Pending commit/push and production smoke.
+- Completed by GitHub push and Railway deploy.
+- Code commit pushed to `origin/main`:
+  - `a5a03fe feat: strengthen AI contact evidence`
+- Railway deployments:
+  - `sales-note-frontend`: `6b2bc34f-635e-40dc-be50-7e6815408b8c` → SUCCESS
+  - `web`: `baf3b418-ac6e-4234-ba36-29861247b1ab` → SUCCESS
+- Production smoke:
+  - `python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app`
+  - Result: `Smoke status: ok`
+  - `/reporting/api/ai-workspace/` protected API returned `401 login_required` without authentication as expected.
+  - `/ai-workspace/` React route returned `200`.
 
 ### Manual Server Test Process
 
