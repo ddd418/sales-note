@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-05-28 — React 패널 포커스/스크롤 가이드 개선
+
+### 요약
+
+- `담당자 추가`처럼 React 화면에서 입력/수정 패널을 여는 버튼을 누르면 해당 섹션으로 자동 이동하고 첫 입력칸에 포커스되도록 수정했습니다.
+- 열린 패널에는 짧은 하이라이트를 적용해 사용자가 다음 입력 위치를 바로 알아볼 수 있게 했습니다.
+- 공통 헬퍼로 적용해 계정, 담당자, 장비, 서비스, 교정, 노트, 일정, 캘린더, 명함, 직원, 서류, 제품, 메일 작성 패널까지 같은 UX를 사용합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- `/accounts/<id>/`에서 `담당자 추가`, `계정 관리`, `장비 등록`, `서비스 접수`, `교정 기록`을 누르면 열린 입력 섹션으로 바로 이동합니다.
+- `/notes/`, `/schedules/`, 캘린더, 일정 상세의 작성/수정/납품/견적 패널도 클릭 후 위치를 잃지 않도록 안내됩니다.
+- 명함, 직원, 서류 템플릿, 제품 관리, 메일 작성/답장 패널도 같은 포커스 이동을 사용합니다.
+
+### 기존 기능 보존
+
+- DB 모델, 마이그레이션, Django API, URL, 권한 로직은 변경하지 않았습니다.
+- 기존 폼 저장/취소/검증 동작은 유지했습니다.
+- 화면 이동과 포커스/하이라이트만 추가한 frontend-only 개선입니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py check
+→ System check identified no issues
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+local Playwright smoke: /accounts/<id>/에서 `담당자 추가` 클릭
+→ OK; scrollY 0 → 1269, `담당자명` input focused, highlight class present
+```
+
+### 알려진 한계
+
+- 브라우저 자동 검증은 로컬 계정 상세의 `담당자 추가` 흐름을 대표 케이스로 확인했습니다.
+- 다른 화면은 타입 체크와 빌드로 검증했으며, 운영 배포 후 수동 확인이 필요합니다.
+
+### Production 배포 상태
+
+- Pending. Commit/push 후 Railway production 배포와 smoke test를 진행할 예정입니다.
+
+### 권장 다음 작업
+
+- 운영에서 자주 쓰는 화면 순서대로 `담당자 추가`, `일정 등록`, `노트 작성`, `제품 수정` 버튼의 이동/포커스 체감을 직접 확인합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/accounts/<id>/`에서 `담당자 추가`를 클릭합니다.
+2. 담당자 입력 섹션으로 자동 이동하고 `담당자명` 칸에 커서가 들어가는지 확인합니다.
+3. 같은 화면에서 `계정 관리`, `장비 등록`, `서비스 접수`, `교정 기록`도 각각 열린 섹션으로 이동하는지 확인합니다.
+4. `/notes/`의 `노트 작성`, `/schedules/`의 `일정 등록`, 캘린더의 일정 등록/수정 패널도 클릭 직후 위치가 안내되는지 확인합니다.
+5. `/mailbox/business-cards/`, `/employees/`, `/documents/`, `/products/`의 등록/수정 버튼도 열린 폼으로 이동하는지 확인합니다.
+
 ## 2026-05-28 — 영업노트 날짜만 있는 다음 액션 표시 수정
 
 ### 요약

@@ -700,6 +700,64 @@ const getScheduleCalendarPersonalIdParam = () => {
 
 const shouldOpenCreatePanel = () => new URLSearchParams(window.location.search).get('create') === '1';
 
+const guidedPanelFocusableSelector = [
+  'input:not([type="hidden"]):not(:disabled):not([readonly])',
+  'select:not(:disabled)',
+  'textarea:not(:disabled):not([readonly])',
+  'button:not(:disabled)',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+type GuidedPanelFocusRef = {
+  current: HTMLElement | null;
+};
+
+type GuidedPanelFocusKey = string | number | boolean | null | undefined;
+
+const requestGuidedPanelFocus = (
+  targetRef: GuidedPanelFocusRef,
+  options: { focusFirst?: boolean } = {},
+) => {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      const section = targetRef.current;
+      if (!section) {
+        return;
+      }
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      section.classList.remove('guided-panel-focus');
+      void section.offsetWidth;
+      section.classList.add('guided-panel-focus');
+      window.setTimeout(() => section.classList.remove('guided-panel-focus'), 1800);
+      if (options.focusFirst === false) {
+        return;
+      }
+      window.setTimeout(() => {
+        const focusTarget = section.querySelector<HTMLElement>(guidedPanelFocusableSelector);
+        focusTarget?.focus({ preventScroll: true });
+      }, 280);
+    });
+  });
+};
+
+function useGuidedPanelFocus(
+  isOpen: boolean,
+  targetRef: GuidedPanelFocusRef,
+  focusKey: GuidedPanelFocusKey = 'open',
+  options: { focusFirst?: boolean } = {},
+) {
+  const lastFocusKeyRef = useRef('');
+
+  useEffect(() => {
+    const normalizedKey = isOpen ? String(focusKey ?? 'open') : '';
+    if (isOpen && normalizedKey && lastFocusKeyRef.current !== normalizedKey) {
+      requestGuidedPanelFocus(targetRef, options);
+    }
+    lastFocusKeyRef.current = normalizedKey;
+  }, [focusKey, isOpen, targetRef, options.focusFirst]);
+}
+
 const getNoteReviewParam = () => {
   const value = new URLSearchParams(window.location.search).get('review') ||
     new URLSearchParams(window.location.search).get('review_filter') ||
@@ -3591,6 +3649,23 @@ function CustomerDetailPage({
   const [assetSaving, setAssetSaving] = useState(false);
   const [assetError, setAssetError] = useState('');
   const [assetMessage, setAssetMessage] = useState('');
+  const accountInfoPanelRef = useRef<HTMLFormElement | null>(null);
+  const accountContactPanelRef = useRef<HTMLFormElement | null>(null);
+  const assetPanelRef = useRef<HTMLFormElement | null>(null);
+  const serviceCasePanelRef = useRef<HTMLFormElement | null>(null);
+  const calibrationPanelRef = useRef<HTMLFormElement | null>(null);
+  const customerEditPanelRef = useRef<HTMLElement | null>(null);
+
+  useGuidedPanelFocus(accountInfoOpen, accountInfoPanelRef, `account-info-${data?.account.id || customer?.id || 'new'}`);
+  useGuidedPanelFocus(
+    Boolean(accountContactEditor),
+    accountContactPanelRef,
+    `${accountContactEditor || 'closed'}-${editingAccountContactId || 'new'}`,
+  );
+  useGuidedPanelFocus(assetEditor === 'asset', assetPanelRef, `asset-${editingAssetId || 'new'}`);
+  useGuidedPanelFocus(assetEditor === 'service', serviceCasePanelRef, `service-${editingServiceCaseId || 'new'}`);
+  useGuidedPanelFocus(assetEditor === 'calibration', calibrationPanelRef, `calibration-${editingCalibrationId || 'new'}`);
+  useGuidedPanelFocus(editOpen, customerEditPanelRef, `customer-edit-${customer?.id || 'new'}`);
 
   useEffect(() => {
     setEditForm(makeCustomerEditForm(customer));
@@ -4337,7 +4412,7 @@ function CustomerDetailPage({
           </div>
         ) : null}
         {accountInfoOpen || accountInfoError || accountInfoMessage ? (
-          <form className="notes-create-form account-info-form" onSubmit={handleAccountInfoSubmit}>
+          <form className="notes-create-form account-info-form" onSubmit={handleAccountInfoSubmit} ref={accountInfoPanelRef}>
             {accountInfoError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{accountInfoError}</span></div> : null}
             {accountInfoMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{accountInfoMessage}</span></div> : null}
             {accountInfoOpen ? (
@@ -4485,7 +4560,7 @@ function CustomerDetailPage({
           <DashboardEmpty label="이 계정에 표시할 담당자가 없습니다" />
         )}
         {accountContactEditor ? (
-          <form className="notes-create-form account-contact-form" onSubmit={handleAccountContactSubmit}>
+          <form className="notes-create-form account-contact-form" onSubmit={handleAccountContactSubmit} ref={accountContactPanelRef}>
             <div className="dashboard-panel-heading customer-asset-editor-heading">
               <div>
                 <span className="eyebrow">{accountContactEditor === 'create' ? 'New contact' : 'Edit contact'}</span>
@@ -4746,7 +4821,7 @@ function CustomerDetailPage({
         </div>
 
         {assetEditor === 'asset' ? (
-          <form className="notes-create-form customer-asset-form" onSubmit={handleAssetSubmit}>
+          <form className="notes-create-form customer-asset-form" onSubmit={handleAssetSubmit} ref={assetPanelRef}>
             <div className="dashboard-panel-heading customer-asset-editor-heading">
               <div>
                 <span className="eyebrow">{editingAssetId ? 'Edit asset' : 'New asset'}</span>
@@ -4833,7 +4908,7 @@ function CustomerDetailPage({
         ) : null}
 
         {assetEditor === 'service' ? (
-          <form className="notes-create-form customer-asset-form" onSubmit={handleServiceCaseSubmit}>
+          <form className="notes-create-form customer-asset-form" onSubmit={handleServiceCaseSubmit} ref={serviceCasePanelRef}>
             <div className="dashboard-panel-heading customer-asset-editor-heading">
               <div>
                 <span className="eyebrow">{editingServiceCaseId ? 'Edit service' : 'New service'}</span>
@@ -4959,7 +5034,7 @@ function CustomerDetailPage({
         ) : null}
 
         {assetEditor === 'calibration' ? (
-          <form className="notes-create-form customer-asset-form" onSubmit={handleCalibrationSubmit}>
+          <form className="notes-create-form customer-asset-form" onSubmit={handleCalibrationSubmit} ref={calibrationPanelRef}>
             <div className="dashboard-panel-heading customer-asset-editor-heading">
               <div>
                 <span className="eyebrow">{editingCalibrationId ? 'Edit calibration' : 'New calibration'}</span>
@@ -5147,7 +5222,7 @@ function CustomerDetailPage({
       </section>
 
       {editOpen || editMessage || editError ? (
-        <section className="dashboard-panel notes-create-panel customer-edit-panel">
+        <section className="dashboard-panel notes-create-panel customer-edit-panel" ref={customerEditPanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Edit customer</span>
@@ -5931,6 +6006,13 @@ function CustomerAssetDirectoryDrawer({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const drawerAssetPanelRef = useRef<HTMLFormElement | null>(null);
+  const drawerServicePanelRef = useRef<HTMLFormElement | null>(null);
+  const drawerCalibrationPanelRef = useRef<HTMLFormElement | null>(null);
+
+  useGuidedPanelFocus(assetEditor === 'asset', drawerAssetPanelRef, `drawer-asset-${asset?.id || 'new'}`);
+  useGuidedPanelFocus(assetEditor === 'service', drawerServicePanelRef, `drawer-service-${editingServiceCaseId || 'new'}`);
+  useGuidedPanelFocus(assetEditor === 'calibration', drawerCalibrationPanelRef, `drawer-calibration-${editingCalibrationId || 'new'}`);
 
   useEffect(() => {
     setAssetEditor('');
@@ -6219,7 +6301,7 @@ function CustomerAssetDirectoryDrawer({
       {asset.notes ? <p className="asset-directory-drawer-note">{asset.notes}</p> : null}
 
       {assetEditor === 'asset' ? (
-        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleAssetSubmit}>
+        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleAssetSubmit} ref={drawerAssetPanelRef}>
           <div className="notes-create-grid">
             <label>
               <span>장비/자산명</span>
@@ -6269,7 +6351,7 @@ function CustomerAssetDirectoryDrawer({
       ) : null}
 
       {assetEditor === 'service' ? (
-        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleServiceCaseSubmit}>
+        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleServiceCaseSubmit} ref={drawerServicePanelRef}>
           <div className="notes-create-grid">
             <label>
               <span>유형</span>
@@ -6337,7 +6419,7 @@ function CustomerAssetDirectoryDrawer({
       ) : null}
 
       {assetEditor === 'calibration' ? (
-        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleCalibrationSubmit}>
+        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleCalibrationSubmit} ref={drawerCalibrationPanelRef}>
           <div className="notes-create-grid">
             <label>
               <span>교정일</span>
@@ -6451,6 +6533,9 @@ function CustomerAssetDirectoryCreatePanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const createPanelRef = useRef<HTMLElement | null>(null);
+
+  useGuidedPanelFocus(open, createPanelRef, 'asset-directory-create');
   const mergedAccountOptions = useMemo(() => {
     const byId = new Map<string, CustomerAssetAccountOption>();
     [...data.create.accounts, ...accountOptions].forEach((account) => {
@@ -6607,7 +6692,7 @@ function CustomerAssetDirectoryCreatePanel({
   }
 
   return (
-    <section className="dashboard-panel asset-directory-create-panel">
+    <section className="dashboard-panel asset-directory-create-panel" ref={createPanelRef}>
       <div className="asset-directory-drawer-heading">
         <div>
           <span className="eyebrow">New asset</span>
@@ -7178,6 +7263,9 @@ function BusinessCardsPage({
   onSetDefault: (card: BusinessCardItem) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const businessCardEditorRef = useRef<HTMLElement | null>(null);
+  useGuidedPanelFocus(formOpen, businessCardEditorRef, `business-card-${editingId || 'new'}`);
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -7286,7 +7374,7 @@ function BusinessCardsPage({
           )}
         </section>
 
-        <aside className={`dashboard-panel business-card-editor ${formOpen ? 'open' : ''}`}>
+        <aside className={`dashboard-panel business-card-editor ${formOpen ? 'open' : ''}`} ref={businessCardEditorRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">{editingCard ? 'Edit card' : 'New card'}</span>
@@ -7383,6 +7471,9 @@ function ProfileSettingsPage({
   onPasswordSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const imapFormPanelRef = useRef<HTMLFormElement | null>(null);
+  useGuidedPanelFocus(imapOpen, imapFormPanelRef, 'profile-imap');
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -7532,7 +7623,7 @@ function ProfileSettingsPage({
                 </button>
               </div>
               {imapOpen ? (
-                <form className="profile-form profile-imap-form" onSubmit={onImapSubmit}>
+                <form className="profile-form profile-imap-form" onSubmit={onImapSubmit} ref={imapFormPanelRef}>
                   <label>
                     제공업체
                     <select value={imapForm.provider} onChange={(event) => onImapFormChange('provider', event.target.value)}>
@@ -7775,6 +7866,9 @@ function NoteDetailPage({
   const [noteDeleting, setNoteDeleting] = useState(false);
   const [noteDeleteError, setNoteDeleteError] = useState('');
   const [noteDeleteMessage, setNoteDeleteMessage] = useState('');
+  const noteEditPanelRef = useRef<HTMLElement | null>(null);
+
+  useGuidedPanelFocus(editOpen, noteEditPanelRef, `note-edit-${currentNote?.id || 'new'}`);
 
   useEffect(() => {
     setEditForm(makeNoteEditForm(currentNote));
@@ -8132,7 +8226,7 @@ function NoteDetailPage({
       </section>
 
       {editOpen || editMessage || editError ? (
-        <section className="dashboard-panel notes-create-panel note-edit-panel">
+        <section className="dashboard-panel notes-create-panel note-edit-panel" ref={noteEditPanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Edit note</span>
@@ -8441,6 +8535,9 @@ function NotesPage({
   onReviewChange: (value: string) => void;
   onToggleReview: (note: NoteItem) => void;
 }) {
+  const createPanelRef = useRef<HTMLElement | null>(null);
+  useGuidedPanelFocus(createOpen, createPanelRef, 'note-create');
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -8536,7 +8633,7 @@ function NotesPage({
       </section>
 
       {createOpen ? (
-        <section className="dashboard-panel notes-create-panel">
+        <section className="dashboard-panel notes-create-panel" ref={createPanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Quick note</span>
@@ -9085,6 +9182,10 @@ function ScheduleCalendarPage({
   const [calendarDeletingKey, setCalendarDeletingKey] = useState('');
   const [calendarActionError, setCalendarActionError] = useState('');
   const [calendarActionMessage, setCalendarActionMessage] = useState('');
+  const calendarCreatePanelRef = useRef<HTMLDivElement | null>(null);
+  const personalCreatePanelRef = useRef<HTMLDivElement | null>(null);
+  const calendarEditPanelRef = useRef<HTMLDivElement | null>(null);
+  const personalEditPanelRef = useRef<HTMLDivElement | null>(null);
   const schedules = data?.schedules ?? [];
   const personalDeleteRequested = new URLSearchParams(window.location.search).get('delete') === '1';
   const days = useMemo(() => buildScheduleCalendarDays(month, schedules), [month, schedules]);
@@ -9095,6 +9196,11 @@ function ScheduleCalendarPage({
   const monthLabel = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long' }).format(parseLocalDate(`${month}-01`));
   const todayMonth = localDateInputValue().slice(0, 7);
   const showUserFilter = dataFilter === 'user';
+
+  useGuidedPanelFocus(calendarCreateOpen, calendarCreatePanelRef, `calendar-create-${selectedDate}`);
+  useGuidedPanelFocus(personalCreateOpen, personalCreatePanelRef, `personal-create-${selectedDate}`);
+  useGuidedPanelFocus(calendarEditOpen, calendarEditPanelRef, `calendar-edit-${calendarEditData?.schedule?.id || 'loading'}`);
+  useGuidedPanelFocus(personalEditOpen, personalEditPanelRef, `personal-edit-${personalEditData?.schedule?.id || 'loading'}`);
 
   useEffect(() => {
     setSelectedDate((previous) => {
@@ -9721,7 +9827,7 @@ function ScheduleCalendarPage({
           </div>
 
           {calendarCreateOpen || calendarCreateError || calendarCreateMessage ? (
-            <div className="schedule-calendar-inline-editor">
+            <div className="schedule-calendar-inline-editor" ref={calendarCreatePanelRef}>
               <div className="schedule-calendar-editor-heading">
                 <div>
                   <span className="eyebrow">Quick schedule</span>
@@ -9844,7 +9950,7 @@ function ScheduleCalendarPage({
           ) : null}
 
           {personalCreateOpen || personalCreateError || personalCreateMessage ? (
-            <div className="schedule-calendar-inline-editor">
+            <div className="schedule-calendar-inline-editor" ref={personalCreatePanelRef}>
               <div className="schedule-calendar-editor-heading">
                 <div>
                   <span className="eyebrow">Personal schedule</span>
@@ -9914,7 +10020,7 @@ function ScheduleCalendarPage({
           ) : null}
 
           {calendarEditOpen || calendarEditError || calendarEditMessage ? (
-            <div className="schedule-calendar-inline-editor">
+            <div className="schedule-calendar-inline-editor" ref={calendarEditPanelRef}>
               <div className="schedule-calendar-editor-heading">
                 <div>
                   <span className="eyebrow">Edit schedule</span>
@@ -10054,7 +10160,7 @@ function ScheduleCalendarPage({
           ) : null}
 
           {personalEditOpen || personalEditError || personalEditMessage ? (
-            <div className="schedule-calendar-inline-editor">
+            <div className="schedule-calendar-inline-editor" ref={personalEditPanelRef}>
               <div className="schedule-calendar-editor-heading">
                 <div>
                   <span className="eyebrow">Edit personal</span>
@@ -10791,6 +10897,15 @@ function ScheduleDetailPage({
   const [scheduleCoachError, setScheduleCoachError] = useState('');
   const [scheduleCoachMessage, setScheduleCoachMessage] = useState('');
   const [scheduleCoachResult, setScheduleCoachResult] = useState<ScheduleAICoachResponse | null>(null);
+  const scheduleNotePanelRef = useRef<HTMLElement | null>(null);
+  const scheduleEditPanelRef = useRef<HTMLElement | null>(null);
+  const quoteImportPanelRef = useRef<HTMLDivElement | null>(null);
+  const deliveryEditPanelRef = useRef<HTMLFormElement | null>(null);
+
+  useGuidedPanelFocus(scheduleNoteOpen, scheduleNotePanelRef, `schedule-note-${currentSchedule?.id || 'new'}`);
+  useGuidedPanelFocus(editOpen, scheduleEditPanelRef, `schedule-edit-${currentSchedule?.id || 'new'}`);
+  useGuidedPanelFocus(quoteImportOpen, quoteImportPanelRef, `quote-import-${currentSchedule?.id || 'new'}`, { focusFirst: false });
+  useGuidedPanelFocus(deliveryEditOpen, deliveryEditPanelRef, `delivery-edit-${currentSchedule?.id || 'new'}`);
 
   useEffect(() => {
     setEditForm(makeScheduleEditForm(currentSchedule));
@@ -11910,7 +12025,7 @@ function ScheduleDetailPage({
       </section>
 
       {scheduleNoteOpen || scheduleNoteMessage || scheduleNoteError ? (
-        <section className="dashboard-panel notes-create-panel schedule-note-create-panel">
+        <section className="dashboard-panel notes-create-panel schedule-note-create-panel" ref={scheduleNotePanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Sales note</span>
@@ -12000,7 +12115,7 @@ function ScheduleDetailPage({
       ) : null}
 
       {editOpen || editMessage || editError ? (
-        <section className="dashboard-panel notes-create-panel schedule-edit-panel">
+        <section className="dashboard-panel notes-create-panel schedule-edit-panel" ref={scheduleEditPanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Edit schedule</span>
@@ -12346,7 +12461,7 @@ function ScheduleDetailPage({
             </div>
           ) : null}
           {!isQuoteSchedule && quoteImportOpen ? (
-            <div className="schedule-quote-import-panel">
+            <div className="schedule-quote-import-panel" ref={quoteImportPanelRef}>
               <div className="schedule-quote-import-heading">
                 <div>
                   <strong>견적 품목 불러오기</strong>
@@ -12423,7 +12538,7 @@ function ScheduleDetailPage({
             </div>
           ) : null}
           {deliveryEditOpen ? (
-            <form className="schedule-delivery-edit-form" onSubmit={handleDeliverySubmit}>
+            <form className="schedule-delivery-edit-form" onSubmit={handleDeliverySubmit} ref={deliveryEditPanelRef}>
               {productError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{productError}</span></div> : null}
               <div className="schedule-delivery-edit-list">
                 {deliveryRows.map((row, index) => {
@@ -12809,6 +12924,9 @@ function SchedulesPage({
   onRangeChange: (value: string) => void;
   onStatusChange: (value: string) => void;
 }) {
+  const createPanelRef = useRef<HTMLElement | null>(null);
+  useGuidedPanelFocus(createOpen, createPanelRef, 'schedule-create');
+
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -12869,7 +12987,7 @@ function SchedulesPage({
       </div>
 
       {createOpen ? (
-        <section className="dashboard-panel notes-create-panel schedules-create-panel">
+        <section className="dashboard-panel notes-create-panel schedules-create-panel" ref={createPanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">Quick schedule</span>
@@ -14978,13 +15096,16 @@ function MailComposePanel({
   onOpenChange: (open: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const composePanelRef = useRef<HTMLElement | null>(null);
+  useGuidedPanelFocus(open, composePanelRef, submitLabel || 'mail-compose');
+
   if (!open) {
     return null;
   }
   const visibleAutoAttachments = form.autoAttachments.filter((attachment) => !form.excludedAutoAttachmentKeys.includes(attachment.key));
 
   return (
-    <section className="mail-compose-panel">
+    <section className="mail-compose-panel" ref={composePanelRef}>
       <div className="dashboard-panel-heading">
         <div>
           <span className="eyebrow">Compose</span>
@@ -15765,6 +15886,9 @@ function EmployeesPage({
   const [actioningId, setActioningId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const employeeFormPanelRef = useRef<HTMLElement | null>(null);
+
+  useGuidedPanelFocus(formOpen, employeeFormPanelRef, `employee-${editingId || 'new'}`);
 
   useEffect(() => {
     if (!data) return;
@@ -15971,7 +16095,7 @@ function EmployeesPage({
       </div>
 
       {formOpen ? (
-        <section className="dashboard-panel employee-form-panel">
+        <section className="dashboard-panel employee-form-panel" ref={employeeFormPanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <span className="eyebrow">{editingEmployee ? 'Edit account' : 'Create account'}</span>
@@ -16502,6 +16626,9 @@ function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const taskEditPanelRef = useRef<HTMLFormElement | null>(null);
+
+  useGuidedPanelFocus(editOpen, taskEditPanelRef, `task-edit-${taskId}`);
 
   const applyDetailData = (result: TaskDetailData) => {
     setData(result);
@@ -16757,7 +16884,7 @@ function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId
               </div>
 
               {editOpen ? (
-                <form className="task-composer task-detail-edit-form" onSubmit={handleEditSubmit}>
+                <form className="task-composer task-detail-edit-form" onSubmit={handleEditSubmit} ref={taskEditPanelRef}>
                   <label>
                     <span>제목</span>
                     <input value={form.title} onChange={(event) => handleEditFieldChange('title', event.target.value)} />
@@ -17418,6 +17545,9 @@ function DocumentsPage({
   const [formError, setFormError] = useState('');
   const [formMessage, setFormMessage] = useState('');
   const [copiedVariableToken, setCopiedVariableToken] = useState('');
+  const documentFormPanelRef = useRef<HTMLFormElement | null>(null);
+
+  useGuidedPanelFocus(formOpen, documentFormPanelRef, `document-${editingTemplate?.id || 'new'}`);
 
   const canCreate = Boolean(data?.create.canCreate);
   const documentTypes = data?.documentTypes ?? [];
@@ -17693,7 +17823,7 @@ function DocumentsPage({
           </div>
 
           {formOpen ? (
-            <form className="document-template-form" onSubmit={handleSubmit}>
+            <form className="document-template-form" onSubmit={handleSubmit} ref={documentFormPanelRef}>
               <div className="section-heading-row compact">
                 <div>
                   <p className="eyebrow">{editingTemplate ? 'Edit' : 'Create'}</p>
@@ -17888,6 +18018,7 @@ function ProductManagementPage({
   const [replacingReferenceKey, setReplacingReferenceKey] = useState('');
   const [handledProductAction, setHandledProductAction] = useState('');
   const productImportInputRef = useRef<HTMLInputElement | null>(null);
+  const productFormPanelRef = useRef<HTMLFormElement | null>(null);
 
   const products = data?.products ?? [];
   const pagination = data?.pagination;
@@ -17900,6 +18031,8 @@ function ProductManagementPage({
   const replaceableDeleteRows = useMemo(() => (
     (deleteResult?.results ?? []).filter((row) => row.status === 'blocked' && row.canReplace)
   ), [deleteResult]);
+
+  useGuidedPanelFocus(formOpen, productFormPanelRef, `product-${editingProduct?.id || 'new'}`);
 
   useEffect(() => {
     if (!data || canManage || !formOpen) {
@@ -18300,7 +18433,7 @@ function ProductManagementPage({
       </div>
 
       {formOpen ? (
-        <form className="dashboard-panel notes-create-form product-editor-panel" onSubmit={handleSubmit}>
+        <form className="dashboard-panel notes-create-form product-editor-panel" onSubmit={handleSubmit} ref={productFormPanelRef}>
           <div className="dashboard-panel-heading">
             <div>
               <p className="eyebrow">{editingProduct ? 'Edit' : 'Create'}</p>

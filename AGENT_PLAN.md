@@ -1,5 +1,31 @@
 # AGENT_PLAN.md
 
+## 2026-05-28 React form focus guidance plan
+
+**Background**:
+
+- User reported that buttons like `담당자 추가` open a form/section elsewhere on the page without moving focus, making it hard to know where to continue.
+- Several React CRM pages use inline create/edit panels below the action button or in a side panel.
+
+**DB change required**: No.
+
+- This is a frontend interaction improvement only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a shared React helper that scrolls an opened panel into view, focuses the first usable field, and briefly highlights the section.
+- Apply it to inline create/edit panels for account/contact management, customer assets/service/calibration, notes, schedules, calendar editors, business cards, employees, document templates, and products.
+- Keep existing forms, permissions, submit behavior, and routes unchanged.
+
+**Validation plan**:
+
+- `cd frontend; npx tsc --noEmit --pretty false`
+- `cd frontend; npm run build`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## 2026-05-28 Notes date-only next action display plan
 
 **Background**:

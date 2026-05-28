@@ -586,6 +586,35 @@ h2 {
   color: #166534;
 }
 
+.guided-panel-focus {
+  scroll-margin-top: 24px;
+  border-radius: 12px;
+  outline: 2px solid transparent;
+  animation: guided-panel-focus 1.65s ease-out;
+}
+
+@keyframes guided-panel-focus {
+  0%,
+  58% {
+    outline-color: rgba(37, 99, 235, 0.52);
+    box-shadow:
+      0 0 0 4px rgba(37, 99, 235, 0.13),
+      var(--shadow);
+  }
+
+  100% {
+    outline-color: transparent;
+    box-shadow: var(--shadow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guided-panel-focus {
+    animation: none;
+    outline-color: rgba(37, 99, 235, 0.52);
+  }
+}
+
 .dashboard-summary-band {
   display: flex;
   align-items: center;
