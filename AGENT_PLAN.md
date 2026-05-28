@@ -1,5 +1,32 @@
 # AGENT_PLAN.md
 
+## 2026-05-28 Railway DB high-volume mitigation plan
+
+**Background**:
+
+- User reported Railway database warning/error as `High Volume`.
+- Production smoke endpoints are currently healthy, so the immediate risk looks like high database write/query volume rather than a total outage.
+- Production currently has `SESSION_SAVE_EVERY_REQUEST = True`, which writes the Django session row on every authenticated API request. React pages make multiple API requests per navigation, so read-only usage can still create many DB writes.
+
+**DB change required**: No.
+
+- This is a Django runtime settings change only.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Change production default `SESSION_SAVE_EVERY_REQUEST` to `False` while keeping `SESSION_COOKIE_AGE` at 30 days.
+- Keep an environment variable escape hatch so it can be re-enabled explicitly if needed.
+- Add a focused settings regression test and document the DB-volume reason in the operations runbook.
+
+**Validation plan**:
+
+- `python -m py_compile sales_project/settings_production.py reporting/tests.py`
+- Focused Django settings test
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- production smoke after deploy
+
 ## 2026-05-28 React form focus guidance plan
 
 **Background**:

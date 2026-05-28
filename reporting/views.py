@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch, Case, IntegerField, OuterRef, Subquery, Value, When
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
+from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, FunnelTarget, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -4356,6 +4356,74 @@ def _company_management_scope(request, user_profile):
     return scope_users, companies_qs.distinct(), scope_label
 
 
+def _count_by_field(queryset, field_name):
+    return {
+        row[field_name]: row['count'] or 0
+        for row in queryset.values(field_name).annotate(count=Count('id'))
+        if row[field_name] is not None
+    }
+
+
+def _company_management_search_company_ids(base_company_ids, query):
+    if not query:
+        return list(base_company_ids)
+    if not base_company_ids:
+        return []
+
+    company_ids = set(
+        Company.objects.filter(id__in=base_company_ids, name__icontains=query).values_list('id', flat=True)
+    )
+    company_ids.update(
+        Department.objects.filter(company_id__in=base_company_ids, name__icontains=query).values_list('company_id', flat=True)
+    )
+    company_ids.update(
+        FollowUp.objects.filter(
+            Q(customer_name__icontains=query) | Q(manager__icontains=query),
+            company_id__in=base_company_ids,
+        ).values_list('company_id', flat=True)
+    )
+    company_ids.update(
+        FollowUp.objects.filter(
+            Q(customer_name__icontains=query) | Q(manager__icontains=query),
+            department__company_id__in=base_company_ids,
+        ).values_list('department__company_id', flat=True)
+    )
+    return [company_id for company_id in company_ids if company_id]
+
+
+def _attach_company_management_counts(companies):
+    company_ids = [company.id for company in companies]
+    if not company_ids:
+        return
+
+    count_maps = {
+        'department_count': _count_by_field(Department.objects.filter(company_id__in=company_ids), 'company_id'),
+        'followup_count': _count_by_field(FollowUp.objects.filter(company_id__in=company_ids), 'company_id'),
+        'asset_count': _count_by_field(CustomerAsset.objects.filter(company_id__in=company_ids), 'company_id'),
+        'prepayment_count': _count_by_field(Prepayment.objects.filter(company_id__in=company_ids), 'company_id'),
+    }
+    for company in companies:
+        for attr_name, count_map in count_maps.items():
+            setattr(company, attr_name, count_map.get(company.id, 0))
+
+
+def _attach_department_management_counts(departments):
+    department_ids = [department.id for department in departments]
+    if not department_ids:
+        return
+
+    count_maps = {
+        'followup_count': _count_by_field(FollowUp.objects.filter(department_id__in=department_ids), 'department_id'),
+        'asset_count': _count_by_field(CustomerAsset.objects.filter(department_id__in=department_ids), 'department_id'),
+        'prepayment_count': _count_by_field(Prepayment.objects.filter(department_id__in=department_ids), 'department_id'),
+        'memo_count': _count_by_field(DepartmentMemo.objects.filter(department_id__in=department_ids), 'department_id'),
+        'funnel_target_count': _count_by_field(FunnelTarget.objects.filter(department_id__in=department_ids), 'department_id'),
+    }
+    for department in departments:
+        for attr_name, count_map in count_maps.items():
+            setattr(department, attr_name, count_map.get(department.id, 0))
+
+
 def _company_salesmen_payload(company, scope_users):
     salesmen = list(
         FollowUp.objects.filter(
@@ -4461,40 +4529,21 @@ def companies_management_api(request):
     selected_company_id = request.GET.get('company_id') or ''
     selected_department_id = request.GET.get('department_id') or ''
 
-    total_companies_qs = base_companies_qs.distinct()
-    total_company_count = total_companies_qs.count()
-    total_department_count = Department.objects.filter(company__in=total_companies_qs).count()
-
-    companies_qs = total_companies_qs
-    if q:
-        companies_qs = companies_qs.filter(
-            Q(name__icontains=q) |
-            Q(departments__name__icontains=q) |
-            Q(followup_companies__customer_name__icontains=q) |
-            Q(followup_companies__manager__icontains=q) |
-            Q(departments__followup_departments__customer_name__icontains=q) |
-            Q(departments__followup_departments__manager__icontains=q)
-        ).distinct()
+    base_company_ids = list(base_companies_qs.values_list('id', flat=True).distinct())
+    total_company_count = len(base_company_ids)
+    total_department_count = Department.objects.filter(company_id__in=base_company_ids).count()
+    filtered_company_ids = _company_management_search_company_ids(base_company_ids, q)
 
     companies = list(
-        companies_qs.select_related('created_by').annotate(
-            department_count=Count('departments', distinct=True),
-            followup_count=Count('followup_companies', distinct=True),
-            asset_count=Count('customer_assets', distinct=True),
-            prepayment_count=Count('prepayment', distinct=True),
-        ).order_by('name')
+        Company.objects.filter(id__in=filtered_company_ids).select_related('created_by').order_by('name')
     )
+    _attach_company_management_counts(companies)
     departments = list(
-        Department.objects.filter(company__in=companies).select_related(
+        Department.objects.filter(company_id__in=filtered_company_ids).select_related(
             'company', 'created_by',
-        ).annotate(
-            followup_count=Count('followup_departments', distinct=True),
-            asset_count=Count('customer_assets', distinct=True),
-            prepayment_count=Count('prepayments', distinct=True),
-            memo_count=Count('memos', distinct=True),
-            funnel_target_count=Count('funnel_targets', distinct=True),
         ).order_by('company__name', 'name')
     )
+    _attach_department_management_counts(departments)
     departments_by_company = {}
     for department in departments:
         departments_by_company.setdefault(department.company_id, []).append(

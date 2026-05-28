@@ -5050,6 +5050,35 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(free_company_payload['canDelete'])
         self.assertEqual(free_company_payload['deleteMessage'], '')
 
+    def test_companies_management_api_search_avoids_join_explosion_query(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from reporting.models import Company
+
+        self._create_customer(self.user, '서울검색내고객')
+        Company.objects.create(name='서울검색빈업체', created_by=self.user)
+        self.client.force_login(self.user)
+
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(reverse('reporting:companies_management_api'), {'q': '서울'})
+
+        self.assertEqual(response.status_code, 200)
+        heavy_company_queries = [
+            query['sql']
+            for query in captured.captured_queries
+            if (
+                'FROM "reporting_company"' in query['sql']
+                and '"reporting_customerasset"' in query['sql']
+                and '"reporting_prepayment"' in query['sql']
+                and 'GROUP BY "reporting_company"' in query['sql']
+            )
+        ]
+        self.assertEqual(
+            heavy_company_queries,
+            [],
+            '업체 검색은 장비/선결제/담당자 count를 한 SQL에 조인해 임시 파일을 키우면 안 됩니다.',
+        )
+
     def test_companies_management_api_manager_readonly_same_company(self):
         own = self._create_customer(self.user, '매니저업체조회내고객')
         coworker = self._create_customer(self.coworker, '매니저업체조회동료고객')
@@ -17937,6 +17966,14 @@ class FileUploadValidationTests(TestCase):
 
 class ProductionSettingsTests(TestCase):
     """Phase 9: settings_production.py 보안 설정 유효성 검증"""
+
+    def test_session_save_every_request_disabled_by_default(self):
+        """React API 조회 요청마다 세션 row를 저장하지 않도록 기본값을 비활성화"""
+        from django.conf import settings as django_settings
+        self.assertFalse(
+            getattr(django_settings, 'SESSION_SAVE_EVERY_REQUEST', False),
+            "SESSION_SAVE_EVERY_REQUEST 기본값은 DB write volume을 줄이기 위해 False여야 합니다.",
+        )
 
     def test_allowed_hosts_no_invalid_wildcards(self):
         """ALLOWED_HOSTS에 Django 미지원 와일드카드(*.xxx)가 없음을 확인"""

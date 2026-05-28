@@ -114,6 +114,15 @@ Railway 기본 로그는 stdout/stderr 기준입니다. Django 운영 로그 레
 
 선택적으로 `ERROR_ALERT_WEBHOOK_URL`을 설정하면 `reporting`, `django`, `django.request` ERROR 로그가 JSON webhook으로 전송됩니다. Payload는 service, environment, logger, path, status code 같은 메타 정보만 포함하고 request header, cookie, POST body, secret 값은 보내지 않습니다.
 
+## Database Volume
+
+React 화면은 한 페이지에서도 여러 API를 호출할 수 있으므로, 조회 요청이 DB write를 만들지 않게 유지해야 합니다.
+
+- production 기본값은 `SESSION_SAVE_EVERY_REQUEST=False`입니다.
+- 이 값이 `True`이면 인증된 GET/API 요청마다 `django_session` row가 갱신되어 Railway PostgreSQL write volume이 급증할 수 있습니다.
+- 로그인 유지 시간은 `SESSION_COOKIE_AGE`로 관리하며, 현재 기본값은 30일입니다.
+- Railway DB에서 `High Volume` 경고가 뜨면 먼저 `SESSION_SAVE_EVERY_REQUEST`, 최근 배포 직후 트래픽, 메일 동기화, 대용량 리포트/다운로드 요청을 확인합니다.
+
 ## Env And Security Audit
 
 정기 점검:

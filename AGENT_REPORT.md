@@ -1,5 +1,84 @@
 # AGENT_REPORT.md
 
+## 2026-05-28 — Railway DB high-volume 긴급 완화
+
+### 요약
+
+- Railway Postgres 로그에서 `No space left on device`가 발생한 실제 SQL을 확인했습니다.
+- 원인은 업체/부서 관리 API의 검색 쿼리가 업체, 부서, 담당자, 장비, 선결제를 한 SQL에서 `LEFT JOIN + DISTINCT + COUNT`로 묶어 임시 파일을 크게 만든 것이었습니다.
+- 업체 검색은 먼저 가벼운 company id 검색으로 나누고, 카운트는 테이블별 집계로 분리했습니다.
+- 추가로 `SESSION_SAVE_EVERY_REQUEST` 기본값을 `False`로 바꿔 React API 조회 요청마다 `django_session` write가 발생하지 않도록 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `docs/OPERATIONS_RUNBOOK.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `sales_project/settings_production.py`
+
+### CRM 개선
+
+- `/companies/` 또는 고객 생성/업체 관리에서 `서울`, `서` 같은 검색어 입력 시 DB 임시 파일을 과도하게 쓰던 쿼리를 제거했습니다.
+- DB volume 경고 상황에서도 업체/부서 관리 검색이 더 안정적으로 동작하도록 했습니다.
+- 로그인 유지 정책은 30일을 유지하면서, 조회 요청마다 세션 만료시간을 DB에 다시 저장하지 않도록 했습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 업체/부서 검색 범위, 권한, 삭제 차단 메시지, count 표시 필드는 유지했습니다.
+- `/reporting/*` 라우트와 React API 응답 구조는 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+railway whoami
+→ Logged in as ddd418@naver.com
+
+railway status
+→ web, sales-note-frontend, Postgres all Online
+
+railway logs --service Postgres --environment production --lines 120 --json
+→ Found `No space left on device` from heavy reporting_company search/count query
+
+python -m py_compile sales_project\settings_production.py reporting\views.py reporting\tests.py
+→ OK
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py test reporting.tests.CustomersSummaryApiTests.test_companies_management_api_salesman_owner_permissions_and_search reporting.tests.CustomersSummaryApiTests.test_companies_management_api_search_avoids_join_explosion_query reporting.tests.ProductionSettingsTests.test_session_save_every_request_disabled_by_default
+→ OK, 3 tests
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py check
+→ System check identified no issues
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- Railway Postgres의 실제 disk/volume metric은 대시보드 수치를 사용자가 함께 확인해야 합니다.
+- 이번 조치는 로그에 찍힌 직접 원인을 제거하는 긴급 완화입니다. 고객/리포트/자산의 큰 API 쿼리도 별도 성능 점검이 필요합니다.
+
+### Production 배포 상태
+
+- Pending. Commit/push 후 Railway production 배포와 smoke test를 진행할 예정입니다.
+
+### 권장 다음 작업
+
+- 큰 목록 API(`/customers/`, `/reports/`, `/assets/`)의 검색/정렬 쿼리도 같은 방식으로 조인 폭발 여부를 점검합니다.
+
+### 수동 서버 테스트 절차
+
+1. Railway Postgres 대시보드에서 High Volume 경고가 계속 증가하는지 확인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/companies/`에서 `서울`, `서` 같은 검색어를 입력합니다.
+3. 검색 결과가 정상 표시되고 500 오류가 없는지 확인합니다.
+4. 같은 화면에서 업체/부서 count, 삭제 차단 메시지, 수정 권한 표시가 유지되는지 확인합니다.
+5. Railway Postgres logs에서 같은 `reporting_company ... reporting_customerasset ... reporting_prepayment ... No space left on device` 오류가 재발하는지 확인합니다.
+
 ## 2026-05-28 — React 패널 포커스/스크롤 가이드 개선
 
 ### 요약
