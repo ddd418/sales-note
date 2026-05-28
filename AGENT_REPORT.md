@@ -56,7 +56,8 @@ local Playwright smoke: /accounts/<id>/에서 `담당자 추가` 클릭
 
 ### Production 배포 상태
 
-- Pending. Commit/push 후 Railway production 배포와 smoke test를 진행할 예정입니다.
+- Completed. Railway CLI OAuth token was expired locally, so deployment IDs could not be read from the CLI.
+- Production frontend assets include the new `guided-panel-focus` code, and `scripts\post_deploy_smoke.py` passed against the production backend/frontend URLs.
 
 ### 권장 다음 작업
 
