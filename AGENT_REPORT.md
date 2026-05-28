@@ -54,6 +54,9 @@ cd frontend; npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ OK, Smoke status: ok
 ```
 
 ### 알려진 한계
@@ -62,7 +65,7 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Backend API와 frontend 표시 변경이 모두 있으므로 Railway `web`과 `sales-note-frontend` 배포 후 smoke test를 진행합니다.
+- Completed. Railway `web` deployment `c0eb2d4e-5da5-4d17-ad94-caef4bc2bd2d` and `sales-note-frontend` deployment `dea17fe0-0707-4466-bbc7-a03a05b83f31` both reached `SUCCESS`; production smoke test passed.
 
 ### 권장 다음 작업
 
