@@ -7401,6 +7401,25 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(service_count['label'], '메모')
         self.assertEqual(note['actionLabel'], '메모')
 
+    def test_notes_summary_api_marks_date_only_next_action_as_scheduled_display(self):
+        next_date = timezone.localdate() + timedelta(days=31)
+        target = self._create_note(
+            self.user,
+            '날짜만후속',
+            next_action='',
+            next_action_date=next_date,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        note = next(item for item in payload['notes'] if item['id'] == target.id)
+        self.assertEqual(note['nextAction'], '')
+        self.assertEqual(note['nextActionDisplay'], '후속 예정')
+        self.assertEqual(note['nextActionDate'], next_date.isoformat())
+
     def test_notes_create_api_requires_login_json(self):
         response = self.client.post(
             self.create_url,

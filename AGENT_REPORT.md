@@ -1,5 +1,81 @@
 # AGENT_REPORT.md
 
+## 2026-05-28 — 영업노트 날짜만 있는 다음 액션 표시 수정
+
+### 요약
+
+- `/notes/`에서 다음 예정일은 있는데 액션 텍스트가 비어 있을 때 `다음 액션 없음`으로 표시되던 문제를 수정했습니다.
+- API에 표시 전용 `nextActionDisplay`를 추가하고, 날짜만 있으면 `후속 예정`으로 보이게 했습니다.
+- raw `nextAction` 값은 그대로 유지해 수정 화면에서 가짜 문구가 저장되지 않도록 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+
+### CRM 개선
+
+- 영업노트 목록/상세/고객 상세의 노트 요약에서 날짜만 있는 후속조치가 더 이상 `없음`으로 보이지 않습니다.
+- `후속 예정`과 날짜가 함께 보여 실제 상태와 화면 문구가 맞습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 영업노트 작성/수정 시 저장되는 `next_action`과 `next_action_date` 원본 데이터는 유지했습니다.
+- 기존 검색, 필터, 검토, 상세 링크 동작은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py test reporting.tests.NotesSummaryApiTests.test_notes_summary_api_marks_date_only_next_action_as_scheduled_display reporting.tests.NotesSummaryApiTests.test_notes_summary_api_uses_salesman_own_scope
+→ OK, 2 tests
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py test reporting.tests.NotesSummaryApiTests
+→ OK, 26 tests
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py check
+→ System check identified no issues
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 날짜만 있고 구체 액션 문구가 비어 있는 노트는 `후속 예정`으로 표시됩니다. 구체적인 할 일 문구는 사용자가 노트 수정에서 별도로 입력해야 합니다.
+
+### Production 배포 상태
+
+- Pending. Backend API와 frontend 표시 변경이 모두 있으므로 Railway `web`과 `sales-note-frontend` 배포 후 smoke test를 진행합니다.
+
+### 권장 다음 작업
+
+- 고객 메뉴에 작고 명확한 `고객 추가` 동선을 추가해 업체/부서/담당자 생성 흐름을 숨기지 않게 정리합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/`에 로그인해서 접속합니다.
+2. 다음 예정일은 있으나 다음 액션 문구가 비어 있는 노트를 확인합니다.
+3. 목록의 다음 액션 칸이 `다음 액션 없음`이 아니라 `후속 예정`과 날짜로 보이는지 확인합니다.
+4. 해당 노트 상세에서도 다음 액션이 `후속 예정`으로 보이는지 확인합니다.
+5. 수정 화면을 열어 다음 액션 입력칸에는 `후속 예정`이 자동으로 들어가지 않는지 확인합니다.
+
 ## 2026-05-28 — 빈 부서/연구실 계정 상세 진입 수정
 
 ### 요약

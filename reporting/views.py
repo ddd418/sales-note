@@ -9176,6 +9176,7 @@ def _notes_history_payload(history, today, can_review=False):
 
     next_action = (history.next_action or history.meeting_next_action or '').strip()
     next_action_date = history.next_action_date
+    next_action_display = next_action or ('후속 예정' if next_action_date else '')
     review_required_types = {'customer_meeting', 'delivery_schedule', 'quote', 'service'}
     review_required = history.action_type in review_required_types
     reviewed_at = history.reviewed_at
@@ -9198,6 +9199,7 @@ def _notes_history_payload(history, today, can_review=False):
         'serviceStatusLabel': history.get_service_status_display() if history.service_status else '',
         'summary': (activity_content or delivery_summary_text or '').strip()[:180],
         'nextAction': next_action[:160],
+        'nextActionDisplay': next_action_display[:160],
         'nextActionDate': _date_or_none(next_action_date),
         'overdue': bool(next_action_date and next_action_date < today and not reviewed_at),
         'activityDate': _date_or_none(activity_date),

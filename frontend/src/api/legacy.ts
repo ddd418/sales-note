@@ -1702,6 +1702,7 @@ export type NoteItem = {
   serviceStatusLabel: string;
   summary: string;
   nextAction: string;
+  nextActionDisplay: string;
   nextActionDate: string | null;
   overdue: boolean;
   activityDate: string | null;
@@ -6320,7 +6321,7 @@ function normalizeScheduleLinks<T extends ScheduleItem | DashboardScheduleItem>(
 }
 
 function normalizeNoteLinks<T extends NoteItem>(item: T): T {
-  return normalizeHrefFields(item, [
+  const normalized = normalizeHrefFields(item, [
     'href',
     'djangoHref',
     'customerHref',
@@ -6328,7 +6329,11 @@ function normalizeNoteLinks<T extends NoteItem>(item: T): T {
     'scheduleHref',
     'reviewToggleHref',
     'deleteHref',
-  ]);
+  ]) as T;
+  return {
+    ...normalized,
+    nextActionDisplay: normalized.nextActionDisplay || (normalized.nextActionDate ? '후속 예정' : ''),
+  };
 }
 
 function normalizeCustomerLinks<T extends CustomerItem | DashboardCustomerItem>(item: T): T {

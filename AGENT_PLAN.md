@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-05-28 Notes date-only next action display plan
+
+**Background**:
+
+- User reported `/notes/` showing `다음 액션 없음` together with a future date such as `6월 28일`.
+- A note can have `next_action_date` even when the free-text `next_action` field is empty.
+- The React table currently falls back to `다음 액션 없음` based only on the text field, so a scheduled follow-up date is visually contradicted.
+
+**DB change required**: No.
+
+- Existing `History.next_action` and `History.next_action_date` already represent the data.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Add a display-only `nextActionDisplay` field to note API payloads.
+- Keep raw `nextAction` unchanged so edit forms do not save fake text.
+- Show `후속 예정` when a next-action date exists but text is empty.
+- Use the display field in notes list/detail and compact customer note lists.
+- Add focused tests for date-only next-action payloads.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused Django tests for `NotesSummaryApiTests`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+
 ## 2026-05-27 AI contact evidence strengthening plan
 
 **Background**:

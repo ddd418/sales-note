@@ -2275,6 +2275,10 @@ const formatDateLabel = (value?: string | null) => {
   return `${Number(month)}월 ${Number(day)}일`;
 };
 
+const noteNextActionLabel = (note: Pick<NoteItem, 'nextAction' | 'nextActionDate'> & { nextActionDisplay?: string }) => (
+  note.nextActionDisplay || note.nextAction || (note.nextActionDate ? '후속 예정' : '')
+);
+
 const formatDateTimeLabel = (value?: string | null) => {
   if (!value) return '';
   const date = new Date(value);
@@ -3066,7 +3070,7 @@ function CustomerDetailNoteList({
           <div className="dashboard-row-main">
             <strong>{note.actionLabel}</strong>
             <span>{[note.owner, note.serviceStatusLabel].filter(Boolean).join(' · ')}</span>
-            <small>{note.nextAction || note.summary || '내용 없음'}</small>
+            <small>{noteNextActionLabel(note) || note.summary || '내용 없음'}</small>
             {note.fileCount || note.replyCount ? (
               <small className="customer-note-submeta">
                 {[note.fileCount ? `첨부 ${formatNumber(note.fileCount)}` : '', note.replyCount ? `댓글 ${formatNumber(note.replyCount)}` : ''].filter(Boolean).join(' · ')}
@@ -7702,7 +7706,7 @@ function NotesTable({
               </td>
               <td>
                 <span className={note.overdue ? 'customer-overdue-text' : ''}>
-                  {note.nextAction || '다음 액션 없음'}
+                  {noteNextActionLabel(note) || '다음 액션 없음'}
                 </span>
                 {note.nextActionDate ? <small>{formatDateLabel(note.nextActionDate)}</small> : null}
               </td>
@@ -8297,7 +8301,7 @@ function NoteDetailPage({
               </div>
               <div>
                 <dt>다음 액션</dt>
-                <dd className={note.overdue ? 'customer-overdue-text' : ''}>{note.nextAction || '다음 액션 없음'}</dd>
+                <dd className={note.overdue ? 'customer-overdue-text' : ''}>{noteNextActionLabel(note) || '다음 액션 없음'}</dd>
               </div>
             </dl>
           </div>
