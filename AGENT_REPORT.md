@@ -48,6 +48,16 @@ $env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --environment production --limit 3 --json
+→ Backend deployment cf46c0e2-159d-451d-b2e0-fd1b519a8e69 SUCCESS for commit 5d726c2
+
+railway deployment list --service sales-note-frontend --environment production --limit 3 --json
+→ Frontend deployment ae2f0338-c2ea-48af-b767-607f796f3aba SUCCESS for commit 5d726c2
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ First run immediately after backend SUCCESS had transient backend healthz/readyz/login ReadTimeout while protected APIs already responded
+→ Second run passed: backend healthz, readyz, login page, protected APIs; frontend healthz, React routes, protected APIs, static cache, removed routes
 ```
 
 ### 알려진 한계
@@ -57,7 +67,11 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Runtime 변경이므로 commit/push 후 Railway `web` 배포와 smoke test를 진행합니다.
+- Completed.
+- Commit `5d726c2 fix: allow empty account contact creation` is present on `origin/main`.
+- Railway backend `web` deployment `cf46c0e2-159d-451d-b2e0-fd1b519a8e69` succeeded for commit `5d726c2`.
+- Railway frontend `sales-note-frontend` deployment `ae2f0338-c2ea-48af-b767-607f796f3aba` succeeded for commit `5d726c2`.
+- Production smoke passed on retry after deploy warmup.
 
 ### 권장 다음 작업
 
