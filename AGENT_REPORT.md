@@ -65,7 +65,10 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Commit/push 후 Railway production 배포와 smoke test를 진행할 예정입니다.
+- Completed. Railway `web` deployment `7bb46463-e8e5-4b75-82a3-7ce196699fd4` reached `SUCCESS` for commit `78e8802dd8657df7d5ef99a31552a9b18ed29162`.
+- Production smoke test passed after deploy.
+- Recent Postgres logs after deploy showed no new `No space left on device` entries, and recent web HTTP logs showed no 5xx entries.
+- `SESSION_SAVE_EVERY_REQUEST` is not set in Railway variables, so the new production default `False` is active.
 
 ### 권장 다음 작업
 
