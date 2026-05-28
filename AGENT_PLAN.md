@@ -28,6 +28,35 @@
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 
+## 2026-05-28 Empty department account detail unblock plan
+
+**Background**:
+
+- Production `/accounts/376/` shows "접근 가능한 부서/연구실 계정이 없습니다."
+- The React account detail screen is also the place where a user adds the first 담당자 to a newly created 부서/연구실.
+- Current backend account detail/write APIs require an accessible `FollowUp` representative before returning account data or accepting contact creation, so an empty `Department` account is impossible to open.
+
+**DB change required**: No.
+
+- Existing `Department.created_by`, `Company`, and `FollowUp.department` already model the account and future contacts.
+- No migrations or model fields are planned.
+
+**Implementation scope**:
+
+- Allow account detail API to return an account-only payload for an accessible `Department` even when it has zero `FollowUp` contacts.
+- Keep the payload compatible with the existing React customer detail screen by providing empty metrics, records, attachment lists, and disabled customer-only actions.
+- Preserve authentication and scoping: admin can access all, manager/same-company scopes can read, and only admin or the department owner/existing account owner can manage.
+- Allow account info update and first contact creation when the department is accessible and manageable, without requiring an existing representative contact.
+- Add focused tests for empty account detail, first contact creation, read-only manager behavior, and other-company blocking.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused Django tests for `CustomersSummaryApiTests`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
 ## 2026-05-26 Remove customer quick create panel plan
 
 **Background**:

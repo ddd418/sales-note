@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-05-28 — 빈 부서/연구실 계정 상세 진입 수정
+
+### 요약
+
+- `/accounts/<department_id>/`에서 담당자가 아직 0명인 부서/연구실 계정도 React 상세 화면을 열 수 있게 수정했습니다.
+- 빈 계정에서도 계정 정보 수정과 첫 담당자 추가가 가능하도록 Django API 권한 분기를 보강했습니다.
+- 담당자가 있는 기존 계정 상세, 담당자 수정/이동, manager 읽기 전용 정책은 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 업체/부서 관리에서 새 부서/연구실을 만든 뒤 `계정` 버튼을 눌러도 더 이상 "접근 가능한 부서/연구실 계정이 없습니다"로 막히지 않습니다.
+- 계정 생성자 또는 admin은 빈 계정 상세에서 바로 `담당자 추가`를 사용할 수 있습니다.
+- manager는 같은 빈 계정을 조회만 할 수 있고, 타 회사 사용자는 계속 차단됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 `FollowUp` 담당자가 있는 계정 상세는 기존 대표 담당자 기반 흐름을 그대로 사용합니다.
+- `/reporting/*` backend/API URL과 React `/accounts/*`, `/customers/*` 라우트는 유지했습니다.
+- 인증, same-company scope, manager read-only, other-company 차단 정책을 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py test reporting.tests.CustomersSummaryApiTests.test_empty_department_account_detail_allows_first_contact_creation reporting.tests.CustomersSummaryApiTests.test_empty_department_account_keeps_manager_read_only_and_blocks_other_company reporting.tests.CustomersSummaryApiTests.test_account_update_api_updates_department_info_and_contact_company reporting.tests.CustomersSummaryApiTests.test_account_contact_api_creates_moves_and_inactivates_contact
+→ OK, 4 tests
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py test reporting.tests.CustomersSummaryApiTests
+→ OK, 59 tests
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py check
+→ System check identified no issues
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 빈 계정에서는 첫 담당자를 만들기 전까지 노트/일정/장비 등록 버튼은 비활성 상태입니다. 담당자 생성 후 기존 계정 상세 흐름으로 전환됩니다.
+- 인증된 production UI 수동 확인은 배포 후 사용자가 직접 확인해야 합니다.
+
+### Production 배포 상태
+
+- Pending. Runtime 변경이므로 commit/push 후 Railway `web` 배포와 smoke test를 진행합니다.
+
+### 권장 다음 작업
+
+- 고객 목록 상단에 작고 명확한 `고객 추가` 버튼을 추가해 `업체 선택 → 부서 선택 → 담당자 추가` 동선을 더 직접적으로 만드는 작업이 필요합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/companies/`에서 새 업체/학교와 새 부서/연구실을 만듭니다.
+2. 해당 부서 row의 `계정` 버튼을 눌러 `/accounts/<id>/`로 이동합니다.
+3. 빈 계정 상세가 열리고 `계정 담당자` 섹션에 `담당자 추가` 버튼이 보이는지 확인합니다.
+4. `담당자 추가`로 첫 담당자를 저장합니다.
+5. 저장 후 같은 계정 상세가 담당자 1명으로 갱신되는지 확인합니다.
+6. manager 계정으로 같은 계정을 열어 조회는 가능하지만 수정/담당자 추가는 막히는지 확인합니다.
+
 ## 2026-05-27 — AI 접촉 진행 고객 근거 강화
 
 ### 요약

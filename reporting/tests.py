@@ -6366,6 +6366,98 @@ class CustomersSummaryApiTests(TestCase):
         self.assertFalse(contacts[sibling.id]['isActive'])
         self.assertTrue(contacts[sibling.id]['updateUrl'].endswith(f'/contacts/{sibling.id}/update/'))
 
+    def test_empty_department_account_detail_allows_first_contact_creation(self):
+        from reporting.models import Company, Department, FollowUp
+
+        company = Company.objects.create(name='빈계정 회사', created_by=self.user)
+        department = Department.objects.create(
+            company=company,
+            name='빈계정 연구실',
+            address='빈 계정 주소',
+            notes='담당자 등록 전 메모',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(reverse('reporting:account_detail_summary_api', args=[department.id]))
+
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        self.assertTrue(detail_payload['success'])
+        self.assertEqual(detail_payload['customer']['customer'], '담당자 없음')
+        self.assertEqual(detail_payload['customer']['accountId'], department.id)
+        self.assertEqual(detail_payload['account']['contactCount'], 0)
+        self.assertEqual(detail_payload['account']['address'], '빈 계정 주소')
+        self.assertEqual(detail_payload['account']['notes'], '담당자 등록 전 메모')
+        self.assertTrue(detail_payload['account']['management']['canManage'])
+        self.assertEqual(
+            detail_payload['account']['management']['contactCreateUrl'],
+            reverse('reporting:account_contact_create_api', args=[department.id]),
+        )
+        self.assertTrue(detail_payload['permissions']['canManageAccount'])
+        self.assertFalse(detail_payload['permissions']['canCreateNote'])
+        self.assertFalse(detail_payload['permissions']['canCreateSchedule'])
+
+        update_response = self.client.post(reverse('reporting:account_update_api', args=[department.id]), {
+            'company': str(company.id),
+            'department_name': '빈계정 연구실 수정',
+            'address': '수정된 빈 계정 주소',
+            'notes': '수정된 담당자 등록 전 메모',
+        })
+        self.assertEqual(update_response.status_code, 200)
+        department.refresh_from_db()
+        self.assertEqual(department.name, '빈계정 연구실 수정')
+        self.assertEqual(department.address, '수정된 빈 계정 주소')
+        self.assertEqual(department.notes, '수정된 담당자 등록 전 메모')
+
+        create_response = self.client.post(reverse('reporting:account_contact_create_api', args=[department.id]), {
+            'customer_name': '첫 담당자',
+            'contact_role': FollowUp.CONTACT_ROLE_PRACTITIONER,
+            'department': str(department.id),
+            'priority': 'scheduled',
+            'status': 'active',
+            'pipeline_stage': 'contact',
+            'phone_number': '010-0000-0000',
+            'email': 'first@example.com',
+            'is_active': 'true',
+        })
+
+        self.assertEqual(create_response.status_code, 200)
+        created = FollowUp.objects.get(id=create_response.json()['followup_id'])
+        self.assertEqual(created.user, self.user)
+        self.assertEqual(created.company, company)
+        self.assertEqual(created.department, department)
+        self.assertEqual(created.customer_name, '첫 담당자')
+        self.assertEqual(create_response.json()['accountHref'], f'/accounts/{department.id}/')
+
+    def test_empty_department_account_keeps_manager_read_only_and_blocks_other_company(self):
+        from reporting.models import Company, Department
+
+        company = Company.objects.create(name='빈계정 권한 회사', created_by=self.user)
+        department = Department.objects.create(
+            company=company,
+            name='빈계정 권한 연구실',
+            created_by=self.user,
+        )
+
+        self.client.force_login(self.manager)
+        manager_detail = self.client.get(reverse('reporting:account_detail_summary_api', args=[department.id]))
+        self.assertEqual(manager_detail.status_code, 200)
+        manager_payload = manager_detail.json()
+        self.assertFalse(manager_payload['account']['management']['canManage'])
+        self.assertFalse(manager_payload['permissions']['canManageAccount'])
+        self.assertTrue(manager_payload['permissions']['readOnlyMessage'])
+
+        manager_create = self.client.post(reverse('reporting:account_contact_create_api', args=[department.id]), {
+            'customer_name': '차단 담당자',
+            'department': str(department.id),
+        })
+        self.assertEqual(manager_create.status_code, 403)
+
+        self.client.force_login(self.other_user)
+        other_detail = self.client.get(reverse('reporting:account_detail_summary_api', args=[department.id]))
+        self.assertEqual(other_detail.status_code, 403)
+
     def test_account_update_api_updates_department_info_and_contact_company(self):
         from reporting.models import Company, Department, FollowUp
 

@@ -3866,6 +3866,57 @@ def _customers_followup_payload(followup, today):
     }
 
 
+def _customers_empty_account_customer_payload(department, request_user):
+    owner = department.created_by or getattr(department.company, 'created_by', None) or request_user
+    company_href = reverse('reporting:company_detail', args=[department.company_id]) if department.company_id else ''
+    return {
+        'id': 0,
+        'accountId': department.id,
+        'accountType': 'department',
+        'representativeCustomerId': None,
+        'customer': '담당자 없음',
+        'company': department.company.name if department.company_id else '',
+        'companyId': department.company_id,
+        'department': department.name,
+        'departmentId': department.id,
+        'manager': '',
+        'owner': _user_display_name(owner),
+        'ownerId': owner.id,
+        'priority': '',
+        'priorityLabel': '',
+        'status': '',
+        'statusLabel': '',
+        'pipelineStage': '',
+        'pipelineLabel': '',
+        'grade': '',
+        'score': 0,
+        'phone': '',
+        'email': '',
+        'address': department.address or '',
+        'contactSummary': '',
+        'contactCount': 0,
+        'contactPreview': [],
+        'notes': (department.notes or '').strip()[:140],
+        'notesFull': department.notes or '',
+        'lastActivityAt': None,
+        'lastActivityLabel': '',
+        'lastActivitySummary': '',
+        'nextAction': '',
+        'nextActionDate': None,
+        'overdue': False,
+        'activityCount': 0,
+        'scheduleCount': 0,
+        'upcomingScheduleCount': 0,
+        'overdueActionCount': 0,
+        'upcomingSchedule': None,
+        'href': f'/accounts/{department.id}/',
+        'accountHref': f'/accounts/{department.id}/',
+        'customerHref': '',
+        'companyHref': company_href,
+        'createScheduleHref': '',
+    }
+
+
 def _customers_priority_rank(priority):
     order = {
         'urgent': 0,
@@ -4147,6 +4198,21 @@ def _can_manage_department_account(request_user, department):
     if user_profile.is_manager():
         return False
     return FollowUp.objects.filter(department=department, user=request_user).exists() or department.created_by_id == request_user.id
+
+
+def _can_access_department_account(request_user, department, scope_users=None):
+    user_profile = get_user_profile(request_user)
+    if user_profile.is_admin():
+        return True
+    scoped_users = scope_users if scope_users is not None else get_same_company_users(request_user)
+    if FollowUp.objects.filter(department=department, user__in=scoped_users).exists():
+        return True
+    if department.created_by_id and scoped_users.filter(id=department.created_by_id).exists():
+        return True
+    company_created_by_id = getattr(department.company, 'created_by_id', None)
+    if company_created_by_id and scoped_users.filter(id=company_created_by_id).exists():
+        return True
+    return False
 
 
 def _can_manage_customer_company(request_user, company):
@@ -4662,6 +4728,34 @@ def _customer_account_payload(followup, shared_followups, scope_users, request=N
         'href': f'/accounts/{followup.department_id}/' if followup.department_id else f'/customers/{followup.id}/',
         'cleanupPreviewHref': f'/accounts/{followup.department_id}/cleanup-preview/' if followup.department_id else '',
         'djangoRepresentativeHref': reverse('reporting:followup_detail', args=[followup.id]),
+    }
+
+
+def _empty_department_account_payload(department, request, user_profile, can_manage_account):
+    return {
+        'id': department.id,
+        'type': 'department',
+        'name': department.name,
+        'companyId': department.company_id,
+        'companyName': department.company.name if department.company_id else '',
+        'departmentId': department.id,
+        'departmentName': department.name,
+        'address': department.address or '',
+        'notes': department.notes or '',
+        'representativeCustomerId': None,
+        'representativeName': '',
+        'contactCount': 0,
+        'activeContactCount': 0,
+        'inactiveContactCount': 0,
+        'piContactId': None,
+        'piContactName': '',
+        'ledgerScopeLabel': '부서/연구실 계정 공유 원장',
+        'ledgerScopeDescription': '같은 업체/부서/연구실 담당자의 납품, 견적, 선결제, 장비, 서비스 기록을 함께 집계합니다.',
+        'management': _account_management_config(request, user_profile, department, can_manage_account),
+        'contacts': [],
+        'href': f'/accounts/{department.id}/',
+        'cleanupPreviewHref': f'/accounts/{department.id}/cleanup-preview/',
+        'djangoRepresentativeHref': '',
     }
 
 
@@ -7073,6 +7167,153 @@ def customer_detail_summary_api(request, followup_id):
     })
 
 
+def _empty_department_account_detail_response(request, department, user_profile, scope_users, selected_user):
+    can_manage_account = _can_manage_department_account(request.user, department)
+    read_only_message = '' if can_manage_account else '이 계정은 현재 사용자에게 읽기 전용입니다.'
+    account_href = f'/accounts/{department.id}/'
+    account_prepayments_href = f'/prepayments/account/{department.id}/'
+    return JsonResponse({
+        'success': True,
+        'source': 'django',
+        'generatedAt': timezone.now().isoformat(),
+        'scope': {
+            'label': _user_display_name(selected_user) if selected_user else (
+                _user_display_name(request.user) if not user_profile.can_view_all_users()
+                else f'{user_profile.company.name} 팀' if user_profile.company else '전체'
+            ),
+            'userCount': scope_users.count(),
+            'canViewAll': user_profile.can_view_all_users(),
+            'selectedUserId': selected_user.id if selected_user else None,
+        },
+        'customer': _customers_empty_account_customer_payload(department, request.user),
+        'account': _empty_department_account_payload(department, request, user_profile, can_manage_account),
+        'metrics': {
+            'recentNotes': 0,
+            'upcomingSchedules': 0,
+            'overdueActions': 0,
+            'upcomingActions': 0,
+        },
+        'links': {
+            'customers': '/customers/',
+            'accountDetail': account_href,
+            'accountDeliveryRecordsXlsx': reverse('reporting:account_delivery_records_xlsx_export_api', args=[department.id]),
+            'djangoDetail': '',
+            'djangoEdit': reverse('reporting:department_edit', args=[department.id]),
+            'createSchedule': '',
+            'createNote': '',
+            'deliveryRecordsXlsx': '',
+            'accountCleanupPreview': f'/accounts/{department.id}/cleanup-preview/',
+            'mailCompose': '',
+            'pipeline': '/pipeline/',
+        },
+        'permissions': {
+            'canCreateNote': False,
+            'canCreateSchedule': False,
+            'canManageAccount': can_manage_account,
+            'canEditRepresentative': False,
+            'canDeleteRepresentative': False,
+            'readOnlyMessage': read_only_message,
+        },
+        'prepaymentSummary': {
+            'metrics': {
+                'totalAmount': 0,
+                'totalBalance': 0,
+                'totalUsed': 0,
+                'totalCount': 0,
+                'activeCount': 0,
+                'depletedCount': 0,
+                'cancelledCount': 0,
+            },
+            'links': {
+                'prepayments': '/prepayments/',
+                'createPrepayment': '/prepayments/new/',
+                'accountPrepayments': account_prepayments_href,
+                'customerPrepayments': '',
+                'djangoCustomerPrepayments': '',
+            },
+            'recentPrepayments': [],
+        },
+        'operationalRecords': {
+            'metrics': {
+                'serviceRecords': 0,
+                'quoteRecords': 0,
+                'deliveryRecords': 0,
+                'prepaymentDeliveryRecords': 0,
+                'normalDeliveryRecords': 0,
+                'prepaymentRecords': 0,
+                'deliveryAmount': 0,
+                'prepaymentDeliveryAmount': 0,
+                'normalDeliveryAmount': 0,
+                'prepaymentUsedAmount': 0,
+            },
+            'serviceRecords': [],
+            'quoteRecords': [],
+            'deliveryRecords': [],
+            'prepaymentRecords': [],
+            'prepaymentUsageRecords': [],
+        },
+        'assetSummary': {
+            'canManage': False,
+            'message': '담당자를 먼저 추가하면 장비/서비스 기록을 연결할 수 있습니다.',
+            'metrics': {
+                'assetCount': 0,
+                'activeAssetCount': 0,
+                'openServiceCaseCount': 0,
+                'dueCalibrationCount': 0,
+            },
+            'links': {
+                'createAsset': '',
+                'createServiceCase': '',
+                'createCalibration': '',
+            },
+            'options': {
+                'assetStatuses': [{'value': value, 'label': label} for value, label in CustomerAsset.STATUS_CHOICES],
+                'serviceCaseTypes': [{'value': value, 'label': label} for value, label in ServiceCase.CASE_TYPE_CHOICES],
+                'serviceStatuses': [{'value': value, 'label': label} for value, label in ServiceCase.STATUS_CHOICES],
+                'servicePriorities': [{'value': value, 'label': label} for value, label in ServiceCase.PRIORITY_CHOICES],
+                'calibrationResults': [{'value': value, 'label': label} for value, label in CalibrationRecord.RESULT_CHOICES],
+            },
+            'assets': [],
+        },
+        'attachments': {
+            'metrics': {
+                'totalFiles': 0,
+                'noteFiles': 0,
+                'scheduleFiles': 0,
+            },
+            'recentFiles': [],
+            'links': {
+                'notes': '/notes/',
+                'schedules': '/schedules/',
+            },
+        },
+        'edit': {
+            'canEdit': False,
+            'canDelete': False,
+            'message': '담당자를 먼저 추가하면 담당자 정보를 수정할 수 있습니다.',
+            'submitUrl': '',
+            'deleteUrl': '',
+            'djangoUrl': '',
+            'priorities': [{'value': value, 'label': label} for value, label in FollowUp.PRIORITY_CHOICES],
+            'statuses': [{'value': value, 'label': label} for value, label in FollowUp.STATUS_CHOICES],
+            'stages': [{'value': value, 'label': label} for value, label in FollowUp.PIPELINE_STAGE_CHOICES],
+            'companies': [{'id': department.company_id, 'name': department.company.name}] if department.company_id else [],
+            'departments': [{
+                'id': department.id,
+                'name': department.name,
+                'companyId': department.company_id,
+                'companyName': department.company.name if department.company_id else '',
+                'searchText': '',
+            }],
+        },
+        'recentNotes': [],
+        'overdueActions': [],
+        'upcomingActions': [],
+        'upcomingSchedules': [],
+        'recentSchedules': [],
+    })
+
+
 @ensure_csrf_cookie
 @never_cache
 @require_http_methods(["GET"])
@@ -7083,10 +7324,15 @@ def account_detail_summary_api(request, department_id):
         return auth_response
 
     user_profile = get_user_profile(request.user)
-    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
-    department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    department = get_object_or_404(
+        Department.objects.select_related('company', 'created_by', 'company__created_by'),
+        pk=department_id,
+    )
     representative = account_representative_followup(department, scope_users)
     if representative is None:
+        if _can_access_department_account(request.user, department, scope_users):
+            return _empty_department_account_detail_response(request, department, user_profile, scope_users, selected_user)
         return JsonResponse({
             'success': False,
             'error': '접근 가능한 부서/연구실 계정이 없습니다.',
@@ -7107,8 +7353,9 @@ def account_update_api(request, department_id):
     department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
     representative = account_representative_followup(department, scope_users)
     if representative is None:
-        return JsonResponse({'success': False, 'error': '접근 가능한 부서/연구실 계정이 없습니다.'}, status=403)
-    if not can_access_followup(request.user, representative):
+        if not _can_access_department_account(request.user, department, scope_users):
+            return JsonResponse({'success': False, 'error': '접근 가능한 부서/연구실 계정이 없습니다.'}, status=403)
+    elif not can_access_followup(request.user, representative):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
     if not _can_manage_department_account(request.user, department):
         return JsonResponse({'success': False, 'error': '계정 관리 권한이 없습니다.'}, status=403)
@@ -7161,8 +7408,9 @@ def account_contact_save_api(request, department_id, followup_id=None):
     department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
     representative = account_representative_followup(department, scope_users)
     if representative is None:
-        return JsonResponse({'success': False, 'error': '접근 가능한 부서/연구실 계정이 없습니다.'}, status=403)
-    if not can_access_followup(request.user, representative):
+        if not _can_access_department_account(request.user, department, scope_users):
+            return JsonResponse({'success': False, 'error': '접근 가능한 부서/연구실 계정이 없습니다.'}, status=403)
+    elif not can_access_followup(request.user, representative):
         return JsonResponse({'success': False, 'error': '접근 권한이 없습니다.'}, status=403)
 
     contact = None
