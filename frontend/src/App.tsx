@@ -347,6 +347,7 @@ type NoteCreateFormState = {
   actionType: string;
   activityDate: string;
   content: string;
+  departmentId: string;
   followupId: string;
   nextAction: string;
   nextActionDate: string;
@@ -361,6 +362,7 @@ type NoteEditFormState = NoteCreateFormState & {
 
 type ScheduleCreateFormState = {
   activityType: string;
+  departmentId: string;
   expectedRevenue: string;
   followupId: string;
   location: string;
@@ -637,6 +639,8 @@ type SearchableSelectOption = {
 
 type CustomerSelectSource = {
   id: number;
+  departmentId?: number | null;
+  companyId?: number | null;
   label?: string;
   customer?: string;
   customerName?: string;
@@ -831,6 +835,7 @@ const makeEmptyNoteCreateForm = (): NoteCreateFormState => ({
   actionType: 'customer_meeting',
   activityDate: localDateInputValue(),
   content: '',
+  departmentId: '',
   followupId: '',
   nextAction: '',
   nextActionDate: '',
@@ -841,6 +846,7 @@ const makeNoteEditForm = (note: NoteDetailItem | null): NoteEditFormState => ({
   actionType: note?.actionType || 'customer_meeting',
   activityDate: note?.meetingDate || note?.deliveryDate || note?.activityDate || '',
   content: note?.content || '',
+  departmentId: note?.departmentId ? String(note.departmentId) : '',
   deliveryAmount: note?.deliveryAmount ? String(note.deliveryAmount) : '',
   deliveryItems: note?.deliveryItems || '',
   followupId: note?.followupId ? String(note.followupId) : '',
@@ -878,6 +884,7 @@ const makeScheduleNoteCreateForm = (schedule: ScheduleDetailItem | null): NoteCr
   actionType: scheduleActivityToNoteActionType(schedule?.activityType || ''),
   activityDate: schedule?.date || localDateInputValue(),
   content: '',
+  departmentId: schedule?.departmentId ? String(schedule.departmentId) : '',
   followupId: schedule?.followupId ? String(schedule.followupId) : '',
   nextAction: '',
   nextActionDate: '',
@@ -886,6 +893,7 @@ const makeScheduleNoteCreateForm = (schedule: ScheduleDetailItem | null): NoteCr
 
 const makeEmptyScheduleCreateForm = (visitDate = localDateInputValue()): ScheduleCreateFormState => ({
   activityType: 'customer_meeting',
+  departmentId: '',
   expectedRevenue: '',
   followupId: '',
   location: '',
@@ -897,6 +905,7 @@ const makeEmptyScheduleCreateForm = (visitDate = localDateInputValue()): Schedul
 
 const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEditFormState => ({
   activityType: schedule?.activityType || 'customer_meeting',
+  departmentId: schedule?.departmentId ? String(schedule.departmentId) : '',
   expectedCloseDate: schedule?.expectedCloseDate || '',
   expectedRevenue: schedule?.expectedRevenue ? String(schedule.expectedRevenue) : '',
   followupId: schedule?.followupId ? String(schedule.followupId) : '',
@@ -927,14 +936,18 @@ const makePersonalScheduleEditForm = (schedule: ScheduleItem | null): PersonalSc
 const makeScheduleCalendarCreateForm = (data: ScheduleCalendarData | null, visitDate: string): ScheduleCreateFormState => {
   const form = makeEmptyScheduleCreateForm(visitDate);
   form.activityType = data?.create.activityTypes[0]?.value || form.activityType;
-  form.followupId = data?.create.customers[0]?.id ? String(data.create.customers[0].id) : '';
+  const firstCustomer = data?.create.customers[0];
+  const firstDepartmentId = firstCustomer?.departmentId ?? data?.create.departments[0]?.id;
+  form.departmentId = firstDepartmentId ? String(firstDepartmentId) : '';
+  form.followupId = firstCustomer?.id ? String(firstCustomer.id) : '';
   return form;
 };
 
 const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?: ScheduleCreatePayload; error?: string } => {
   const followupId = Number(form.followupId);
-  if (!followupId) {
-    return { error: '고객을 선택하세요.' };
+  const departmentId = Number(form.departmentId);
+  if (!followupId && !departmentId) {
+    return { error: '고객 또는 부서/연구실을 선택하세요.' };
   }
   if (!form.activityType) {
     return { error: '일정 유형을 선택하세요.' };
@@ -949,8 +962,9 @@ const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?:
   return {
     payload: {
       activityType: form.activityType,
+      departmentId: departmentId || undefined,
       expectedRevenue: form.expectedRevenue.trim() || undefined,
-      followupId,
+      followupId: followupId || undefined,
       location: form.location.trim() || undefined,
       notes: form.notes.trim() || undefined,
       probability: form.probability.trim() || undefined,
@@ -2263,6 +2277,11 @@ function getCreateCustomerParam(): string {
   return new URLSearchParams(window.location.search).get('customer') || '';
 }
 
+function getCreateDepartmentParam(): string {
+  const value = new URLSearchParams(window.location.search).get('department') || '';
+  return /^\d+$/.test(value) ? value : '';
+}
+
 function getCreateScheduleParam(): string {
   const value = new URLSearchParams(window.location.search).get('schedule') || '';
   return /^\d+$/.test(value) ? value : '';
@@ -2412,6 +2431,17 @@ function makeCustomerSelectOption(customer: CustomerSelectSource): SearchableSel
       customer.priorityLabel,
     ].filter(Boolean).join(' '),
   };
+}
+
+function customerDepartmentValue(customer: CustomerSelectSource): string {
+  return customer.departmentId ? String(customer.departmentId) : '';
+}
+
+function customersForDepartment<T extends CustomerSelectSource>(customers: T[], departmentId: string): T[] {
+  if (!departmentId) {
+    return customers;
+  }
+  return customers.filter((customer) => customerDepartmentValue(customer) === departmentId);
 }
 
 function makeCustomerAssetAccountSelectOption(account: CustomerAssetAccountOption): SearchableSelectOption {
@@ -8560,14 +8590,30 @@ function NotesPage({
   const createConfig = data.create;
   const canCreateNotes = createConfig.canCreate;
   const createCustomers = createConfig.customers;
+  const createDepartments = createConfig.departments ?? [];
   const createActionTypes = createConfig.actionTypes;
   const createSchedules = createConfig.schedules ?? [];
+  const filteredCreateCustomers = customersForDepartment(createCustomers, createForm.departmentId);
   const availableCreateSchedules = createSchedules.filter((schedule) => (
-    !createForm.followupId || String(schedule.followupId) === createForm.followupId
+    createForm.followupId
+      ? String(schedule.followupId) === createForm.followupId
+      : !createForm.departmentId || String(schedule.departmentId || '') === createForm.departmentId
   ));
   const selectedCreateSchedule = createSchedules.find((schedule) => String(schedule.id) === createForm.scheduleId) ?? null;
+  const selectedDepartmentHasCustomers = filteredCreateCustomers.length > 0;
+  const handleCreateDepartmentChange = (nextValue: string) => {
+    const nextCustomers = customersForDepartment(createCustomers, nextValue);
+    const nextCustomerId = nextCustomers[0]?.id ? String(nextCustomers[0].id) : '';
+    onCreateFormChange('departmentId', nextValue);
+    onCreateFormChange('followupId', nextCustomerId);
+    onCreateFormChange('scheduleId', '');
+  };
   const handleCreateCustomerChange = (nextValue: string) => {
+    const nextCustomer = createCustomers.find((customer) => String(customer.id) === nextValue);
     const selectedScheduleBelongsToCustomer = selectedCreateSchedule && String(selectedCreateSchedule.followupId) === nextValue;
+    if (nextCustomer?.departmentId) {
+      onCreateFormChange('departmentId', String(nextCustomer.departmentId));
+    }
     onCreateFormChange('followupId', nextValue);
     if (!selectedScheduleBelongsToCustomer) {
       onCreateFormChange('scheduleId', '');
@@ -8580,7 +8626,10 @@ function NotesPage({
       return;
     }
     if (String(nextSchedule.followupId) !== createForm.followupId) {
-      onCreateFormChange('followupId', String(nextSchedule.followupId));
+      onCreateFormChange('followupId', nextSchedule.followupId ? String(nextSchedule.followupId) : '');
+    }
+    if (nextSchedule.departmentId && String(nextSchedule.departmentId) !== createForm.departmentId) {
+      onCreateFormChange('departmentId', String(nextSchedule.departmentId));
     }
     if (nextSchedule.date) {
       onCreateFormChange('activityDate', nextSchedule.date);
@@ -8645,19 +8694,32 @@ function NotesPage({
           {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
           {!canCreateNotes ? (
             <DashboardEmpty label={createConfig.message || '작성 권한이 없습니다'} />
-          ) : createCustomers.length === 0 ? (
-            <DashboardEmpty label="작성 가능한 담당 고객이 없습니다" />
+          ) : createDepartments.length === 0 && createCustomers.length === 0 ? (
+            <DashboardEmpty label="작성 가능한 부서/연구실이 없습니다" />
           ) : createActionTypes.length === 0 ? (
             <DashboardEmpty label="작성 가능한 활동 유형이 없습니다" />
           ) : (
             <form className="notes-create-form" onSubmit={onCreateSubmit}>
               <div className="notes-create-grid">
                 <div className="form-field">
+                  <span>부서/연구실</span>
+                  <SearchableSelect
+                    ariaLabel="부서/연구실 선택"
+                    onChange={handleCreateDepartmentChange}
+                    options={createDepartments.map(makeDepartmentSelectOption)}
+                    placeholder="회사, 부서/연구실 검색"
+                    value={createForm.departmentId}
+                  />
+                </div>
+                <div className="form-field">
                   <span>고객</span>
                   <SearchableSelect
+                    allowEmpty={!selectedDepartmentHasCustomers}
                     ariaLabel="고객 선택"
+                    disabled={!selectedDepartmentHasCustomers}
+                    emptyLabel="부서에만 연결"
                     onChange={handleCreateCustomerChange}
-                    options={createCustomers.map(makeCustomerSelectOption)}
+                    options={filteredCreateCustomers.map(makeCustomerSelectOption)}
                     placeholder="고객, 회사, 부서 검색"
                     value={createForm.followupId}
                   />
@@ -9367,6 +9429,23 @@ function ScheduleCalendarPage({
     setCalendarCreateMessage('');
   };
 
+  const calendarCreateCustomers = data?.create.customers ?? [];
+  const calendarCreateDepartments = data?.create.departments ?? [];
+  const filteredCalendarCreateCustomers = customersForDepartment(calendarCreateCustomers, calendarCreateForm.departmentId);
+  const calendarDepartmentHasCustomers = filteredCalendarCreateCustomers.length > 0;
+  const handleCalendarDepartmentChange = (value: string) => {
+    const nextCustomers = customersForDepartment(calendarCreateCustomers, value);
+    handleCalendarCreateFieldChange('departmentId', value);
+    handleCalendarCreateFieldChange('followupId', nextCustomers[0]?.id ? String(nextCustomers[0].id) : '');
+  };
+  const handleCalendarCustomerChange = (value: string) => {
+    const nextCustomer = calendarCreateCustomers.find((customer) => String(customer.id) === value);
+    if (nextCustomer?.departmentId) {
+      handleCalendarCreateFieldChange('departmentId', String(nextCustomer.departmentId));
+    }
+    handleCalendarCreateFieldChange('followupId', value);
+  };
+
   const handlePersonalCreateFieldChange = (field: keyof PersonalScheduleFormState, value: string) => {
     setPersonalCreateForm((previous) => ({
       ...previous,
@@ -9847,19 +9926,32 @@ function ScheduleCalendarPage({
               ) : null}
               {!data.create.canCreate ? (
                 <DashboardEmpty label={data.create.message || '일정 등록 권한이 없습니다'} />
-              ) : data.create.customers.length === 0 ? (
-                <DashboardEmpty label="등록 가능한 담당 고객이 없습니다" />
+              ) : (data.create.departments ?? []).length === 0 && data.create.customers.length === 0 ? (
+                <DashboardEmpty label="등록 가능한 부서/연구실이 없습니다" />
               ) : data.create.activityTypes.length === 0 ? (
                 <DashboardEmpty label="등록 가능한 일정 유형이 없습니다" />
               ) : calendarCreateOpen ? (
                 <form className="notes-create-form schedule-calendar-form" onSubmit={handleCalendarCreateSubmit}>
                   <div className="notes-create-grid schedules-create-grid">
                     <div className="form-field">
+                      <span>부서/연구실</span>
+                      <SearchableSelect
+                        ariaLabel="부서/연구실 선택"
+                        onChange={handleCalendarDepartmentChange}
+                        options={calendarCreateDepartments.map(makeDepartmentSelectOption)}
+                        placeholder="회사, 부서/연구실 검색"
+                        value={calendarCreateForm.departmentId}
+                      />
+                    </div>
+                    <div className="form-field">
                       <span>고객</span>
                       <SearchableSelect
+                        allowEmpty={!calendarDepartmentHasCustomers}
                         ariaLabel="고객 선택"
-                        onChange={(nextValue) => handleCalendarCreateFieldChange('followupId', nextValue)}
-                        options={data.create.customers.map(makeCustomerSelectOption)}
+                        disabled={!calendarDepartmentHasCustomers}
+                        emptyLabel="부서에만 연결"
+                        onChange={handleCalendarCustomerChange}
+                        options={filteredCalendarCreateCustomers.map(makeCustomerSelectOption)}
                         placeholder="고객, 회사, 부서 검색"
                         value={calendarCreateForm.followupId}
                       />
@@ -12950,7 +13042,22 @@ function SchedulesPage({
   const createConfig = data.create;
   const canCreateSchedules = createConfig.canCreate;
   const createCustomers = createConfig.customers;
+  const createDepartments = createConfig.departments ?? [];
   const createActivityTypes = createConfig.activityTypes;
+  const filteredCreateCustomers = customersForDepartment(createCustomers, createForm.departmentId);
+  const selectedDepartmentHasCustomers = filteredCreateCustomers.length > 0;
+  const handleCreateDepartmentChange = (nextValue: string) => {
+    const nextCustomers = customersForDepartment(createCustomers, nextValue);
+    onCreateFormChange('departmentId', nextValue);
+    onCreateFormChange('followupId', nextCustomers[0]?.id ? String(nextCustomers[0].id) : '');
+  };
+  const handleCreateCustomerChange = (nextValue: string) => {
+    const nextCustomer = createCustomers.find((customer) => String(customer.id) === nextValue);
+    if (nextCustomer?.departmentId) {
+      onCreateFormChange('departmentId', String(nextCustomer.departmentId));
+    }
+    onCreateFormChange('followupId', nextValue);
+  };
 
   return (
     <section className="schedules-page">
@@ -13004,19 +13111,32 @@ function SchedulesPage({
           {createError ? <div className="notes-action-feedback error">{createError}</div> : null}
           {!canCreateSchedules ? (
             <DashboardEmpty label={createConfig.message || '일정 등록 권한이 없습니다'} />
-          ) : createCustomers.length === 0 ? (
-            <DashboardEmpty label="등록 가능한 담당 고객이 없습니다" />
+          ) : createDepartments.length === 0 && createCustomers.length === 0 ? (
+            <DashboardEmpty label="등록 가능한 부서/연구실이 없습니다" />
           ) : createActivityTypes.length === 0 ? (
             <DashboardEmpty label="등록 가능한 일정 유형이 없습니다" />
           ) : (
             <form className="notes-create-form" onSubmit={onCreateSubmit}>
               <div className="notes-create-grid schedules-create-grid">
                 <div className="form-field">
+                  <span>부서/연구실</span>
+                  <SearchableSelect
+                    ariaLabel="부서/연구실 선택"
+                    onChange={handleCreateDepartmentChange}
+                    options={createDepartments.map(makeDepartmentSelectOption)}
+                    placeholder="회사, 부서/연구실 검색"
+                    value={createForm.departmentId}
+                  />
+                </div>
+                <div className="form-field">
                   <span>고객</span>
                   <SearchableSelect
+                    allowEmpty={!selectedDepartmentHasCustomers}
                     ariaLabel="고객 선택"
-                    onChange={(nextValue) => onCreateFormChange('followupId', nextValue)}
-                    options={createCustomers.map(makeCustomerSelectOption)}
+                    disabled={!selectedDepartmentHasCustomers}
+                    emptyLabel="부서에만 연결"
+                    onChange={handleCreateCustomerChange}
+                    options={filteredCreateCustomers.map(makeCustomerSelectOption)}
                     placeholder="고객, 회사, 부서 검색"
                     value={createForm.followupId}
                   />
@@ -21758,19 +21878,33 @@ export function App() {
       return;
     }
     const requestedCustomerId = getCreateCustomerParam();
+    const requestedDepartmentId = getCreateDepartmentParam();
     const requestedCustomer = notesData.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
-    const fallbackCustomerId = notesData.create.customers[0]?.id;
     const firstActionType = notesData.create.actionTypes[0]?.value || 'customer_meeting';
     const requestedScheduleId = getCreateScheduleParam();
     const requestedSchedule = notesData.create.schedules.find((schedule) => String(schedule.id) === requestedScheduleId);
     setNoteCreateForm((previous) => {
+      const nextDepartmentId = requestedCustomer?.departmentId
+        ? String(requestedCustomer.departmentId)
+        : requestedSchedule?.departmentId
+          ? String(requestedSchedule.departmentId)
+          : requestedDepartmentId || previous.departmentId || (notesData.create.customers[0]?.departmentId ? String(notesData.create.customers[0].departmentId) : notesData.create.departments[0]?.id ? String(notesData.create.departments[0].id) : '');
+      const departmentCustomers = customersForDepartment(notesData.create.customers, nextDepartmentId);
+      const fallbackCustomerId = departmentCustomers[0]?.id ?? notesData.create.customers[0]?.id;
+      const previousFollowupValid = departmentCustomers.some((customer) => String(customer.id) === previous.followupId);
       const nextFollowupId = requestedCustomer
         ? String(requestedCustomer.id)
         : requestedSchedule
-          ? String(requestedSchedule.followupId)
-          : previous.followupId || (fallbackCustomerId ? String(fallbackCustomerId) : '');
+          ? (requestedSchedule.followupId ? String(requestedSchedule.followupId) : '')
+          : previousFollowupValid
+            ? previous.followupId
+            : fallbackCustomerId ? String(fallbackCustomerId) : '';
       const existingSchedule = notesData.create.schedules.find((schedule) => String(schedule.id) === previous.scheduleId);
-      const scheduleStillValid = existingSchedule && String(existingSchedule.followupId) === nextFollowupId;
+      const scheduleStillValid = existingSchedule && (
+        nextFollowupId
+          ? String(existingSchedule.followupId) === nextFollowupId
+          : String(existingSchedule.departmentId || '') === nextDepartmentId
+      );
       const nextScheduleId = requestedSchedule
         ? String(requestedSchedule.id)
         : scheduleStillValid
@@ -21785,6 +21919,7 @@ export function App() {
         ...previous,
         actionType: nextActionType,
         activityDate: requestedSchedule?.date || previous.activityDate,
+        departmentId: nextDepartmentId,
         followupId: nextFollowupId,
         scheduleId: nextScheduleId,
       };
@@ -21820,13 +21955,19 @@ export function App() {
       return;
     }
     const requestedCustomerId = getCreateCustomerParam();
+    const requestedDepartmentId = getCreateDepartmentParam();
     const requestedCustomer = schedulesData.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
-    const firstCustomerId = requestedCustomer?.id ?? schedulesData.create.customers[0]?.id;
+    const firstDepartmentId = requestedCustomer?.departmentId ?? (requestedDepartmentId ? Number(requestedDepartmentId) : null) ?? schedulesData.create.customers[0]?.departmentId ?? schedulesData.create.departments[0]?.id;
+    const departmentCustomers = customersForDepartment(schedulesData.create.customers, firstDepartmentId ? String(firstDepartmentId) : '');
+    const firstCustomerId = requestedCustomer?.id ?? departmentCustomers[0]?.id;
     const firstActivityType = schedulesData.create.activityTypes[0]?.value || 'customer_meeting';
     setScheduleCreateForm((previous) => ({
       ...previous,
       activityType: previous.activityType || firstActivityType,
-      followupId: previous.followupId || (firstCustomerId ? String(firstCustomerId) : ''),
+      departmentId: previous.departmentId || (firstDepartmentId ? String(firstDepartmentId) : ''),
+      followupId: previous.followupId && departmentCustomers.some((customer) => String(customer.id) === previous.followupId)
+        ? previous.followupId
+        : firstCustomerId ? String(firstCustomerId) : '',
       visitDate: previous.visitDate || getCreateDateParam(),
     }));
   }, [currentView, scheduleCalendarRoute, scheduleDetailId, schedulesData]);
@@ -22737,15 +22878,24 @@ export function App() {
     const nextForm = makeEmptyNoteCreateForm();
     nextForm.actionType = data?.create.actionTypes[0]?.value || nextForm.actionType;
     const requestedCustomerId = getCreateCustomerParam();
+    const requestedDepartmentId = getCreateDepartmentParam();
     const requestedScheduleId = getCreateScheduleParam();
     const requestedCustomer = data?.create.customers.find((customer) => String(customer.id) === requestedCustomerId);
     const requestedSchedule = data?.create.schedules.find((schedule) => String(schedule.id) === requestedScheduleId);
+    const requestedDepartment = data?.create.departments.find((department) => String(department.id) === requestedDepartmentId);
+    const fallbackDepartmentId = requestedCustomer?.departmentId
+      ?? requestedSchedule?.departmentId
+      ?? requestedDepartment?.id
+      ?? data?.create.customers[0]?.departmentId
+      ?? data?.create.departments[0]?.id;
+    nextForm.departmentId = fallbackDepartmentId ? String(fallbackDepartmentId) : '';
+    const departmentCustomers = data ? customersForDepartment(data.create.customers, nextForm.departmentId) : [];
     nextForm.followupId = requestedCustomer?.id
       ? String(requestedCustomer.id)
       : requestedSchedule?.followupId
         ? String(requestedSchedule.followupId)
-      : data?.create.customers[0]?.id
-        ? String(data.create.customers[0].id)
+      : departmentCustomers[0]?.id
+        ? String(departmentCustomers[0].id)
         : '';
     nextForm.scheduleId = requestedSchedule ? String(requestedSchedule.id) : '';
     if (requestedSchedule?.date) {
@@ -22770,8 +22920,9 @@ export function App() {
       return;
     }
     const followupId = Number(noteCreateForm.followupId);
-    if (!followupId) {
-      setNoteCreateError('고객을 선택하세요.');
+    const departmentId = Number(noteCreateForm.departmentId);
+    if (!followupId && !departmentId) {
+      setNoteCreateError('고객 또는 부서/연구실을 선택하세요.');
       return;
     }
     if (!noteCreateForm.actionType) {
@@ -22787,7 +22938,8 @@ export function App() {
       actionType: noteCreateForm.actionType,
       activityDate: noteCreateForm.activityDate || undefined,
       content: noteCreateForm.content.trim(),
-      followupId,
+      departmentId: departmentId || undefined,
+      followupId: followupId || undefined,
       nextAction: noteCreateForm.nextAction.trim() || undefined,
       nextActionDate: noteCreateForm.nextActionDate || undefined,
       scheduleId: noteCreateForm.scheduleId ? Number(noteCreateForm.scheduleId) : undefined,
@@ -22905,7 +23057,10 @@ export function App() {
   const resetScheduleCreateForm = (data: SchedulesData | null) => {
     const nextForm = makeEmptyScheduleCreateForm(getCreateDateParam() || undefined);
     nextForm.activityType = data?.create.activityTypes[0]?.value || nextForm.activityType;
-    nextForm.followupId = data?.create.customers[0]?.id ? String(data.create.customers[0].id) : '';
+    const firstCustomer = data?.create.customers[0];
+    const firstDepartmentId = firstCustomer?.departmentId ?? data?.create.departments[0]?.id;
+    nextForm.departmentId = firstDepartmentId ? String(firstDepartmentId) : '';
+    nextForm.followupId = firstCustomer?.id ? String(firstCustomer.id) : '';
     setScheduleCreateForm(nextForm);
   };
   const handleCreateScheduleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -22918,8 +23073,9 @@ export function App() {
       return;
     }
     const followupId = Number(scheduleCreateForm.followupId);
-    if (!followupId) {
-      setScheduleCreateError('고객을 선택하세요.');
+    const departmentId = Number(scheduleCreateForm.departmentId);
+    if (!followupId && !departmentId) {
+      setScheduleCreateError('고객 또는 부서/연구실을 선택하세요.');
       return;
     }
     if (!scheduleCreateForm.activityType) {
@@ -22937,8 +23093,9 @@ export function App() {
 
     const payload: ScheduleCreatePayload = {
       activityType: scheduleCreateForm.activityType,
+      departmentId: departmentId || undefined,
       expectedRevenue: scheduleCreateForm.expectedRevenue.trim() || undefined,
-      followupId,
+      followupId: followupId || undefined,
       location: scheduleCreateForm.location.trim() || undefined,
       notes: scheduleCreateForm.notes.trim() || undefined,
       probability: scheduleCreateForm.probability.trim() || undefined,

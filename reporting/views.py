@@ -3254,12 +3254,18 @@ def _money_int(value):
 
 def _dashboard_schedule_payload(schedule):
     followup = schedule.followup
+    department = schedule.department or (followup.department if followup and followup.department else None)
+    company = followup.company if followup and followup.company else (department.company if department and department.company else None)
+    customer = (
+        followup.customer_name or followup.manager or '고객명 미정'
+    ) if followup else '담당자 미등록'
+    customer_href = f'/customers/{followup.id}/' if followup else (f'/accounts/{department.id}/' if department else '')
     return {
         'id': schedule.id,
         'type': 'schedule',
-        'customer': followup.customer_name or followup.manager or '고객명 미정',
-        'company': followup.company.name if followup.company else '',
-        'department': followup.department.name if followup.department else '',
+        'customer': customer,
+        'company': company.name if company else '',
+        'department': department.name if department else '',
         'owner': _user_display_name(schedule.user),
         'date': schedule.visit_date.isoformat(),
         'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
@@ -3270,8 +3276,8 @@ def _dashboard_schedule_payload(schedule):
         'notes': (schedule.notes or '').strip()[:120],
         'href': f'/schedules/{schedule.id}/',
         'djangoHref': reverse('reporting:schedule_detail', args=[schedule.id]),
-        'customerHref': f'/customers/{followup.id}/',
-        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]),
+        'customerHref': customer_href,
+        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
     }
 
 
@@ -3299,13 +3305,16 @@ def _dashboard_personal_schedule_payload(schedule):
 
 def _dashboard_history_payload(history):
     followup = history.followup
+    department = history.department or (followup.department if followup and followup.department else None)
+    company = followup.company if followup and followup.company else (department.company if department and department.company else None)
+    customer = (
+        followup.customer_name or followup.manager or '고객명 미정'
+    ) if followup else ('담당자 미등록' if department else '일반 메모')
     return {
         'id': history.id,
-        'customer': (
-            followup.customer_name or followup.manager or '고객명 미정'
-        ) if followup else '일반 메모',
-        'company': followup.company.name if followup and followup.company else '',
-        'department': followup.department.name if followup and followup.department else '',
+        'customer': customer,
+        'company': company.name if company else '',
+        'department': department.name if department else '',
         'owner': _user_display_name(history.user),
         'actionType': history.action_type,
         'actionLabel': history.get_action_type_display(),
@@ -3317,7 +3326,7 @@ def _dashboard_history_payload(history):
         'createdAt': _datetime_or_none(history.created_at),
         'reviewed': bool(history.reviewed_at),
         'href': reverse('reporting:history_detail', args=[history.id]),
-        'customerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+        'customerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else (f'/accounts/{department.id}/' if department else ''),
     }
 
 
@@ -9215,6 +9224,11 @@ def _history_activity_content(history):
 
 def _notes_history_payload(history, today, can_review=False):
     followup = history.followup
+    department = history.department or (followup.department if followup and followup.department else None)
+    company = followup.company if followup and followup.company else (department.company if department and department.company else None)
+    customer = (
+        followup.customer_name or followup.manager or '고객명 미정'
+    ) if followup else ('담당자 미등록' if department else '일반 메모')
     activity_date = history.meeting_date or history.delivery_date
     if not activity_date and history.schedule_id and history.schedule:
         activity_date = history.schedule.visit_date
@@ -9235,11 +9249,10 @@ def _notes_history_payload(history, today, can_review=False):
 
     return {
         'id': history.id,
-        'customer': (
-            followup.customer_name or followup.manager or '고객명 미정'
-        ) if followup else '일반 메모',
-        'company': followup.company.name if followup and followup.company else '',
-        'department': followup.department.name if followup and followup.department else '',
+        'customer': customer,
+        'company': company.name if company else '',
+        'department': department.name if department else '',
+        'departmentId': department.id if department else None,
         'owner': _user_display_name(history.user),
         'ownerId': history.user_id,
         'actionType': history.action_type,
@@ -9263,7 +9276,7 @@ def _notes_history_payload(history, today, can_review=False):
         'fileCount': int(getattr(history, 'file_count', 0) or 0),
         'href': f'/notes/{history.id}/',
         'djangoHref': reverse('reporting:history_detail', args=[history.id]),
-        'customerHref': f'/customers/{followup.id}/' if followup else '',
+        'customerHref': f'/customers/{followup.id}/' if followup else (f'/accounts/{department.id}/' if department else ''),
         'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
         'scheduleHref': f'/schedules/{history.schedule_id}/' if history.schedule_id else '',
         'djangoScheduleHref': reverse('reporting:schedule_detail', args=[history.schedule_id]) if history.schedule_id else '',
@@ -9419,9 +9432,13 @@ def _notes_schedule_delivery_summary(schedule):
 
 def _notes_create_schedule_payload(schedule):
     followup = schedule.followup
-    customer = followup.customer_name or followup.manager or '고객명 미정'
-    company = followup.company.name if followup and followup.company else ''
-    department = followup.department.name if followup and followup.department else ''
+    department_obj = schedule.department or (followup.department if followup and followup.department else None)
+    company_obj = followup.company if followup and followup.company else (department_obj.company if department_obj and department_obj.company else None)
+    customer = (
+        followup.customer_name or followup.manager or '고객명 미정'
+    ) if followup else '담당자 미등록'
+    company = company_obj.name if company_obj else ''
+    department = department_obj.name if department_obj else ''
     time_label = schedule.visit_time.strftime('%H:%M') if schedule.visit_time else ''
     delivery_text, delivery_amount = _notes_schedule_delivery_summary(schedule)
     label_parts = [
@@ -9435,6 +9452,7 @@ def _notes_create_schedule_payload(schedule):
     return {
         'id': schedule.id,
         'followupId': schedule.followup_id,
+        'departmentId': department_obj.id if department_obj else None,
         'label': ' · '.join(str(part) for part in label_parts if part) or f'일정 #{schedule.id}',
         'customer': customer,
         'company': company,
@@ -9469,6 +9487,64 @@ def _notes_create_action_types(request):
     ]
 
 
+def _department_targets_queryset(user):
+    user_profile = get_user_profile(user)
+    scope_users = get_same_company_users(user) if user_profile.can_view_all_users() else User.objects.filter(id=user.id)
+    qs = Department.objects.select_related('company')
+    if not user_profile.is_admin():
+        qs = qs.filter(
+            Q(created_by__in=scope_users) |
+            Q(company__created_by__in=scope_users) |
+            Q(followup_departments__user__in=scope_users)
+        )
+    return qs.annotate(
+        customer_count=Count(
+            'followup_departments',
+            filter=Q(followup_departments__user__in=scope_users),
+            distinct=True,
+        )
+    ).distinct()
+
+
+def _department_create_targets(user, limit=180):
+    return list(_department_targets_queryset(user).order_by('company__name', 'name')[:limit])
+
+
+def _department_target_for_user(user, department_id):
+    try:
+        parsed_id = int(department_id or 0)
+    except (TypeError, ValueError):
+        parsed_id = 0
+    if parsed_id <= 0:
+        return None
+    return _department_targets_queryset(user).filter(id=parsed_id).first()
+
+
+def _department_has_own_contacts(user, department):
+    if not user or not department:
+        return False
+    return FollowUp.objects.filter(user=user, department=department).exists()
+
+
+def _department_create_target_payload(department):
+    company = department.company.name if department.company else ''
+    customer_count = int(getattr(department, 'customer_count', 0) or 0)
+    label = ' · '.join(part for part in [company, department.name] if part) or f'부서 #{department.id}'
+    return {
+        'id': department.id,
+        'label': label,
+        'name': department.name,
+        'department': department.name,
+        'departmentName': department.name,
+        'company': company,
+        'companyName': company,
+        'customerCount': customer_count,
+        'hasCustomers': customer_count > 0,
+        'searchText': ' '.join(part for part in [company, department.name, department.notes] if part),
+        'href': f'/accounts/{department.id}/',
+    }
+
+
 def _notes_create_targets(user, limit=120):
     return list(FollowUp.objects.filter(
         user=user,
@@ -9492,6 +9568,8 @@ def _notes_create_target_payload(followup):
     label_parts = [part for part in [company, department, customer] if part]
     return {
         'id': followup.id,
+        'departmentId': followup.department_id,
+        'companyId': followup.company_id,
         'label': ' · '.join(label_parts) or customer,
         'customer': customer,
         'company': company,
@@ -9532,10 +9610,15 @@ def _notes_action_types_for_edit(request, history):
 def _notes_edit_config(request, history, can_edit):
     editable_history = history.parent_history_id is None and history.action_type != 'memo'
     allowed_customers = _notes_edit_targets(history.user) if can_edit and editable_history else []
+    allowed_departments = _department_create_targets(history.user) if can_edit and editable_history else []
     if history.followup_id and can_edit and editable_history:
         allowed_customer_ids = {followup.id for followup in allowed_customers}
         if history.followup_id not in allowed_customer_ids:
             allowed_customers = [history.followup, *allowed_customers]
+    if history.department_id and can_edit and editable_history:
+        allowed_department_ids = {department.id for department in allowed_departments}
+        if history.department_id not in allowed_department_ids and history.department:
+            allowed_departments = [history.department, *allowed_departments]
     message = ''
     if not editable_history:
         message = '메모 또는 댓글은 React 영업노트 수정 대상이 아닙니다.'
@@ -9552,6 +9635,7 @@ def _notes_edit_config(request, history, can_edit):
             {'value': value, 'label': label}
             for value, label in History.SERVICE_STATUS_CHOICES
         ],
+        'departments': [_department_create_target_payload(department) for department in allowed_departments],
         'customers': [_notes_create_target_payload(followup) for followup in allowed_customers],
     }
 
@@ -9618,6 +9702,7 @@ def _notes_detail_payload(request, history, user_profile):
     history.file_count = history.files.count()
     note_payload = _notes_history_payload(history, today, can_review)
     followup = history.followup
+    department = history.department or (followup.department if followup and followup.department else None)
     schedule = history.schedule
     delivery_summary_text, delivery_summary_amount = _history_effective_delivery_summary(history)
 
@@ -9643,6 +9728,7 @@ def _notes_detail_payload(request, history, user_profile):
         'content': _history_activity_content(history),
         'createdBy': _user_display_name(history.created_by) if history.created_by else '',
         'followupId': history.followup_id,
+        'departmentId': department.id if department else None,
         'scheduleId': history.schedule_id,
         'personalScheduleId': history.personal_schedule_id,
         'meetingDate': _date_or_none(history.meeting_date),
@@ -9682,6 +9768,33 @@ def _notes_detail_payload(request, history, user_profile):
             for related in related_qs
             if can_access_user_data(request.user, related.user)
         ]
+    elif department:
+        related_qs = History.objects.filter(
+            department=department,
+            parent_history__isnull=True,
+        ).exclude(
+            id=history.id,
+        ).exclude(
+            action_type='memo',
+        ).select_related(
+            'user',
+            'followup',
+            'followup__company',
+            'followup__department',
+            'department',
+            'department__company',
+            'schedule',
+            'personal_schedule',
+            'reviewer',
+        ).annotate(
+            reply_count=Count('reply_memos', distinct=True),
+            file_count=Count('files', distinct=True),
+        ).order_by('-created_at')[:8]
+        related_notes = [
+            _notes_history_payload(related, today, can_review)
+            for related in related_qs
+            if can_access_user_data(request.user, related.user)
+        ]
 
     return {
         'success': True,
@@ -9699,11 +9812,11 @@ def _notes_detail_payload(request, history, user_profile):
             'notes': '/notes/',
             'djangoDetail': reverse('reporting:history_detail', args=[history.id]),
             'djangoEdit': reverse('reporting:history_edit', args=[history.id]),
-            'customer': f'/customers/{followup.id}/' if followup else '',
+            'customer': f'/customers/{followup.id}/' if followup else (f'/accounts/{department.id}/' if department else ''),
             'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
             'schedule': f'/schedules/{schedule.id}/' if schedule else '',
             'djangoSchedule': reverse('reporting:schedule_detail', args=[schedule.id]) if schedule else '',
-            'createNote': f'/notes/?create=1&customer={followup.id}' if followup else '/notes/?create=1',
+            'createNote': f'/notes/?create=1&customer={followup.id}' if followup else (f'/notes/?create=1&department={department.id}' if department else '/notes/?create=1'),
             'uploadFiles': reverse('reporting:note_file_upload', args=[history.id]) if detail_can_edit else '',
             'deleteNote': reverse('reporting:notes_delete_api', args=[history.id]) if detail_can_delete else '',
         },
@@ -9725,7 +9838,11 @@ def _notes_get_detail_history(history_id):
             'followup',
             'followup__company',
             'followup__department',
+            'department',
+            'department__company',
             'schedule',
+            'schedule__department',
+            'schedule__department__company',
             'personal_schedule',
             'reviewer',
         ).prefetch_related(
@@ -9822,6 +9939,7 @@ def notes_update_api(request, history_id):
         return JsonResponse({'success': False, 'error': '상태를 선택하세요.'}, status=400)
 
     history.followup = followup
+    history.department = followup.department
     if history.schedule_id and history.schedule.followup_id != followup.id:
         history.schedule = None
     history.action_type = action_type
@@ -9863,6 +9981,7 @@ def notes_update_api(request, history_id):
 
     history.save(update_fields=[
         'followup',
+        'department',
         'schedule',
         'action_type',
         'content',
@@ -9941,7 +10060,17 @@ def notes_summary_api(request):
         parent_history__isnull=True,
     )
     notes = base_notes.select_related(
-        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule', 'reviewer'
+        'user',
+        'followup',
+        'followup__company',
+        'followup__department',
+        'department',
+        'department__company',
+        'schedule',
+        'schedule__department',
+        'schedule__department__company',
+        'personal_schedule',
+        'reviewer',
     )
 
     if q:
@@ -9954,7 +10083,10 @@ def notes_summary_api(request):
             Q(followup__customer_name__icontains=q) |
             Q(followup__manager__icontains=q) |
             Q(followup__company__name__icontains=q) |
-            Q(followup__department__name__icontains=q)
+            Q(followup__department__name__icontains=q) |
+            Q(department__name__icontains=q) |
+            Q(department__company__name__icontains=q) |
+            Q(schedule__department__name__icontains=q)
         )
 
     if owner:
@@ -10007,18 +10139,24 @@ def notes_summary_api(request):
     ]
     can_create_note = not user_profile.is_manager()
     create_targets = _notes_create_targets(request.user) if can_create_note else []
+    create_departments = _department_create_targets(request.user) if can_create_note else []
     create_target_ids = [followup.id for followup in create_targets]
+    create_department_ids = [department.id for department in create_departments]
     create_schedules = []
-    if can_create_note and create_target_ids:
+    if can_create_note and (create_target_ids or create_department_ids):
         create_schedules = list(Schedule.objects.filter(
             user=request.user,
-            followup_id__in=create_target_ids,
+        ).filter(
+            Q(followup_id__in=create_target_ids) |
+            Q(department_id__in=create_department_ids)
         ).exclude(
             status='cancelled',
         ).select_related(
             'followup',
             'followup__company',
             'followup__department',
+            'department',
+            'department__company',
         ).prefetch_related(
             'delivery_items_set',
         ).order_by('-visit_date', '-visit_time', '-id')[:160])
@@ -10112,6 +10250,7 @@ def notes_summary_api(request):
             'message': '' if can_create_note else 'Manager는 영업노트를 직접 작성할 수 없습니다.',
             'submitUrl': reverse('reporting:notes_create_api'),
             'actionTypes': _notes_create_action_types(request),
+            'departments': [_department_create_target_payload(department) for department in create_departments],
             'customers': [_notes_create_target_payload(followup) for followup in create_targets],
             'schedules': [_notes_create_schedule_payload(schedule) for schedule in create_schedules],
         },
@@ -10147,12 +10286,29 @@ def notes_create_api(request):
     except (TypeError, ValueError):
         followup_id = 0
 
-    followup = FollowUp.objects.filter(
-        id=followup_id,
-        user=request.user,
-    ).select_related('company', 'department').first()
-    if not followup:
-        return JsonResponse({'success': False, 'error': '작성 가능한 고객을 선택하세요.'}, status=403)
+    try:
+        department_id = int(payload.get('departmentId') or payload.get('department_id') or 0)
+    except (TypeError, ValueError):
+        department_id = 0
+
+    followup = None
+    department = None
+    if followup_id:
+        followup = FollowUp.objects.filter(
+            id=followup_id,
+            user=request.user,
+        ).select_related('company', 'department').first()
+        if not followup:
+            return JsonResponse({'success': False, 'error': '작성 가능한 고객을 선택하세요.'}, status=403)
+        department = followup.department
+    elif department_id:
+        department = _department_target_for_user(request.user, department_id)
+        if not department:
+            return JsonResponse({'success': False, 'error': '작성 가능한 부서/연구실을 선택하세요.'}, status=403)
+        if _department_has_own_contacts(request.user, department):
+            return JsonResponse({'success': False, 'error': '담당 고객이 있는 부서/연구실은 고객을 선택하세요.'}, status=400)
+    else:
+        return JsonResponse({'success': False, 'error': '고객 또는 부서/연구실을 선택하세요.'}, status=400)
 
     try:
         schedule_id = int(payload.get('scheduleId') or payload.get('schedule_id') or 0)
@@ -10164,11 +10320,26 @@ def notes_create_api(request):
         linked_schedule = Schedule.objects.filter(
             id=schedule_id,
             user=request.user,
-        ).select_related('followup').prefetch_related('delivery_items_set').first()
+        ).select_related(
+            'followup',
+            'followup__department',
+            'department',
+        ).prefetch_related('delivery_items_set').first()
         if not linked_schedule:
             return JsonResponse({'success': False, 'error': '연결할 수 있는 일정을 찾을 수 없습니다.'}, status=403)
-        if linked_schedule.followup_id != followup.id:
-            return JsonResponse({'success': False, 'error': '선택한 고객과 일정의 고객이 일치하지 않습니다.'}, status=400)
+        schedule_department = linked_schedule.department or (
+            linked_schedule.followup.department if linked_schedule.followup and linked_schedule.followup.department else None
+        )
+        if followup:
+            if linked_schedule.followup_id and linked_schedule.followup_id != followup.id:
+                return JsonResponse({'success': False, 'error': '선택한 고객과 일정의 고객이 일치하지 않습니다.'}, status=400)
+            if schedule_department and followup.department_id and schedule_department.id != followup.department_id:
+                return JsonResponse({'success': False, 'error': '선택한 고객과 일정의 부서/연구실이 일치하지 않습니다.'}, status=400)
+        elif department:
+            if not schedule_department or schedule_department.id != department.id:
+                return JsonResponse({'success': False, 'error': '선택한 부서/연구실과 일정이 일치하지 않습니다.'}, status=400)
+        if not department and schedule_department:
+            department = schedule_department
 
     allowed_action_types = {item['value'] for item in _notes_create_action_types(request)}
     action_type = str(payload.get('actionType') or '').strip()
@@ -10189,6 +10360,7 @@ def notes_create_api(request):
         'user': request.user,
         'company': user_profile.company,
         'followup': followup,
+        'department': department,
         'schedule': linked_schedule,
         'action_type': action_type,
         'content': content,
@@ -10282,18 +10454,25 @@ def _schedules_schedule_reports_payload(schedule, today, limit=3):
 
 def _schedules_schedule_payload(schedule, today, can_edit=None):
     followup = schedule.followup
+    department = schedule.department or (followup.department if followup and followup.department else None)
+    company = followup.company if followup and followup.company else (department.company if department and department.company else None)
+    customer = (
+        followup.customer_name or followup.manager or '고객명 미정'
+    ) if followup else '담당자 미등록'
+    customer_href = f'/customers/{followup.id}/' if followup else (f'/accounts/{department.id}/' if department else '')
     history_count = getattr(schedule, 'history_count', None)
     if can_edit is None:
         can_edit = bool(getattr(schedule, 'can_edit', False))
     return {
         'id': schedule.id,
         'type': 'customer',
-        'followupId': followup.id,
-        'customer': followup.customer_name or followup.manager or '고객명 미정',
-        'customerEmail': followup.email or '',
-        'title': followup.customer_name or followup.manager or '고객 일정',
-        'company': followup.company.name if followup.company else '',
-        'department': followup.department.name if followup.department else '',
+        'followupId': followup.id if followup else None,
+        'departmentId': department.id if department else None,
+        'customer': customer,
+        'customerEmail': followup.email if followup else '',
+        'title': customer if followup else (department.name if department else '부서 일정'),
+        'company': company.name if company else '',
+        'department': department.name if department else '',
         'owner': _user_display_name(schedule.user),
         'ownerId': schedule.user_id,
         'date': _date_or_none(schedule.visit_date),
@@ -10305,8 +10484,8 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
         'location': schedule.location or '',
         'notes': (schedule.notes or '').strip()[:180],
         'notesFull': schedule.notes or '',
-        'priority': followup.priority,
-        'priorityLabel': followup.get_priority_display(),
+        'priority': followup.priority if followup else '',
+        'priorityLabel': followup.get_priority_display() if followup else '부서 일정',
         'expectedRevenue': _money_int(schedule.expected_revenue),
         'probability': schedule.probability or 0,
         'expectedCloseDate': _date_or_none(schedule.expected_close_date),
@@ -10324,8 +10503,8 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
             {'value': value, 'label': label}
             for value, label in _schedules_status_choices_for_activity(schedule.activity_type, schedule.status)
         ] if can_edit else [],
-        'customerHref': f'/customers/{followup.id}/',
-        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]),
+        'customerHref': customer_href,
+        'djangoCustomerHref': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
         'createHistoryHref': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
     }
 
@@ -10536,6 +10715,8 @@ def _schedules_create_target_payload(followup):
     label_parts = [part for part in [company, department, customer] if part]
     return {
         'id': followup.id,
+        'departmentId': followup.department_id,
+        'companyId': followup.company_id,
         'label': ' · '.join(label_parts) or customer,
         'customer': customer,
         'company': company,
@@ -10946,7 +11127,7 @@ def schedules_summary_api(request):
     )
     base_personal_schedules = PersonalSchedule.objects.filter(user__in=scope_users)
     schedules = base_schedules.select_related(
-        'user', 'followup', 'followup__company', 'followup__department'
+        'user', 'followup', 'followup__company', 'followup__department', 'department', 'department__company'
     )
     personal_schedules = base_personal_schedules.select_related('user', 'company')
 
@@ -10956,6 +11137,8 @@ def schedules_summary_api(request):
             Q(followup__manager__icontains=q) |
             Q(followup__company__name__icontains=q) |
             Q(followup__department__name__icontains=q) |
+            Q(department__name__icontains=q) |
+            Q(department__company__name__icontains=q) |
             Q(location__icontains=q) |
             Q(notes__icontains=q)
         )
@@ -11024,6 +11207,7 @@ def schedules_summary_api(request):
     ]
     can_create_schedule = not user_profile.is_manager()
     create_targets = _schedules_create_targets(request.user) if can_create_schedule else []
+    create_departments = _department_create_targets(request.user) if can_create_schedule else []
 
     scope_label = '전체'
     if selected_user:
@@ -11044,7 +11228,7 @@ def schedules_summary_api(request):
     personal_count = base_personal_schedules.count()
 
     today_schedules = base_schedules.filter(visit_date=today).select_related(
-        'user', 'followup', 'followup__company', 'followup__department'
+        'user', 'followup', 'followup__company', 'followup__department', 'department', 'department__company'
     ).annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
     ).order_by('-visit_time', '-created_at', '-id')
@@ -11056,7 +11240,7 @@ def schedules_summary_api(request):
         visit_date__gt=today,
         visit_date__lte=week_end,
     ).select_related(
-        'user', 'followup', 'followup__company', 'followup__department'
+        'user', 'followup', 'followup__company', 'followup__department', 'department', 'department__company'
     ).annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
     ).order_by('-visit_date', '-visit_time', '-created_at', '-id')
@@ -11071,7 +11255,7 @@ def schedules_summary_api(request):
         visit_date__lt=today,
         status='scheduled',
     ).select_related(
-        'user', 'followup', 'followup__company', 'followup__department'
+        'user', 'followup', 'followup__company', 'followup__department', 'department', 'department__company'
     ).annotate(
         history_count=Count('histories', filter=Q(histories__parent_history__isnull=True), distinct=True)
     ).order_by('-visit_date', '-visit_time', '-created_at', '-id')[:10]
@@ -11152,6 +11336,7 @@ def schedules_summary_api(request):
             'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
             'submitUrl': reverse('reporting:schedules_create_api'),
             'activityTypes': _schedules_create_activity_types(request),
+            'departments': [_department_create_target_payload(department) for department in create_departments],
             'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
             'personalSchedule': {
                 'canCreate': can_create_schedule,
@@ -11204,7 +11389,7 @@ def schedules_calendar_api(request):
         'schedule',
     ).order_by('-created_at')
     schedules = base_schedules.select_related(
-        'user', 'followup', 'followup__company', 'followup__department'
+        'user', 'followup', 'followup__company', 'followup__department', 'department', 'department__company'
     ).prefetch_related(
         Prefetch('histories', queryset=calendar_report_qs, to_attr='calendar_report_histories')
     ).annotate(
@@ -11222,6 +11407,7 @@ def schedules_calendar_api(request):
     overdue_count = base_schedules.filter(visit_date__lt=today, status='scheduled').count()
     can_create_schedule = not user_profile.is_manager()
     create_targets = _schedules_create_targets(request.user) if can_create_schedule else []
+    create_departments = _department_create_targets(request.user) if can_create_schedule else []
 
     return JsonResponse({
         'success': True,
@@ -11261,6 +11447,7 @@ def schedules_calendar_api(request):
             'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
             'submitUrl': reverse('reporting:schedules_create_api'),
             'activityTypes': _schedules_create_activity_types(request),
+            'departments': [_department_create_target_payload(department) for department in create_departments],
             'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
             'personalSchedule': {
                 'canCreate': can_create_schedule,
@@ -11298,12 +11485,29 @@ def schedules_create_api(request):
     except (TypeError, ValueError):
         followup_id = 0
 
-    followup = FollowUp.objects.filter(
-        id=followup_id,
-        user=request.user,
-    ).select_related('company', 'department').first()
-    if not followup:
-        return JsonResponse({'success': False, 'error': '일정을 등록할 담당 고객을 선택하세요.'}, status=403)
+    try:
+        department_id = int(payload.get('departmentId') or payload.get('department_id') or 0)
+    except (TypeError, ValueError):
+        department_id = 0
+
+    followup = None
+    department = None
+    if followup_id:
+        followup = FollowUp.objects.filter(
+            id=followup_id,
+            user=request.user,
+        ).select_related('company', 'department').first()
+        if not followup:
+            return JsonResponse({'success': False, 'error': '일정을 등록할 담당 고객을 선택하세요.'}, status=403)
+        department = followup.department
+    elif department_id:
+        department = _department_target_for_user(request.user, department_id)
+        if not department:
+            return JsonResponse({'success': False, 'error': '일정을 등록할 부서/연구실을 선택하세요.'}, status=403)
+        if _department_has_own_contacts(request.user, department):
+            return JsonResponse({'success': False, 'error': '담당 고객이 있는 부서/연구실은 고객을 선택하세요.'}, status=400)
+    else:
+        return JsonResponse({'success': False, 'error': '고객 또는 부서/연구실을 선택하세요.'}, status=400)
 
     allowed_activity_types = {item['value'] for item in _schedules_create_activity_types(request)}
     activity_type = str(payload.get('activityType') or '').strip()
@@ -11335,6 +11539,7 @@ def schedules_create_api(request):
         user=request.user,
         company=user_profile.company,
         followup=followup,
+        department=department,
         visit_date=visit_date,
         visit_time=visit_time,
         location=location,
@@ -11391,10 +11596,15 @@ def _schedules_activity_types_for_edit(request, schedule):
 
 def _schedules_edit_config(request, schedule, can_edit):
     allowed_customers = _schedules_edit_targets(schedule.user) if can_edit else []
+    allowed_departments = _department_create_targets(schedule.user) if can_edit else []
     if schedule.followup_id and can_edit:
         allowed_customer_ids = {followup.id for followup in allowed_customers}
         if schedule.followup_id not in allowed_customer_ids:
             allowed_customers = [schedule.followup, *allowed_customers]
+    if schedule.department_id and can_edit:
+        allowed_department_ids = {department.id for department in allowed_departments}
+        if schedule.department_id not in allowed_department_ids and schedule.department:
+            allowed_departments = [schedule.department, *allowed_departments]
 
     return {
         'canEdit': bool(can_edit),
@@ -11406,6 +11616,7 @@ def _schedules_edit_config(request, schedule, can_edit):
             {'value': value, 'label': label}
             for value, label in _schedules_status_choices_for_activity(schedule.activity_type, schedule.status)
         ],
+        'departments': [_department_create_target_payload(department) for department in allowed_departments],
         'customers': [_schedules_create_target_payload(followup) for followup in allowed_customers],
     }
 
@@ -13240,6 +13451,7 @@ def _schedules_sync_delivery_histories(schedule, actor, created_count):
         user=schedule.user or actor,
         company=schedule.company,
         followup=schedule.followup,
+        department=schedule.department or (schedule.followup.department if schedule.followup else None),
         action_type='delivery_schedule',
         delivery_items=delivery_text,
         delivery_amount=delivery_amount,
@@ -13255,6 +13467,7 @@ def _schedules_detail_payload(request, schedule, user_profile):
     schedule.history_count = schedule.histories.filter(parent_history__isnull=True).count()
     schedule_payload = _schedules_schedule_payload(schedule, today, can_edit)
     followup = schedule.followup
+    department = schedule.department or (followup.department if followup and followup.department else None)
 
     files = [
         {
@@ -13344,16 +13557,22 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'calendar': '/schedules/calendar/',
             'djangoDetail': reverse('reporting:schedule_detail', args=[schedule.id]),
             'djangoEdit': reverse('reporting:schedule_edit', args=[schedule.id]),
-            'customer': f'/customers/{followup.id}/',
-            'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
-            'createNote': f'/notes/?create=1&customer={followup.id}&schedule={schedule.id}',
+            'customer': f'/customers/{followup.id}/' if followup else (f'/accounts/{department.id}/' if department else ''),
+            'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]) if followup else '',
+            'createNote': (
+                f'/notes/?create=1&customer={followup.id}&schedule={schedule.id}'
+                if followup else
+                f'/notes/?create=1&department={department.id}&schedule={schedule.id}'
+                if department else
+                f'/notes/?create=1&schedule={schedule.id}'
+            ),
             'djangoCreateNote': reverse('reporting:history_create_from_schedule', args=[schedule.id]),
             'deleteSchedule': reverse('reporting:schedule_delete', args=[schedule.id]) if can_edit else '',
             'uploadFiles': reverse('reporting:schedule_file_upload', args=[schedule.id]) if can_edit else '',
             'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
             'toggleTaxInvoice': tax_invoice['toggleUrl'],
             'prepayments': reverse('reporting:prepayment_api_list') if can_edit else '',
-            'sendMail': f'/mailbox/?compose=1&schedule_id={schedule.id}&followup_id={followup.id}',
+            'sendMail': f'/mailbox/?compose=1&schedule_id={schedule.id}&followup_id={followup.id}' if followup else '',
             'djangoSendMail': reverse('reporting:send_email_from_schedule', args=[schedule.id]),
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
@@ -13377,6 +13596,8 @@ def _schedules_get_detail_schedule(schedule_id):
             'followup',
             'followup__company',
             'followup__department',
+            'department',
+            'department__company',
             'opportunity',
         ).prefetch_related(
             'files',
@@ -13436,12 +13657,27 @@ def schedules_update_api(request, schedule_id):
     except (TypeError, ValueError):
         followup_id = 0
 
-    followup = FollowUp.objects.filter(
-        id=followup_id,
-        user__in=get_same_company_users(schedule.user),
-    ).select_related('company', 'department').first()
-    if not followup:
-        return JsonResponse({'success': False, 'error': '수정 가능한 고객을 선택하세요.'}, status=403)
+    try:
+        department_id = int(payload.get('departmentId') or payload.get('department_id') or 0)
+    except (TypeError, ValueError):
+        department_id = 0
+
+    followup = None
+    department = None
+    if followup_id:
+        followup = FollowUp.objects.filter(
+            id=followup_id,
+            user__in=get_same_company_users(schedule.user),
+        ).select_related('company', 'department').first()
+        if not followup:
+            return JsonResponse({'success': False, 'error': '수정 가능한 고객을 선택하세요.'}, status=403)
+        department = followup.department
+    elif department_id:
+        department = _department_target_for_user(request.user, department_id)
+        if not department:
+            return JsonResponse({'success': False, 'error': '수정 가능한 부서/연구실을 선택하세요.'}, status=403)
+    else:
+        return JsonResponse({'success': False, 'error': '고객 또는 부서/연구실을 선택하세요.'}, status=400)
 
     allowed_activity_types = {item['value'] for item in _schedules_activity_types_for_edit(request, schedule)}
     activity_type = str(payload.get('activityType') or '').strip()
@@ -13482,8 +13718,9 @@ def schedules_update_api(request, schedule_id):
     use_prepayment = use_prepayment_raw in (True, 'true', 'True', '1', 'on', 'yes', 'Y')
 
     schedule.followup = followup
+    schedule.department = department
     schedule.company = get_user_profile(schedule.user).company
-    if schedule.opportunity_id and schedule.opportunity.followup_id != followup.id:
+    if schedule.opportunity_id and (not followup or schedule.opportunity.followup_id != followup.id):
         schedule.opportunity = None
     schedule.visit_date = visit_date
     schedule.visit_time = visit_time
@@ -13501,6 +13738,7 @@ def schedules_update_api(request, schedule_id):
         with transaction.atomic():
             schedule.save(update_fields=[
                 'followup',
+                'department',
                 'company',
                 'opportunity',
                 'visit_date',
@@ -16690,10 +16928,7 @@ def _ai_workspace_question_department_for_user(user, department_id):
         return None
     if parsed_id <= 0:
         return None
-    return Department.objects.filter(
-        id=parsed_id,
-        followup_departments__user=user,
-    ).select_related('company').distinct().first()
+    return _department_targets_queryset(user).filter(id=parsed_id).first()
 
 
 def _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=8):
@@ -18213,6 +18448,12 @@ def _ai_workspace_email_context_payload(email):
         thread_id = email.gmail_thread_id or email.thread_id or email.gmail_message_id or email.message_id or str(email.id)
 
     followup = _ai_workspace_email_followup(email)
+    department = None
+    if followup and followup.department_id:
+        department = followup.department
+    elif email.schedule_id and getattr(email.schedule, 'department_id', None):
+        department = email.schedule.department
+    company = followup.company if followup and followup.company else (department.company if department and department.company else None)
     happened_at = _ai_workspace_email_happened_at(email)
     attachments = []
     for attachment in (email.attachments_info or [])[:4]:
@@ -18238,9 +18479,10 @@ def _ai_workspace_email_context_payload(email):
         'preview': _ai_workspace_question_text(preview, 260),
         'body': _ai_workspace_question_text(body_text, 1600),
         'followupId': followup.id if followup else None,
-        'customer': _ai_workspace_question_text(followup.customer_name if followup else '', 120),
-        'company': _ai_workspace_question_text(followup.company.name if followup and followup.company else '', 120),
-        'department': _ai_workspace_question_text(followup.department.name if followup and followup.department else '', 120),
+        'departmentId': department.id if department else None,
+        'customer': _ai_workspace_question_text(followup.customer_name if followup else '담당자 미등록', 120),
+        'company': _ai_workspace_question_text(company.name if company else '', 120),
+        'department': _ai_workspace_question_text(department.name if department else '', 120),
         'threadHref': f'/mailbox/thread/{thread_id}/' if thread_id else '',
         'href': f'/mailbox/thread/{thread_id}/' if thread_id else '',
         'linkLabel': '메일 보기',
@@ -18261,7 +18503,8 @@ def _ai_workspace_recent_email_context(user, followup_ids=None, department_id=No
     elif department_id:
         queryset = queryset.filter(
             Q(followup__department_id=department_id) |
-            Q(schedule__followup__department_id=department_id)
+            Q(schedule__followup__department_id=department_id) |
+            Q(schedule__department_id=department_id)
         )
 
     emails = list(
@@ -18270,6 +18513,8 @@ def _ai_workspace_recent_email_context(user, followup_ids=None, department_id=No
             'followup__company',
             'followup__department',
             'schedule',
+            'schedule__department',
+            'schedule__department__company',
             'schedule__followup',
             'schedule__followup__company',
             'schedule__followup__department',
@@ -18329,6 +18574,8 @@ def _ai_workspace_contact_evidence_context(user, followups, limit_per_customer=4
         'followup__company',
         'followup__department',
         'schedule',
+        'schedule__department',
+        'schedule__department__company',
         'schedule__followup',
         'schedule__followup__company',
         'schedule__followup__department',
@@ -18504,19 +18751,26 @@ def _ai_workspace_department_question_context(department, user):
     delivery_payment_split = _ai_workspace_question_delivery_payment_split(deliveries)
 
     recent_histories = []
+    history_scope_q = Q(followup_id__in=followup_ids) | Q(department=department)
     history_qs = History.objects.filter(
         user=user,
-        followup_id__in=followup_ids,
         parent_history__isnull=True,
-    ).exclude(action_type='memo').select_related('followup').order_by('-created_at')[:10]
+    ).filter(history_scope_q).exclude(action_type='memo').select_related(
+        'followup',
+        'department',
+        'department__company',
+    ).distinct().order_by('-created_at')[:10]
     for history in history_qs:
         activity_date = history.meeting_date or history.delivery_date
         date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
+        history_department = history.department or (history.followup.department if history.followup and history.followup.department else department)
         recent_histories.append({
             'id': history.id,
             'date': date_label,
             'type': history.get_action_type_display(),
-            'customer': history.followup.customer_name if history.followup else '',
+            'customer': history.followup.customer_name if history.followup else '담당자 미등록',
+            'company': history_department.company.name if history_department and history_department.company else '',
+            'department': history_department.name if history_department else '',
             'content': _ai_workspace_question_text(_history_activity_content(history), 700),
             'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 260),
             'nextActionDate': _date_or_none(history.next_action_date),
@@ -18525,18 +18779,25 @@ def _ai_workspace_department_question_context(department, user):
         })
 
     recent_schedules = []
+    schedule_scope_q = Q(followup_id__in=followup_ids) | Q(department=department)
     schedule_qs = Schedule.objects.filter(
         user=user,
-        followup_id__in=followup_ids,
-    ).exclude(status='cancelled').select_related('followup').order_by('-visit_date', '-visit_time')[:10]
+    ).filter(schedule_scope_q).exclude(status='cancelled').select_related(
+        'followup',
+        'department',
+        'department__company',
+    ).distinct().order_by('-visit_date', '-visit_time')[:10]
     for schedule in schedule_qs:
+        schedule_department = schedule.department or (schedule.followup.department if schedule.followup and schedule.followup.department else department)
         recent_schedules.append({
             'id': schedule.id,
             'date': _date_or_none(schedule.visit_date),
             'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
             'type': schedule.get_activity_type_display(),
             'status': schedule.get_status_display(),
-            'customer': schedule.followup.customer_name if schedule.followup else '',
+            'customer': schedule.followup.customer_name if schedule.followup else '담당자 미등록',
+            'company': schedule_department.company.name if schedule_department and schedule_department.company else '',
+            'department': schedule_department.name if schedule_department else '',
             'amount': _money_int(schedule.expected_revenue),
             'purchaseConfirmed': bool(schedule.purchase_confirmed),
             'notes': _ai_workspace_question_text(schedule.notes, 300),
@@ -18557,7 +18818,16 @@ def _ai_workspace_department_question_context(department, user):
     summary_payload = {
         **(quote_delivery.get('summary') or {}),
         'recommended_actions': len(action_queue),
+        'department_memos': DepartmentMemo.objects.filter(department=department, created_by=user).count(),
     }
+
+    department_memos = [
+        _ai_workspace_department_memo_payload(memo)
+        for memo in DepartmentMemo.objects.filter(
+            department=department,
+            created_by=user,
+        ).select_related('department', 'department__company').order_by('-updated_at')[:8]
+    ]
 
     return {
         'scope': {
@@ -18621,6 +18891,7 @@ def _ai_workspace_department_question_context(department, user):
             for item in quotes[:8]
         ],
         'recentNotes': recent_histories,
+        'departmentMemos': department_memos,
         'recentEmails': _ai_workspace_recent_email_context(user, followup_ids=followup_ids, department_id=department.id, limit=10),
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user, department_id=department.id),
@@ -18836,6 +19107,8 @@ def _ai_workspace_question_context_link_candidates(context, text, limit=8):
         add('관련 납품', context.get('recentDeliveries'), '납품 보기')
     if len(candidates) < limit and mentions('미팅', '회의', '방문', '노트', '영업노트', 'meeting'):
         add('관련 노트', context.get('recentNotes'), '노트 보기')
+    if len(candidates) < limit and mentions('메모', '노트', '영업노트', 'memo'):
+        add('관련 부서 메모', context.get('departmentMemos'), '계정 보기')
     if len(candidates) < limit and mentions('일정', '스케줄', 'schedule', '견적', '납품', '미팅', '방문'):
         add('관련 일정', context.get('recentSchedules'), '일정 보기')
     if len(candidates) < limit and mentions('후속', '액션', '할일', '해야할', '연락'):
@@ -18891,8 +19164,22 @@ def _ai_workspace_global_question_context(user):
     ).order_by('-updated_at', '-ai_score')[:120])
     followup_ids = [followup.id for followup in followups]
     contact_evidence = _ai_workspace_contact_evidence_context(user, followups)
+    accessible_departments = _department_create_targets(user, limit=160)
+    accessible_department_ids = [department.id for department in accessible_departments]
 
     departments = {}
+    for department in accessible_departments:
+        departments[department.id] = {
+            'id': department.id,
+            'name': department.name,
+            'company': department.company.name if department.company else '',
+            'customerCount': 0,
+            'customers': [],
+            'customerEvidence': [],
+            'urgentCustomers': 0,
+            'pipelineStages': {},
+            'memoCount': 0,
+        }
     for followup in followups:
         department = followup.department
         if not department:
@@ -18926,26 +19213,32 @@ def _ai_workspace_global_question_context(user):
         row['pipelineStages'][stage_label] = row['pipelineStages'].get(stage_label, 0) + 1
 
     recent_histories = []
+    history_scope_q = Q(followup_id__in=followup_ids)
+    if accessible_department_ids:
+        history_scope_q |= Q(department_id__in=accessible_department_ids)
     history_qs = History.objects.filter(
         user=user,
-        followup_id__in=followup_ids,
         parent_history__isnull=True,
-    ).exclude(action_type='memo').select_related(
+    ).filter(history_scope_q).exclude(action_type='memo').select_related(
         'followup',
         'followup__company',
         'followup__department',
+        'department',
+        'department__company',
     ).order_by('-created_at')[:18]
     for history in history_qs:
         activity_date = history.meeting_date or history.delivery_date
         date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
         followup = history.followup
+        department = history.department or (followup.department if followup and followup.department else None)
+        company = followup.company if followup and followup.company else (department.company if department and department.company else None)
         recent_histories.append({
             'id': history.id,
             'date': date_label,
             'type': history.get_action_type_display(),
-            'customer': followup.customer_name if followup else '',
-            'company': followup.company.name if followup and followup.company else '',
-            'department': followup.department.name if followup and followup.department else '',
+            'customer': followup.customer_name if followup else '담당자 미등록',
+            'company': company.name if company else '',
+            'department': department.name if department else '',
             'content': _ai_workspace_question_text(_history_activity_content(history), 560),
             'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 240),
             'nextActionDate': _date_or_none(history.next_action_date),
@@ -18954,26 +19247,32 @@ def _ai_workspace_global_question_context(user):
         })
 
     open_followups = []
+    open_history_scope_q = Q(followup_id__in=followup_ids)
+    if accessible_department_ids:
+        open_history_scope_q |= Q(department_id__in=accessible_department_ids)
     open_history_qs = History.objects.filter(
         user=user,
-        followup_id__in=followup_ids,
         parent_history__isnull=True,
         next_action_date__isnull=False,
         reviewed_at__isnull=True,
-    ).select_related(
+    ).filter(open_history_scope_q).select_related(
         'followup',
         'followup__company',
         'followup__department',
+        'department',
+        'department__company',
     ).order_by('next_action_date', '-created_at')[:12]
     for history in open_history_qs:
         followup = history.followup
+        department = history.department or (followup.department if followup and followup.department else None)
+        company = followup.company if followup and followup.company else (department.company if department and department.company else None)
         open_followups.append({
             'id': history.id,
             'date': _date_or_none(history.next_action_date),
             'overdue': bool(history.next_action_date and history.next_action_date < today),
-            'customer': followup.customer_name if followup else '',
-            'company': followup.company.name if followup and followup.company else '',
-            'department': followup.department.name if followup and followup.department else '',
+            'customer': followup.customer_name if followup else '담당자 미등록',
+            'company': company.name if company else '',
+            'department': department.name if department else '',
             'nextAction': _ai_workspace_question_text(history.next_action or history.meeting_next_action, 300),
             'note': _ai_workspace_question_text(_history_activity_content(history), 360),
             'href': _ai_workspace_question_history_href(history.id),
@@ -18981,30 +19280,54 @@ def _ai_workspace_global_question_context(user):
         })
 
     recent_schedules = []
+    schedule_scope_q = Q(followup_id__in=followup_ids)
+    if accessible_department_ids:
+        schedule_scope_q |= Q(department_id__in=accessible_department_ids)
     schedule_qs = Schedule.objects.filter(
         user=user,
-        followup_id__in=followup_ids,
-    ).exclude(status='cancelled').select_related(
+    ).filter(schedule_scope_q).exclude(status='cancelled').select_related(
         'followup',
         'followup__company',
         'followup__department',
+        'department',
+        'department__company',
     ).order_by('-visit_date', '-visit_time')[:14]
     for schedule in schedule_qs:
         followup = schedule.followup
+        department = schedule.department or (followup.department if followup and followup.department else None)
+        company = followup.company if followup and followup.company else (department.company if department and department.company else None)
         recent_schedules.append({
             'id': schedule.id,
             'date': _date_or_none(schedule.visit_date),
             'time': schedule.visit_time.strftime('%H:%M') if schedule.visit_time else '',
             'type': schedule.get_activity_type_display(),
             'status': schedule.get_status_display(),
-            'customer': followup.customer_name if followup else '',
-            'company': followup.company.name if followup and followup.company else '',
-            'department': followup.department.name if followup and followup.department else '',
+            'customer': followup.customer_name if followup else '담당자 미등록',
+            'company': company.name if company else '',
+            'department': department.name if department else '',
             'notes': _ai_workspace_question_text(schedule.notes, 260),
             'amount': _money_int(schedule.expected_revenue),
             'href': _ai_workspace_question_schedule_href(schedule.id),
             'linkLabel': f'{schedule.get_activity_type_display()} 일정',
         })
+
+    department_memos = [
+        _ai_workspace_department_memo_payload(memo)
+        for memo in DepartmentMemo.objects.filter(
+            department_id__in=accessible_department_ids,
+            created_by=user,
+        ).select_related('department', 'department__company').order_by('-updated_at')[:12]
+    ]
+    memo_counts = {
+        item['department_id']: item['count']
+        for item in DepartmentMemo.objects.filter(
+            department_id__in=accessible_department_ids,
+            created_by=user,
+        ).values('department_id').annotate(count=Count('id'))
+    }
+    for department_id, count in memo_counts.items():
+        if department_id in departments:
+            departments[department_id]['memoCount'] = count
 
     action_queue = _ai_workspace_build_action_queue(user, week_start, week_end, limit=14)
     quote_delivery = gather_quote_delivery_data_for_followup_ids(followup_ids, user)
@@ -19023,7 +19346,7 @@ def _ai_workspace_global_question_context(user):
         'department': None,
         'departments': sorted(
             departments.values(),
-            key=lambda item: (item['urgentCustomers'], item['customerCount']),
+            key=lambda item: (item['urgentCustomers'], item['customerCount'], item.get('memoCount', 0)),
             reverse=True,
         )[:30],
         'customers': [
@@ -19080,6 +19403,7 @@ def _ai_workspace_global_question_context(user):
             for item in quotes[:8]
         ],
         'recentNotes': recent_histories,
+        'departmentMemos': department_memos,
         'recentEmails': _ai_workspace_recent_email_context(user, followup_ids=followup_ids, limit=16),
         'recentFeedbacks': _ai_workspace_question_recent_feedbacks(user, followup_ids, limit=12),
         'questionFeedbacks': _ai_workspace_recent_question_feedbacks(user),
@@ -19199,6 +19523,21 @@ def _ai_workspace_contact_progress_answer(question, context):
     }
 
 
+def _ai_workspace_department_memo_payload(memo):
+    department = memo.department
+    return {
+        'id': memo.id,
+        'date': _datetime_or_none(memo.updated_at),
+        'type': '부서 메모',
+        'customer': '담당자 미등록',
+        'company': department.company.name if department and department.company else '',
+        'department': department.name if department else '',
+        'content': _ai_workspace_question_text(memo.content, 700),
+        'href': f'/accounts/{department.id}/' if department else '',
+        'linkLabel': '계정 보기',
+    }
+
+
 def _ai_workspace_question_fallback(question, context):
     normalized = re.sub(r'\s+', '', str(question or '').lower())
     scope = context.get('scope') or {}
@@ -19210,6 +19549,7 @@ def _ai_workspace_question_fallback(question, context):
     delivery_payment_split = context.get('deliveryPaymentSplit') or {}
     recent_feedbacks = context.get('recentFeedbacks') or []
     recent_notes = context.get('recentNotes') or []
+    department_memos = context.get('departmentMemos') or []
     recent_emails = context.get('recentEmails') or []
     recent_schedules = context.get('recentSchedules') or []
     recommended_actions = context.get('recommendedActions') or []
@@ -19218,6 +19558,7 @@ def _ai_workspace_question_fallback(question, context):
     context_text = _ai_workspace_question_context_text(
         recent_feedbacks,
         recent_notes,
+        department_memos,
         recent_emails,
         recent_schedules,
         recommended_actions,
@@ -20087,6 +20428,7 @@ def _ai_workspace_generate_department_question_answer(
                 'crmContext.actionFilter.skippedActions에 있는 고객은 오늘 할 일 또는 actionItems로 추천하지 않는다. 필요하면 "이미 처리/제외/최근 메일 발송으로 뺐다" 정도로만 언급한다.',
                 'crmContext.actionFilter.recentOutboundContacts는 최근 2일 안에 사용자가 이미 보낸 메일이다. 오늘 할 일 질문에서는 이 고객을 새 연락 후보로 다시 올리지 않는다.',
                 'crmContext.recentQuestionLogs는 현재 대화 흐름을 이어가기 위한 약한 문맥이다. recentQuestionLogs의 과거 AI 답변은 사실 근거가 아니며 CRM 원자료, 메일, 제품 마스터, verifiedMemories보다 우선하지 않는다.',
+                'crmContext.departmentMemos는 담당자가 아직 없는 부서/연구실 계정에 남긴 직접 메모다. 고객이 없어도 이 메모와 department-linked notes/schedules를 근거로 답할 수 있다.',
                 'crmContext.questionFeedbacks는 현재 사용자가 이전 AI 질문 답변에 남긴 평가다. CRM 사실이 아니라 답변 방식 선호와 반복 오류 회피 기준으로만 사용한다.',
                 'questionFeedbacks에 needs_style 또는 incorrect 코멘트가 있으면 같은 표현 방식이나 판단 오류를 반복하지 않는다.',
                 'crmContext.productFacts는 제품 코드별 제품 마스터 설명/규격/단위다. 제품 코드의 품목 성격은 productFacts와 CRM 품목 메모를 우선 근거로 삼는다.',
@@ -20216,7 +20558,7 @@ def _schedule_ai_report_action_type(activity_type):
 
 def _schedule_ai_coach_context(schedule, actor):
     followup = schedule.followup
-    department = followup.department if followup and followup.department_id else None
+    department = schedule.department or (followup.department if followup and followup.department_id else None)
     email_thread_count = EmailLog.objects.filter(
         schedule=schedule,
         gmail_thread_id__isnull=False,
@@ -20231,11 +20573,16 @@ def _schedule_ai_coach_context(schedule, actor):
     )
 
     related_notes = []
+    related_note_filter = Q(schedule=schedule)
+    if followup:
+        related_note_filter |= Q(followup=followup)
+    elif department:
+        related_note_filter |= Q(department=department)
     related_note_qs = History.objects.filter(
-        Q(schedule=schedule) | Q(followup=followup),
+        related_note_filter,
         user=schedule.user,
         parent_history__isnull=True,
-    ).exclude(action_type='memo').select_related('followup').distinct().order_by('-created_at')[:10]
+    ).exclude(action_type='memo').select_related('followup', 'department').distinct().order_by('-created_at')[:10]
     for history in related_note_qs:
         activity_date = history.meeting_date or history.delivery_date
         date_label = activity_date.isoformat() if activity_date else timezone.localtime(history.created_at).date().isoformat()
@@ -20255,8 +20602,8 @@ def _schedule_ai_coach_context(schedule, actor):
             'type': 'schedule',
             'label': ' · '.join(_ai_prompt_context(
                 followup.company.name if followup and followup.company else '',
-                followup.department.name if followup and followup.department else '',
-                followup.customer_name if followup else '',
+                department.name if department else '',
+                followup.customer_name if followup else '담당자 미등록',
                 schedule.get_activity_type_display(),
             )),
             'scheduleId': schedule.id,
@@ -20634,7 +20981,7 @@ def schedule_ai_coach_api(request, schedule_id):
         'context': {
             'scheduleId': schedule.id,
             'followupId': schedule.followup_id,
-            'departmentId': schedule.followup.department_id if schedule.followup else None,
+            'departmentId': schedule.department_id or (schedule.followup.department_id if schedule.followup else None),
             'recentNoteCount': len(context.get('recentNotes') or []),
             'recentEmailCount': len(context.get('recentEmails') or []),
             'deliveryItemCount': len(context.get('deliveryItems') or []),
@@ -20744,10 +21091,8 @@ def ai_workspace_summary_api(request):
             if value and value not in search_terms:
                 search_terms.append(value)
 
-    department_ids = list(followup_counts_by_department.keys())
-    departments = list(Department.objects.filter(
-        id__in=department_ids,
-    ).select_related('company').order_by('company__name', 'name'))
+    departments = _department_create_targets(request.user, limit=240)
+    department_ids = [department.id for department in departments]
     analyses = list(AIDepartmentAnalysis.objects.filter(
         user=request.user,
         department_id__in=department_ids,
@@ -20801,7 +21146,11 @@ def ai_workspace_summary_api(request):
             'company': department.company.name if department.company else '',
             'customerCount': followup_counts_by_department.get(department.id, 0),
             'customerPreview': customer_names[:4],
-            'searchText': ' '.join(search_terms_by_department.get(department.id, [])),
+            'searchText': ' '.join([
+                department.company.name if department.company else '',
+                department.name,
+                *(search_terms_by_department.get(department.id, [])),
+            ]).strip(),
             'hasAnalysis': analysis is not None,
             'meetingCount': analysis.meeting_count if analysis else 0,
             'quoteCount': analysis.quote_count if analysis else 0,
@@ -26281,6 +26630,7 @@ def schedule_add_memo_api(request, schedule_id):
         # 매니저 메모를 히스토리로 생성
         memo_history = History.objects.create(
             followup=schedule.followup,
+            department=schedule.department or (schedule.followup.department if schedule.followup else None),
             user=schedule.user,  # 일정의 원래 담당자를 유지
             action_type='memo',
             content=f"[매니저 메모 - {request.user.username}] {memo_content}",  # 매니저 메모 표시 추가

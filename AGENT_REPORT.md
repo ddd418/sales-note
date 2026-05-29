@@ -1,5 +1,86 @@
 # AGENT_REPORT.md
 
+## 2026-05-29 — 부서 단독 영업노트/일정 및 AI 컨텍스트 지원
+
+### 요약
+
+- 영업노트 빠른 작성과 일정 등록에서 고객 연결을 기본으로 유지하되, 담당 고객이 아직 없는 부서/연구실에는 부서만 연결해서 저장할 수 있게 했습니다.
+- `History`와 `Schedule`에 부서 링크를 추가하고 기존 데이터는 현재 담당 고객의 부서로 백필하는 마이그레이션을 만들었습니다.
+- AI 워크스페이스가 고객 없는 부서도 검색/선택하고, 해당 부서의 메모, 부서 단독 영업노트, 부서 단독 일정을 근거로 답변할 수 있게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/models.py`
+- `reporting/migrations/0115_department_only_notes_schedules.py`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- `/notes/` 빠른 작성에 부서/연구실 선택을 추가했습니다. 선택 부서에 담당 고객이 있으면 고객 선택이 기본이고, 담당 고객이 없을 때만 `부서에만 연결` 상태로 저장됩니다.
+- `/schedules/`와 `/schedules/calendar/` 일정 등록도 같은 방식으로 부서 단독 일정을 만들 수 있습니다.
+- 부서 단독 노트/일정은 목록, 상세, 대시보드, 관련 링크에서 `담당자 미등록`으로 표시하고 `/accounts/<department_id>/`로 연결됩니다.
+- AI 질문 컨텍스트에 고객 없는 부서, 부서 메모, 부서 단독 노트, 부서 단독 일정과 CRM 링크를 포함했습니다.
+
+### 기존 기능 보존
+
+- 기존 고객 연결 영업노트/일정 생성, 일정 연결, 납품 일정 요약 복사, 권한 차단 동작은 유지했습니다.
+- 매니저 직접 작성 차단과 타 실무자 담당 고객/부서 작성 차단을 유지했습니다.
+- 고객이 이미 있는 부서는 고객 없이 부서 단독 저장하지 못하게 API에서도 막았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests.test_notes_summary_api_includes_react_create_options_for_salesman reporting.tests.NotesSummaryApiTests.test_notes_create_api_creates_department_only_note reporting.tests.NotesSummaryApiTests.test_notes_create_api_links_department_only_schedule reporting.tests.NotesSummaryApiTests.test_notes_create_api_blocks_manager_and_other_owner_customer reporting.tests.SchedulesSummaryApiTests.test_schedules_summary_api_includes_customerless_departments_for_create reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_salesman_creates_department_only_schedule reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_blocks_other_salesman_customer reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_lists_customerless_department reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_department_question_context_includes_customerless_department_records reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_summary_api_ignores_inaccessible_requested_department --keepdb --verbosity 1
+→ OK, 10 tests
+
+python manage.py test reporting.tests.NotesSummaryApiTests.test_notes_create_api_creates_department_only_note reporting.tests.NotesSummaryApiTests.test_notes_create_api_requires_customer_when_department_has_contacts reporting.tests.NotesSummaryApiTests.test_notes_create_api_blocks_manager_and_other_owner_customer reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_salesman_creates_department_only_schedule reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_requires_customer_when_department_has_contacts reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_blocks_other_salesman_customer --keepdb --verbosity 1
+→ OK, 6 tests
+
+python manage.py test reporting.tests.NotesSummaryApiTests.test_notes_create_api_creates_own_customer_note reporting.tests.NotesSummaryApiTests.test_notes_create_api_links_schedule_and_uses_schedule_date reporting.tests.NotesSummaryApiTests.test_notes_create_api_blocks_manager_and_other_owner_customer reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_salesman_creates_own_schedule reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_blocks_other_salesman_customer reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedules_calendar_api_returns_month_range_items reporting.tests.AIWorkspaceSummaryApiTests.test_ai_workspace_question_context_includes_crm_record_links --keepdb --verbosity 1
+→ OK, 8 tests
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python -m py_compile reporting\views.py reporting\models.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+```
+
+### 알려진 한계
+
+- `NotesSummaryApiTests`, `SchedulesSummaryApiTests`, `AIWorkspaceSummaryApiTests` 전체 묶음은 로컬에서 4~5분 제한에 걸려 완료 전에 타임아웃됐습니다. 대신 변경 범위와 기존 대표 플로우를 선별해 총 24개 테스트를 통과시켰습니다.
+- 부서 단독 작성은 “내 담당 고객이 없는 부서”에 한정됩니다. 고객이 생긴 뒤에는 고객을 선택해서 기록해야 합니다.
+
+### Production 배포 상태
+
+- Pending. 커밋 후 Railway backend/frontend 배포와 production smoke를 진행할 예정입니다.
+
+### 권장 다음 작업
+
+- 운영에서 실제 고객 없는 부서 하나를 열어 노트/일정 작성 후, 담당자를 새로 추가했을 때 이후 기록 흐름이 자연스러운지 확인합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/accounts/`에서 담당자가 없는 부서/연구실 계정을 하나 확인합니다.
+2. `/notes/?create=1&department=<department_id>`로 들어가 부서가 선택되고 고객 칸이 `부서에만 연결` 상태인지 확인한 뒤 노트를 저장합니다.
+3. `/schedules/` 또는 `/schedules/calendar/`에서 같은 부서로 고객 없이 일정을 등록합니다.
+4. 저장된 노트/일정 상세에서 고객명이 `담당자 미등록`으로 보이고 계정 링크가 `/accounts/<department_id>/`로 연결되는지 확인합니다.
+5. `/ai-workspace/?department_id=<department_id>`에서 해당 부서가 선택되고, 부서 메모/노트/일정에 대해 질문했을 때 근거 링크가 함께 나오는지 확인합니다.
+
 ## 2026-05-28 — Railway DB high-volume 긴급 완화
 
 ### 요약

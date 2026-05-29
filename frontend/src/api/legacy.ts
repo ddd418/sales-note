@@ -1694,6 +1694,7 @@ export type NoteItem = {
   customer: string;
   company: string;
   department: string;
+  departmentId?: number | null;
   owner: string;
   ownerId: number;
   actionType: string;
@@ -1746,7 +1747,8 @@ export type NoteReplyItem = {
 
 export type NoteCreateScheduleOption = {
   id: number;
-  followupId: number;
+  followupId: number | null;
+  departmentId?: number | null;
   label: string;
   customer: string;
   company: string;
@@ -1768,6 +1770,7 @@ export type NoteDetailItem = NoteItem & {
   content: string;
   createdBy: string;
   followupId: number | null;
+  departmentId?: number | null;
   scheduleId: number | null;
   personalScheduleId: number | null;
   meetingDate: string | null;
@@ -1821,6 +1824,8 @@ export type NoteDetailData = {
     serviceStatuses: Array<{ value: string; label: string }>;
     customers: Array<{
       id: number;
+      departmentId?: number | null;
+      companyId?: number | null;
       label: string;
       customer: string;
       company: string;
@@ -1828,6 +1833,19 @@ export type NoteDetailData = {
       priorityLabel: string;
       href: string;
       djangoHref?: string;
+    }>;
+    departments: Array<{
+      id: number;
+      label: string;
+      name: string;
+      department?: string;
+      departmentName?: string;
+      company?: string;
+      companyName?: string;
+      customerCount?: number;
+      hasCustomers?: boolean;
+      searchText?: string;
+      href?: string;
     }>;
     personalSchedule?: {
       canCreate: boolean;
@@ -1896,12 +1914,27 @@ export type NotesData = {
     actionTypes: Array<{ value: string; label: string }>;
     customers: Array<{
       id: number;
+      departmentId?: number | null;
+      companyId?: number | null;
       label: string;
       customer: string;
       company: string;
       department: string;
       priorityLabel: string;
       href: string;
+    }>;
+    departments: Array<{
+      id: number;
+      label: string;
+      name: string;
+      department?: string;
+      departmentName?: string;
+      company?: string;
+      companyName?: string;
+      customerCount?: number;
+      hasCustomers?: boolean;
+      searchText?: string;
+      href?: string;
     }>;
     schedules: NoteCreateScheduleOption[];
   };
@@ -1912,7 +1945,8 @@ export type NoteCreatePayload = {
   actionType: string;
   activityDate?: string;
   content: string;
-  followupId: number;
+  followupId?: number;
+  departmentId?: number;
   nextAction?: string;
   nextActionDate?: string;
   scheduleId?: number;
@@ -1993,6 +2027,7 @@ export type ScheduleItem = {
   id: number;
   type: 'customer' | 'personal';
   followupId: number | null;
+  departmentId?: number | null;
   customer: string;
   customerEmail?: string;
   title: string;
@@ -3085,8 +3120,9 @@ export type DocumentTemplateMutationResponse = {
 
 export type ScheduleCreatePayload = {
   activityType: string;
+  departmentId?: number;
   expectedRevenue?: string;
-  followupId: number;
+  followupId?: number;
   location?: string;
   notes?: string;
   probability?: string;
@@ -3199,6 +3235,8 @@ export type SchedulesData = {
     activityTypes: Array<{ value: string; label: string }>;
     customers: Array<{
       id: number;
+      departmentId?: number | null;
+      companyId?: number | null;
       label: string;
       customer: string;
       company: string;
@@ -3206,6 +3244,19 @@ export type SchedulesData = {
       priorityLabel: string;
       href: string;
       djangoHref?: string;
+    }>;
+    departments: Array<{
+      id: number;
+      label: string;
+      name: string;
+      department?: string;
+      departmentName?: string;
+      company?: string;
+      companyName?: string;
+      customerCount?: number;
+      hasCustomers?: boolean;
+      searchText?: string;
+      href?: string;
     }>;
     personalSchedule?: {
       canCreate: boolean;
@@ -3274,6 +3325,8 @@ export type ScheduleCalendarData = {
     activityTypes: Array<{ value: string; label: string }>;
     customers: Array<{
       id: number;
+      departmentId?: number | null;
+      companyId?: number | null;
       label: string;
       customer: string;
       company: string;
@@ -3281,6 +3334,19 @@ export type ScheduleCalendarData = {
       priorityLabel: string;
       href: string;
       djangoHref?: string;
+    }>;
+    departments: Array<{
+      id: number;
+      label: string;
+      name: string;
+      department?: string;
+      departmentName?: string;
+      company?: string;
+      companyName?: string;
+      customerCount?: number;
+      hasCustomers?: boolean;
+      searchText?: string;
+      href?: string;
     }>;
     personalSchedule?: {
       canCreate: boolean;
@@ -3333,6 +3399,8 @@ export type ScheduleDetailData = {
     statuses: Array<{ value: string; label: string }>;
     customers: Array<{
       id: number;
+      departmentId?: number | null;
+      companyId?: number | null;
       label: string;
       customer: string;
       company: string;
@@ -3340,6 +3408,19 @@ export type ScheduleDetailData = {
       priorityLabel: string;
       href: string;
       djangoHref?: string;
+    }>;
+    departments: Array<{
+      id: number;
+      label: string;
+      name: string;
+      department?: string;
+      departmentName?: string;
+      company?: string;
+      companyName?: string;
+      customerCount?: number;
+      hasCustomers?: boolean;
+      searchText?: string;
+      href?: string;
     }>;
   };
   ai: {
@@ -5385,6 +5466,7 @@ const emptyNotesData: NotesData = {
     submitUrl: '/reporting/api/notes/create/',
     actionTypes: [],
     customers: [],
+    departments: [],
     schedules: [],
   },
   notes: [],
@@ -5421,6 +5503,7 @@ const emptyNoteDetailData: NoteDetailData = {
     actionTypes: [],
     serviceStatuses: [],
     customers: [],
+    departments: [],
   },
   comments: {
     canCreate: false,
@@ -5482,6 +5565,7 @@ const emptySchedulesData: SchedulesData = {
     submitUrl: '/reporting/api/schedules/create/',
     activityTypes: [],
     customers: [],
+    departments: [],
     personalSchedule: {
       canCreate: false,
       message: '',
@@ -5544,6 +5628,7 @@ const emptyScheduleCalendarData: ScheduleCalendarData = {
     submitUrl: '/reporting/api/schedules/create/',
     activityTypes: [],
     customers: [],
+    departments: [],
     personalSchedule: {
       canCreate: false,
       message: '',
@@ -5592,6 +5677,7 @@ const emptyScheduleDetailData: ScheduleDetailData = {
     activityTypes: [],
     statuses: [],
     customers: [],
+    departments: [],
   },
   ai: {
     canUseAi: false,
@@ -7957,6 +8043,9 @@ export async function loadNotesData(params: {
         customers: payload.create?.customers?.map((customer) => (
           normalizeHrefFields(customer, ['href'])
         )) ?? emptyNotesData.create.customers,
+        departments: payload.create?.departments?.map((department) => (
+          normalizeHrefFields(department, ['href'])
+        )) ?? emptyNotesData.create.departments,
         schedules: payload.create?.schedules?.map((schedule) => (
           normalizeHrefFields(schedule, ['href', 'djangoHref'])
         )) ?? emptyNotesData.create.schedules,
@@ -8009,6 +8098,9 @@ export async function loadNoteDetailData(noteId: number): Promise<NoteDetailData
         customers: payload.edit?.customers?.map((customer) => (
           normalizeHrefFields(customer, ['href', 'djangoHref'])
         )) ?? emptyNoteDetailData.edit.customers,
+        departments: payload.edit?.departments?.map((department) => (
+          normalizeHrefFields(department, ['href'])
+        )) ?? emptyNoteDetailData.edit.departments,
       },
       comments: {
         ...emptyNoteDetailData.comments,
@@ -8280,6 +8372,9 @@ export async function loadSchedulesData(params: {
         customers: payload.create?.customers?.map((customer) => (
           normalizeHrefFields(customer, ['href', 'djangoHref'])
         )) ?? emptySchedulesData.create.customers,
+        departments: payload.create?.departments?.map((department) => (
+          normalizeHrefFields(department, ['href'])
+        )) ?? emptySchedulesData.create.departments,
         personalSchedule: {
           canCreate: payload.create?.personalSchedule?.canCreate ?? emptySchedulesData.create.personalSchedule?.canCreate ?? false,
           message: payload.create?.personalSchedule?.message ?? emptySchedulesData.create.personalSchedule?.message ?? '',
@@ -8361,6 +8456,9 @@ export async function loadScheduleCalendarData(params: {
         customers: payload.create?.customers?.map((customer) => (
           normalizeHrefFields(customer, ['href', 'djangoHref'])
         )) ?? emptyScheduleCalendarData.create.customers,
+        departments: payload.create?.departments?.map((department) => (
+          normalizeHrefFields(department, ['href'])
+        )) ?? emptyScheduleCalendarData.create.departments,
         personalSchedule: {
           canCreate: payload.create?.personalSchedule?.canCreate ?? emptyScheduleCalendarData.create.personalSchedule?.canCreate ?? false,
           message: payload.create?.personalSchedule?.message ?? emptyScheduleCalendarData.create.personalSchedule?.message ?? '',
@@ -9235,6 +9333,9 @@ export async function loadScheduleDetailData(scheduleId: number): Promise<Schedu
         customers: payload.edit?.customers?.map((customer) => (
           normalizeHrefFields(customer, ['href', 'djangoHref'])
         )) ?? emptyScheduleDetailData.edit.customers,
+        departments: payload.edit?.departments?.map((department) => (
+          normalizeHrefFields(department, ['href'])
+        )) ?? emptyScheduleDetailData.edit.departments,
       },
       ai: {
         ...emptyScheduleDetailData.ai,

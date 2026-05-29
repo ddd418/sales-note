@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-05-29 Department-only note/schedule support plan
+
+**Background**:
+
+- User wants quick sales notes and schedules to remain customer-first, but allow saving against a department/account when that department has no customer/contact yet.
+- AI Workspace should be able to search customerless departments and answer about notes/memos left on those departments.
+- Current React quick-create flows require `followupId`, `Schedule.followup` is non-null, and AI department lists are derived from existing `FollowUp` rows, so customerless departments are excluded.
+
+**DB change required**: Yes.
+
+- Add nullable `department` links to `History` and `Schedule`.
+- Make `Schedule.followup` nullable so department-only schedules can exist.
+- Backfill existing note/schedule department values from their current followup department.
+
+**Implementation scope**:
+
+- Add migration and model/index updates for department-linked notes and schedules.
+- Extend notes and schedules JSON APIs to return department options, accept `departmentId`, and keep customer-linked behavior as the default.
+- Keep manager write restrictions and user/company scoping intact.
+- Make schedule/note detail/list payloads null-safe for department-only records.
+- Include customerless departments, `DepartmentMemo`, department-linked notes, and department-linked schedules in AI Workspace summary/question context.
+- Update React quick note, schedule list, and schedule calendar create forms with department selection and customer filtering.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\models.py reporting\tests.py`
+- `python manage.py makemigrations --check --dry-run`
+- Focused Django tests for department-only note/schedule create and AI customerless department context
+- `python manage.py check`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Railway backend/frontend deployment and production smoke for `/notes/`, `/schedules/`, `/schedules/calendar/`, and `/ai-workspace/`
+
 ## 2026-05-28 Railway DB high-volume mitigation plan
 
 **Background**:

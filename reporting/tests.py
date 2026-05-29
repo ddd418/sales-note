@@ -7241,6 +7241,14 @@ class NotesSummaryApiTests(TestCase):
         )
         return history
 
+    def _create_department_only(self, owner, name):
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        return Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+
     def test_notes_summary_api_requires_login_json(self):
         response = self.client.get(self.url)
 
@@ -7368,6 +7376,7 @@ class NotesSummaryApiTests(TestCase):
 
     def test_notes_summary_api_includes_react_create_options_for_salesman(self):
         target = self._create_note(self.user, '작성대상')
+        department_only = self._create_department_only(self.user, '고객없는작성대상')
         self.client.force_login(self.user)
 
         response = self.client.get(self.url)
@@ -7378,7 +7387,10 @@ class NotesSummaryApiTests(TestCase):
         self.assertTrue(payload['create']['canCreate'])
         self.assertEqual(payload['create']['submitUrl'], self.create_url)
         customer_ids = {item['id'] for item in payload['create']['customers']}
+        department_ids = {item['id'] for item in payload['create']['departments']}
         self.assertIn(target.followup_id, customer_ids)
+        self.assertIn(target.followup.department_id, department_ids)
+        self.assertIn(department_only.id, department_ids)
         self.assertTrue(any(item['value'] == 'customer_meeting' for item in payload['create']['actionTypes']))
         self.assertFalse(any(item['value'] == 'memo' for item in payload['create']['actionTypes']))
 
@@ -7489,6 +7501,52 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(created.next_action, '다음 주 견적 확인')
         self.assertEqual(created.meeting_date, timezone.localdate())
 
+    def test_notes_create_api_creates_department_only_note(self):
+        from django.utils import timezone
+        from reporting.models import History
+
+        department = self._create_department_only(self.user, '고객없는노트')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': department.id,
+                'actionType': 'customer_meeting',
+                'content': '고객 등록 전 부서에 남긴 영업노트',
+                'nextAction': '담당자 확인 후 연결',
+                'activityDate': timezone.localdate().isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        created = History.objects.get(pk=payload['historyId'])
+        self.assertIsNone(created.followup_id)
+        self.assertEqual(created.department_id, department.id)
+        self.assertEqual(created.content, '고객 등록 전 부서에 남긴 영업노트')
+        self.assertEqual(payload['note']['customer'], '담당자 미등록')
+        self.assertEqual(payload['note']['departmentId'], department.id)
+        self.assertEqual(payload['note']['customerHref'], f'/accounts/{department.id}/')
+
+    def test_notes_create_api_requires_customer_when_department_has_contacts(self):
+        target = self._create_note(self.user, '고객있는부서')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': target.followup.department_id,
+                'actionType': 'customer_meeting',
+                'content': '고객 있는 부서를 고객 없이 작성 시도',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('고객을 선택하세요', response.json()['error'])
+
     def test_notes_create_api_links_schedule_and_uses_schedule_date(self):
         from datetime import time, timedelta
         from reporting.models import History, Schedule
@@ -7546,6 +7604,61 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(mismatch_response.status_code, 400)
         self.assertIn('고객이 일치하지 않습니다', mismatch_response.json()['error'])
 
+    def test_notes_create_api_links_department_only_schedule(self):
+        from datetime import time, timedelta
+        from reporting.models import History, Schedule
+
+        department = self._create_department_only(self.user, '부서일정노트')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            department=department,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 30),
+            activity_type='customer_meeting',
+        )
+        other_department = self._create_department_only(self.user, '다른부서일정')
+        other_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            department=other_department,
+            visit_date=timezone.localdate(),
+            visit_time=time(11, 0),
+            activity_type='customer_meeting',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': department.id,
+                'scheduleId': schedule.id,
+                'actionType': 'customer_meeting',
+                'content': '부서만 있는 일정 상세에서 작성한 영업노트',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = History.objects.get(pk=response.json()['historyId'])
+        self.assertIsNone(created.followup_id)
+        self.assertEqual(created.department_id, department.id)
+        self.assertEqual(created.schedule_id, schedule.id)
+        self.assertEqual(created.meeting_date, schedule.visit_date)
+
+        mismatch_response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': department.id,
+                'scheduleId': other_schedule.id,
+                'actionType': 'customer_meeting',
+                'content': '잘못된 부서 일정 연결',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(mismatch_response.status_code, 400)
+        self.assertIn('부서/연구실과 일정이 일치하지 않습니다', mismatch_response.json()['error'])
+
     def test_notes_create_api_links_delivery_schedule_and_copies_delivery_summary(self):
         from datetime import time, timedelta
         from reporting.models import DeliveryItem, History, Schedule
@@ -7588,6 +7701,7 @@ class NotesSummaryApiTests(TestCase):
 
     def test_notes_create_api_blocks_manager_and_other_owner_customer(self):
         target = self._create_note(self.coworker, '동료작성차단')
+        coworker_department = self._create_department_only(self.coworker, '동료부서작성차단')
 
         self.client.force_login(self.manager)
         manager_response = self.client.post(
@@ -7612,6 +7726,17 @@ class NotesSummaryApiTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(other_owner_response.status_code, 403)
+
+        other_department_response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': coworker_department.id,
+                'actionType': 'customer_meeting',
+                'content': '동료 부서 작성 시도',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(other_department_response.status_code, 403)
 
     def test_notes_detail_api_returns_detail_and_edit_config(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -8959,6 +9084,14 @@ class SchedulesSummaryApiTests(TestCase):
             pipeline_stage='quote',
         )
 
+    def _create_department_only(self, owner, name):
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        return Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+
     def _create_schedule(
         self,
         owner,
@@ -9022,9 +9155,23 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertTrue(payload['create']['canCreate'])
         self.assertEqual(payload['create']['submitUrl'], self.create_url)
         self.assertTrue(any(customer['id'] == own.followup_id for customer in payload['create']['customers']))
+        self.assertTrue(any(department['id'] == own.followup.department_id for department in payload['create']['departments']))
         own_item = next(item for item in payload['schedules'] if item['type'] == 'customer' and item['id'] == own.id)
         self.assertEqual(own_item['href'], f'/schedules/{own.id}/')
         self.assertEqual(own_item['djangoHref'], reverse('reporting:schedule_detail', args=[own.id]))
+
+    def test_schedules_summary_api_includes_customerless_departments_for_create(self):
+        department = self._create_department_only(self.user, '고객없는일정대상')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        department_ids = {item['id'] for item in payload['create']['departments']}
+        customer_department_ids = {item.get('departmentId') for item in payload['create']['customers']}
+        self.assertIn(department.id, department_ids)
+        self.assertNotIn(department.id, customer_department_ids)
 
     def test_schedules_summary_api_defaults_to_latest_schedule_first(self):
         from datetime import timedelta
@@ -9514,11 +9661,63 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['href'], f'/schedules/{schedule.id}/')
 
+    def test_schedules_create_api_salesman_creates_department_only_schedule(self):
+        import json
+        from reporting.models import Schedule
+
+        department = self._create_department_only(self.user, '고객없는일정')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': department.id,
+                'activityType': 'customer_meeting',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'location': '부서 방문',
+                'notes': '담당자 등록 전 방문 일정',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        schedule = Schedule.objects.get(pk=payload['scheduleId'])
+        self.assertEqual(schedule.user, self.user)
+        self.assertIsNone(schedule.followup_id)
+        self.assertEqual(schedule.department_id, department.id)
+        self.assertEqual(schedule.location, '부서 방문')
+        self.assertEqual(payload['schedule']['customer'], '담당자 미등록')
+        self.assertEqual(payload['schedule']['departmentId'], department.id)
+        self.assertEqual(payload['schedule']['customerHref'], f'/accounts/{department.id}/')
+
+    def test_schedules_create_api_requires_customer_when_department_has_contacts(self):
+        import json
+
+        followup = self._create_customer(self.user, '고객있는일정부서')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': followup.department_id,
+                'activityType': 'customer_meeting',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('고객을 선택하세요', response.json()['error'])
+
     def test_schedules_create_api_blocks_other_salesman_customer(self):
         import json
         from reporting.models import Schedule
 
         followup = self._create_customer(self.coworker, '동료고객')
+        coworker_department = self._create_department_only(self.coworker, '동료부서')
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -9534,6 +9733,19 @@ class SchedulesSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Schedule.objects.filter(followup=followup, user=self.user).exists())
+
+        department_response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': coworker_department.id,
+                'activityType': 'customer_meeting',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(department_response.status_code, 403)
+        self.assertFalse(Schedule.objects.filter(department=coworker_department, user=self.user).exists())
 
     def test_schedules_create_api_rejects_service_activity_type(self):
         import json
@@ -12247,6 +12459,14 @@ class AIWorkspaceSummaryApiTests(TestCase):
         )
         return followup, department
 
+    def _create_department_only(self, owner, name):
+        customer_company = Company.objects.create(name=f'{name} 회사', created_by=owner)
+        return Department.objects.create(
+            company=customer_company,
+            name=f'{name} 연구실',
+            created_by=owner,
+        )
+
     def _create_department_analysis(self, owner, department):
         from datetime import date
         from ai_chat.models import AIDepartmentAnalysis, PainPointCard
@@ -12978,6 +13198,68 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('김피아이', department_payload['searchText'])
         all_search_text = '\n'.join(department.get('searchText', '') for department in payload['departments'])
         self.assertNotIn('외부피아이', all_search_text)
+
+    def test_ai_workspace_summary_api_lists_customerless_department(self):
+        department = self._create_department_only(self.user, '고객없는AI')
+        DepartmentMemo.objects.create(
+            department=department,
+            content='고객 등록 전 남겨둔 부서 메모',
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'department_id': department.id})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        department_payload = next(item for item in payload['departments'] if item['id'] == department.id)
+        self.assertEqual(department_payload['customerCount'], 0)
+        self.assertIn('고객없는AI 연구실', department_payload['searchText'])
+        self.assertEqual(payload['selectedDepartmentId'], department.id)
+        self.assertEqual(payload['featuredDepartment']['departmentId'], department.id)
+        self.assertEqual(payload['featuredDepartment']['customerCount'], 0)
+
+    def test_ai_workspace_department_question_context_includes_customerless_department_records(self):
+        from datetime import time, timedelta
+        from reporting.views import _ai_workspace_department_question_context
+
+        department = self._create_department_only(self.user, '고객없는근거')
+        note = History.objects.create(
+            user=self.user,
+            company=self.company,
+            department=department,
+            action_type='customer_meeting',
+            content='고객 없는 부서에 남긴 미팅 메모',
+            next_action='담당자 확인',
+            meeting_date=timezone.localdate(),
+        )
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            department=department,
+            visit_date=timezone.localdate() + timedelta(days=1),
+            visit_time=time(10, 0),
+            activity_type='customer_meeting',
+            notes='고객 등록 전 부서 방문 예정',
+        )
+        memo = DepartmentMemo.objects.create(
+            department=department,
+            content='고객 없는 부서의 핵심 메모',
+            created_by=self.user,
+        )
+
+        context = _ai_workspace_department_question_context(department, self.user)
+
+        self.assertEqual(context['customers'], [])
+        self.assertEqual(context['summary']['department_memos'], 1)
+        note_payload = next(item for item in context['recentNotes'] if item['id'] == note.id)
+        schedule_payload = next(item for item in context['recentSchedules'] if item['id'] == schedule.id)
+        memo_payload = next(item for item in context['departmentMemos'] if item['id'] == memo.id)
+        self.assertEqual(note_payload['customer'], '담당자 미등록')
+        self.assertEqual(note_payload['href'], f'/notes/{note.id}/')
+        self.assertEqual(schedule_payload['customer'], '담당자 미등록')
+        self.assertEqual(schedule_payload['href'], f'/schedules/{schedule.id}/')
+        self.assertIn('핵심 메모', memo_payload['content'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('no api key'))
     def test_ai_workspace_department_question_answers_last_order_from_delivery_context(self, _mock_client):

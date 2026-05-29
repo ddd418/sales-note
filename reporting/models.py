@@ -776,7 +776,8 @@ class Schedule(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="담당자")
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
-    followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='schedules', verbose_name="관련 팔로우업")
+    followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='schedules', verbose_name="관련 팔로우업", blank=True, null=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, related_name='schedules', verbose_name="관련 부서/연구실", blank=True, null=True)
     opportunity = models.ForeignKey('OpportunityTracking', on_delete=models.SET_NULL, null=True, blank=True, related_name='schedules', verbose_name="영업 기회")
     visit_date = models.DateField(verbose_name="방문 날짜")
     visit_time = models.TimeField(verbose_name="방문 시간")
@@ -829,7 +830,16 @@ class Schedule(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
     def __str__(self):
-        return f"{self.followup.customer_name} 방문 - {self.visit_date} {self.visit_time}"
+        target = (
+            self.followup.customer_name
+            if self.followup and self.followup.customer_name
+            else self.followup.manager
+            if self.followup and self.followup.manager
+            else self.department.name
+            if self.department
+            else "고객/부서 미정"
+        )
+        return f"{target} 방문 - {self.visit_date} {self.visit_time}"
 
     class Meta:
         verbose_name = "일정"
@@ -841,6 +851,8 @@ class Schedule(models.Model):
             models.Index(fields=['visit_date', 'activity_type', 'status'], name='sched_date_act_stat_idx'),
             models.Index(fields=['followup', 'activity_type'], name='sched_follow_act_idx'),
             models.Index(fields=['followup', 'status', 'visit_date', 'visit_time'], name='sched_follow_status_date_idx'),
+            models.Index(fields=['department', 'activity_type'], name='sched_dept_act_idx'),
+            models.Index(fields=['department', 'status', 'visit_date'], name='sched_dept_status_date_idx'),
         ]
 
 
@@ -888,6 +900,7 @@ class History(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="활동 사용자")
     company = models.ForeignKey(UserCompany, on_delete=models.CASCADE, null=True, blank=True, verbose_name="소속 회사")
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='histories', verbose_name="관련 고객 정보", blank=True, null=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, related_name='histories', verbose_name="관련 부서/연구실", blank=True, null=True)
     schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE, blank=True, null=True, related_name='histories', verbose_name="관련 일정")
     personal_schedule = models.ForeignKey('PersonalSchedule', on_delete=models.CASCADE, blank=True, null=True, related_name='histories', verbose_name="관련 개인 일정", help_text="개인 일정에 대한 댓글")
     parent_history = models.ForeignKey('self', on_delete=models.CASCADE, blank=True, null=True, 
@@ -969,6 +982,7 @@ class History(models.Model):
             models.Index(fields=['user', 'parent_history', '-created_at'], name='hist_user_parent_date_idx'),
             models.Index(fields=['user', 'parent_history', 'next_action_date'], name='hist_user_parent_next_idx'),
             models.Index(fields=['followup', 'parent_history', '-created_at'], name='hist_follow_parent_created_idx'),
+            models.Index(fields=['department', 'parent_history', '-created_at'], name='hist_dept_parent_created_idx'),
             models.Index(fields=['user', 'next_action_date'], name='hist_user_next_idx'),
             models.Index(fields=['schedule', '-created_at'], name='hist_sched_created_idx'),
         ]
