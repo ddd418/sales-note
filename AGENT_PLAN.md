@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## 2026-05-30 Department select search fix plan
+
+**Background**:
+
+- User searched `서울시 보건환경연구원` in `/notes/` department/research-lab quick-create select and got no result.
+- Current React select filters only the preloaded option list, and notes/schedules preload department targets with a low default limit.
+- Search normalization is literal, so abbreviations such as `서울시` do not match stored names such as `서울특별시`.
+
+**DB change required**: No.
+
+- Existing `Department`/`Company` data and permissions are enough.
+- No migrations are planned.
+
+**Implementation scope**:
+
+- Increase quick-create department target preload enough to cover normal CRM account lists without requiring exact first-page ordering.
+- Make React searchable selects ignore spacing and match common Korean administrative aliases such as `서울시` ↔ `서울특별시`.
+- Preserve permission scoping and department-only write rules.
+
+**Validation plan**:
+
+- Focused Django API test for department create option limit coverage.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Railway frontend/backend deployment and production smoke.
+
 ## 2026-05-29 Department-only note/schedule support plan
 
 **Background**:

@@ -9506,7 +9506,7 @@ def _department_targets_queryset(user):
     ).distinct()
 
 
-def _department_create_targets(user, limit=180):
+def _department_create_targets(user, limit=800):
     return list(_department_targets_queryset(user).order_by('company__name', 'name')[:limit])
 
 

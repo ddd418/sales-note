@@ -1,5 +1,69 @@
 # AGENT_REPORT.md
 
+## 2026-05-30 — 부서/연구실 선택 검색 누락 수정
+
+### 요약
+
+- `/notes/` 빠른 작성의 부서/연구실 검색에서 `서울시 보건환경연구원`처럼 입력했을 때 결과가 안 뜰 수 있는 원인을 수정했습니다.
+- 기존에는 부서 후보를 180개까지만 내려주고 React에서 그 안에서만 검색했습니다.
+- 검색 문자열도 너무 정확해서 `서울시`와 `서울특별시`를 서로 다른 문자열로 봤습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 영업노트/일정 빠른 작성에서 부서/연구실 후보를 800개까지 내려주도록 늘렸습니다.
+- React 검색창이 공백 차이를 무시하고, `서울시` ↔ `서울특별시` 같은 주요 행정구역 축약명을 같이 검색하도록 했습니다.
+- 같은 `SearchableSelect`를 쓰는 다른 선택창도 더 관대한 검색 혜택을 받습니다.
+
+### 기존 기능 보존
+
+- 권한 스코프와 고객 있는 부서의 고객 선택 강제 규칙은 유지했습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python manage.py test reporting.tests.NotesSummaryApiTests.test_notes_summary_api_includes_react_create_options_for_salesman reporting.tests.NotesSummaryApiTests.test_notes_summary_api_preloads_more_than_legacy_department_select_limit --keepdb --verbosity 1
+→ OK, 2 tests
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+```
+
+### 알려진 한계
+
+- 이번 수정은 후보 800개까지의 preload와 문자열 보정입니다. 장기적으로는 부서 선택창을 완전한 서버 검색 API로 분리하면 더 안정적입니다.
+
+### Production 배포 상태
+
+- Pending. 커밋 후 Railway 배포와 production smoke를 진행할 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/`에서 빠른 작성 패널을 엽니다.
+2. 부서/연구실 선택창에 `서울시 보건환경연구원`을 입력합니다.
+3. `서울특별시 보건환경연구원` 또는 해당 기관/부서 계정이 결과에 뜨는지 확인합니다.
+4. 같은 선택창에서 공백 없이 `서울시보건환경연구원`도 검색되는지 확인합니다.
+
 ## 2026-05-29 — 부서 단독 영업노트/일정 및 AI 컨텍스트 지원
 
 ### 요약

@@ -7394,6 +7394,27 @@ class NotesSummaryApiTests(TestCase):
         self.assertTrue(any(item['value'] == 'customer_meeting' for item in payload['create']['actionTypes']))
         self.assertFalse(any(item['value'] == 'memo' for item in payload['create']['actionTypes']))
 
+    def test_notes_summary_api_preloads_more_than_legacy_department_select_limit(self):
+        customer_company = Company.objects.create(name='대량부서선택회사', created_by=self.user)
+        target_department = None
+        for index in range(205):
+            department = Department.objects.create(
+                company=customer_company,
+                name=f'연구실 {index:03d}',
+                created_by=self.user,
+            )
+            if index == 204:
+                target_department = department
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        department_ids = {item['id'] for item in payload['create']['departments']}
+        self.assertGreater(len(payload['create']['departments']), 180)
+        self.assertIn(target_department.id, department_ids)
+
     def test_notes_summary_api_includes_schedule_create_options_without_overdue_filter(self):
         from datetime import time, timedelta
         from reporting.models import DeliveryItem, Schedule

@@ -2386,8 +2386,36 @@ const searchableOptionLimit = 80;
 
 const joinOptionParts = (parts: Array<string | undefined>) => parts.filter(Boolean).join(' · ');
 
+const koreanAdministrativeAliasPairs: Array<[string, string]> = [
+  ['서울특별시', '서울시'],
+  ['부산광역시', '부산시'],
+  ['대구광역시', '대구시'],
+  ['인천광역시', '인천시'],
+  ['광주광역시', '광주시'],
+  ['대전광역시', '대전시'],
+  ['울산광역시', '울산시'],
+  ['세종특별자치시', '세종시'],
+  ['제주특별자치도', '제주도'],
+];
+
 function normalizeOptionText(value: string): string {
-  return value.trim().toLocaleLowerCase('ko-KR');
+  return value.trim().toLocaleLowerCase('ko-KR').replace(/\s+/g, '');
+}
+
+function searchableTextVariants(value: string): string[] {
+  const normalized = normalizeOptionText(value);
+  const variants = new Set([normalized]);
+  koreanAdministrativeAliasPairs.forEach(([formal, short]) => {
+    const formalText = normalizeOptionText(formal);
+    const shortText = normalizeOptionText(short);
+    if (normalized.includes(formalText)) {
+      variants.add(normalized.split(formalText).join(shortText));
+    }
+    if (normalized.includes(shortText)) {
+      variants.add(normalized.split(shortText).join(formalText));
+    }
+  });
+  return Array.from(variants).filter(Boolean);
 }
 
 function makeCompanySelectOption(company: { id: number; name: string }): SearchableSelectOption {
@@ -2504,8 +2532,14 @@ function SearchableSelect({
   );
   const filteredOptions = useMemo(() => {
     const normalizedQuery = normalizeOptionText(query);
+    const queryVariants = searchableTextVariants(query);
     const matches = normalizedQuery
-      ? allOptions.filter((option) => normalizeOptionText(`${option.label} ${option.meta || ''} ${option.searchText || ''}`).includes(normalizedQuery))
+      ? allOptions.filter((option) => {
+        const optionVariants = searchableTextVariants(`${option.label} ${option.meta || ''} ${option.searchText || ''}`);
+        return queryVariants.some((queryVariant) => (
+          optionVariants.some((optionVariant) => optionVariant.includes(queryVariant))
+        ));
+      })
       : allOptions;
     return matches.slice(0, searchableOptionLimit);
   }, [allOptions, query]);
