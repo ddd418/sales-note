@@ -58,6 +58,12 @@ cd frontend; npx tsc --noEmit --pretty false
 
 cd frontend; npm run build
 → OK; existing large App chunk warning only
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ OK, Smoke status: ok
+
+railway service logs --service web --tail 120 --json
+→ reporting.0115_department_only_notes_schedules migration applied OK
 ```
 
 ### 알려진 한계
@@ -67,7 +73,9 @@ cd frontend; npm run build
 
 ### Production 배포 상태
 
-- Pending. 커밋 후 Railway backend/frontend 배포와 production smoke를 진행할 예정입니다.
+- Completed. Railway `web` deployment `baf0fb97-a87c-42ab-8498-105fad66745f` and `sales-note-frontend` deployment `b052b140-1142-40d0-a8d7-b4a7e1ef163d` reached `SUCCESS` for commit `33511c68fe0669ec8b4c7363e19e35d53be54f1d`.
+- Backend startup logs confirmed `reporting.0115_department_only_notes_schedules... OK`.
+- Production smoke test passed after deploy, including `/ai-workspace/` and removed `/data-cleanup/`, `/downloads/` routes.
 
 ### 권장 다음 작업
 
