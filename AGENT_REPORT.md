@@ -47,6 +47,9 @@ cd frontend; npx tsc --noEmit --pretty false
 
 cd frontend; npm run build
 → OK; existing large App chunk warning only
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ OK, Smoke status: ok
 ```
 
 ### 알려진 한계
@@ -55,7 +58,8 @@ cd frontend; npm run build
 
 ### Production 배포 상태
 
-- Pending. 커밋 후 Railway 배포와 production smoke를 진행할 예정입니다.
+- Completed. Railway `web` deployment `f92c3db8-3583-487c-8aa4-7adf87b39e98` and `sales-note-frontend` deployment `ac356eba-0f76-4489-ad11-9443b9b9e06a` reached `SUCCESS` for commit `4d4a01f5cfaa95280c6a1c05e93d0ebadeb227c8`.
+- Production smoke test passed after deploy.
 
 ### 수동 서버 테스트 절차
 
