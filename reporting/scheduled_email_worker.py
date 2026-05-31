@@ -4,12 +4,13 @@ import sys
 import threading
 import time
 
-from django.db import close_old_connections
+from django.db import close_old_connections, connection
 
 logger = logging.getLogger(__name__)
 
 _worker_lock = threading.Lock()
 _worker_started = False
+_SCHEDULED_EMAIL_LOCK_ID = 831_202_605
 
 
 def _truthy(value):
@@ -33,6 +34,21 @@ def _is_server_process():
     return False
 
 
+def _try_acquire_dispatch_lock():
+    if connection.vendor != 'postgresql':
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT pg_try_advisory_lock(%s)', [_SCHEDULED_EMAIL_LOCK_ID])
+        return bool(cursor.fetchone()[0])
+
+
+def _release_dispatch_lock():
+    if connection.vendor != 'postgresql':
+        return
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT pg_advisory_unlock(%s)', [_SCHEDULED_EMAIL_LOCK_ID])
+
+
 def _scheduled_email_loop(interval_seconds, batch_limit, initial_delay_seconds):
     if initial_delay_seconds:
         time.sleep(initial_delay_seconds)
@@ -40,16 +56,22 @@ def _scheduled_email_loop(interval_seconds, batch_limit, initial_delay_seconds):
     while True:
         try:
             close_old_connections()
+            if not _try_acquire_dispatch_lock():
+                logger.debug('예약 메일 자동 처리 루프 건너뜀: 다른 프로세스가 lock 보유 중')
+                continue
             from reporting.gmail_views import process_due_scheduled_emails
 
-            result = process_due_scheduled_emails(limit=batch_limit)
-            if result.get('processed') or result.get('failed'):
-                logger.info(
-                    '예약 메일 자동 처리: processed=%s sent=%s failed=%s',
-                    result.get('processed'),
-                    result.get('sent'),
-                    result.get('failed'),
-                )
+            try:
+                result = process_due_scheduled_emails(limit=batch_limit)
+                if result.get('processed') or result.get('failed'):
+                    logger.info(
+                        '예약 메일 자동 처리: processed=%s sent=%s failed=%s',
+                        result.get('processed'),
+                        result.get('sent'),
+                        result.get('failed'),
+                    )
+            finally:
+                _release_dispatch_lock()
         except Exception:
             logger.exception('예약 메일 자동 처리 루프 오류')
         finally:

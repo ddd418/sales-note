@@ -11,12 +11,13 @@ watchPatterns = [
   "/reporting/**",
   "/todos/**",
   "/ai_chat/**",
+  "/frontend/**",
   "/theme/**",
   "/static/**"
 ]
 
 [deploy]
-startCommand = "python manage.py migrate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
+startCommand = "python manage.py migrate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 1 --threads 4"
 healthcheckPath = "/healthz/"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

@@ -24778,10 +24778,13 @@ class CustomLoginView(LoginView):
         from urllib.parse import urlparse
 
         allowed_hosts = super().get_success_url_allowed_hosts()
-        frontend_base_url = getattr(settings, 'FRONTEND_PIPELINE_URL', '')
-        frontend_host = urlparse(frontend_base_url).netloc
-        if frontend_host:
-            allowed_hosts.add(frontend_host)
+        for frontend_base_url in (
+            getattr(settings, 'FRONTEND_PIPELINE_URL', ''),
+            'https://sales-note-frontend-production.up.railway.app/',
+        ):
+            frontend_host = urlparse(frontend_base_url).netloc
+            if frontend_host:
+                allowed_hosts.add(frontend_host)
         return allowed_hosts
     
     def form_valid(self, form):

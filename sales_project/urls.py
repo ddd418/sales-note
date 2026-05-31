@@ -23,7 +23,7 @@ from django.views.static import serve
 from django.shortcuts import redirect
 from urllib.parse import urljoin
 
-from . import health
+from . import frontend_views, health
 
 
 DEFAULT_FRONTEND_URL = 'https://sales-note-frontend-production.up.railway.app/'
@@ -50,6 +50,13 @@ urlpatterns = [
     path('todos/', include('todos.urls')),  # TODOLIST 앱
     path('ai/', include('ai_chat.urls')),  # AI PainPoint 채팅
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+    re_path(r'^assets/(?P<path>.+\.[A-Za-z0-9]+)$', frontend_views.react_asset, name='react_asset'),
+    re_path(r'^(?P<path>(?:data-cleanup|downloads)(?:/.*)?)$', frontend_views.removed_react_route, name='removed_react_route'),
+    re_path(
+        r'^(?P<path>(?:dashboard|customers|accounts|assets|services|notes|schedules|tasks|employees|mailbox|business-cards|weekly-reports|documents|products|receivables|prepayments|profile|ai-workspace|pipeline|reports|analytics|companies)(?:/.*)?)$',
+        frontend_views.react_index,
+        name='react_frontend',
+    ),
 ]
 
 # 개발 환경에서 미디어 파일 서빙

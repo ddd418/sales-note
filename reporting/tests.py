@@ -1,6 +1,8 @@
 import json
 import os
+import tempfile
 from datetime import time, timedelta
+from pathlib import Path
 from urllib.parse import urljoin
 from unittest.mock import patch
 
@@ -198,6 +200,55 @@ class AuthenticationSmoke(TestCase):
         response = self.client.get(reverse('reporting:history_list'))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response['Location'], frontend_url('notes/'))
+
+
+class BackendReactFrontendServingTests(TestCase):
+    """Django web service can serve the built React CRM shell directly."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.dist_dir = Path(self.temp_dir.name)
+        (self.dist_dir / 'assets').mkdir()
+        (self.dist_dir / 'index.html').write_text(
+            '<!doctype html><div id="root"></div><script type="module" src="/assets/app.js"></script>',
+            encoding='utf-8',
+        )
+        (self.dist_dir / 'assets' / 'app.js').write_text('console.log("crm");', encoding='utf-8')
+        self.override = override_settings(FRONTEND_DIST_DIR=self.dist_dir)
+        self.override.enable()
+
+    def tearDown(self):
+        self.override.disable()
+        self.temp_dir.cleanup()
+
+    def test_react_route_serves_index(self):
+        response = self.client.get('/dashboard/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/html', response['Content-Type'])
+        self.assertIn('no-cache', response['Cache-Control'])
+        self.assertContains(response, '<div id="root"></div>', html=False)
+
+    def test_react_asset_serves_immutable_gzip_static(self):
+        response = self.client.get('/assets/app.js', HTTP_ACCEPT_ENCODING='br, gzip')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Encoding'], 'gzip')
+        self.assertIn('max-age=31536000', response['Cache-Control'])
+        self.assertIn('immutable', response['Cache-Control'])
+        self.assertIn('text/javascript', response['Content-Type'])
+
+    def test_removed_frontend_routes_stay_removed(self):
+        response = self.client.get('/downloads/')
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('text/plain', response['Content-Type'])
+
+    def test_backend_api_is_not_intercepted_by_react_shell(self):
+        response = self.client.get('/reporting/api/customers/')
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
 
 
 class CoreCrmLegacyRedirectTests(TestCase):

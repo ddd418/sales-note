@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-05-31 — Sales-note Railway 런타임 비용 절감 1차
+
+### 요약
+
+- Sales-note 프로젝트만 대상으로 Railway 런타임 비용 절감 작업을 진행했습니다.
+- Django `web` gunicorn을 `workers 2`에서 `workers 1 + threads 4`로 변경해 기본 메모리 사용량을 낮추도록 했습니다.
+- 예약 메일 자동 처리 루프에 PostgreSQL advisory lock을 추가해 여러 프로세스가 떠도 같은 due email batch를 중복 처리하지 않도록 했습니다.
+- backend Railway build에서 React를 함께 빌드하고, Django `web`이 React CRM route와 `/assets/*.js/css`를 직접 서빙할 수 있게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `nixpacks.toml`
+- `railway.toml`
+- `reporting/scheduled_email_worker.py`
+- `reporting/tests.py`
+- `reporting/views.py`
+- `sales_project/frontend_views.py`
+- `sales_project/settings_production.py`
+- `sales_project/urls.py`
+
+### CRM 개선
+
+- 사용자 기능, 데이터 모델, 권한, API payload는 변경하지 않았습니다.
+- backend URL에서도 `/dashboard/`, `/customers/`, `/reports/`, `/assets/`, `/ai-workspace/` 같은 React CRM 화면을 직접 열 수 있는 구조가 되었습니다.
+- 기존 `/reporting/*`, `/todos/*`, `/ai/*`, `/admin/`, `/media/*`, backend API는 React shell에 가로채이지 않도록 유지했습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 React frontend 서비스는 URL 호환성을 위해 아직 중지하지 않았습니다. backend 직접 React URL을 운영에서 수동 검증한 뒤에만 `sales-note-frontend` scale-down을 검토해야 합니다.
+- 기존 frontend Railway URL도 이번 변경 후 smoke 대상으로 유지합니다.
+
+### 실행한 명령과 결과
+
+```text
+Python tomllib parse for railway.toml, frontend/railway.toml, nixpacks.toml
+→ OK
+
+python -m py_compile sales_project\frontend_views.py sales_project\urls.py sales_project\settings_production.py reporting\scheduled_email_worker.py reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.BackendReactFrontendServingTests --verbosity=2
+→ OK, 4 tests
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+cd frontend; node --check server.mjs
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- backend build가 React build까지 수행하므로 backend 배포 시간은 늘어날 수 있습니다. 대신 frontend 서비스를 끄는 길을 열기 위한 선행 작업입니다.
+- 기존 사용자가 쓰던 `sales-note-frontend-production.up.railway.app` URL을 바로 끄면 접속 URL이 바뀌므로, 이번 배포에서는 중지하지 않습니다.
+- frontend 서비스 scale-down은 `https://web-production-8a820.up.railway.app/dashboard/` 운영 수동 확인 후 진행하는 것이 안전합니다.
+
+### Production 배포 상태
+
+- Pending. Commit/push 후 Railway `web` deployment와 backend-direct React smoke를 확인할 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://web-production-8a820.up.railway.app/dashboard/`에 접속해 React CRM 화면이 뜨는지 확인합니다.
+2. 로그인 후 `/customers/`, `/notes/`, `/schedules/`, `/reports/`, `/assets/`, `/ai-workspace/`를 backend URL에서 각각 열어봅니다.
+3. 기존 URL `https://sales-note-frontend-production.up.railway.app/dashboard/`도 여전히 동작하는지 확인합니다.
+4. backend URL 검수가 끝나면 `sales-note-frontend` 서비스를 scale 0으로 낮출지 결정합니다.
+
 ## 2026-05-31 — Railway 문서-only 재배포 방지 설정
 
 ### 요약

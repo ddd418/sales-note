@@ -293,8 +293,9 @@ else:
 
 FRONTEND_PIPELINE_URL = os.environ.get(
     'FRONTEND_PIPELINE_URL',
-    'https://sales-note-frontend-production.up.railway.app/',
+    '/',
 )
+FRONTEND_DIST_DIR = Path(os.environ.get('FRONTEND_DIST_DIR', BASE_DIR / 'frontend' / 'dist'))
 
 # Gmail API 설정
 GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')

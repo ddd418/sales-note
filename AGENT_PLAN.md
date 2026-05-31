@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-05-31 Sales-note Railway runtime cost reduction plan
+
+**Background**:
+
+- User asked to proceed with all Sales-note-only optimizations: backend memory reduction, scheduled email duplicate-loop prevention, and frontend service integration.
+- Current Sales-note cost is mostly memory, with `web` as the largest contributor.
+- The existing production architecture keeps Django `web`, React `sales-note-frontend`, and Postgres running separately.
+
+**DB change required**: No.
+
+- No models or migrations are needed.
+- Changes are runtime configuration, process coordination, and static React serving only.
+
+**Implementation scope**:
+
+- Change Railway/Gunicorn backend command from two worker processes to one worker process with threads.
+- Add a PostgreSQL advisory lock around scheduled email dispatch so duplicate server processes cannot process due email batches concurrently.
+- Build the React frontend inside the backend Railway build and serve the built React shell/assets from Django for migrated CRM routes.
+- Keep existing `/reporting/*`, `/todos/*`, `/ai/*`, auth, admin, API, media, and legacy fallback routes intact.
+- Keep the existing `sales-note-frontend` service online until the backend-served React URL is manually verified; do not touch other Railway projects.
+
+**Validation plan**:
+
+- Parse Railway/Nixpacks TOML with Python `tomllib`.
+- `python -m py_compile` for changed Python modules.
+- Focused Django tests for backend React static serving and removed route behavior.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Deploy Sales-note `web`, verify backend direct React routes, then verify production smoke for existing frontend URL and backend URL.
+
 ## 2026-05-31 Railway deploy watch pattern cost-control plan
 
 **Background**:
