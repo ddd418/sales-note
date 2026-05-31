@@ -72,7 +72,10 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Runtime behavior 변경이므로 코드 커밋 후 Sales-note `web`과 `sales-note-frontend` 배포를 확인해야 합니다.
+- Completed. Commit `ecfbe6f` deployed successfully.
+- Railway `web` deployment `ecff5f0d-86d7-47fa-a09f-6f6190b4a2b0` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `e4672c80-9cdc-484d-bb02-6228adb20469` reached `SUCCESS`.
+- Production smoke passed for backend health/ready, existing frontend React routes, protected APIs, static cache headers, and removed `/data-cleanup/` and `/downloads/` routes.
 
 ### 수동 서버 테스트 절차
 
