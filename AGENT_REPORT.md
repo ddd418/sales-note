@@ -1,5 +1,61 @@
 # AGENT_REPORT.md
 
+## 2026-05-31 — 주간보고 Django 버튼 제거
+
+### 요약
+
+- `/weekly-reports/` React 주간보고 목록에서 `Django` 버튼을 제거했습니다.
+- 같은 주간보고 흐름의 상세/수정 화면에 남아 있던 `Django 보기`, `Django 수정` 버튼도 함께 제거했습니다.
+- React 주간보고 작성, 수정, 인쇄, 삭제, 검토 코멘트 기능은 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+
+### CRM 개선
+
+- 사용자가 주간보고 화면에서 legacy Django 템플릿으로 빠지는 버튼이 보이지 않습니다.
+- 주간보고 업무는 React 화면 안에서 목록/작성/수정/조회 흐름으로 유지됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- Django 주간보고 API와 compatibility route는 삭제하지 않았습니다.
+- 인증/권한/데이터 스코프는 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- API payload에는 `djangoHref`류 compatibility 필드가 남아 있습니다. 이번 요청은 사용자에게 보이는 버튼 제거만 대상으로 했습니다.
+
+### Production 배포 상태
+
+- Pending. Frontend runtime 변경이므로 커밋/푸시 후 Railway `sales-note-frontend`와 backend-served React 배포 상태를 확인해야 합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/weekly-reports/`에서 상단 작업 버튼에 `Django` 버튼이 없는지 확인합니다.
+2. 주간보고 상세 화면에서 `Django 보기` 버튼이 없는지 확인합니다.
+3. 주간보고 수정 화면에서 `Django 수정` 버튼이 없는지 확인합니다.
+4. `보고서 작성`, `수정`, `인쇄`, `삭제`, `검토 저장` 등 기존 React 동작은 유지되는지 확인합니다.
+
 ## 2026-05-31 — 영업노트/일정/서비스 화면 정리
 
 ### 요약

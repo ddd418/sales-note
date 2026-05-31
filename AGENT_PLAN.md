@@ -1,5 +1,31 @@
 # AGENT_PLAN.md
 
+## 2026-05-31 Weekly reports Django button removal plan
+
+**Background**:
+
+- User reported that `/weekly-reports/` still shows a Django button.
+- Weekly reports are already served as a React CRM screen, so visible Django-template shortcut buttons should not appear in the user workflow.
+
+**DB change required**: No.
+
+- This is a React display cleanup only.
+- Existing Django API and compatibility routes remain available.
+
+**Implementation scope**:
+
+- Remove visible Django shortcut buttons from weekly reports list, detail, and edit React screens.
+- Preserve React create, edit, print, delete, filters, and manager comment actions.
+- Do not remove backend routes or API payload fields yet, to preserve compatibility.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `python manage.py check`
+- `git diff --check`
+- Deploy Sales-note frontend/runtime and production smoke.
+
 ## 2026-05-31 Notes, schedules, account service cleanup plan
 
 **Background**:

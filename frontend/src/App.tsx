@@ -17090,9 +17090,6 @@ function WeeklyReportsPage({
               <Plus size={16} />
               보고서 작성
             </a>
-            <a className="route-secondary-action" href={source?.links.djangoList || '/reporting/weekly-reports/'}>
-              Django
-            </a>
           </div>
         </div>
         <div className="filter-row weekly-filter-row">
@@ -17253,7 +17250,6 @@ function WeeklyReportDetailPage({
             <div className="button-stack">
               {report.canEdit ? <a className="route-secondary-action primary" href={report.editHref}>수정</a> : null}
               <button type="button" className="route-secondary-action" onClick={() => window.print()}>인쇄</button>
-              <a className="route-secondary-action" href={report.djangoHref}>Django 보기</a>
               {report.canDelete ? (
                 <button type="button" className="route-secondary-action danger" onClick={handleDelete} disabled={deleting}>
                   {deleting ? '삭제 중' : '삭제'}
@@ -17410,7 +17406,6 @@ function WeeklyReportEditorPage({
             </div>
             <div className="route-actions">
               <a className="route-secondary-action" href={mode === 'edit' && report ? report.href : '/weekly-reports/'}>취소</a>
-              {mode === 'edit' && report ? <a className="route-secondary-action" href={report.djangoEditHref}>Django 수정</a> : null}
             </div>
           </div>
           {mode === 'create' && createData?.existingReport ? (
