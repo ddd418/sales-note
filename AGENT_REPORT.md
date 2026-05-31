@@ -13,6 +13,8 @@
 
 - `AGENT_PLAN.md`
 - `AGENT_REPORT.md`
+- `.dockerignore`
+- `.nixpacksignore`
 - `frontend/package-lock.json`
 - `frontend/package.json`
 - `nixpacks.toml`
@@ -60,6 +62,8 @@ cd frontend; npm run build
 Node build-runtime correction for Railway
 → Changed backend Nixpacks Node package from nodejs_22 to nodejs_20 because Railway resolved nodejs_22 as Node 22.10.0, below Vite 8's ^20.19.0 || >=22.12.0 requirement
 → Updated frontend engines to ^20.19.0 || >=22.12.0 and kept npm optional dependencies enabled
+→ Second retry showed Railway's nodejs_20 resolves to Node 20.18.0, also below Vite 8's minimum; changed backend Nixpacks Node package to nodejs_23
+→ Added .dockerignore and .nixpacksignore so local frontend/node_modules and dist artifacts cannot be copied into the Railway Linux build context
 
 cd frontend; node --check server.mjs
 → OK
@@ -83,7 +87,8 @@ git diff --check
 ### Production 배포 상태
 
 - Pending retry. First `web` deployment for commit `f3b93ce` failed during frontend build because Railway's `nodejs_22` resolved to Node `22.10.0`, while Vite 8 requires `^20.19.0 || >=22.12.0`.
-- A follow-up build-runtime fix is being committed/pushed before retrying Railway `web` deployment and backend-direct React smoke.
+- Second `web` deployment for commit `a74e6d4` failed because Railway's `nodejs_20` resolved to Node `20.18.0`, and local `frontend/node_modules` was copied into the image after dependency install.
+- A follow-up build-context/runtime fix is being committed/pushed before retrying Railway `web` deployment and backend-direct React smoke.
 
 ### 수동 서버 테스트 절차
 
