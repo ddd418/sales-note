@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## 2026-05-31 Railway deploy watch pattern cost-control plan
+
+**Background**:
+
+- Railway deployment history shows documentation-only commits redeploying both `web` and `sales-note-frontend`.
+- The user asked to keep functionality intact while reducing Railway waste.
+- Railway watch paths can skip deployments when changed files do not match configured runtime paths.
+
+**DB change required**: No.
+
+- This is a Railway build/deploy configuration change only.
+- No Django models, migrations, or API payloads are changed.
+
+**Implementation scope**:
+
+- Add backend watch patterns to the root `railway.toml` so `web` deploys only for Django/backend/runtime config paths.
+- Add frontend watch patterns to `frontend/railway.toml` so `sales-note-frontend` deploys only for React/frontend runtime paths.
+- Keep start commands, healthchecks, restart policy, routes, and application behavior unchanged.
+- Document the expected effect: future `AGENT_REPORT.md`, README, and docs-only root commits should not redeploy both runtime services.
+
+**Validation plan**:
+
+- Parse both TOML files with Python `tomllib`.
+- `python manage.py check`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit/push and verify Railway deployment manifests include the configured watch patterns.
+
 ## 2026-05-30 Department select search fix plan
 
 **Background**:

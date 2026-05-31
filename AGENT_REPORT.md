@@ -1,5 +1,65 @@
 # AGENT_REPORT.md
 
+## 2026-05-31 — Railway 문서-only 재배포 방지 설정
+
+### 요약
+
+- Railway에서 `AGENT_REPORT.md` 같은 문서 커밋까지 `web`과 `sales-note-frontend`를 함께 재배포하던 낭비를 줄이기 위해 watch pattern을 추가했습니다.
+- Backend 서비스는 Django/backend/runtime 설정 경로가 바뀔 때만 배포되도록 했습니다.
+- Frontend 서비스는 `frontend/**` 경로가 바뀔 때만 배포되도록 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `railway.toml`
+- `frontend/railway.toml`
+
+### CRM 개선
+
+- 사용자 기능, URL, API, 인증, 권한, 화면 동작은 변경하지 않았습니다.
+- 앞으로 문서/보고서만 갱신하는 커밋이 앱 재빌드/재배포를 유발하지 않아 Railway 비용과 운영 잡음을 줄입니다.
+
+### 기존 기능 보존
+
+- `web` start command, healthcheck, restart policy는 유지했습니다.
+- `sales-note-frontend` start command, healthcheck, restart policy는 유지했습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+Python tomllib parse for railway.toml and frontend/railway.toml
+→ OK, watchPatterns parsed correctly
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이번 설정 커밋 자체는 `railway.toml`과 `frontend/railway.toml`을 변경하므로 마지막으로 양쪽 서비스가 한 번 배포됩니다.
+- 이후 root 문서-only 변경은 건너뛰어야 하지만, Railway의 skip 동작은 다음 문서-only push에서 최종 확인할 수 있습니다.
+
+### Production 배포 상태
+
+- Pending. Commit/push 후 Railway deployment manifest에 watchPatterns 반영 여부를 확인할 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. Railway `web` deployment details에서 build watch patterns에 backend 경로들이 표시되는지 확인합니다.
+2. Railway `sales-note-frontend` deployment details에서 build watch patterns에 `/frontend/**`가 표시되는지 확인합니다.
+3. 이후 문서-only 커밋이 생겼을 때 `web`/`sales-note-frontend` deployment가 생성되지 않는지 확인합니다.
+
 ## 2026-05-30 — 부서/연구실 선택 검색 누락 수정
 
 ### 요약

@@ -1,5 +1,19 @@
 [build]
 builder = "NIXPACKS"
+watchPatterns = [
+  "/railway.toml",
+  "/nixpacks.toml",
+  "/requirements.txt",
+  "/runtime.txt",
+  "/manage.py",
+  "/build.sh",
+  "/sales_project/**",
+  "/reporting/**",
+  "/todos/**",
+  "/ai_chat/**",
+  "/theme/**",
+  "/static/**"
+]
 
 [deploy]
 startCommand = "python manage.py migrate && gunicorn sales_project.wsgi:application --bind 0.0.0.0:$PORT --timeout 120 --workers 2"
