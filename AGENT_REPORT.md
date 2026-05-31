@@ -47,7 +47,10 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Frontend runtime 변경이므로 커밋/푸시 후 Railway `sales-note-frontend`와 backend-served React 배포 상태를 확인해야 합니다.
+- Completed. Commit `1b7ea42` deployed successfully.
+- Railway `web` deployment `c281d0a5-a68d-4227-be90-953cbb582672` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `4fa9f26a-5d2a-435b-8233-e08c7a80fa55` reached `SUCCESS`.
+- Production smoke passed for backend health/ready, frontend React routes, protected APIs, static cache headers, and removed `/data-cleanup/` and `/downloads/` routes.
 
 ### 수동 서버 테스트 절차
 
