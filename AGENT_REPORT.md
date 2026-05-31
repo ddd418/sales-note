@@ -13,6 +13,8 @@
 
 - `AGENT_PLAN.md`
 - `AGENT_REPORT.md`
+- `frontend/package-lock.json`
+- `frontend/package.json`
 - `nixpacks.toml`
 - `railway.toml`
 - `reporting/scheduled_email_worker.py`
@@ -55,6 +57,10 @@ python manage.py makemigrations --check --dry-run
 cd frontend; npm run build
 → OK; existing large App chunk warning only
 
+Node build-runtime correction for Railway
+→ Changed backend Nixpacks Node package from nodejs_22 to nodejs_20 because Railway resolved nodejs_22 as Node 22.10.0, below Vite 8's ^20.19.0 || >=22.12.0 requirement
+→ Updated frontend engines to ^20.19.0 || >=22.12.0 and kept npm optional dependencies enabled
+
 cd frontend; node --check server.mjs
 → OK
 
@@ -76,7 +82,8 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Commit/push 후 Railway `web` deployment와 backend-direct React smoke를 확인할 예정입니다.
+- Pending retry. First `web` deployment for commit `f3b93ce` failed during frontend build because Railway's `nodejs_22` resolved to Node `22.10.0`, while Vite 8 requires `^20.19.0 || >=22.12.0`.
+- A follow-up build-runtime fix is being committed/pushed before retrying Railway `web` deployment and backend-direct React smoke.
 
 ### 수동 서버 테스트 절차
 

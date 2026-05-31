@@ -1,10 +1,10 @@
 [phases.setup]
-nixPkgs = ["python311", "nodejs_22", "libreoffice", "unoconv", "nanum", "nanum-gothic-coding"]
+nixPkgs = ["python311", "nodejs_20", "libreoffice", "unoconv", "nanum", "nanum-gothic-coding"]
 
 [phases.install]
 cmds = [
   "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt",
-  "cd frontend && npm ci"
+  "cd frontend && npm ci --include=optional"
 ]
 
 [phases.build]
