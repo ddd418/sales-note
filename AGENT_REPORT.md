@@ -1,5 +1,87 @@
 # AGENT_REPORT.md
 
+## 2026-05-31 — 영업노트/일정/서비스 화면 정리
+
+### 요약
+
+- 영업노트 상세에서 `활동 내용` 바로 아래에 `다음 액션`을 다시 보여주도록 했습니다.
+- 일정 상세에서 연결된 영업노트가 있으면 상단 지표 바로 아래에 먼저 보이도록 배치했습니다.
+- 계정 상세의 담당자 `상태` 표시와 수정 입력을 제거했습니다.
+- 계정/장비 서비스 화면에서 구매일, 보증 만료일, 교정 관련 화면 요소를 숨기고 서비스 이력 중심으로 정리했습니다.
+- `/notes/` 기본 날짜 범위를 최근 1개월부터 오늘까지로 두고, 이름만 검색해도 부서/일정에 연결된 영업노트가 잡히도록 검색 범위를 넓혔습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/styles.css`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- `/notes/{id}/`에서 다음 액션을 본문과 함께 확인할 수 있습니다.
+- `/schedules/{id}/`에서 연결 영업노트가 있으면 일정 상세 상단에서 바로 이동할 수 있습니다.
+- `/accounts/{id}/` 담당자 카드와 담당자 수정 폼에서 상태 항목을 제거했습니다.
+- `/accounts/{id}/`와 `/assets/`의 장비/서비스 UI에서 구매일, 보증 만료일, 교정 컬럼/필터/이력/등록 버튼을 제거했습니다.
+- 장비 저장 시 React에서 더 이상 구매일/보증일을 보내지 않으며, 기존 DB 값은 보존되도록 update API를 방어했습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 교정 API/데이터 필드는 backward compatibility를 위해 남겨두되, 요청받은 React 서비스 화면에서는 노출하지 않습니다.
+- `/reporting/*`, 인증, 권한 스코프, 기존 일정/영업노트 API 라우트는 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py test reporting.tests.NotesSummaryApiTests --keepdb
+→ OK, 32 tests
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --keepdb
+→ OK, 67 tests
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb
+→ OK, 60 tests
+
+python manage.py check
+→ System check identified no issues
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 교정 모델/API는 과거 데이터와 기존 테스트 호환성을 위해 아직 제거하지 않았습니다. 이번 작업은 사용자가 보는 React 서비스 흐름에서 제거하는 단계입니다.
+- `/assets/` API payload에는 calibration 관련 필드가 남아 있지만 React 화면은 사용하지 않습니다.
+
+### Production 배포 상태
+
+- Pending. Runtime behavior 변경이므로 코드 커밋 후 Sales-note `web`과 `sales-note-frontend` 배포를 확인해야 합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/809/`에서 활동 내용 바로 아래 `다음 액션`이 보이는지 확인합니다.
+2. `https://sales-note-frontend-production.up.railway.app/schedules/910/`에서 연결된 영업노트가 있으면 상단 쪽에 `연결된 영업노트`로 표시되는지 확인합니다.
+3. `https://sales-note-frontend-production.up.railway.app/accounts/385/`에서 담당자 상태 항목이 안 보이는지, 서비스 섹션에 구매/보증/교정 입력과 조회가 안 보이는지 확인합니다.
+4. `https://sales-note-frontend-production.up.railway.app/assets/?asset=1`에서 교정 컬럼/필터/이력 없이 서비스 이력만 중심으로 보이는지 확인합니다.
+5. `https://sales-note-frontend-production.up.railway.app/notes/`에서 기본 날짜가 최근 1개월~오늘로 잡히고, 이름만 검색해도 관련 영업노트가 나오는지 확인합니다.
+
 ## 2026-05-31 — Sales-note Railway 런타임 비용 절감 1차
 
 ### 요약

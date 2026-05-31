@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-05-31 Notes, schedules, account service cleanup plan
+
+**Background**:
+
+- User wants note detail to show next action directly under the activity body.
+- Schedule detail should expose any linked sales note instead of making the user hunt for it.
+- Account detail should remove contact status display and hide unnecessary asset/service fields.
+- Asset service flow should focus on service history, not calibration history.
+- Notes list search should work by a person's name and default to a one-month date range ending today.
+
+**DB change required**: No.
+
+- Existing `History`, `Schedule`, `FollowUp`, `Department`, `CustomerAsset`, and service/calibration models are enough.
+- Purchase/warranty/calibration data can remain stored for backward compatibility, but it should no longer be exposed in the requested React service flows.
+
+**Implementation scope**:
+
+- Add inline next-action display to React note detail.
+- Add one-month default date filters to notes list and API, and broaden note search over customer, schedule, department, and owner/reviewer names.
+- Keep schedule detail `relatedNotes` tied to the schedule and make the linked note block explicit in the React detail page.
+- Remove account contact status row from account detail.
+- Hide customer asset purchase date and warranty fields from create/edit/view.
+- Remove calibration buttons, forms, filters, columns, metrics, and history blocks from account asset/service and asset directory UI so service history is the visible workflow.
+- Preserve existing backend routes and API compatibility for older clients.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py`
+- Focused Django tests for notes summary and schedule detail APIs.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then provide production manual checks.
+
 ## 2026-05-31 Sales-note Railway runtime cost reduction plan
 
 **Background**:

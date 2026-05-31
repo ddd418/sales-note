@@ -68,6 +68,30 @@ def _prepayment_item_payload(prepayment, actor):
     return _payload(prepayment, actor)
 
 
+def _date_one_month_before(value):
+    month = value.month - 1
+    year = value.year
+    if month < 1:
+        month = 12
+        year -= 1
+    if month in {1, 3, 5, 7, 8, 10, 12}:
+        last_day = 31
+    elif month == 2:
+        last_day = 29 if (year % 400 == 0 or (year % 4 == 0 and year % 100 != 0)) else 28
+    else:
+        last_day = 30
+    return value.replace(year=year, month=month, day=min(value.day, last_day))
+
+
+def _parse_iso_date_or_none(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _prepayment_create_ledger(*args, **kwargs):
     """Delegate to the split prepayment API module during migration."""
     from reporting.api.prepayments import _prepayment_create_ledger as _create
@@ -5259,7 +5283,7 @@ def followups_summary_api(request):
         'source': 'django',
         'generatedAt': timezone.now().isoformat(),
         'canManage': not user_profile.is_manager(),
-        'message': '' if not user_profile.is_manager() else '장비/A/S/교정 정보는 읽기 전용입니다.',
+        'message': '' if not user_profile.is_manager() else '장비/A/S 정보는 읽기 전용입니다.',
         'scope': {
             'userCount': scope_users.count(),
             'canViewAll': user_profile.can_view_all_users(),
@@ -5857,7 +5881,7 @@ def _customer_asset_summary_payload(request, followup, scope_users, can_edit):
 
     return {
         'canManage': bool(can_edit),
-        'message': '' if can_edit else '장비/A/S/교정 정보는 읽기 전용입니다.',
+        'message': '' if can_edit else '장비/A/S 정보는 읽기 전용입니다.',
         'metrics': {
             'assetCount': len(assets),
             'activeAssetCount': sum(1 for asset in assets if asset.status == 'active'),
@@ -6324,7 +6348,7 @@ def customer_assets_summary_api(request):
         'source': 'django',
         'generatedAt': timezone.now().isoformat(),
         'canManage': can_manage_assets,
-        'message': '' if can_manage_assets else '장비/A/S/교정 정보는 읽기 전용입니다.',
+        'message': '' if can_manage_assets else '장비/A/S 정보는 읽기 전용입니다.',
         'scope': {
             'label': _customer_asset_directory_scope_label(user_profile, request.user, selected_user),
             'userCount': scope_users.count(),
@@ -6461,12 +6485,16 @@ def customer_asset_directory_create_api(request):
     if status not in {value for value, _label in CustomerAsset.STATUS_CHOICES}:
         return JsonResponse({'success': False, 'error': '올바른 장비 상태를 선택해주세요.'}, status=400)
 
-    purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
-    if purchase_error:
-        return JsonResponse({'success': False, 'error': purchase_error}, status=400)
-    warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
-    if warranty_error:
-        return JsonResponse({'success': False, 'error': warranty_error}, status=400)
+    purchase_date = None
+    if 'purchase_date' in request.POST:
+        purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
+        if purchase_error:
+            return JsonResponse({'success': False, 'error': purchase_error}, status=400)
+    warranty_until = None
+    if 'warranty_until' in request.POST:
+        warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
+        if warranty_error:
+            return JsonResponse({'success': False, 'error': warranty_error}, status=400)
 
     product = None
     product_id = request.POST.get('product_id', '').strip()
@@ -6752,12 +6780,16 @@ def customer_asset_directory_update_api(request, asset_id):
     if status not in {value for value, _label in CustomerAsset.STATUS_CHOICES}:
         return JsonResponse({'success': False, 'error': '올바른 장비 상태를 선택해주세요.'}, status=400)
 
-    purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
-    if purchase_error:
-        return JsonResponse({'success': False, 'error': purchase_error}, status=400)
-    warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
-    if warranty_error:
-        return JsonResponse({'success': False, 'error': warranty_error}, status=400)
+    purchase_date = asset.purchase_date
+    if 'purchase_date' in request.POST:
+        purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
+        if purchase_error:
+            return JsonResponse({'success': False, 'error': purchase_error}, status=400)
+    warranty_until = asset.warranty_until
+    if 'warranty_until' in request.POST:
+        warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
+        if warranty_error:
+            return JsonResponse({'success': False, 'error': warranty_error}, status=400)
 
     product = None
     product_id = request.POST.get('product_id', '').strip()
@@ -9027,13 +9059,6 @@ def customer_asset_save_api(request, followup_id, asset_id=None):
     if status not in {value for value, _label in CustomerAsset.STATUS_CHOICES}:
         return JsonResponse({'success': False, 'error': '올바른 장비 상태를 선택해주세요.'}, status=400)
 
-    purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
-    if purchase_error:
-        return JsonResponse({'success': False, 'error': purchase_error}, status=400)
-    warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
-    if warranty_error:
-        return JsonResponse({'success': False, 'error': warranty_error}, status=400)
-
     product = None
     product_id = request.POST.get('product_id', '').strip()
     if product_id:
@@ -9052,6 +9077,17 @@ def customer_asset_save_api(request, followup_id, asset_id=None):
             primary_followup=followup,
             created_by=request.user,
         )
+
+    purchase_date = asset.purchase_date
+    if 'purchase_date' in request.POST or not asset_id:
+        purchase_date, purchase_error = _parse_asset_date(request.POST.get('purchase_date'), '구매일')
+        if purchase_error:
+            return JsonResponse({'success': False, 'error': purchase_error}, status=400)
+    warranty_until = asset.warranty_until
+    if 'warranty_until' in request.POST or not asset_id:
+        warranty_until, warranty_error = _parse_asset_date(request.POST.get('warranty_until'), '보증 종료일')
+        if warranty_error:
+            return JsonResponse({'success': False, 'error': warranty_error}, status=400)
 
     asset.asset_name = asset_name
     asset.model_name = request.POST.get('model_name', '').strip()
@@ -10037,7 +10073,6 @@ def notes_delete_api(request, history_id):
 @require_http_methods(["GET"])
 def notes_summary_api(request):
     """React CRM notes 화면용 읽기 전용 API."""
-    from datetime import timedelta
     from django.db.models import Case, DateField, F, When
 
     auth_response = _api_login_required_response(request)
@@ -10050,6 +10085,10 @@ def notes_summary_api(request):
     today = timezone.localdate()
 
     q = request.GET.get('q', '').strip()
+    date_to = _parse_iso_date_or_none(request.GET.get('date_to') or request.GET.get('dateTo')) or today
+    date_from = _parse_iso_date_or_none(request.GET.get('date_from') or request.GET.get('dateFrom')) or _date_one_month_before(date_to)
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
     owner = request.GET.get('owner', '').strip()
     action_type = request.GET.get('actionType', '').strip()
     review = request.GET.get('review', '').strip()
@@ -10059,7 +10098,17 @@ def notes_summary_api(request):
         user__in=scope_users,
         parent_history__isnull=True,
     )
-    notes = base_notes.select_related(
+    sort_date_expression = Case(
+        When(schedule__isnull=False, then=F('schedule__visit_date')),
+        When(personal_schedule__isnull=False, then=F('personal_schedule__schedule_date')),
+        default=F('created_at__date'),
+        output_field=DateField(),
+    )
+    ranged_base_notes = base_notes.annotate(sort_date=sort_date_expression).filter(
+        sort_date__gte=date_from,
+        sort_date__lte=date_to,
+    )
+    notes = ranged_base_notes.select_related(
         'user',
         'followup',
         'followup__company',
@@ -10086,8 +10135,20 @@ def notes_summary_api(request):
             Q(followup__department__name__icontains=q) |
             Q(department__name__icontains=q) |
             Q(department__company__name__icontains=q) |
-            Q(schedule__department__name__icontains=q)
-        )
+            Q(department__followup_departments__customer_name__icontains=q) |
+            Q(department__followup_departments__manager__icontains=q) |
+            Q(schedule__followup__customer_name__icontains=q) |
+            Q(schedule__followup__manager__icontains=q) |
+            Q(schedule__department__name__icontains=q) |
+            Q(schedule__department__followup_departments__customer_name__icontains=q) |
+            Q(schedule__department__followup_departments__manager__icontains=q) |
+            Q(user__username__icontains=q) |
+            Q(user__first_name__icontains=q) |
+            Q(user__last_name__icontains=q) |
+            Q(reviewer__username__icontains=q) |
+            Q(reviewer__first_name__icontains=q) |
+            Q(reviewer__last_name__icontains=q)
+        ).distinct()
 
     if owner:
         try:
@@ -10120,12 +10181,6 @@ def notes_summary_api(request):
         notes = notes.filter(next_action_date__isnull=False)
 
     notes = notes.annotate(
-        sort_date=Case(
-            When(schedule__isnull=False, then=F('schedule__visit_date')),
-            When(personal_schedule__isnull=False, then=F('personal_schedule__schedule_date')),
-            default=F('created_at__date'),
-            output_field=DateField(),
-        ),
         reply_count=Count('reply_memos', distinct=True),
         file_count=Count('files', distinct=True),
     ).order_by('-sort_date', '-created_at')
@@ -10170,16 +10225,16 @@ def notes_summary_api(request):
         scope_label = f'{user_profile.company.name} 팀'
 
     filtered_count = notes.count()
-    base_non_memo = base_notes.exclude(action_type='memo')
-    unreviewed_count = base_notes.filter(
+    base_non_memo = ranged_base_notes.exclude(action_type='memo')
+    unreviewed_count = ranged_base_notes.filter(
         action_type__in=review_required_types,
         reviewed_at__isnull=True,
     ).count()
-    overdue_count = base_notes.filter(
+    overdue_count = ranged_base_notes.filter(
         next_action_date__lt=today,
         next_action_date__isnull=False,
     ).exclude(action_type='memo').count()
-    upcoming_count = base_notes.filter(
+    upcoming_count = ranged_base_notes.filter(
         next_action_date__gte=today,
         next_action_date__lte=today + timedelta(days=7),
         next_action_date__isnull=False,
@@ -10187,7 +10242,7 @@ def notes_summary_api(request):
 
     action_counts = {
         item['action_type']: item['count']
-        for item in base_notes.values('action_type').annotate(count=Count('id'))
+        for item in ranged_base_notes.values('action_type').annotate(count=Count('id'))
     }
 
     return JsonResponse({
@@ -10203,6 +10258,8 @@ def notes_summary_api(request):
         },
         'filters': {
             'q': q,
+            'dateFrom': date_from.isoformat(),
+            'dateTo': date_to.isoformat(),
             'owner': owner,
             'actionType': action_type,
             'review': review,
@@ -10224,7 +10281,7 @@ def notes_summary_api(request):
             ],
         },
         'metrics': {
-            'totalNotes': base_notes.count(),
+            'totalNotes': ranged_base_notes.count(),
             'activityNotes': base_non_memo.count(),
             'filteredNotes': filtered_count,
             'unreviewedNotes': unreviewed_count,

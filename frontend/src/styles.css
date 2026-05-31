@@ -2933,7 +2933,7 @@ h2 {
 
 .notes-filter-bar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 160px 170px 160px 170px;
+  grid-template-columns: minmax(240px, 1fr) repeat(6, minmax(120px, 160px));
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -2942,13 +2942,25 @@ h2 {
   box-shadow: var(--shadow);
 }
 
-.notes-filter-bar select {
+.notes-filter-bar select,
+.notes-date-filter input {
   min-height: 42px;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-soft);
   color: var(--text);
+}
+
+.notes-date-filter {
+  display: grid;
+  gap: 4px;
+}
+
+.notes-date-filter span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .notes-layout {
@@ -3135,6 +3147,33 @@ h2 {
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.note-detail-next-action {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+
+.note-detail-next-action span,
+.note-detail-next-action small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.note-detail-next-action p {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .note-detail-field-grid,

@@ -7355,6 +7355,55 @@ class NotesSummaryApiTests(TestCase):
         self.assertTrue(any(option['value'] == 'quote' for option in payload['options']['actionTypes']))
         self.assertEqual(payload['metrics']['filteredNotes'], 1)
 
+    def test_notes_summary_api_defaults_to_recent_one_month_range(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import History
+
+        recent = self._create_note(self.user, '최근노트')
+        old = self._create_note(self.user, '오래된노트')
+        old_created_at = timezone.now() - timedelta(days=45)
+        History.objects.filter(pk=old.id).update(created_at=old_created_at)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        ids = {item['id'] for item in payload['notes']}
+        self.assertIn(recent.id, ids)
+        self.assertNotIn(old.id, ids)
+        self.assertEqual(payload['filters']['dateTo'], timezone.localdate().isoformat())
+
+    def test_notes_summary_api_searches_department_contact_names(self):
+        from reporting.models import FollowUp, History
+
+        department = self._create_department_only(self.user, '부서메모검색')
+        contact = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='홍길동',
+            manager='검색 책임',
+            company=department.company,
+            department=department,
+            priority='normal',
+            pipeline_stage='potential',
+        )
+        note = History.objects.create(
+            user=self.user,
+            company=self.company,
+            department=department,
+            action_type='customer_meeting',
+            content='고객 없는 부서에 남긴 방문 메모',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'q': contact.customer_name})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([item['id'] for item in payload['notes']], [note.id])
+
     def test_notes_summary_api_manager_sees_same_company_only(self):
         own = self._create_note(self.user, '회사내노트')
         coworker = self._create_note(self.coworker, '회사내동료노트')

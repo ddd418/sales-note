@@ -666,6 +666,19 @@ const parseLocalDate = (value: string) => {
   return new Date(year, month - 1, day);
 };
 
+const shiftLocalDateByMonths = (date: Date, offset: number) => {
+  const shifted = new Date(date);
+  const day = shifted.getDate();
+  shifted.setDate(1);
+  shifted.setMonth(shifted.getMonth() + offset);
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+  shifted.setDate(Math.min(day, lastDay));
+  return shifted;
+};
+
+const defaultNotesDateFrom = () => localDateInputValue(shiftLocalDateByMonths(new Date(), -1));
+const defaultNotesDateTo = () => localDateInputValue();
+
 const getScheduleCalendarMonthParam = () => {
   const month = new URLSearchParams(window.location.search).get('month') || '';
   return /^\d{4}-\d{2}$/.test(month) ? month : localDateInputValue().slice(0, 7);
@@ -1725,10 +1738,8 @@ const customerAssetFormToPayload = (form: CustomerAssetFormState): { payload?: C
       modelName: form.modelName.trim() || undefined,
       notes: form.notes.trim() || undefined,
       primaryFollowupId: form.primaryFollowupId ? Number(form.primaryFollowupId) : undefined,
-      purchaseDate: form.purchaseDate || undefined,
       serialNumber: form.serialNumber.trim() || undefined,
       status: form.status,
-      warrantyUntil: form.warrantyUntil || undefined,
     },
   };
 };
@@ -1864,7 +1875,7 @@ const routeMeta: Record<
   assets: {
     eyebrow: 'Sales CRM / Assets',
     title: '장비',
-    summary: '고객 보유 장비, A/S 진행, 교정 예정 상태를 전체 범위에서 검색합니다.',
+    summary: '고객 보유 장비와 A/S 진행 상태를 전체 범위에서 검색합니다.',
     primaryHref: '/assets/',
     primaryLabel: '장비 디렉터리 열기',
     actions: [
@@ -4281,7 +4292,6 @@ function CustomerDetailPage({
     { label: '등록 장비', value: `${formatNumber(assetSummary.metrics.assetCount)}건` },
     { label: '운영 장비', value: `${formatNumber(assetSummary.metrics.activeAssetCount)}건` },
     { label: '진행 서비스', value: `${formatNumber(assetSummary.metrics.openServiceCaseCount)}건` },
-    { label: '교정 예정', value: `${formatNumber(assetSummary.metrics.dueCalibrationCount)}건` },
   ];
   const operationalMetrics = [
     { label: '납품', value: `${formatNumber(operationalRecords.metrics.deliveryRecords)}건` },
@@ -4585,10 +4595,6 @@ function CustomerDetailPage({
                     <dd>{contact.contactSummary || '연락처 없음'}</dd>
                   </div>
                   <div>
-                    <dt>상태</dt>
-                    <dd>{[contact.statusLabel, contact.priorityLabel, contact.pipelineLabel].filter(Boolean).join(' · ') || '-'}</dd>
-                  </div>
-                  <div>
                     <dt>주소</dt>
                     <dd>{contact.address || '주소 없음'}</dd>
                   </div>
@@ -4714,18 +4720,6 @@ function CustomerDetailPage({
                 </select>
               </label>
               <label>
-                <span>상태</span>
-                <select
-                  onChange={(event) => handleAccountContactFieldChange('status', event.target.value)}
-                  required
-                  value={accountContactForm.status}
-                >
-                  {(accountManagement?.statuses ?? []).map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
                 <span>파이프라인</span>
                 <select
                   onChange={(event) => handleAccountContactFieldChange('pipelineStage', event.target.value)}
@@ -4825,7 +4819,7 @@ function CustomerDetailPage({
         <div className="dashboard-panel-heading">
           <div>
             <span className="eyebrow">Assets & service</span>
-            <h2>장비/교정/서비스</h2>
+            <h2>장비/서비스</h2>
           </div>
           <Archive size={18} />
         </div>
@@ -4870,15 +4864,6 @@ function CustomerDetailPage({
               >
                 <ListChecks size={15} />
                 서비스 접수
-              </button>
-              <button
-                className="route-secondary-action"
-                disabled={assetSummary.assets.length === 0}
-                onClick={() => handleCalibrationCreateOpen()}
-                type="button"
-              >
-                <CheckCircle2 size={15} />
-                교정 기록
               </button>
             </>
           ) : null}
@@ -4925,22 +4910,6 @@ function CustomerDetailPage({
                 <input
                   onChange={(event) => handleAssetFieldChange('serialNumber', event.target.value)}
                   value={assetForm.serialNumber}
-                />
-              </label>
-              <label>
-                <span>구매일</span>
-                <input
-                  onChange={(event) => handleAssetFieldChange('purchaseDate', event.target.value)}
-                  type="date"
-                  value={assetForm.purchaseDate}
-                />
-              </label>
-              <label>
-                <span>보증 만료일</span>
-                <input
-                  onChange={(event) => handleAssetFieldChange('warrantyUntil', event.target.value)}
-                  type="date"
-                  value={assetForm.warrantyUntil}
                 />
               </label>
               <label>
@@ -5197,8 +5166,6 @@ function CustomerDetailPage({
                   <span className={`customer-asset-status ${asset.status}`}>{asset.statusLabel}</span>
                 </div>
                 <div className="customer-asset-card-meta">
-                  <span>구매 <strong>{formatDateLabel(asset.purchaseDate) || '-'}</strong></span>
-                  <span>보증 <strong>{formatDateLabel(asset.warrantyUntil) || '-'}</strong></span>
                   <span>소유 <strong>{asset.primaryFollowupName || asset.createdBy || '-'}</strong></span>
                   <span>수정 <strong>{formatDateTimeLabel(asset.updatedAt) || '-'}</strong></span>
                 </div>
@@ -5214,17 +5181,6 @@ function CustomerDetailPage({
                       <strong>기록 없음</strong>
                     )}
                   </div>
-                  <div>
-                    <span>최근 교정</span>
-                    {asset.latestCalibration ? (
-                      <strong>
-                        {asset.latestCalibration.resultLabel}
-                        {asset.latestCalibration.nextDueDate ? ` · 다음 ${formatDateLabel(asset.latestCalibration.nextDueDate)}` : ''}
-                      </strong>
-                    ) : (
-                      <strong>기록 없음</strong>
-                    )}
-                  </div>
                 </div>
                 {asset.notes ? <p>{asset.notes}</p> : null}
                 {assetSummary.canManage ? (
@@ -5235,12 +5191,9 @@ function CustomerDetailPage({
                     <button className="customer-row-action" onClick={() => handleServiceCaseCreateOpen(asset)} type="button">
                       서비스
                     </button>
-                    <button className="customer-row-action" onClick={() => handleCalibrationCreateOpen(asset)} type="button">
-                      교정
-                    </button>
                   </div>
                 ) : null}
-                {asset.serviceCases.length > 0 || asset.calibrations.length > 0 ? (
+                {asset.serviceCases.length > 0 ? (
                   <div className="customer-asset-history-grid">
                     <div>
                       <h4>서비스 이력</h4>
@@ -5257,31 +5210,13 @@ function CustomerDetailPage({
                         </button>
                       ))}
                     </div>
-                    <div>
-                      <h4>교정 이력</h4>
-                      {asset.calibrations.slice(0, 3).map((calibration) => (
-                        <button
-                          className="customer-asset-history-row"
-                          disabled={!assetSummary.canManage}
-                          key={calibration.id}
-                          onClick={() => handleCalibrationEditOpen(calibration)}
-                          type="button"
-                        >
-                          <span>{calibration.resultLabel}</span>
-                          <small>
-                            {calibration.calibrationDate ? formatDateLabel(calibration.calibrationDate) : '교정일 없음'}
-                            {calibration.nextDueDate ? ` · 다음 ${formatDateLabel(calibration.nextDueDate)}` : ''}
-                          </small>
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 ) : null}
               </article>
             ))}
           </div>
         ) : (
-          <DashboardEmpty label="등록된 장비/교정/서비스 이력이 없습니다" />
+          <DashboardEmpty label="등록된 장비/서비스 이력이 없습니다" />
         )}
       </section>
 
@@ -5977,7 +5912,6 @@ function CustomerAssetDirectoryTable({
             <th>장비</th>
             <th>고객/위치</th>
             <th>A/S</th>
-            <th>교정</th>
             <th>관리</th>
           </tr>
         </thead>
@@ -6012,19 +5946,6 @@ function CustomerAssetDirectoryTable({
                     </>
                   ) : (
                     <span>{asset.serviceStateLabel || '서비스 이력 없음'}</span>
-                  )}
-                </div>
-              </td>
-              <td>
-                <div className="asset-directory-info">
-                  {asset.latestCalibration ? (
-                    <>
-                      <strong className={asset.latestCalibration.overdue ? 'customer-overdue-text' : ''}>{asset.latestCalibration.dueStateLabel || asset.latestCalibration.resultLabel}</strong>
-                      <span>{asset.latestCalibration.nextDueDate ? `다음 ${formatDateLabel(asset.latestCalibration.nextDueDate)}` : '다음 예정일 없음'}</span>
-                      <small>{[asset.latestCalibration.calibrationDate ? formatDateLabel(asset.latestCalibration.calibrationDate) : '교정일 없음', asset.latestCalibration.certificateLabel].filter(Boolean).join(' · ')}</small>
-                    </>
-                  ) : (
-                    <span>{asset.calibrationAlertLabel || '교정 이력 없음'}</span>
                   )}
                 </div>
               </td>
@@ -6314,9 +6235,7 @@ function CustomerAssetDirectoryDrawer({
         <span>모델 <strong>{asset.modelName || '-'}</strong></span>
         <span>시리얼 <strong>{asset.serialNumber || '-'}</strong></span>
         <span>위치 <strong>{asset.installLocation || '-'}</strong></span>
-        <span>보증 <strong>{formatDateLabel(asset.warrantyUntil) || '-'}</strong></span>
         <span>A/S <strong className={asset.serviceOverdue ? 'customer-overdue-text' : ''}>{asset.serviceStateLabel}</strong></span>
-        <span>교정 <strong className={asset.calibrationAlert === 'overdue' ? 'customer-overdue-text' : ''}>{asset.calibrationAlertLabel}</strong></span>
         <span>수정 <strong>{formatDateTimeLabel(asset.updatedAt) || '-'}</strong></span>
       </div>
 
@@ -6330,10 +6249,6 @@ function CustomerAssetDirectoryDrawer({
             <button className="route-secondary-action" onClick={openServiceCreate} type="button">
               <ListChecks size={15} />
               서비스 접수
-            </button>
-            <button className="route-secondary-action" onClick={openCalibrationCreate} type="button">
-              <CheckCircle2 size={15} />
-              교정 기록
             </button>
           </>
         ) : null}
@@ -6386,14 +6301,6 @@ function CustomerAssetDirectoryDrawer({
             <label>
               <span>시리얼번호</span>
               <input onChange={(event) => handleAssetFieldChange('serialNumber', event.target.value)} value={assetForm.serialNumber} />
-            </label>
-            <label>
-              <span>구매일</span>
-              <input onChange={(event) => handleAssetFieldChange('purchaseDate', event.target.value)} type="date" value={assetForm.purchaseDate} />
-            </label>
-            <label>
-              <span>보증 만료일</span>
-              <input onChange={(event) => handleAssetFieldChange('warrantyUntil', event.target.value)} type="date" value={assetForm.warrantyUntil} />
             </label>
             <label>
               <span>설치 위치</span>
@@ -6482,50 +6389,6 @@ function CustomerAssetDirectoryDrawer({
         </form>
       ) : null}
 
-      {assetEditor === 'calibration' ? (
-        <form className="notes-create-form customer-asset-form asset-directory-form" onSubmit={handleCalibrationSubmit} ref={drawerCalibrationPanelRef}>
-          <div className="notes-create-grid">
-            <label>
-              <span>교정일</span>
-              <input onChange={(event) => handleCalibrationFieldChange('calibrationDate', event.target.value)} required type="date" value={calibrationForm.calibrationDate} />
-            </label>
-            <label>
-              <span>다음 교정일</span>
-              <input onChange={(event) => handleCalibrationFieldChange('nextDueDate', event.target.value)} type="date" value={calibrationForm.nextDueDate} />
-            </label>
-            <label>
-              <span>결과</span>
-              <select onChange={(event) => handleCalibrationFieldChange('result', event.target.value)} required value={calibrationForm.result}>
-                {(summary?.options.calibrationResults ?? []).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>성적서</span>
-              <input
-                onChange={(event) => {
-                  setCalibrationForm((previous) => ({ ...previous, certificateFile: event.target.files?.[0] ?? null }));
-                  resetFeedback();
-                }}
-                type="file"
-              />
-            </label>
-          </div>
-          <label>
-            <span>메모</span>
-            <textarea onChange={(event) => handleCalibrationFieldChange('notes', event.target.value)} rows={3} value={calibrationForm.notes} />
-          </label>
-          <div className="notes-create-actions">
-            <button className="route-secondary-action" onClick={() => setAssetEditor('')} type="button">취소</button>
-            <button className="route-primary-action" disabled={saving} type="submit">
-              {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
-              저장
-            </button>
-          </div>
-        </form>
-      ) : null}
-
       <div className="asset-directory-history">
         <section>
           <div className="asset-directory-history-heading">
@@ -6549,27 +6412,6 @@ function CustomerAssetDirectoryDrawer({
           )) : <DashboardEmpty label="서비스 이력이 없습니다" />}
         </section>
 
-        <section>
-          <div className="asset-directory-history-heading">
-            <h3>교정 이력</h3>
-            {summary?.canManage ? <button className="customer-row-action" onClick={openCalibrationCreate} type="button">추가</button> : null}
-          </div>
-          {asset.calibrations.length > 0 ? asset.calibrations.map((calibration) => (
-            <article className="asset-directory-history-item" key={calibration.id}>
-              <div>
-                <strong className={calibration.overdue ? 'customer-overdue-text' : ''}>{calibration.dueStateLabel || calibration.resultLabel}</strong>
-                <span>
-                  {[calibration.calibrationDate ? formatDateLabel(calibration.calibrationDate) : '', calibration.nextDueDate ? `다음 ${formatDateLabel(calibration.nextDueDate)}` : '', calibration.resultLabel, calibration.certificateLabel].filter(Boolean).join(' · ') || '일자 없음'}
-                </span>
-              </div>
-              <div className="asset-directory-history-actions">
-                {calibration.certificateUrl ? <a className="customer-row-action" href={calibration.certificateUrl}>성적서</a> : null}
-                {summary?.canManage ? <button className="customer-row-action" onClick={() => openCalibrationEdit(calibration)} type="button">수정</button> : null}
-              </div>
-              {calibration.notes ? <p>{calibration.notes}</p> : null}
-            </article>
-          )) : <DashboardEmpty label="교정 이력이 없습니다" />}
-        </section>
       </div>
     </aside>
   );
@@ -6828,14 +6670,6 @@ function CustomerAssetDirectoryCreatePanel({
               <input onChange={(event) => handleFieldChange('serialNumber', event.target.value)} value={form.serialNumber} />
             </label>
             <label>
-              <span>구매일</span>
-              <input onChange={(event) => handleFieldChange('purchaseDate', event.target.value)} type="date" value={form.purchaseDate} />
-            </label>
-            <label>
-              <span>보증 만료일</span>
-              <input onChange={(event) => handleFieldChange('warrantyUntil', event.target.value)} type="date" value={form.warrantyUntil} />
-            </label>
-            <label>
               <span>설치 위치</span>
               <input onChange={(event) => handleFieldChange('installLocation', event.target.value)} value={form.installLocation} />
             </label>
@@ -6870,7 +6704,6 @@ function CustomerAssetDirectoryCreatePanel({
 }
 
 function CustomerAssetsPage({
-  calibration,
   data,
   loading,
   owner,
@@ -6878,7 +6711,6 @@ function CustomerAssetsPage({
   selectedAssetId,
   service,
   status,
-  onCalibrationChange,
   onRefresh,
   onOwnerChange,
   onQueryChange,
@@ -6886,7 +6718,6 @@ function CustomerAssetsPage({
   onServiceChange,
   onStatusChange,
 }: {
-  calibration: string;
   data: CustomerAssetDirectoryData | null;
   loading: boolean;
   owner: string;
@@ -6894,7 +6725,6 @@ function CustomerAssetsPage({
   selectedAssetId: number | null;
   service: string;
   status: string;
-  onCalibrationChange: (value: string) => void;
   onRefresh: () => Promise<CustomerAssetDirectoryData>;
   onOwnerChange: (value: string) => void;
   onQueryChange: (value: string) => void;
@@ -6909,7 +6739,6 @@ function CustomerAssetsPage({
     onStatusChange('');
     onOwnerChange('');
     onServiceChange('');
-    onCalibrationChange('');
     if (assetId) {
       onSelectedAssetChange(assetId);
     }
@@ -6932,13 +6761,6 @@ function CustomerAssetsPage({
     { label: '전체 장비', value: `${formatNumber(data.metrics.totalAssets)}건`, detail: data.scope.label, icon: Wrench, tone: 'blue' as const },
     { label: '검색 결과', value: `${formatNumber(data.metrics.filteredAssets)}건`, detail: '현재 필터', icon: Search, tone: 'teal' as const },
     { label: '진행 서비스', value: `${formatNumber(data.metrics.openServiceAssets)}건`, detail: '접수/진행/대기', icon: Activity, tone: 'amber' as const },
-    {
-      label: '교정 예정',
-      value: `${formatNumber(data.metrics.dueCalibrationAssets)}건`,
-      detail: `지연 ${formatNumber(data.metrics.overdueCalibrationAssets)}건`,
-      icon: CalendarDays,
-      tone: data.metrics.overdueCalibrationAssets > 0 ? 'red' as const : 'green' as const,
-    },
   ];
 
   return (
@@ -6958,7 +6780,7 @@ function CustomerAssetsPage({
         <div>
           <span className="eyebrow">Customer assets</span>
           <h2>{data.scope.label || '장비 디렉터리'}</h2>
-          <p>고객별 장비, 최근 A/S 상태, 다음 교정 예정일을 한 화면에서 검색합니다.</p>
+          <p>고객별 장비와 최근 A/S 처리 이력을 한 화면에서 검색합니다.</p>
         </div>
         <div className="schedules-summary-actions">
           {data.create.canCreate ? (
@@ -6992,7 +6814,10 @@ function CustomerAssetsPage({
         ))}
       </section>
 
-      <CustomerAssetWorkQueue items={data.workQueue} onSelectAsset={onSelectedAssetChange} />
+      <CustomerAssetWorkQueue
+        items={data.workQueue.filter((item) => !item.kind.startsWith('calibration_'))}
+        onSelectAsset={onSelectedAssetChange}
+      />
 
       <div className="customers-filter-bar assets-filter-bar">
         <label className="customers-search">
@@ -7018,12 +6843,6 @@ function CustomerAssetsPage({
         <select onChange={(event) => onServiceChange(event.target.value)} value={service}>
           <option value="">서비스 전체</option>
           {data.options.serviceFilters.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-        <select onChange={(event) => onCalibrationChange(event.target.value)} value={calibration}>
-          <option value="">교정 전체</option>
-          {data.options.calibrationFilters.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
@@ -8419,6 +8238,11 @@ function NoteDetailPage({
           <div className="note-detail-content">
             {note.content ? <p>{note.content}</p> : <DashboardEmpty label="활동 내용이 없습니다" />}
           </div>
+          <div className="note-detail-next-action">
+            <span>다음 액션</span>
+            <p className={note.overdue ? 'customer-overdue-text' : ''}>{noteNextActionLabel(note) || '다음 액션 없음'}</p>
+            {note.nextActionDate ? <small>{formatDateLabel(note.nextActionDate)}</small> : null}
+          </div>
           {note.actionType === 'delivery_schedule' ? (
             <div className="note-detail-field-grid">
               <div className="note-detail-field">
@@ -8556,6 +8380,8 @@ function NotesPage({
   createOpen,
   creating,
   data,
+  dateFrom,
+  dateTo,
   loading,
   nextAction,
   owner,
@@ -8568,6 +8394,8 @@ function NotesPage({
   onCreateFormChange,
   onCreateOpenChange,
   onCreateSubmit,
+  onDateFromChange,
+  onDateToChange,
   onNextActionChange,
   onOwnerChange,
   onQueryChange,
@@ -8581,6 +8409,8 @@ function NotesPage({
   createOpen: boolean;
   creating: boolean;
   data: NotesData | null;
+  dateFrom: string;
+  dateTo: string;
   loading: boolean;
   nextAction: string;
   owner: string;
@@ -8593,6 +8423,8 @@ function NotesPage({
   onCreateFormChange: (field: keyof NoteCreateFormState, value: string) => void;
   onCreateOpenChange: (open: boolean) => void;
   onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onDateFromChange: (value: string) => void;
+  onDateToChange: (value: string) => void;
   onNextActionChange: (value: string) => void;
   onOwnerChange: (value: string) => void;
   onQueryChange: (value: string) => void;
@@ -8859,8 +8691,26 @@ function NotesPage({
           <Search size={17} />
           <input
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="고객, 회사, 노트 내용, 다음 액션 검색"
+            placeholder="이름, 고객, 회사, 노트 내용, 다음 액션 검색"
             value={query}
+          />
+        </label>
+        <label className="notes-date-filter">
+          <span>시작</span>
+          <input
+            aria-label="영업노트 시작일"
+            onChange={(event) => onDateFromChange(event.target.value)}
+            type="date"
+            value={dateFrom}
+          />
+        </label>
+        <label className="notes-date-filter">
+          <span>종료</span>
+          <input
+            aria-label="영업노트 종료일"
+            onChange={(event) => onDateToChange(event.target.value)}
+            type="date"
+            value={dateTo}
           />
         </label>
         <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
@@ -12150,6 +12000,19 @@ function ScheduleDetailPage({
         ))}
       </section>
 
+      {data.relatedNotes.length > 0 ? (
+        <section className="dashboard-panel note-related-panel schedule-linked-notes-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <span className="eyebrow">Linked notes</span>
+              <h2>연결된 영업노트</h2>
+            </div>
+            <MessageSquareText size={18} />
+          </div>
+          <CustomerDetailNoteList emptyLabel="이 일정에 연결된 영업노트가 없습니다" notes={data.relatedNotes} />
+        </section>
+      ) : null}
+
       {scheduleNoteOpen || scheduleNoteMessage || scheduleNoteError ? (
         <section className="dashboard-panel notes-create-panel schedule-note-create-panel" ref={scheduleNotePanelRef}>
           <div className="dashboard-panel-heading">
@@ -12991,16 +12854,6 @@ function ScheduleDetailPage({
         </aside>
       </div>
 
-      <section className="dashboard-panel note-related-panel">
-        <div className="dashboard-panel-heading">
-          <div>
-            <span className="eyebrow">Related notes</span>
-            <h2>이 일정의 보고 기록</h2>
-          </div>
-          <MessageSquareText size={18} />
-        </div>
-        <CustomerDetailNoteList emptyLabel="이 일정에 연결된 영업노트가 없습니다" notes={data.relatedNotes} />
-      </section>
     </section>
   );
 }
@@ -21318,7 +21171,6 @@ export function App() {
   const [assetDirectoryStatus, setAssetDirectoryStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
   const [assetDirectoryOwner, setAssetDirectoryOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
   const [assetDirectoryService, setAssetDirectoryService] = useState(() => new URLSearchParams(window.location.search).get('service') || '');
-  const [assetDirectoryCalibration, setAssetDirectoryCalibration] = useState(() => new URLSearchParams(window.location.search).get('calibration') || '');
   const [assetDirectorySelectedId, setAssetDirectorySelectedId] = useState<number | null>(() => {
     const value = Number(new URLSearchParams(window.location.search).get('asset') || '0');
     return Number.isFinite(value) && value > 0 ? value : null;
@@ -21352,6 +21204,12 @@ export function App() {
   const [noteDetailData, setNoteDetailData] = useState<NoteDetailData | null>(null);
   const [noteDetailLoading, setNoteDetailLoading] = useState(Boolean(noteDetailId));
   const [noteQuery, setNoteQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [noteDateFrom, setNoteDateFrom] = useState(
+    () => new URLSearchParams(window.location.search).get('date_from') || new URLSearchParams(window.location.search).get('dateFrom') || defaultNotesDateFrom(),
+  );
+  const [noteDateTo, setNoteDateTo] = useState(
+    () => new URLSearchParams(window.location.search).get('date_to') || new URLSearchParams(window.location.search).get('dateTo') || defaultNotesDateTo(),
+  );
   const [noteOwner, setNoteOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
   const [noteActionType, setNoteActionType] = useState(
     () => new URLSearchParams(window.location.search).get('action_type') || new URLSearchParams(window.location.search).get('actionType') || '',
@@ -21721,7 +21579,6 @@ export function App() {
       status: assetDirectoryStatus,
       owner: assetDirectoryOwner,
       service: assetDirectoryService,
-      calibration: assetDirectoryCalibration,
       assetId: assetDirectorySelectedId,
     }).then((data) => {
       if (!alive) {
@@ -21733,7 +21590,7 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [assetDirectoryCalibration, assetDirectoryOwner, assetDirectoryQuery, assetDirectorySelectedId, assetDirectoryService, assetDirectoryStatus, currentView]);
+  }, [assetDirectoryOwner, assetDirectoryQuery, assetDirectorySelectedId, assetDirectoryService, assetDirectoryStatus, currentView]);
 
   useEffect(() => {
     if (currentView !== 'assets') {
@@ -21744,12 +21601,10 @@ export function App() {
     if (assetDirectoryStatus) params.set('status', assetDirectoryStatus);
     if (assetDirectoryOwner) params.set('owner', assetDirectoryOwner);
     if (assetDirectoryService) params.set('service', assetDirectoryService);
-    if (assetDirectoryCalibration) params.set('calibration', assetDirectoryCalibration);
     if (assetDirectorySelectedId) params.set('asset', String(assetDirectorySelectedId));
     const queryString = params.toString();
     window.history.replaceState(null, '', `/assets/${queryString ? `?${queryString}` : ''}`);
   }, [
-    assetDirectoryCalibration,
     assetDirectoryOwner,
     assetDirectoryQuery,
     assetDirectorySelectedId,
@@ -21871,6 +21726,8 @@ export function App() {
     setNoteCreateError('');
     loadNotesData({
       q: noteQuery,
+      dateFrom: noteDateFrom,
+      dateTo: noteDateTo,
       owner: noteOwner,
       actionType: noteActionType,
       review: noteReview,
@@ -21885,7 +21742,7 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [currentView, noteActionType, noteDetailId, noteNextAction, noteOwner, noteQuery, noteReview]);
+  }, [currentView, noteActionType, noteDateFrom, noteDateTo, noteDetailId, noteNextAction, noteOwner, noteQuery, noteReview]);
 
   useEffect(() => {
     if (currentView !== 'notes' || !noteDetailId) {
@@ -22539,7 +22396,6 @@ export function App() {
       status: assetDirectoryStatus,
       owner: assetDirectoryOwner,
       service: assetDirectoryService,
-      calibration: assetDirectoryCalibration,
       assetId: assetDirectorySelectedId,
     });
     setAssetsData(data);
@@ -22862,6 +22718,8 @@ export function App() {
   const refreshNotesData = async () => {
     const data = await loadNotesData({
       q: noteQuery,
+      dateFrom: noteDateFrom,
+      dateTo: noteDateTo,
       owner: noteOwner,
       actionType: noteActionType,
       review: noteReview,
@@ -22986,6 +22844,8 @@ export function App() {
       await createSalesNote(payload, notesData.create.submitUrl);
       const refreshedData = await loadNotesData({
         q: noteQuery,
+        dateFrom: noteDateFrom,
+        dateTo: noteDateTo,
         owner: noteOwner,
         actionType: noteActionType,
         review: noteReview,
@@ -24083,7 +23943,6 @@ export function App() {
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <CustomerAssetsPage
-          calibration={assetDirectoryCalibration}
           data={assetsData}
           loading={assetsLoading}
           owner={assetDirectoryOwner}
@@ -24091,7 +23950,6 @@ export function App() {
           selectedAssetId={assetDirectorySelectedId}
           service={assetDirectoryService}
           status={assetDirectoryStatus}
-          onCalibrationChange={setAssetDirectoryCalibration}
           onRefresh={refreshAssetsData}
           onOwnerChange={setAssetDirectoryOwner}
           onQueryChange={setAssetDirectoryQuery}
@@ -24150,6 +24008,8 @@ export function App() {
           createOpen={noteCreateOpen}
           creating={noteCreating}
           data={notesData}
+          dateFrom={noteDateFrom}
+          dateTo={noteDateTo}
           loading={notesLoading}
           nextAction={noteNextAction}
           owner={noteOwner}
@@ -24162,6 +24022,8 @@ export function App() {
           onCreateFormChange={handleNoteCreateFormChange}
           onCreateOpenChange={handleNoteCreateOpenChange}
           onCreateSubmit={handleCreateNoteSubmit}
+          onDateFromChange={setNoteDateFrom}
+          onDateToChange={setNoteDateTo}
           onNextActionChange={setNoteNextAction}
           onOwnerChange={setNoteOwner}
           onQueryChange={setNoteQuery}

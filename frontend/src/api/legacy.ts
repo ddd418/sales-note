@@ -1877,6 +1877,8 @@ export type NotesData = {
   };
   filters: {
     q: string;
+    dateFrom: string;
+    dateTo: string;
     owner: string;
     actionType: string;
     review: string;
@@ -5434,6 +5436,8 @@ const emptyNotesData: NotesData = {
   },
   filters: {
     q: '',
+    dateFrom: '',
+    dateTo: '',
     owner: '',
     actionType: '',
     review: '',
@@ -7363,9 +7367,7 @@ export async function saveCustomerAsset(
   form.set('status', payload.status);
   if (payload.modelName) form.set('model_name', payload.modelName);
   if (payload.serialNumber) form.set('serial_number', payload.serialNumber);
-  if (payload.purchaseDate) form.set('purchase_date', payload.purchaseDate);
   if (payload.installLocation) form.set('install_location', payload.installLocation);
-  if (payload.warrantyUntil) form.set('warranty_until', payload.warrantyUntil);
   if (payload.notes) form.set('notes', payload.notes);
   return submitCustomerAssetForm(form, submitUrl);
 }
@@ -7986,17 +7988,21 @@ export async function verifyAiPainpoint(
 
 export async function loadNotesData(params: {
   q?: string;
+  dateFrom?: string;
+  dateTo?: string;
   owner?: string;
   actionType?: string;
   review?: string;
   nextAction?: string;
 } = {}): Promise<NotesData> {
   const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value) {
-      query.set(key, value);
-    }
-  });
+  if (params.q) query.set('q', params.q);
+  if (params.dateFrom) query.set('date_from', params.dateFrom);
+  if (params.dateTo) query.set('date_to', params.dateTo);
+  if (params.owner) query.set('owner', params.owner);
+  if (params.actionType) query.set('actionType', params.actionType);
+  if (params.review) query.set('review', params.review);
+  if (params.nextAction) query.set('nextAction', params.nextAction);
   try {
     const response = await fetch(`/reporting/api/notes/${query.toString() ? `?${query.toString()}` : ''}`, {
       credentials: 'include',
