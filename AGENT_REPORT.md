@@ -35,6 +35,7 @@ Python tomllib parse for railway.toml and frontend/railway.toml
 railway deployment manifest check
 → web deployment fd86c8ca-1132-4967-93b5-8fb0c0533b2b includes backend watchPatterns
 → sales-note-frontend deployment d354a871-0353-4711-b98e-d5f3a0b4b50d includes /frontend/**
+→ docs-only report commit 8f5136a8fe2d20ca8f8d8c6935930bed4fa9f32b was SKIPPED for both services
 
 python manage.py check
 → System check identified no issues
@@ -61,6 +62,7 @@ python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.u
 
 - Completed. Railway `web` deployment `fd86c8ca-1132-4967-93b5-8fb0c0533b2b` and `sales-note-frontend` deployment `d354a871-0353-4711-b98e-d5f3a0b4b50d` reached `SUCCESS` for commit `921bb96dabc863810632ca6c2f0db0b0cbd55ed0`.
 - Deployment manifests now show backend watch patterns on `web` and `/frontend/**` on `sales-note-frontend`.
+- Verification commit `8f5136a8fe2d20ca8f8d8c6935930bed4fa9f32b` changed only `AGENT_REPORT.md`; Railway created `SKIPPED` entries instead of runtime deploys for both services.
 - Production smoke test passed after deploy.
 
 ### 수동 서버 테스트 절차
