@@ -76,6 +76,15 @@ DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway service status --service web
+→ SUCCESS, deployment 2a4ece89-e3c7-4812-b8da-2545646aa800
+
+railway service status --service sales-note-frontend
+→ SUCCESS, deployment 75fe7971-4801-4c0f-a298-50f8e4eb1a20
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ OK, Smoke status: ok
 ```
 
 ### 알려진 한계
@@ -86,9 +95,12 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending retry. First `web` deployment for commit `f3b93ce` failed during frontend build because Railway's `nodejs_22` resolved to Node `22.10.0`, while Vite 8 requires `^20.19.0 || >=22.12.0`.
-- Second `web` deployment for commit `a74e6d4` failed because Railway's `nodejs_20` resolved to Node `20.18.0`, and local `frontend/node_modules` was copied into the image after dependency install.
-- A follow-up build-context/runtime fix is being committed/pushed before retrying Railway `web` deployment and backend-direct React smoke.
+- Completed. Final `web` deployment `2a4ece89-e3c7-4812-b8da-2545646aa800` for commit `63703ce` reached `SUCCESS`; healthcheck `/healthz/` passed.
+- Existing `sales-note-frontend` deployment `75fe7971-4801-4c0f-a298-50f8e4eb1a20` remains `SUCCESS`; the final backend-only fix was correctly `SKIPPED` for frontend deployment `d210a169-46eb-4d07-b574-b12348354762`.
+- First `web` retry for commit `f3b93ce` failed because Railway's `nodejs_22` resolved to Node `22.10.0`, below Vite 8's requirement.
+- Second `web` retry for commit `a74e6d4` failed because Railway's `nodejs_20` resolved to Node `20.18.0`, and local `frontend/node_modules` was copied into the image after dependency install.
+- Final fix uses `nodejs_23` and ignores local frontend build artifacts/modules in Railway build context.
+- Production smoke passed for backend health/ready, backend direct React routes, existing frontend URL, removed `/data-cleanup/` and `/downloads/`, and protected backend APIs.
 
 ### 수동 서버 테스트 절차
 
