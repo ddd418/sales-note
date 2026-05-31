@@ -9145,6 +9145,14 @@ h2 {
   align-items: start;
 }
 
+.pipeline-content-grid {
+  transition: grid-template-columns 180ms ease;
+}
+
+.pipeline-content-grid.detail-collapsed {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
 .filter-rail,
 .center-panel,
 .detail-panel {
@@ -9260,6 +9268,20 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+}
+
+.pipeline-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pipeline-detail-toggle[aria-pressed='true'] {
+  border-color: #bfdbfe;
+  background: var(--primary-bg);
+  color: var(--primary-strong);
 }
 
 .segmented-control {
@@ -10051,6 +10073,10 @@ tbody tr:hover {
     grid-template-columns: 210px minmax(0, 1fr);
   }
 
+  .pipeline-content-grid.detail-collapsed {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
   .dashboard-metric-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -10190,6 +10216,23 @@ tbody tr:hover {
 
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pipeline-content-grid.detail-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-toolbar-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .pipeline-toolbar-actions .segmented-control {
+    flex: 1 1 auto;
+  }
+
+  .pipeline-toolbar-actions .segmented-control button {
+    flex: 1 1 0;
   }
 
   .route-stat-grid,

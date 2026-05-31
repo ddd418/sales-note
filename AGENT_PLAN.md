@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## 2026-05-31 Pipeline detail sidebar collapse plan
+
+**Background**:
+
+- User reported that the `/pipeline/` right sidebar should be collapsible.
+- The current React pipeline page always renders a selected-customer detail panel as the third column, reducing board/list scan width.
+
+**DB change required**: No.
+
+- This is a React layout interaction only.
+- Existing Django APIs, authentication, permissions, and `/reporting/*` routes remain unchanged.
+
+**Implementation scope**:
+
+- Add a toolbar icon button to collapse/expand the right selected-customer detail sidebar.
+- Persist the user's collapsed preference locally in the browser.
+- Expand the pipeline board/list area when the sidebar is collapsed.
+- Preserve saved views, stage moves, AI briefing actions, and selected customer behavior when the sidebar is expanded again.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Deploy Sales-note frontend/runtime and production smoke.
+
 ## 2026-05-31 Weekly reports Django button removal plan
 
 **Background**:

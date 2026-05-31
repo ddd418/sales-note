@@ -1,5 +1,65 @@
 # AGENT_REPORT.md
 
+## 2026-05-31 — 파이프라인 오른쪽 패널 접기/펼치기
+
+### 요약
+
+- `/pipeline/` React 화면의 오른쪽 선택 고객 상세 패널을 접고 펼칠 수 있게 했습니다.
+- 패널을 접으면 가운데 파이프라인 보드/리스트 영역이 넓어집니다.
+- 접힘 상태는 브라우저에 저장되어 새로고침 후에도 유지됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 파이프라인 보드에서 고객 카드를 더 넓게 볼 수 있습니다.
+- 선택 고객 상세, 단계 변경, AI 브리핑 기능은 패널을 다시 펼쳤을 때 그대로 사용할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- Django API, 인증/권한, `/reporting/*` compatibility route는 변경하지 않았습니다.
+- 파이프라인 저장된 뷰, 보드/리스트 전환, 단계 변경 로직은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이번 변경은 파이프라인 오른쪽 상세 패널만 대상으로 합니다. 왼쪽 필터 rail은 기존처럼 항상 표시됩니다.
+
+### Production 배포 상태
+
+- Pending commit/push and Railway deployment.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/pipeline/`에 접속합니다.
+2. `이번 주 우선 영업 건` 우측의 패널 아이콘 버튼을 눌러 오른쪽 선택 고객 패널이 사라지고 보드/리스트가 넓어지는지 확인합니다.
+3. 같은 버튼을 다시 눌러 선택 고객 패널이 복원되는지 확인합니다.
+4. 새로고침 후에도 마지막 접힘/펼침 상태가 유지되는지 확인합니다.
+
 ## 2026-05-31 — 주간보고 Django 버튼 제거
 
 ### 요약

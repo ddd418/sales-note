@@ -32,6 +32,8 @@ import {
   MoveUpRight,
   ArrowRightLeft,
   PanelRight,
+  PanelRightClose,
+  PanelRightOpen,
   Pencil,
   Plus,
   RefreshCw,
@@ -21122,6 +21124,13 @@ export function App() {
   const initialAIWorkspaceDepartmentId = currentView === 'ai' ? getAIWorkspaceDepartmentIdParam() : null;
   const initialAIWorkspaceQuestionScope = currentView === 'ai' ? getAIWorkspaceQuestionScopeParam() : 'department';
   const [mode, setMode] = useState<'board' | 'list'>('board');
+  const [pipelineDetailCollapsed, setPipelineDetailCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('pipelineDetailCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [pipelineData, setPipelineData] = useState(emptyPipelineData);
   const [pipelineLoading, setPipelineLoading] = useState(routeUsesPipelineData(currentView));
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -21350,6 +21359,14 @@ export function App() {
   const [moveError, setMoveError] = useState('');
   const [moveMessage, setMoveMessage] = useState('');
   const scheduleCalendarRange = useMemo(() => getScheduleCalendarRange(scheduleCalendarMonth), [scheduleCalendarMonth]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('pipelineDetailCollapsed', pipelineDetailCollapsed ? '1' : '0');
+    } catch {
+      // Ignore storage failures so the toolbar toggle still works in restricted browsers.
+    }
+  }, [pipelineDetailCollapsed]);
 
   useEffect(() => {
     if (!routeUsesPipelineData(currentView)) {
@@ -24493,7 +24510,7 @@ export function App() {
     <AppShell activeView={currentView}>
       <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <MetricStrip data={pipelineData} />
-      <div className="content-grid">
+      <div className={`content-grid pipeline-content-grid ${pipelineDetailCollapsed ? 'detail-collapsed' : ''}`}>
         <FilterRail
           onViewChange={setSelectedView}
           selectedView={selectedView}
@@ -24506,14 +24523,26 @@ export function App() {
               <span className="eyebrow">Active pipeline</span>
               <h2>이번 주 우선 영업 건</h2>
             </div>
-            <div className="segmented-control" role="tablist" aria-label="보기 방식">
-              <button className={mode === 'board' ? 'active' : ''} onClick={() => setMode('board')}>
-                <Columns3 size={16} />
-                보드
-              </button>
-              <button className={mode === 'list' ? 'active' : ''} onClick={() => setMode('list')}>
-                <ListChecks size={16} />
-                리스트
+            <div className="pipeline-toolbar-actions">
+              <div className="segmented-control" role="tablist" aria-label="보기 방식">
+                <button className={mode === 'board' ? 'active' : ''} onClick={() => setMode('board')}>
+                  <Columns3 size={16} />
+                  보드
+                </button>
+                <button className={mode === 'list' ? 'active' : ''} onClick={() => setMode('list')}>
+                  <ListChecks size={16} />
+                  리스트
+                </button>
+              </div>
+              <button
+                aria-label={pipelineDetailCollapsed ? '선택 고객 패널 펼치기' : '선택 고객 패널 접기'}
+                aria-pressed={pipelineDetailCollapsed}
+                className="icon-button pipeline-detail-toggle"
+                onClick={() => setPipelineDetailCollapsed((collapsed) => !collapsed)}
+                title={pipelineDetailCollapsed ? '선택 고객 패널 펼치기' : '선택 고객 패널 접기'}
+                type="button"
+              >
+                {pipelineDetailCollapsed ? <PanelRightOpen size={18} /> : <PanelRightClose size={18} />}
               </button>
             </div>
           </div>
@@ -24533,16 +24562,18 @@ export function App() {
             <PipelineList onSelect={selectDeal} stages={pipelineData.stages} deals={visibleDeals} />
           )}
         </section>
-        <DetailPanel
-          deal={visibleSelectedDeal}
-          stages={pipelineData.stages}
-          canMove={pipelineData.source === 'django'}
-          moving={Boolean(visibleSelectedDeal && movingDealId === visibleSelectedDeal.id)}
-          moveError={moveError}
-          moveMessage={moveMessage}
-          onRefresh={refreshPipelineData}
-          onMoveStage={handleMoveStage}
-        />
+        {pipelineDetailCollapsed ? null : (
+          <DetailPanel
+            deal={visibleSelectedDeal}
+            stages={pipelineData.stages}
+            canMove={pipelineData.source === 'django'}
+            moving={Boolean(visibleSelectedDeal && movingDealId === visibleSelectedDeal.id)}
+            moveError={moveError}
+            moveMessage={moveMessage}
+            onRefresh={refreshPipelineData}
+            onMoveStage={handleMoveStage}
+          />
+        )}
       </div>
     </AppShell>
   );
