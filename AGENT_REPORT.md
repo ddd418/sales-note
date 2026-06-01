@@ -51,7 +51,14 @@ Playwright local render smoke
 
 ### Production 배포 상태
 
-- Pending. Commit/push and Railway deployment will follow this report update.
+- Completed.
+- Commit `301eeab fix: clean up demo form UI` is present on `origin/main`.
+- Railway `sales-note-frontend` deployment `8434cc56-59a9-4119-b0ad-b618455071bc` reached `SUCCESS`.
+- Railway `web` deployment `d5c16ce9-8834-47b8-88cc-58fc079cac41` reached `SUCCESS`.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/demos/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/demos/` returned 401 as expected.
 
 ### Manual Server Test Process
 
