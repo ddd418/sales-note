@@ -1,5 +1,72 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 빈 부서 계정 상세 영업노트 표시
+
+### 요약
+
+- `/accounts/:id/` 계정 상세에서 담당자/고객이 없는 부서에 직접 연결된 영업노트가 보이지 않던 문제를 수정했습니다.
+- 계정 상세 노트 조회가 `FollowUp` 담당자에 연결된 노트뿐 아니라 `History.department`로 직접 연결된 부서-only 노트도 함께 읽도록 했습니다.
+- 빈 부서 계정 응답에서 `recentNotes`를 빈 배열로 고정하던 로직을 제거하고, 실제 연결 노트/후속 액션을 내려주도록 바꿨습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 고객이 아직 없는 부서/연구실 계정에서도 이전에 남긴 영업노트를 계정 상세에서 바로 확인할 수 있습니다.
+- 담당자가 나중에 추가된 계정도 부서-only 노트와 담당자 연결 노트를 한 화면에서 함께 볼 수 있습니다.
+- 최근 노트, 지연 액션, 예정 액션 카운트가 부서 직접 연결 노트까지 반영됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 담당자 기반 고객 상세/계정 상세, 담당자 추가, 계정 정보 수정 흐름은 유지했습니다.
+- React UI는 기존 `recentNotes` payload를 그대로 사용하므로 별도 화면 변경 없이 동작합니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb
+→ OK, 61 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 빈 부서 계정의 일정 목록은 아직 기존 응답처럼 0건으로 내려갑니다. 이번 수정은 사용자가 지적한 연결 영업노트 표시 범위에 한정했습니다.
+
+### Production 배포 상태
+
+- Pending. 코드 검증 완료 후 배포 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/accounts/378/`에 접속합니다.
+2. 최근 영업노트 섹션에 해당 부서에 직접 연결된 영업노트가 보이는지 확인합니다.
+3. 노트 행을 클릭했을 때 `/notes/:id/` 상세로 이동하는지 확인합니다.
+4. 담당자가 있는 계정에서도 부서-only 노트가 최근 영업노트에 같이 보이는지 필요 시 확인합니다.
+
 ## 2026-06-01 — 영업노트 수정 폼 상태 필드 제거
 
 ### 요약

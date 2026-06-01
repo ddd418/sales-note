@@ -6483,7 +6483,7 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(contacts[sibling.id]['updateUrl'].endswith(f'/contacts/{sibling.id}/update/'))
 
     def test_empty_department_account_detail_allows_first_contact_creation(self):
-        from reporting.models import Company, Department, FollowUp
+        from reporting.models import Company, Department, FollowUp, History
 
         company = Company.objects.create(name='빈계정 회사', created_by=self.user)
         department = Department.objects.create(
@@ -6492,6 +6492,14 @@ class CustomersSummaryApiTests(TestCase):
             address='빈 계정 주소',
             notes='담당자 등록 전 메모',
             created_by=self.user,
+        )
+        note = History.objects.create(
+            user=self.user,
+            company=self.company,
+            department=department,
+            action_type='customer_meeting',
+            content='담당자 없이 부서에 먼저 남긴 영업노트',
+            next_action='담당자 확인',
         )
         self.client.force_login(self.user)
 
@@ -6505,6 +6513,11 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(detail_payload['account']['contactCount'], 0)
         self.assertEqual(detail_payload['account']['address'], '빈 계정 주소')
         self.assertEqual(detail_payload['account']['notes'], '담당자 등록 전 메모')
+        self.assertEqual(detail_payload['metrics']['recentNotes'], 1)
+        self.assertEqual(len(detail_payload['recentNotes']), 1)
+        self.assertEqual(detail_payload['recentNotes'][0]['id'], note.id)
+        self.assertEqual(detail_payload['recentNotes'][0]['customer'], '담당자 미등록')
+        self.assertEqual(detail_payload['recentNotes'][0]['customerHref'], f'/accounts/{department.id}/')
         self.assertTrue(detail_payload['account']['management']['canManage'])
         self.assertEqual(
             detail_payload['account']['management']['contactCreateUrl'],

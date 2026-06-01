@@ -5481,6 +5481,34 @@ def _customer_detail_prepayment_summary_payload(followup, scope_users, actor):
     }
 
 
+def _customer_account_notes_queryset(scope_users, followups=None, department=None):
+    note_scope = Q()
+    if followups is not None:
+        note_scope |= Q(followup__in=followups)
+    if department is not None:
+        note_scope |= Q(department=department)
+    if not note_scope:
+        return History.objects.none()
+    return History.objects.filter(
+        note_scope,
+        user__in=scope_users,
+        parent_history__isnull=True,
+    ).exclude(action_type='memo').select_related(
+        'user',
+        'followup',
+        'followup__company',
+        'followup__department',
+        'department',
+        'department__company',
+        'schedule',
+        'personal_schedule',
+        'reviewer',
+    ).annotate(
+        reply_count=Count('reply_memos', distinct=True),
+        file_count=Count('files', distinct=True),
+    ).distinct().order_by('-created_at', '-id')
+
+
 def _customer_record_items_payload(items):
     return [_schedules_delivery_item_payload(item) for item in items]
 
@@ -7227,16 +7255,11 @@ def customer_detail_summary_api(request, followup_id):
             'error': '고객을 찾을 수 없습니다.',
         }, status=404)
 
-    notes_qs = History.objects.filter(
-        followup__in=shared_followups,
-        user__in=scope_users,
-        parent_history__isnull=True,
-    ).exclude(action_type='memo').select_related(
-        'user', 'followup', 'followup__company', 'followup__department', 'schedule', 'personal_schedule', 'reviewer'
-    ).annotate(
-        reply_count=Count('reply_memos', distinct=True),
-        file_count=Count('files', distinct=True),
-    ).order_by('-created_at')
+    notes_qs = _customer_account_notes_queryset(
+        scope_users,
+        followups=shared_followups,
+        department=followup.department if followup.department_id else None,
+    )
 
     overdue_actions_qs = notes_qs.filter(
         next_action_date__lt=today,
@@ -7349,6 +7372,24 @@ def _empty_department_account_detail_response(request, department, user_profile,
     read_only_message = '' if can_manage_account else '이 계정은 현재 사용자에게 읽기 전용입니다.'
     account_href = f'/accounts/{department.id}/'
     account_prepayments_href = f'/prepayments/account/{department.id}/'
+    today = timezone.localdate()
+    can_review_notes = _can_review_notes(user_profile)
+    notes_qs = _customer_account_notes_queryset(scope_users, department=department)
+    overdue_actions = _histories_excluding_stale_quote_submission(list(
+        notes_qs.filter(
+            next_action_date__lt=today,
+            next_action_date__isnull=False,
+            reviewed_at__isnull=True,
+        ).order_by('next_action_date', '-created_at')
+    ))
+    upcoming_actions = _histories_excluding_stale_quote_submission(list(
+        notes_qs.filter(
+            next_action_date__gte=today,
+            next_action_date__lte=today + timedelta(days=14),
+            next_action_date__isnull=False,
+            reviewed_at__isnull=True,
+        ).order_by('next_action_date', '-created_at')
+    ))
     return JsonResponse({
         'success': True,
         'source': 'django',
@@ -7365,10 +7406,10 @@ def _empty_department_account_detail_response(request, department, user_profile,
         'customer': _customers_empty_account_customer_payload(department, request.user),
         'account': _empty_department_account_payload(department, request, user_profile, can_manage_account),
         'metrics': {
-            'recentNotes': 0,
+            'recentNotes': notes_qs.count(),
             'upcomingSchedules': 0,
-            'overdueActions': 0,
-            'upcomingActions': 0,
+            'overdueActions': len(overdue_actions),
+            'upcomingActions': len(upcoming_actions),
         },
         'links': {
             'customers': '/customers/',
@@ -7483,9 +7524,18 @@ def _empty_department_account_detail_response(request, department, user_profile,
                 'searchText': '',
             }],
         },
-        'recentNotes': [],
-        'overdueActions': [],
-        'upcomingActions': [],
+        'recentNotes': [
+            _notes_history_payload(note, today, can_review_notes)
+            for note in list(notes_qs[:12])
+        ],
+        'overdueActions': [
+            _notes_history_payload(note, today, can_review_notes)
+            for note in overdue_actions[:8]
+        ],
+        'upcomingActions': [
+            _notes_history_payload(note, today, can_review_notes)
+            for note in upcoming_actions[:8]
+        ],
         'upcomingSchedules': [],
         'recentSchedules': [],
     })

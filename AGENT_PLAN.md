@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Empty account linked notes plan
+
+**Background**:
+
+- User reported that `/accounts/378/` does not show linked sales notes when the department account has no contact/customer.
+- The empty department account detail response hard-codes `recentNotes` to an empty list and `recentNotes` metrics to `0`.
+- The regular account detail query also only reads notes through linked `FollowUp` contacts, so department-only notes can be missed.
+
+**DB change required**: No.
+
+- Existing `History.department` already stores department-only sales notes.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Add a shared account-note queryset that includes both contact-linked notes and direct department-linked notes.
+- Use that queryset for regular customer/account detail recent notes, overdue actions, and upcoming actions.
+- Use the same note queryset in empty department account detail so linked department-only notes render.
+- Add a focused regression test for empty department account detail showing a department-only note.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then run production smoke.
+
 ## 2026-06-01 Remove note edit service status plan
 
 **Background**:
