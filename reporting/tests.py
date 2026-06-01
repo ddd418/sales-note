@@ -8026,6 +8026,56 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(target.next_action, '견적서 재발송')
         self.assertEqual(target.meeting_date, timezone.localdate())
 
+    def test_notes_update_api_updates_department_only_note_without_customer(self):
+        from django.utils import timezone
+        from reporting.models import FollowUp, History
+
+        department = self._create_department_only(self.user, '부서수정대상')
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='나중에 등록된 담당자',
+            manager='담당자',
+            company=department.company,
+            department=department,
+            priority='scheduled',
+            pipeline_stage='contact',
+        )
+        target = History.objects.create(
+            user=self.user,
+            company=self.company,
+            department=department,
+            action_type='customer_meeting',
+            content='부서-only 수정 전',
+            next_action='기존 액션',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:notes_update_api', args=[target.id]),
+            data=json.dumps({
+                'departmentId': department.id,
+                'actionType': 'customer_meeting',
+                'activityDate': timezone.localdate().isoformat(),
+                'content': '부서-only React 수정',
+                'nextAction': '담당자 확인',
+                'nextActionDate': timezone.localdate().isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        target.refresh_from_db()
+        self.assertIsNone(target.followup_id)
+        self.assertEqual(target.department_id, department.id)
+        self.assertEqual(target.content, '부서-only React 수정')
+        self.assertEqual(target.next_action, '담당자 확인')
+        self.assertEqual(target.meeting_date, timezone.localdate())
+        self.assertEqual(payload['note']['customer'], '담당자 미등록')
+        self.assertEqual(payload['note']['departmentId'], department.id)
+
     def test_notes_update_api_blocks_manager_and_other_company_customer(self):
         target = self._create_note(self.user, '수정차단', action_type='quote', content='견적 전')
         other_target = self._create_note(self.other_user, '타사고객', action_type='quote', content='타사')

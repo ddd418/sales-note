@@ -1968,9 +1968,10 @@ export type NoteEditPayload = {
   actionType: string;
   activityDate?: string;
   content: string;
+  departmentId?: number;
   deliveryAmount?: string;
   deliveryItems?: string;
-  followupId: number;
+  followupId?: number;
   nextAction?: string;
   nextActionDate?: string;
   serviceStatus?: string;

@@ -7814,11 +7814,41 @@ function NoteDetailPage({
 
   const editConfig = data?.edit;
   const activityDateVisible = editForm.actionType === 'customer_meeting' || editForm.actionType === 'delivery_schedule';
+  const editCustomers = editConfig?.customers ?? [];
+  const editDepartments = editConfig?.departments ?? [];
+  const filteredEditCustomers = customersForDepartment(editCustomers, editForm.departmentId);
+  const selectedEditDepartmentHasCustomers = filteredEditCustomers.length > 0;
+  const editCustomerCanBeEmpty = Boolean(editForm.departmentId) && (
+    !selectedEditDepartmentHasCustomers || !currentNote?.followupId
+  );
 
   const handleEditFieldChange = (field: keyof NoteEditFormState, value: string) => {
     setEditForm((previous) => ({
       ...previous,
       [field]: value,
+    }));
+    setEditError('');
+    setEditMessage('');
+  };
+
+  const handleEditDepartmentChange = (nextValue: string) => {
+    const nextCustomers = customersForDepartment(editCustomers, nextValue);
+    const currentCustomerStillAvailable = nextCustomers.some((customer) => String(customer.id) === editForm.followupId);
+    setEditForm((previous) => ({
+      ...previous,
+      departmentId: nextValue,
+      followupId: currentCustomerStillAvailable ? previous.followupId : '',
+    }));
+    setEditError('');
+    setEditMessage('');
+  };
+
+  const handleEditCustomerChange = (nextValue: string) => {
+    const nextCustomer = editCustomers.find((customer) => String(customer.id) === nextValue);
+    setEditForm((previous) => ({
+      ...previous,
+      departmentId: nextCustomer?.departmentId ? String(nextCustomer.departmentId) : previous.departmentId,
+      followupId: nextValue,
     }));
     setEditError('');
     setEditMessage('');
@@ -7834,8 +7864,9 @@ function NoteDetailPage({
       return;
     }
     const followupId = Number(editForm.followupId);
-    if (!followupId) {
-      setEditError('고객을 선택하세요.');
+    const departmentId = Number(editForm.departmentId);
+    if (!followupId && !departmentId) {
+      setEditError('고객 또는 부서/연구실을 선택하세요.');
       return;
     }
     if (!editForm.actionType) {
@@ -7855,9 +7886,10 @@ function NoteDetailPage({
       actionType: editForm.actionType,
       activityDate: activityDateVisible ? editForm.activityDate || undefined : undefined,
       content: editForm.content.trim(),
+      departmentId: departmentId || undefined,
       deliveryAmount: editForm.deliveryAmount.trim() || undefined,
       deliveryItems: editForm.deliveryItems.trim() || undefined,
-      followupId,
+      followupId: followupId || undefined,
       nextAction: editForm.nextAction.trim() || undefined,
       nextActionDate: editForm.nextActionDate || undefined,
       serviceStatus: editForm.actionType === 'service' ? editForm.serviceStatus : undefined,
@@ -8160,11 +8192,24 @@ function NoteDetailPage({
             <form className="notes-create-form note-edit-form" onSubmit={handleEditSubmit}>
               <div className="notes-create-grid">
                 <div className="form-field">
+                  <span>부서/연구실</span>
+                  <SearchableSelect
+                    ariaLabel="부서/연구실 선택"
+                    onChange={handleEditDepartmentChange}
+                    options={editDepartments.map(makeDepartmentSelectOption)}
+                    placeholder="회사, 부서/연구실, 담당자 검색"
+                    value={editForm.departmentId}
+                  />
+                </div>
+                <div className="form-field">
                   <span>고객</span>
                   <SearchableSelect
+                    allowEmpty={editCustomerCanBeEmpty}
                     ariaLabel="고객 선택"
-                    onChange={(nextValue) => handleEditFieldChange('followupId', nextValue)}
-                    options={data.edit.customers.map(makeCustomerSelectOption)}
+                    disabled={Boolean(editForm.departmentId) && !selectedEditDepartmentHasCustomers}
+                    emptyLabel="부서에만 연결"
+                    onChange={handleEditCustomerChange}
+                    options={filteredEditCustomers.map(makeCustomerSelectOption)}
                     placeholder="고객, 회사, 부서 검색"
                     value={editForm.followupId}
                   />
@@ -11129,9 +11174,10 @@ function ScheduleDetailPage({
       return;
     }
     const followupId = Number(scheduleNoteForm.followupId);
+    const departmentId = Number(scheduleNoteForm.departmentId);
     const scheduleId = Number(scheduleNoteForm.scheduleId);
-    if (!followupId || !scheduleId) {
-      setScheduleNoteError('연결할 고객과 일정 정보가 없습니다.');
+    if ((!followupId && !departmentId) || !scheduleId) {
+      setScheduleNoteError('연결할 고객 또는 부서/연구실과 일정 정보가 없습니다.');
       return;
     }
     if (!scheduleNoteForm.actionType) {
@@ -11147,7 +11193,8 @@ function ScheduleDetailPage({
       actionType: scheduleNoteForm.actionType,
       activityDate: scheduleNoteForm.activityDate || undefined,
       content: scheduleNoteForm.content.trim(),
-      followupId,
+      departmentId: departmentId || undefined,
+      followupId: followupId || undefined,
       nextAction: scheduleNoteForm.nextAction.trim() || undefined,
       nextActionDate: scheduleNoteForm.nextActionDate || undefined,
       scheduleId,

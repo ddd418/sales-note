@@ -9903,6 +9903,8 @@ def _notes_get_detail_history(history_id):
             'department',
             'department__company',
             'schedule',
+            'schedule__followup',
+            'schedule__followup__department',
             'schedule__department',
             'schedule__department__company',
             'personal_schedule',
@@ -9977,12 +9979,38 @@ def notes_update_api(request, history_id):
     except (TypeError, ValueError):
         followup_id = 0
 
-    followup = FollowUp.objects.filter(
-        id=followup_id,
-        user__in=get_same_company_users(history.user),
-    ).select_related('company', 'department').first()
-    if not followup:
-        return JsonResponse({'success': False, 'error': '수정 가능한 고객을 선택하세요.'}, status=403)
+    try:
+        department_id = int(payload.get('departmentId') or payload.get('department_id') or 0)
+    except (TypeError, ValueError):
+        department_id = 0
+
+    followup = None
+    department = None
+    if followup_id:
+        followup = FollowUp.objects.filter(
+            id=followup_id,
+            user__in=get_same_company_users(history.user),
+        ).select_related('company', 'department').first()
+        if not followup:
+            return JsonResponse({'success': False, 'error': '수정 가능한 고객을 선택하세요.'}, status=403)
+        department = followup.department
+    elif department_id:
+        department = _department_target_for_user(history.user, department_id)
+        if not department and history.department_id == department_id:
+            department = history.department
+        if not department:
+            return JsonResponse({'success': False, 'error': '수정 가능한 부서/연구실을 선택하세요.'}, status=403)
+        preserving_department_only = bool(
+            not history.followup_id and
+            history.department_id and
+            history.department_id == department.id
+        )
+        if not preserving_department_only and _department_has_own_contacts(history.user, department):
+            return JsonResponse({'success': False, 'error': '담당 고객이 있는 부서/연구실은 고객을 선택하세요.'}, status=400)
+    elif not history.followup_id and history.department_id:
+        department = history.department
+    else:
+        return JsonResponse({'success': False, 'error': '고객 또는 부서/연구실을 선택하세요.'}, status=400)
 
     allowed_action_types = {item['value'] for item in _notes_action_types_for_edit(request, history)}
     action_type = str(payload.get('actionType') or '').strip()
@@ -10001,9 +10029,20 @@ def notes_update_api(request, history_id):
         return JsonResponse({'success': False, 'error': '상태를 선택하세요.'}, status=400)
 
     history.followup = followup
-    history.department = followup.department
-    if history.schedule_id and history.schedule.followup_id != followup.id:
-        history.schedule = None
+    history.department = department
+    if history.schedule_id and history.schedule:
+        schedule_department = history.schedule.department or (
+            history.schedule.followup.department
+            if history.schedule.followup_id and history.schedule.followup and history.schedule.followup.department
+            else None
+        )
+        if followup:
+            if history.schedule.followup_id != followup.id:
+                history.schedule = None
+            elif schedule_department and followup.department_id and schedule_department.id != followup.department_id:
+                history.schedule = None
+        elif department and (not schedule_department or schedule_department.id != department.id):
+            history.schedule = None
     history.action_type = action_type
     history.content = content
     history.next_action = str(payload.get('nextAction') or '').strip()

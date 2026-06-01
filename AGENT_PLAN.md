@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Department-only note edit plan
+
+**Background**:
+
+- User reported that editing a sales note linked only to a department shows no customer options and then blocks save with a customer-required validation.
+- Note creation already supports department-only notes, but note update still requires `followupId`.
+
+**DB change required**: No.
+
+- Existing `History.department` and nullable `History.followup` fields already support this state.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Allow `notes_update_api` to resolve either a selected customer or a selected department.
+- Preserve existing department-only notes even if a contact was later added to that department.
+- Keep customer-linked notes protected from being saved without a customer when the department has contacts.
+- Update the React note edit form to show department selection and allow an empty customer for department-only notes.
+- Add a focused API regression test for editing a department-only note.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.NotesSummaryApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then run production smoke.
+
 ## 2026-06-01 Pipeline quote item sidebar plan
 
 **Background**:

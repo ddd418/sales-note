@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 부서-only 영업노트 수정 저장 허용
+
+### 요약
+
+- `/notes/:id/` 상세 수정에서 고객 없이 부서/연구실만 연결된 영업노트를 다시 저장할 수 있게 했습니다.
+- 수정 폼에 `부서/연구실` 선택을 추가하고, 해당 부서에 고객이 없거나 기존 노트가 부서-only인 경우 `부서에만 연결` 상태를 유지할 수 있게 했습니다.
+- 백엔드 `notes_update_api`가 `followupId` 또는 `departmentId` 중 하나로 수정 대상을 검증하도록 변경했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 고객이 아직 등록되지 않은 부서/연구실에 남긴 영업노트를 수정할 때 고객 선택 오류가 나지 않습니다.
+- 부서-only 노트 작성 후 나중에 담당자가 등록되어도, 기존 부서-only 노트는 고객 강제 선택 없이 수정 가능합니다.
+- 일정 상세에서 부서-only 일정에 영업노트를 연결하는 인접 흐름도 같은 payload 규칙을 사용하도록 맞췄습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 고객이 연결된 영업노트는 기존처럼 고객 기준으로 저장됩니다.
+- 담당 고객이 있는 부서에 대해 새로 고객 없는 노트로 바꾸려는 흐름은 백엔드에서 계속 차단합니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.NotesSummaryApiTests --keepdb
+→ OK, 34 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 기본 설정 대신 Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending. 코드 검증 완료 후 배포 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/812/`에 접속합니다.
+2. `수정`을 누릅니다.
+3. `부서/연구실`은 선택된 상태이고, 고객은 비어 있거나 `부서에만 연결`로 표시되는지 확인합니다.
+4. 활동 내용 또는 다음 액션을 조금 수정한 뒤 저장합니다.
+5. 고객 선택 오류 없이 저장되고, 상세 화면에서 같은 부서/연구실로 남아있는지 확인합니다.
+
 ## 2026-06-01 — 파이프라인 사이드바 견적 품목 표시
 
 ### 요약
