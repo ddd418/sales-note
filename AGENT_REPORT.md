@@ -61,7 +61,13 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 배포와 production smoke를 진행합니다.
+- Completed. Commit `2a37cd1` deployed successfully.
+- Railway `web` deployment `b0468e6a-a420-42b2-964b-82b2089da216` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `ed1e6d3f-b78d-4a11-b9c9-b472bb7e33d7` reached `SUCCESS`.
+- Web deployment logs confirmed `No migrations to apply`.
+- Production smoke passed for backend health/ready, frontend React routes, protected APIs, static cache headers, and removed `/data-cleanup/` and `/downloads/` routes.
+- Direct frontend check passed for `/pipeline/`.
+- Direct protected API checks for `/reporting/api/pipeline/` returned `401 application/json` on backend and frontend domains.
 
 ### 수동 서버 테스트 절차
 
