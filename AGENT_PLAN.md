@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Lost pipeline quote amount display plan
+
+**Background**:
+
+- User reported that lost pipeline deals should still show how much the quote was.
+- Current pipeline pricing uses quote schedule/history references for `quote` and `negotiation`, but `lost` can fall back to Quote model only and miss quote schedule/history amounts.
+
+**DB change required**: No.
+
+- Existing quote schedule items, quote history items, and Quote model records are enough.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Include `lost` stage when selecting quote reference pricing for pipeline cards.
+- Preserve won-stage actual delivery revenue behavior and quote-vs-actual comparison.
+- Keep existing React display behavior; the API value/latestQuote payload should make lost cards show quote amount and quote date.
+
+**Validation plan**:
+
+- Focused Django pipeline API test for lost-stage quote schedule pricing.
+- `python -m py_compile reporting\funnel_views.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.PipelineApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then production smoke.
+
 ## 2026-06-01 Pipeline quote date display plan
 
 **Background**:

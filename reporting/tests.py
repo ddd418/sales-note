@@ -17482,6 +17482,9 @@ class PipelineApiTests(TestCase):
         self.assertIn('예산 승인자가 누구인가요?', recommended_questions)
 
     def test_pipeline_api_uses_stage_relevant_quote_amount(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
         quote_followup = self._create_pipeline_customer(self.user, '견적가격', stage='quote')
         self._create_delivery_item(quote_followup.schedules.first(), '견적품목', 2000000)
         self._create_quote_for_followup(
@@ -17503,6 +17506,8 @@ class PipelineApiTests(TestCase):
         self._create_quote_for_followup(
             won_followup, self.user, 'won-latest-draft', 'draft', 9000000
         )
+        lost_followup = self._create_pipeline_customer(self.user, '실주가격', stage='lost')
+        self._create_delivery_item(lost_followup.schedules.first(), '실주견적품목', 1500000)
         self.client.force_login(self.user)
 
         response = self.client.get(self.url)
@@ -17522,8 +17527,13 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deals[won_followup.id]['quoteComparison']['actualAmount'], 4400000)
         self.assertEqual(deals[won_followup.id]['quoteComparison']['deltaAmount'], 0)
         self.assertEqual(deals[won_followup.id]['quoteComparison']['status'], 'match')
+        self.assertEqual(deals[lost_followup.id]['value'], 1650000)
+        self.assertEqual(deals[lost_followup.id]['latestQuote']['source'], '견적 일정')
+        self.assertEqual(deals[lost_followup.id]['latestQuote']['basisType'], 'schedule')
+        self.assertEqual(deals[lost_followup.id]['latestQuote']['quoteDate'], (timezone.localdate() + timedelta(days=1)).isoformat())
         stages = {stage['id']: stage for stage in payload['stages']}
         self.assertEqual(stages['won']['totalValue'], 4400000)
+        self.assertEqual(stages['lost']['totalValue'], 1650000)
 
     def test_pipeline_api_uses_latest_quote_schedule_date_amount(self):
         from datetime import time, timedelta

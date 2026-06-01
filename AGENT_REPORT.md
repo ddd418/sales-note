@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 실주 파이프라인 견적 금액 유지
+
+### 요약
+
+- `/pipeline/`에서 고객이 `실주` 단계로 이동해도 기존 견적 금액이 보이도록 했습니다.
+- 실주 단계도 견적 일정/견적 활동 금액을 우선 가격 기준으로 사용합니다.
+- 견적일 표시와 `latestQuote` payload도 실주 단계에서 유지됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/funnel_views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 실주 고객 카드가 0원처럼 보이지 않고, 당시 제안했던 견적 규모를 계속 확인할 수 있습니다.
+- 실주 컬럼 총액도 해당 견적 금액 기준으로 집계됩니다.
+- 실주 원인 분석이나 다음 영업 전략 검토 시 잃은 금액 규모를 바로 볼 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 수주 단계의 실제 납품 매출 기준과 견적 대비 실제 납품 비교는 그대로 유지했습니다.
+- React 화면 구조는 변경하지 않고 API 금액 기준만 보정했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\funnel_views.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.PipelineApiTests --keepdb
+→ OK, 13 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 `python manage.py check` 기본 설정 로딩 시 기존 `STATICFILES_STORAGE/STORAGES` 조합 문제로 막힐 수 있어, Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 smoke test를 진행할 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/pipeline/`에 접속합니다.
+2. 견적이 있던 고객을 `실주` 단계로 이동하거나 기존 실주 고객을 확인합니다.
+3. 실주 카드의 금액이 0원이 아니라 기존 견적 금액으로 표시되는지 확인합니다.
+4. 카드의 `견적일`과 우측 상세 패널의 견적 정보도 함께 유지되는지 확인합니다.
+5. 수주 단계 고객은 여전히 실제 납품 매출 기준으로 보이는지 확인합니다.
+
 ## 2026-06-01 — 파이프라인 견적일 표시
 
 ### 요약

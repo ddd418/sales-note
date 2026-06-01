@@ -1414,7 +1414,7 @@ def _select_pipeline_pricing(followup, stage):
                 'quote_date': None,
             }
 
-    if stage in ('quote', 'negotiation'):
+    if stage in ('quote', 'negotiation', 'lost'):
         quote_reference = _select_quote_reference_pricing(followup, stage)
         if quote_reference:
             return quote_reference
