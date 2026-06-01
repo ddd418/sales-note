@@ -2514,6 +2514,14 @@ const pipelineQuoteDateLabel = (deal?: Deal | null) => {
   return formatDateLabel(quote.quoteDate);
 };
 
+const formatDealProbability = (probability: number | null | undefined) => (
+  probability === null || probability === undefined ? '미입력' : `${probability}%`
+);
+
+const dealProbabilityPercent = (probability: number | null | undefined) => (
+  probability === null || probability === undefined ? 0 : probability
+);
+
 const searchableOptionLimit = 80;
 
 const joinOptionParts = (parts: Array<string | undefined>) => parts.filter(Boolean).join(' · ');
@@ -21147,7 +21155,7 @@ function DealCard({ deal, selected, onSelect }: { deal: Deal; selected: boolean;
       <span className="deal-contact">{deal.contact}</span>
       <div className="deal-value">
         <span>{formatWon(deal.value)}</span>
-        <small>{deal.probability}%</small>
+        <small>{formatDealProbability(deal.probability)}</small>
       </div>
       {deal.quoteComparison ? (
         <div className={`quote-delta ${deal.quoteComparison.status}`}>
@@ -21372,7 +21380,7 @@ function PipelineList({
                     '-'
                   )}
                 </td>
-                <td>{deal.probability}%</td>
+                <td>{formatDealProbability(deal.probability)}</td>
                 <td>{deal.nextAction}</td>
                 <td>{deal.owner}</td>
               </tr>
@@ -21498,10 +21506,10 @@ function DetailPanel({
       <div className="progress-wrap">
         <div className="progress-label">
           <span>수주 가능성</span>
-          <strong>{deal.probability}%</strong>
+          <strong>{formatDealProbability(deal.probability)}</strong>
         </div>
         <div className="progress-track">
-          <div style={{ width: `${deal.probability}%` }} />
+          <div style={{ width: `${dealProbabilityPercent(deal.probability)}%` }} />
         </div>
       </div>
       {sidebarQuote ? (

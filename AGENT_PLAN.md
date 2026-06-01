@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## 2026-06-02 Pipeline contact/potential probability cleanup plan
+
+**Background**:
+
+- User reported that `/pipeline/` shows contact/meeting and potential customers with 42% probability even though no probability was entered.
+- Production DB check showed no stored `42` probability values in `Schedule`, `Quote`, or `OpportunityTracking`; the value comes from pipeline API stage defaults.
+
+**DB change required**: No.
+
+- Production `reporting_schedule` has no `probability = 42` rows.
+- Production `reporting_quote` has no `probability = 42` rows.
+- Production `reporting_opportunitytracking` has no `probability = 42` rows.
+- The correction should be API/UI behavior: user-unentered contact/potential probability must remain `null`.
+
+**Implementation scope**:
+
+- Change pipeline API fallback probability for `potential` and `contact` stages to `None`.
+- Keep entered quote/schedule probabilities intact.
+- Adjust React pipeline types and display so `null` renders as `미입력`, not `0%` or `42%`.
+- Treat `null` as 0 only for weighted pipeline math.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\funnel_views.py`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy affected services to Railway and smoke `/pipeline/`.
+
 ## 2026-06-01 Demo form UI cleanup plan
 
 **Background**:

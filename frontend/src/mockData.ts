@@ -33,7 +33,7 @@ export type Deal = {
   stage: PipelineStage;
   stageLabel?: string;
   value: number;
-  probability: number;
+  probability: number | null;
   nextAction: string;
   due: string;
   risk: 'low' | 'medium' | 'high';
@@ -296,7 +296,7 @@ export const mockDeals: Deal[] = [
 
 const totalPipelineValue = mockDeals.reduce((sum, deal) => sum + deal.value, 0);
 const weightedPipelineValue = mockDeals.reduce(
-  (sum, deal) => sum + deal.value * (deal.probability / 100),
+  (sum, deal) => sum + deal.value * ((deal.probability ?? 0) / 100),
   0,
 );
 

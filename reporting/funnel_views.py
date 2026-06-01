@@ -966,6 +966,13 @@ PIPELINE_QUOTE_PRIORITY = {
 
 PIPELINE_ACTIVE_QUOTE_STAGES = {'draft', 'sent', 'review', 'negotiation', 'approved', 'converted'}
 PIPELINE_WON_QUOTE_STAGES = {'approved', 'converted'}
+PIPELINE_NULL_PROBABILITY_STAGES = {'potential', 'contact'}
+
+
+def _pipeline_default_probability(stage):
+    if stage in PIPELINE_NULL_PROBABILITY_STAGES:
+        return None
+    return STAGE_PROBABILITY.get(stage, 30)
 
 
 def _quote_amount(quote):
@@ -1452,7 +1459,7 @@ def _select_pipeline_pricing(followup, stage):
         'source': '',
         'number': '',
         'stage': '',
-        'probability': STAGE_PROBABILITY.get(stage, 30),
+        'probability': _pipeline_default_probability(stage),
         'valid_until': None,
         'basis_date': None,
         'quote_date': None,
@@ -1728,7 +1735,9 @@ def pipeline_command_center_api(request):
         pricing_amount = pricing['amount']
         quote_reference = _select_quote_reference_pricing(fu, stage)
         quote_comparison = _build_quote_comparison(stage, pricing, quote_reference)
-        probability = pricing['probability'] or STAGE_PROBABILITY.get(stage, 30)
+        probability = pricing['probability']
+        if probability is None:
+            probability = _pipeline_default_probability(stage)
         next_action_date = last_history.next_action_date if last_history else None
         has_overdue_action = bool(next_action_date and next_action_date < today)
         due_date = next_action_date or (next_schedule.visit_date if next_schedule else None)
@@ -1796,7 +1805,7 @@ def pipeline_command_center_api(request):
             'stage': stage,
             'stageLabel': dict(FollowUp.PIPELINE_STAGE_CHOICES).get(stage, stage),
             'value': _money_int(pricing_amount),
-            'probability': int(probability or 0),
+            'probability': int(probability) if probability is not None else None,
             'nextAction': next_action[:80],
             'due': _date_label(due_date, today),
             'risk': risk,
@@ -1842,7 +1851,7 @@ def pipeline_command_center_api(request):
         for stage_key, label, color, _icon in PIPELINE_STAGES
     ]
     total_value = sum(deal['value'] for deal in deals)
-    weighted_value = sum(deal['value'] * (deal['probability'] / 100) for deal in deals)
+    weighted_value = sum(deal['value'] * ((deal['probability'] or 0) / 100) for deal in deals)
     overdue_count = sum(1 for deal in deals if deal['risk'] == 'high')
     contact_count = sum(1 for deal in deals if deal['stage'] == 'contact')
 

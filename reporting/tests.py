@@ -17733,6 +17733,42 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['nextSchedule']['type'], '견적 제출')
         self.assertIn('csrftoken', response.cookies)
 
+    def test_pipeline_api_leaves_unentered_contact_and_potential_probability_null(self):
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name='확률미입력회사', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company,
+            name='확률미입력연구실',
+            created_by=self.user,
+        )
+        potential = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.user.userprofile.company,
+            customer_name='잠재 고객',
+            company=customer_company,
+            department=department,
+            pipeline_stage='potential',
+        )
+        contact = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.user.userprofile.company,
+            customer_name='접촉 고객',
+            company=customer_company,
+            department=department,
+            pipeline_stage='contact',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        deals = {deal['id']: deal for deal in payload['deals']}
+        self.assertIsNone(deals[potential.id]['probability'])
+        self.assertIsNone(deals[contact.id]['probability'])
+        self.assertEqual(payload['metrics']['weightedPipelineValue'], 0)
+
     def test_pipeline_api_includes_department_ai_summary(self):
         from datetime import date
         from ai_chat.models import AIDepartmentAnalysis, PainPointCard

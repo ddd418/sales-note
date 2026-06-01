@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-06-02 — 파이프라인 접촉/잠재 확률 기본값 제거
+
+### 요약
+
+- `/pipeline/`에서 접촉/미팅·잠재 고객의 수주 가능성이 사용자가 입력하지 않았는데도 `42%`처럼 보이던 문제를 수정했습니다.
+- 운영 DB 확인 결과 `42`가 저장된 데이터는 없었고, 파이프라인 API의 단계 기본값 때문에 표시되는 문제였습니다.
+- 이제 접촉/미팅·잠재 단계에서 사용자가 입력하지 않은 확률은 API가 `null`로 내려주고, React 화면은 `미입력`으로 표시합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/funnel_views.py`
+- `reporting/tests.py`
+- `frontend/src/App.tsx`
+- `frontend/src/mockData.ts`
+
+### CRM 개선
+
+- 접촉/미팅·잠재 단계의 확률이 임의 자동값으로 오해되지 않습니다.
+- 사람이 직접 입력한 견적/일정 확률은 그대로 유지됩니다.
+- 확률 미입력 건은 가중 파이프라인 계산에서 0으로만 처리하고, 원본 응답값은 `null`로 유지합니다.
+
+### 기존 기능 보존
+
+- 파이프라인 단계, 견적 기준 금액, 납품 기준 금액, 단계 이동 API는 유지했습니다.
+- 견적 제출/협상/수주/실주 단계의 기존 확률 계산은 유지했습니다.
+- 인증/권한 범위는 변경하지 않았습니다.
+
+### 운영 DB 확인
+
+```text
+reporting_followup pipeline_stage in ('potential', 'contact')
+→ contact 17건, potential 359건
+
+reporting_schedule probability = 42
+→ 0건
+
+reporting_quote probability = 42
+→ 0건
+
+reporting_opportunitytracking probability = 42
+→ 0건
+```
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\funnel_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.PipelineApiTests --keepdb
+→ OK, 15 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이미 사람이 입력한 미팅 확률값은 유지했습니다. 운영 DB 기준 미팅 확률 입력값은 20/30/50/60/100 등으로 존재합니다.
+
+### Production 배포 상태
+
+- Pending. Commit/push and Railway deployment will follow this report update.
+
+### Manual Server Test Process
+
+1. Open `https://sales-note-frontend-production.up.railway.app/pipeline/` after deployment and login.
+2. Check 접촉/미팅 and 잠재 cards where no probability was manually entered.
+3. Confirm those cards show `미입력`, not `42%`.
+4. Open 견적 제출/협상 cards that have real quote probability and confirm their percentage still displays.
+
 ## 2026-06-01 — 데모 등록 폼 UI 긴급 정리
 
 ### 요약
