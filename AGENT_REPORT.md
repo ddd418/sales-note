@@ -74,7 +74,15 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Commit/push and Railway deployment will follow this report update.
+- Completed.
+- Commit `e5f0175 fix: keep unentered pipeline probabilities null` is present on `origin/main`.
+- Railway `sales-note-frontend` deployment `9e1ee4d1-d41d-45db-9eb8-dce2cd1eba14` reached `SUCCESS`.
+- Railway `web` deployment `a85e5a9b-728d-4e48-a3b0-816de65f041d` reached `SUCCESS`.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/pipeline/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/pipeline/` returned 401 as expected.
+  - Deployed frontend bundle includes the `미입력` null-probability display path.
 
 ### Manual Server Test Process
 
