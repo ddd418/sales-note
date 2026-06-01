@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Pipeline quote item sidebar plan
+
+**Background**:
+
+- User requested that the `/pipeline/` right sidebar show which items were quoted when selecting quote/negotiation customers.
+- The sidebar already shows quote number/source/amount/date, but not quote line items.
+
+**DB change required**: No.
+
+- Use existing `DeliveryItem` rows attached to quote schedules or quote histories.
+- Use existing `QuoteItem` rows when the pipeline price source is the `Quote` model.
+
+**Implementation scope**:
+
+- Add quote item payloads to `latestQuote.items` from the same pricing source that drives the pipeline card amount.
+- Include item name, quantity, unit, unit price, total price, quote group, and source label.
+- Render quote items below the `들어간 견적` summary in the React pipeline detail sidebar.
+- Keep the UI compact so the sidebar stays scannable.
+- Add focused pipeline API tests for quote/negotiation item payloads.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\funnel_views.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.PipelineApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then run production smoke.
+
 ## 2026-06-01 Quote required and meeting optional probability plan
 
 **Background**:

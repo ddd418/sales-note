@@ -815,11 +815,13 @@ def funnel_pipeline_view(request):
     pricing_histories_qs = History.objects.filter(
         parent_history__isnull=True,
         action_type__in=['quote', 'delivery_schedule'],
-    ).prefetch_related('delivery_items_set').order_by('-created_at')
+    ).prefetch_related(
+        Prefetch('delivery_items_set', queryset=DeliveryItem.objects.select_related('product')),
+    ).order_by('-created_at')
     pricing_schedules_qs = Schedule.objects.filter(
         activity_type__in=['quote', 'delivery'],
     ).prefetch_related(
-        'delivery_items_set',
+        Prefetch('delivery_items_set', queryset=DeliveryItem.objects.select_related('product')),
         Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
     ).order_by('-visit_date', '-created_at')
 
@@ -1133,6 +1135,11 @@ def _quote_model_pricing(followup, stage):
             'basis_date': selected_entries[0]['date'] if selected_entries else primary_quote.quote_date,
             'quote_date': selected_entries[0]['date'] if selected_entries else primary_quote.quote_date,
             'count': count,
+            'items': [
+                item
+                for quote in selected_quotes
+                for item in _pipeline_quote_model_items(quote, source)
+            ],
         }
 
     if stage == 'won':
@@ -1193,6 +1200,11 @@ def _select_quote_reference_pricing(followup, stage):
             'basis_date': selected_schedule_entries[0]['date'],
             'quote_date': selected_schedule_entries[0]['date'],
             'count': count,
+            'items': [
+                item
+                for entry in selected_schedule_entries
+                for item in _pipeline_schedule_quote_items(entry['schedule'], '견적 일정')
+            ],
         }
 
     histories = list(getattr(followup, 'pricing_histories', []))
@@ -1223,6 +1235,11 @@ def _select_quote_reference_pricing(followup, stage):
             'basis_date': selected_history_entries[0]['date'],
             'quote_date': selected_history_entries[0]['date'],
             'count': count,
+            'items': [
+                item
+                for entry in selected_history_entries
+                for item in _pipeline_history_quote_items(entry['history'], '견적 활동')
+            ],
         }
 
     # 금액이 없는 견적 일정/활동은 가격 기준으로 쓰지 않고 Quote 모델로 fallback한다.
@@ -1241,6 +1258,7 @@ def _select_quote_reference_pricing(followup, stage):
                 'valid_until': quote_schedule.expected_close_date,
                 'basis_date': quote_schedule.visit_date,
                 'quote_date': quote_schedule.visit_date,
+                'items': _pipeline_schedule_quote_items(quote_schedule, '견적 일정'),
             }
 
     quote_history = quote_histories[0] if quote_histories else None
@@ -1258,6 +1276,7 @@ def _select_quote_reference_pricing(followup, stage):
                 'valid_until': None,
                 'basis_date': _history_pricing_date(quote_history),
                 'quote_date': _history_pricing_date(quote_history),
+                'items': _pipeline_history_quote_items(quote_history, '견적 활동'),
             }
 
     return _quote_model_pricing(followup, stage)
@@ -1293,6 +1312,7 @@ def _build_quote_comparison(stage, pricing, quote_reference):
         'status_label': status_label,
         'source': quote_reference['source'],
         'number': quote_reference['number'],
+        'items': quote_reference.get('items', []),
     }
 
 
@@ -1332,6 +1352,7 @@ def _quote_comparison_api_payload(comparison):
         'statusLabel': comparison['status_label'],
         'source': comparison['source'],
         'number': comparison['number'],
+        'items': comparison.get('items', []),
     }
 
 
@@ -1412,6 +1433,7 @@ def _select_pipeline_pricing(followup, stage):
                 'valid_until': None,
                 'basis_date': basis_date,
                 'quote_date': None,
+                'items': [],
             }
 
     if stage in ('quote', 'negotiation', 'lost'):
@@ -1434,6 +1456,7 @@ def _select_pipeline_pricing(followup, stage):
         'valid_until': None,
         'basis_date': None,
         'quote_date': None,
+        'items': [],
     }
 
 
@@ -1454,6 +1477,67 @@ def _date_label(target_date, today):
 
 def _money_int(value):
     return int(value or Decimal('0'))
+
+
+def _pipeline_quote_group_label(value):
+    return str(value or '').strip()[:100] or '기본 견적서'
+
+
+def _pipeline_delivery_item_payload(item, source_label=''):
+    effective_unit_price = item.get_effective_unit_price()
+    return {
+        'id': f'delivery-item-{item.id}',
+        'sourceType': 'delivery_item',
+        'source': source_label,
+        'itemName': item.item_name,
+        'productCode': item.product.product_code if item.product_id and item.product else '',
+        'quantity': item.quantity,
+        'unit': item.unit or '',
+        'unitPrice': _money_int(effective_unit_price) if effective_unit_price is not None else None,
+        'totalPrice': _money_int(item.total_price),
+        'quoteGroup': item.quote_group or '',
+        'quoteGroupLabel': _pipeline_quote_group_label(item.quote_group),
+        'notes': item.notes or '',
+    }
+
+
+def _pipeline_quote_item_payload(item, source_label=''):
+    product = item.product
+    return {
+        'id': f'quote-item-{item.id}',
+        'sourceType': 'quote_item',
+        'source': source_label,
+        'itemName': product.product_code if product else '품목명 미정',
+        'productCode': product.product_code if product else '',
+        'quantity': item.quantity,
+        'unit': product.unit if product else '',
+        'unitPrice': _money_int(item.unit_price),
+        'totalPrice': _money_int(item.subtotal),
+        'quoteGroup': '',
+        'quoteGroupLabel': '기본 견적서',
+        'notes': item.description or '',
+    }
+
+
+def _pipeline_schedule_quote_items(schedule, source_label='견적 일정'):
+    return [
+        _pipeline_delivery_item_payload(item, source_label)
+        for item in schedule.delivery_items_set.all()
+    ]
+
+
+def _pipeline_history_quote_items(history, source_label='견적 활동'):
+    return [
+        _pipeline_delivery_item_payload(item, source_label)
+        for item in history.delivery_items_set.all()
+    ]
+
+
+def _pipeline_quote_model_items(quote, source_label='견적서'):
+    return [
+        _pipeline_quote_item_payload(item, source_label)
+        for item in quote.items.all()
+    ]
 
 
 def _attention_score(stage, latest_quote, next_schedule, last_history, has_overdue_action, today):
@@ -1624,7 +1708,7 @@ def pipeline_command_center_api(request):
             Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
             Prefetch('histories', queryset=recent_histories_qs,
                      to_attr='recent_histories_for_stage'),
-            Prefetch('quotes', queryset=Quote.objects.order_by('-created_at'),
+            Prefetch('quotes', queryset=Quote.objects.prefetch_related('items__product').order_by('-created_at'),
                      to_attr='all_quotes'),
         )
         .order_by('pipeline_stage', 'company__name', 'customer_name')
@@ -1681,6 +1765,7 @@ def pipeline_command_center_api(request):
                 'basisType': pricing['kind'],
                 'basisDate': basis_date.isoformat() if basis_date else None,
                 'quoteDate': quote_date.isoformat() if quote_date else None,
+                'items': pricing.get('items', []),
             }
         next_schedule_payload = None
         if next_schedule:

@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 파이프라인 사이드바 견적 품목 표시
+
+### 요약
+
+- `/pipeline/` 우측 `선택 고객` 사이드바의 `들어간 견적` 섹션에 견적 품목 목록을 표시하도록 했습니다.
+- 파이프라인 금액 기준과 같은 소스에서 품목을 가져옵니다: 견적 일정 `DeliveryItem`, 견적 활동 `DeliveryItem`, 별도 `QuoteItem`.
+- 품목명, 수량/단위, 단가, 총액, 견적서 구분을 compact list로 보여줍니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/mockData.ts`
+- `frontend/src/styles.css`
+- `reporting/funnel_views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 견적 제출/협상 고객을 클릭했을 때 어떤 품목으로 견적이 들어갔는지 사이드바에서 바로 확인할 수 있습니다.
+- 금액만 보이던 파이프라인 검토가 품목 단위 검토까지 가능해졌습니다.
+- 여러 견적 일정이 같은 최신 기준일에 묶인 경우 해당 품목들도 함께 표시됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 파이프라인 단계 이동, 견적 금액 기준, 견적 대비 실제 납품 비교 로직은 유지했습니다.
+- 사이드바의 견적 요약, 다음 일정, 최근 활동, 고객 상세 링크는 그대로 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\funnel_views.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.PipelineApiTests --keepdb
+→ OK, 14 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 `python manage.py check` 기본 설정 로딩 시 기존 `STATICFILES_STORAGE/STORAGES` 조합 문제로 막힐 수 있어, Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending. 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 배포와 production smoke를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/pipeline/`에 접속합니다.
+2. `견적 제출` 또는 `협상` 단계 고객 카드를 클릭합니다.
+3. 우측 `들어간 견적` 섹션 아래에 `견적 품목` 목록이 보이는지 확인합니다.
+4. 품목명, 수량/단위, 단가, 총액이 실제 견적/일정 품목과 맞는지 확인합니다.
+
 ## 2026-06-01 — 견적 필수/미팅 선택 확률 규칙
 
 ### 요약

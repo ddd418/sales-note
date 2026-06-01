@@ -20892,6 +20892,7 @@ function DetailPanel({
           quoteDateLabel: latestQuoteDateLabel,
           basisDateLabel: latestQuoteBasisDateLabel,
           validUntilLabel: deal.latestQuote.validUntil ? formatDateLabel(deal.latestQuote.validUntil) : '',
+          items: deal.latestQuote.items ?? [],
         }
       : deal.quoteComparison
         ? {
@@ -20902,11 +20903,13 @@ function DetailPanel({
             quoteDateLabel: '',
             basisDateLabel: '',
             validUntilLabel: '',
+            items: deal.quoteComparison.items ?? [],
           }
         : null;
   const hasSidebarQuoteMeta = Boolean(
     sidebarQuote?.quoteDateLabel || sidebarQuote?.basisDateLabel || sidebarQuote?.validUntilLabel,
   );
+  const sidebarQuoteItems = sidebarQuote?.items ?? [];
 
   return (
     <aside className="detail-panel">
@@ -20994,6 +20997,35 @@ function DetailPanel({
                   <span>유효기한</span>
                   <strong>{sidebarQuote.validUntilLabel}</strong>
                 </>
+              ) : null}
+            </div>
+          ) : null}
+          {sidebarQuoteItems.length ? (
+            <div className="pipeline-quote-items">
+              <div className="quote-items-heading">
+                <span>견적 품목</span>
+                <strong>{formatNumber(sidebarQuoteItems.length)}개</strong>
+              </div>
+              {sidebarQuoteItems.slice(0, 8).map((item) => {
+                const quantityLabel = `${formatNumber(item.quantity)}${item.unit || ''}`;
+                const groupLabel = item.quoteGroupLabel && item.quoteGroupLabel !== '기본 견적서'
+                  ? item.quoteGroupLabel
+                  : '';
+                return (
+                  <div className="pipeline-quote-item" key={item.id}>
+                    <div>
+                      <strong>{groupLabel ? `[${groupLabel}] ${item.itemName}` : item.itemName}</strong>
+                      <span>
+                        {quantityLabel}
+                        {item.unitPrice !== null && item.unitPrice !== undefined ? ` · 단가 ${formatWon(item.unitPrice)}` : ''}
+                      </span>
+                    </div>
+                    {item.totalPrice !== undefined ? <em>{formatWon(item.totalPrice)}</em> : null}
+                  </div>
+                );
+              })}
+              {sidebarQuoteItems.length > 8 ? (
+                <small>외 {formatNumber(sidebarQuoteItems.length - 8)}개 품목</small>
               ) : null}
             </div>
           ) : null}

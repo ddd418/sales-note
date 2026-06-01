@@ -9967,6 +9967,69 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.pipeline-quote-items {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.quote-items-heading,
+.pipeline-quote-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.quote-items-heading span,
+.quote-items-heading strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quote-items-heading strong {
+  text-align: right;
+}
+
+.pipeline-quote-item {
+  padding: 7px 0;
+  border-top: 1px solid rgba(191, 219, 254, 0.7);
+}
+
+.quote-items-heading + .pipeline-quote-item {
+  border-top: 0;
+}
+
+.pipeline-quote-item div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pipeline-quote-item strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.pipeline-quote-item span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pipeline-quote-item em {
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .detail-box.quote-comparison {
   border-color: #dbeafe;
   background: #f8fafc;

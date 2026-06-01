@@ -17615,8 +17615,11 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deals[quote_followup.id]['value'], 2200000)
         self.assertEqual(deals[quote_followup.id]['latestQuote']['source'], '견적 일정')
         self.assertEqual(deals[quote_followup.id]['latestQuote']['basisType'], 'schedule')
+        self.assertEqual(deals[quote_followup.id]['latestQuote']['items'][0]['itemName'], '견적품목')
+        self.assertEqual(deals[quote_followup.id]['latestQuote']['items'][0]['totalPrice'], 2200000)
         self.assertEqual(deals[negotiation_followup.id]['value'], 2200000)
         self.assertEqual(deals[negotiation_followup.id]['latestQuote']['source'], '견적 일정')
+        self.assertEqual(deals[negotiation_followup.id]['latestQuote']['items'][0]['itemName'], '협상품목')
         self.assertEqual(deals[won_followup.id]['value'], 4400000)
         self.assertEqual(deals[won_followup.id]['latestQuote']['source'], '실제 납품 매출')
         self.assertEqual(deals[won_followup.id]['latestQuote']['basisType'], 'delivery')
@@ -17710,6 +17713,37 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['latestQuote']['source'], '견적 활동')
         self.assertEqual(deal['latestQuote']['basisType'], 'history')
         self.assertEqual(deal['latestQuote']['quoteDate'], timezone.localdate().isoformat())
+        self.assertEqual(deal['latestQuote']['items'][0]['itemName'], '히스토리견적품목')
+        self.assertEqual(deal['latestQuote']['items'][0]['totalPrice'], 3300000)
+
+    def test_pipeline_api_includes_quote_model_items_for_quote_fallback(self):
+        from reporting.models import Product, QuoteItem
+
+        followup = self._create_pipeline_customer(self.user, '견적서품목', stage='quote')
+        quote = followup.quotes.first()
+        product = Product.objects.create(
+            product_code='PIPELINE-QUOTE-ITEM',
+            unit='BOX',
+            standard_price=100000,
+            created_by=self.user,
+        )
+        QuoteItem.objects.create(
+            quote=quote,
+            product=product,
+            quantity=2,
+            unit_price=100000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        deal = next(deal for deal in response.json()['deals'] if deal['id'] == followup.id)
+        self.assertEqual(deal['latestQuote']['basisType'], 'quote')
+        self.assertEqual(deal['latestQuote']['items'][0]['itemName'], 'PIPELINE-QUOTE-ITEM')
+        self.assertEqual(deal['latestQuote']['items'][0]['quantity'], 2)
+        self.assertEqual(deal['latestQuote']['items'][0]['unit'], 'BOX')
+        self.assertEqual(deal['latestQuote']['items'][0]['totalPrice'], 200000)
 
     def test_pipeline_api_uses_delivery_history_items_for_won_revenue(self):
         from django.utils import timezone

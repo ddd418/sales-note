@@ -10,6 +10,20 @@ export type StageSummary = {
   overdueCount?: number;
 };
 
+export type QuoteLineItem = {
+  id: string;
+  itemName: string;
+  productCode?: string;
+  quantity: number;
+  unit: string;
+  unitPrice?: number | null;
+  totalPrice?: number;
+  quoteGroup?: string;
+  quoteGroupLabel?: string;
+  source?: string;
+  notes?: string;
+};
+
 export type Deal = {
   id: number;
   company: string;
@@ -43,6 +57,7 @@ export type Deal = {
     basisType?: string;
     basisDate?: string | null;
     quoteDate?: string | null;
+    items?: QuoteLineItem[];
   } | null;
   quoteComparison?: {
     quotedAmount: number;
@@ -53,6 +68,7 @@ export type Deal = {
     statusLabel: string;
     source: string;
     number: string;
+    items?: QuoteLineItem[];
   } | null;
   nextSchedule?: {
     id: number;
@@ -142,6 +158,10 @@ export const mockDeals: Deal[] = [
       probability: 65,
       validUntil: '2026-05-30',
       quoteDate: '2026-05-03',
+      items: [
+        { id: 'mock-q1-1', itemName: 'LC-MS 분석 컬럼', quantity: 2, unit: 'EA', unitPrice: 4200000, totalPrice: 8400000, quoteGroupLabel: '장비 구성' },
+        { id: 'mock-q1-2', itemName: '전처리 키트', quantity: 5, unit: 'BOX', unitPrice: 2000000, totalPrice: 10000000, quoteGroupLabel: '소모품' },
+      ],
     },
     nextSchedule: {
       id: 101,
@@ -187,6 +207,10 @@ export const mockDeals: Deal[] = [
       probability: 80,
       validUntil: '2026-06-15',
       quoteDate: '2026-05-20',
+      items: [
+        { id: 'mock-q3-1', itemName: '임상 샘플 분석 패키지', quantity: 1, unit: 'SET', unitPrice: 24600000, totalPrice: 24600000 },
+        { id: 'mock-q3-2', itemName: '추가 검체 처리', quantity: 4, unit: 'LOT', unitPrice: 2000000, totalPrice: 8000000 },
+      ],
     },
   },
   {
@@ -227,6 +251,9 @@ export const mockDeals: Deal[] = [
       probability: 55,
       validUntil: '2026-06-07',
       quoteDate: '2026-05-24',
+      items: [
+        { id: 'mock-q5-1', itemName: 'PCR reagent mix', quantity: 8, unit: 'BOX', unitPrice: 1600000, totalPrice: 12800000 },
+      ],
     },
   },
   {
@@ -260,6 +287,9 @@ export const mockDeals: Deal[] = [
       statusLabel: '실매출 미달',
       source: '수주 견적',
       number: 'Q-2026-006',
+      items: [
+        { id: 'mock-q6-1', itemName: '소재 분석 시약 세트', quantity: 2, unit: 'SET', unitPrice: 11000000, totalPrice: 22000000 },
+      ],
     },
   },
 ];
