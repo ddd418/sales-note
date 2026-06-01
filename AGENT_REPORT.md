@@ -45,6 +45,15 @@ $env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY
 Local browser preview: http://127.0.0.1:4173/customers/
 → `Priority`, `우선 계정`, `우선순위 전체` absent from customer page text
 
+Railway deployment status checks
+→ `sales-note-frontend` deployment `6a251213-d029-4e2c-ae4b-30a27ae3fdcd` SUCCESS
+→ `web` deployment `0eda8ba8-9c9d-429c-b76a-9ac2ddbb50fa` SUCCESS
+
+Production smoke checks
+→ `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200
+→ `/reporting/api/customers/` returned 401 JSON without auth, as expected
+→ production App bundle no longer contains `우선 계정`; remaining `우선순위 전체` string is from the separate services priority filter
+
 git diff --check
 → OK, CRLF normalization warnings only
 ```
@@ -55,7 +64,10 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Commit and Railway frontend deployment will follow this report update.
+- Completed. Commit `f767707` deployed successfully.
+- Railway `sales-note-frontend` deployment `6a251213-d029-4e2c-ae4b-30a27ae3fdcd` reached `SUCCESS`.
+- Railway `web` deployment `0eda8ba8-9c9d-429c-b76a-9ac2ddbb50fa` also reached `SUCCESS` because the backend service watches `frontend/**`.
+- Production smoke passed for frontend health and protected customer API login enforcement.
 
 ### 수동 서버 테스트 절차
 
