@@ -1,5 +1,33 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Pipeline selected customer quote-first sidebar plan
+
+**Background**:
+
+- User reported that the `/pipeline/` selected-customer sidebar should show which quote was entered, not AI content.
+- The current sidebar renders a large department AI card before the quote box, so quote context is visually buried.
+
+**DB change required**: No.
+
+- Existing pipeline API `latestQuote` fields are enough for a quote-first sidebar.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Remove the Department AI card/actions from the pipeline selected-customer sidebar.
+- Promote the quote information block near the top of the sidebar and label it as `들어간 견적`.
+- Show quote number/source, amount/stage, quote date, basis date when different, and valid-until if present.
+- Preserve stage move controls, next action, next schedule, quote comparison, tags, activity list, and customer detail link.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Deploy Sales-note frontend/runtime and production smoke.
+
 ## 2026-06-01 Lost pipeline quote amount display plan
 
 **Background**:

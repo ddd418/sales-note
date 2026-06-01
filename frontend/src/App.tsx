@@ -20810,7 +20810,6 @@ function DetailPanel({
   moving,
   moveError,
   moveMessage,
-  onRefresh,
   onMoveStage,
 }: {
   deal?: Deal;
@@ -20819,84 +20818,8 @@ function DetailPanel({
   moving: boolean;
   moveError: string;
   moveMessage: string;
-  onRefresh: (preferredDealId?: number | null) => Promise<PipelineData>;
   onMoveStage: (deal: Deal, stage: PipelineStage) => void;
 }) {
-  const [aiResultOpen, setAiResultOpen] = useState(false);
-  const [aiRunning, setAiRunning] = useState(false);
-  const [aiError, setAiError] = useState('');
-  const [aiMessage, setAiMessage] = useState('');
-  const [aiVerificationNotes, setAiVerificationNotes] = useState<Record<number, string>>({});
-  const [aiVerifyingId, setAiVerifyingId] = useState<number | null>(null);
-
-  useEffect(() => {
-    setAiResultOpen(Boolean(deal?.aiDepartment?.hasAnalysis));
-    setAiRunning(false);
-    setAiError('');
-    setAiMessage('');
-    setAiVerificationNotes({});
-    setAiVerifyingId(null);
-  }, [deal?.id, deal?.aiDepartment?.hasAnalysis]);
-
-  const aiDepartment = deal?.aiDepartment
-    ? normalizeCustomerAiDepartment(deal.aiDepartment as Partial<CustomerAiDepartment>)
-    : null;
-
-  const handleAiDepartmentRun = async () => {
-    if (!deal || !aiDepartment?.canAnalyze || !aiDepartment.runHref || aiRunning) {
-      setAiError(aiDepartment?.message || 'AI 브리핑을 실행할 수 없습니다.');
-      setAiMessage('');
-      return;
-    }
-
-    setAiRunning(true);
-    setAiError('');
-    setAiMessage('');
-    try {
-      const result = await runAiDepartmentAnalysis(aiDepartment.runHref);
-      await onRefresh(deal.id);
-      const cardCount = result.cards_created ?? result.cardsCreated ?? 0;
-      setAiMessage(cardCount > 0 ? `AI 브리핑을 완료했습니다. PainPoint ${formatNumber(cardCount)}건` : 'AI 브리핑을 완료했습니다.');
-      setAiResultOpen(true);
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : 'AI 브리핑 실행에 실패했습니다.');
-    } finally {
-      setAiRunning(false);
-    }
-  };
-
-  const handleAiVerificationNoteChange = (cardId: number, value: string) => {
-    setAiVerificationNotes((previous) => ({
-      ...previous,
-      [cardId]: value,
-    }));
-  };
-
-  const handleAiPainpointVerify = async (card: CustomerAiPainpoint) => {
-    if (!deal || !card.canVerify || !card.verifyHref || aiVerifyingId) {
-      return;
-    }
-
-    setAiVerifyingId(card.id);
-    setAiError('');
-    setAiMessage('');
-    try {
-      await verifyAiPainpoint(card.verifyHref, aiVerificationNotes[card.id] || '');
-      await onRefresh(deal.id);
-      setAiMessage('PainPoint 검증 메모를 저장했습니다.');
-      setAiVerificationNotes((previous) => {
-        const next = { ...previous };
-        delete next[card.id];
-        return next;
-      });
-      setAiResultOpen(true);
-    } catch (error) {
-      setAiError(error instanceof Error ? error.message : 'PainPoint 검증 저장에 실패했습니다.');
-    } finally {
-      setAiVerifyingId(null);
-    }
-  };
-
   if (!deal) {
     return (
       <aside className="detail-panel empty">
@@ -20915,6 +20838,31 @@ function DetailPanel({
     deal.latestQuote?.basisDate && deal.latestQuote.basisDate !== deal.latestQuote.quoteDate
       ? formatDateLabel(deal.latestQuote.basisDate)
       : '';
+  const sidebarQuote =
+    deal.latestQuote && deal.latestQuote.basisType !== 'delivery'
+      ? {
+          number: deal.latestQuote.number || '견적 번호 없음',
+          source: deal.latestQuote.source || '가격 기준 견적',
+          amount: deal.latestQuote.amount,
+          stage: deal.latestQuote.stage || `${deal.latestQuote.probability}%`,
+          quoteDateLabel: latestQuoteDateLabel,
+          basisDateLabel: latestQuoteBasisDateLabel,
+          validUntilLabel: deal.latestQuote.validUntil ? formatDateLabel(deal.latestQuote.validUntil) : '',
+        }
+      : deal.quoteComparison
+        ? {
+            number: deal.quoteComparison.number || '기준 견적',
+            source: deal.quoteComparison.source || '기준 견적',
+            amount: deal.quoteComparison.quotedAmount,
+            stage: '기준 견적',
+            quoteDateLabel: '',
+            basisDateLabel: '',
+            validUntilLabel: '',
+          }
+        : null;
+  const hasSidebarQuoteMeta = Boolean(
+    sidebarQuote?.quoteDateLabel || sidebarQuote?.basisDateLabel || sidebarQuote?.validUntilLabel,
+  );
 
   return (
     <aside className="detail-panel">
@@ -20972,83 +20920,52 @@ function DetailPanel({
           <div style={{ width: `${deal.probability}%` }} />
         </div>
       </div>
+      {sidebarQuote ? (
+        <div className="detail-box quote pipeline-quote-summary">
+          <div className="section-title">들어간 견적</div>
+          <div className="quote-line">
+            <strong>{sidebarQuote.number}</strong>
+            <span>{sidebarQuote.source}</span>
+          </div>
+          <div className="quote-line quote-amount-line">
+            <strong>{formatWon(sidebarQuote.amount)}</strong>
+            <span>{sidebarQuote.stage}</span>
+          </div>
+          {hasSidebarQuoteMeta ? (
+            <div className="quote-meta-grid">
+              {sidebarQuote.quoteDateLabel ? (
+                <>
+                  <span>견적일</span>
+                  <strong>{sidebarQuote.quoteDateLabel}</strong>
+                </>
+              ) : null}
+              {sidebarQuote.basisDateLabel ? (
+                <>
+                  <span>기준일</span>
+                  <strong>{sidebarQuote.basisDateLabel}</strong>
+                </>
+              ) : null}
+              {sidebarQuote.validUntilLabel ? (
+                <>
+                  <span>유효기한</span>
+                  <strong>{sidebarQuote.validUntilLabel}</strong>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="detail-box quote pipeline-quote-summary empty">
+          <div className="section-title">들어간 견적</div>
+          <strong>등록된 견적 없음</strong>
+          <span>견적 일정, 견적 활동, 또는 견적서가 등록되면 여기에 표시됩니다.</span>
+        </div>
+      )}
       <div className="next-action">
         <span>다음 액션</span>
         <strong>{deal.nextAction}</strong>
         <small>{deal.due}</small>
       </div>
-      {aiDepartment ? (
-        <div className="customer-ai-card pipeline-ai-card">
-          <div className="customer-ai-card-heading">
-            <div>
-              <span className="eyebrow">Department AI</span>
-              <h3>{aiDepartment.departmentName || '부서 AI 브리핑'}</h3>
-            </div>
-            <Sparkles size={18} />
-          </div>
-          {aiDepartment.hasAnalysis ? (
-            <p>{aiDepartment.summary || '분석 요약 없음'}</p>
-          ) : (
-            <p>{aiDepartment.message || '아직 부서 AI 브리핑이 없습니다.'}</p>
-          )}
-          <div className="customer-ai-metrics">
-            <span>미팅 <strong>{formatNumber(aiDepartment.meetingCount)}</strong></span>
-            <span>견적 <strong>{formatNumber(aiDepartment.quoteCount)}</strong></span>
-            <span>납품 <strong>{formatNumber(aiDepartment.deliveryCount)}</strong></span>
-            <span>PainPoint <strong>{formatNumber(aiDepartment.painpointCount)}</strong></span>
-          </div>
-          {aiDepartment.unverifiedPainpointCount > 0 ? (
-            <div className="pipeline-ai-alert">
-              <AlertTriangle size={15} />
-              <span>미검증 PainPoint {formatNumber(aiDepartment.unverifiedPainpointCount)}건</span>
-            </div>
-          ) : null}
-          {aiError ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{aiError}</span></div> : null}
-          {aiMessage ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{aiMessage}</span></div> : null}
-          <div className="customer-ai-actions">
-            {aiDepartment.hasAnalysis ? (
-              <button className="route-secondary-action" onClick={() => setAiResultOpen((open) => !open)} type="button">
-                {aiResultOpen ? '결과 닫기' : '결과 보기'}
-              </button>
-            ) : null}
-            {aiDepartment.href ? (
-              <a className="route-secondary-action" href={aiDepartment.href}>
-                AI 브리핑
-                <MoveUpRight size={15} />
-              </a>
-            ) : aiDepartment.hubHref ? (
-              <a className="route-secondary-action" href={aiDepartment.hubHref}>
-                AI 브리핑
-                <MoveUpRight size={15} />
-              </a>
-            ) : null}
-            {deal.detailUrl ? (
-              <a className="route-secondary-action" href={`/customers/${deal.id}/`}>
-                고객 상세
-                <MoveUpRight size={15} />
-              </a>
-            ) : null}
-            <button
-              className="route-primary-action customer-ai-run-button"
-              disabled={!aiDepartment.canAnalyze || !aiDepartment.runHref || aiRunning}
-              onClick={handleAiDepartmentRun}
-              type="button"
-            >
-              {aiRunning ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
-              AI 브리핑 실행
-            </button>
-          </div>
-          {aiDepartment.hasAnalysis && aiResultOpen ? (
-            <CustomerAiResultPanel
-              aiDepartment={aiDepartment}
-              verificationNotes={aiVerificationNotes}
-              verifyingId={aiVerifyingId}
-              onNoteChange={handleAiVerificationNoteChange}
-              onVerify={handleAiPainpointVerify}
-            />
-          ) : null}
-        </div>
-      ) : null}
       {deal.nextSchedule ? (
         <div className="detail-box">
           <div className="section-title">다음 일정</div>
@@ -21057,22 +20974,6 @@ function DetailPanel({
             {deal.nextSchedule.date} {deal.nextSchedule.time}
             {deal.nextSchedule.location ? ` · ${deal.nextSchedule.location}` : ''}
           </span>
-        </div>
-      ) : null}
-      {deal.latestQuote ? (
-        <div className="detail-box quote">
-          <div className="section-title">{deal.latestQuote.source || '가격 기준 견적'}</div>
-          <div className="quote-line">
-            <strong>{deal.latestQuote.number}</strong>
-            <span>{deal.latestQuote.stage}</span>
-          </div>
-          <div className="quote-line">
-            <strong>{formatWon(deal.latestQuote.amount)}</strong>
-            <span>{deal.latestQuote.probability}%</span>
-          </div>
-          {latestQuoteDateLabel ? <small>견적일 {latestQuoteDateLabel}</small> : null}
-          {latestQuoteBasisDateLabel ? <small>기준일 {latestQuoteBasisDateLabel}</small> : null}
-          {deal.latestQuote.validUntil ? <small>유효기한 {deal.latestQuote.validUntil}</small> : null}
         </div>
       ) : null}
       {deal.quoteComparison ? (
@@ -24599,7 +24500,6 @@ export function App() {
             moving={Boolean(visibleSelectedDeal && movingDealId === visibleSelectedDeal.id)}
             moveError={moveError}
             moveMessage={moveMessage}
-            onRefresh={refreshPipelineData}
             onMoveStage={handleMoveStage}
           />
         )}

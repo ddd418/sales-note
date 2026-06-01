@@ -9927,6 +9927,46 @@ tbody tr:hover {
   background: #eff6ff;
 }
 
+.pipeline-quote-summary {
+  border-color: #bfdbfe;
+  background: linear-gradient(180deg, #eff6ff, #f8fbff);
+}
+
+.pipeline-quote-summary.empty {
+  background: var(--panel-soft);
+}
+
+.pipeline-quote-summary > strong {
+  color: var(--text);
+}
+
+.quote-amount-line strong {
+  color: var(--primary-strong);
+  font-size: 19px;
+}
+
+.quote-meta-grid {
+  display: grid;
+  grid-template-columns: minmax(62px, 0.8fr) minmax(0, 1.2fr);
+  gap: 5px 10px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.quote-meta-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.quote-meta-grid strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .detail-box.quote-comparison {
   border-color: #dbeafe;
   background: #f8fafc;

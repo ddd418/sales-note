@@ -1,5 +1,67 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 파이프라인 선택 고객 견적 우선 사이드바
+
+### 요약
+
+- `/pipeline/`의 `선택 고객` 사이드바에서 Department AI 카드를 제거했습니다.
+- 견적 정보를 `들어간 견적` 섹션으로 상단에 올려 견적번호/출처/금액/단계/견적일을 먼저 보이게 했습니다.
+- 수주 건처럼 `latestQuote`가 실제 납품 매출을 가리키는 경우에는 `quoteComparison`의 기준 견적을 `들어간 견적`으로 보여주도록 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 파이프라인 검토 중 우측 패널에서 AI 요약보다 실제 견적 맥락을 먼저 확인할 수 있습니다.
+- 견적 제출/협상/실주 고객은 어떤 견적이 들어갔는지 바로 보입니다.
+- 수주 고객은 실제 납품 매출과 기준 견적을 혼동하지 않도록 분리해서 표시됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 파이프라인 단계 이동, 다음 액션, 다음 일정, 견적 대비 실제 납품 비교, 최근 활동, 고객 상세 링크는 유지했습니다.
+- AI 기능 자체와 AI 워크스페이스는 제거하지 않았고, 파이프라인 사이드바에서만 숨겼습니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 `python manage.py check` 기본 설정 로딩 시 기존 `STATICFILES_STORAGE/STORAGES` 조합 문제로 막힐 수 있어, Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending. 커밋/푸시 후 Railway 배포 및 smoke test를 진행할 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/pipeline/`에 접속합니다.
+2. 아무 고객 카드를 클릭해 우측 `선택 고객` 패널을 엽니다.
+3. Department AI 카드가 보이지 않는지 확인합니다.
+4. 상단 근처에 `들어간 견적` 섹션이 있고 견적번호/출처/금액/단계/견적일이 보이는지 확인합니다.
+5. 수주 고객은 `들어간 견적`이 실제 납품 매출이 아니라 기준 견적으로 표시되는지 확인합니다.
+
 ## 2026-06-01 — 실주 파이프라인 견적 금액 유지
 
 ### 요약
