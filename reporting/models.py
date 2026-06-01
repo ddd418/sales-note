@@ -1629,6 +1629,99 @@ class Product(models.Model):
         ordering = ['product_code']
 
 
+class DemoRecord(models.Model):
+    STATUS_SCHEDULED = 'scheduled'
+    STATUS_ACTIVE = 'active'
+    STATUS_RETURNED = 'returned'
+    STATUS_CONVERTED = 'converted'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_CHOICES = [
+        (STATUS_SCHEDULED, '예정'),
+        (STATUS_ACTIVE, '진행중'),
+        (STATUS_RETURNED, '회수완료'),
+        (STATUS_CONVERTED, '구매전환'),
+        (STATUS_CANCELLED, '취소'),
+    ]
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name='demo_records',
+        verbose_name='업체/학교',
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name='demo_records',
+        verbose_name='부서/연구실',
+    )
+    followup = models.ForeignKey(
+        FollowUp,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='demo_records',
+        verbose_name='담당자/고객',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='demo_records',
+        verbose_name='제품',
+    )
+    product_name = models.CharField(max_length=200, blank=True, verbose_name='제품명 백업')
+    serial_number = models.CharField(max_length=100, blank=True, verbose_name='시리얼/식별번호')
+    quantity = models.PositiveIntegerField(default=1, verbose_name='수량')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE, verbose_name='상태')
+    start_date = models.DateField(null=True, blank=True, verbose_name='시작일')
+    expected_return_date = models.DateField(null=True, blank=True, verbose_name='반납 예정일')
+    returned_date = models.DateField(null=True, blank=True, verbose_name='회수일')
+    owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='owned_demo_records',
+        verbose_name='담당자',
+    )
+    notes = models.TextField(blank=True, verbose_name='메모')
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_demo_records',
+        verbose_name='등록자',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='생성일')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='수정일')
+
+    def __str__(self):
+        product_label = self.product.product_code if self.product_id else self.product_name or '데모 제품'
+        return f'{self.department} - {product_label}'
+
+    def save(self, *args, **kwargs):
+        if self.product_id and not self.product_name:
+            self.product_name = self.product.product_code
+        if self.department_id and not self.company_id:
+            self.company = self.department.company
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = '데모 기록'
+        verbose_name_plural = '데모 기록 목록'
+        ordering = ['-updated_at', '-created_at']
+        indexes = [
+            models.Index(fields=['status', 'start_date'], name='demo_status_start_idx'),
+            models.Index(fields=['department', 'status'], name='demo_dept_status_idx'),
+            models.Index(fields=['followup', 'status'], name='demo_followup_status_idx'),
+            models.Index(fields=['product', 'status'], name='demo_product_status_idx'),
+            models.Index(fields=['owner', 'status'], name='demo_owner_status_idx'),
+        ]
+
+
 # 견적 (Quote) 모델
 class Quote(models.Model):
     STAGE_CHOICES = [

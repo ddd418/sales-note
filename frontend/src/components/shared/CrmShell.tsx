@@ -34,6 +34,7 @@ export type MainView =
   | 'companies'
   | 'assets'
   | 'services'
+  | 'demos'
   | 'pipeline'
   | 'notes'
   | 'schedules'
@@ -61,6 +62,7 @@ const reactRoutePrefixes = [
   '/customers/',
   '/assets/',
   '/services/',
+  '/demos/',
   '/pipeline/',
   '/notes/',
   '/schedules/',
@@ -84,6 +86,7 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'companies', label: '업체/부서', icon: Building2, href: '/companies/' },
   { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
   { id: 'services', label: '서비스', icon: Wrench, href: '/services/' },
+  { id: 'demos', label: '데모관리', icon: Archive, href: '/demos/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
@@ -106,6 +109,7 @@ const navIconMap: Record<string, LucideIcon> = {
   companies: Building2,
   assets: Wrench,
   services: Wrench,
+  demos: Archive,
   pipeline: Columns3,
   notes: FileText,
   schedules: CalendarDays,
@@ -131,6 +135,7 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   companies: { eyebrow: 'Sales CRM / Companies', title: '업체/부서' },
   assets: { eyebrow: 'Sales CRM / Assets', title: '장비' },
   services: { eyebrow: 'Sales CRM / Services', title: '서비스' },
+  demos: { eyebrow: 'Sales CRM / Demos', title: '데모관리' },
   pipeline: { eyebrow: 'Sales CRM / Pipeline', title: '파이프라인' },
   notes: { eyebrow: 'Sales CRM / Notes', title: '영업노트' },
   schedules: { eyebrow: 'Sales CRM / Schedule', title: '일정' },

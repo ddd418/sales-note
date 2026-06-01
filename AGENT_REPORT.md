@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 데모관리 메뉴와 고객 프로필 데모 현황
+
+### 요약
+
+- 새 React 메뉴 `/demos/`를 추가해 고객/부서별 데모 제품, 상태, 수량, 반납 예정일, 담당자를 조회/등록/수정/삭제할 수 있게 했습니다.
+- Django `DemoRecord` 모델과 API를 추가하고 제품(`Product`), 업체(`Company`), 부서(`Department`), 선택 고객(`FollowUp`)과 연결했습니다.
+- 고객/계정 상세 응답에 `demoSummary`를 추가해 고객 프로필에서 데모 현황과 데모관리 바로가기를 볼 수 있게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/models.py`
+- `reporting/migrations/0118_demorecord.py`
+- `reporting/admin.py`
+- `reporting/api/demos.py`
+- `reporting/urls.py`
+- `reporting/views.py`
+- `reporting/readonly_api.py`
+- `reporting/tests.py`
+- `sales_project/urls.py`
+- `frontend/src/App.tsx`
+- `frontend/src/api.ts`
+- `frontend/src/api/demos.ts`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/api/shared.ts`
+- `frontend/src/components/shared/CrmShell.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 데모 장비/제품이 어느 고객 또는 어느 부서에 있는지 별도 메뉴에서 빠르게 확인할 수 있습니다.
+- 고객이 없는 부서도 데모를 부서 단위로 연결할 수 있어, 초기 데모/대여 관리가 끊기지 않습니다.
+- 고객 상세에서도 전체/진행중/반납지연/구매전환 데모 수와 최근 데모 목록이 보입니다.
+
+### 기존 기능 보존
+
+- 기존 고객, 장비, 서비스, 제품, 외상/선결제 API와 화면은 유지했습니다.
+- Manager 계정은 기존 정책대로 데모 기록 등록/수정/삭제가 차단되고 조회만 가능합니다.
+- `/reporting/*` 인증과 기존 React 라우팅 정책은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\api\demos.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.DemoRecordsApiTests reporting.tests.ReactNavigationApiTests --keepdb
+→ OK, 8 tests
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 데모 기록은 이번 구현에서 파일 첨부나 별도 사진 업로드까지 포함하지 않았습니다.
+- 제품 연결을 기본으로 만들었지만, 기존/예외 데이터를 위해 제품명 직접 입력 fallback은 남겨두었습니다.
+
+### Production 배포 상태
+
+- Pending. 코드 커밋/푸시 후 `web`과 `sales-note-frontend` Railway 배포를 진행해야 합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/demos/`에 접속합니다.
+2. `데모 등록`을 눌러 부서/연구실, 선택 고객, 제품, 수량, 상태, 반납 예정일을 입력하고 저장합니다.
+3. 목록에서 고객/계정, 제품, 상태, 반납 예정일이 보이는지 확인합니다.
+4. 같은 데모를 수정 후 저장하고, 필요하면 삭제가 되는지 확인합니다.
+5. 해당 고객 또는 계정 상세 화면에서 `데모 현황` 섹션과 `데모관리` 링크가 보이는지 확인합니다.
+
 ## 2026-06-01 — 고객 메뉴 Priority/우선 계정 제거
 
 ### 요약

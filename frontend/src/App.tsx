@@ -57,6 +57,10 @@ import {
   DashboardData,
   DashboardHistoryItem,
   DashboardScheduleItem,
+  DemoAccountOption,
+  DemoRecordItem,
+  DemoRecordPayload,
+  DemoRecordsData,
   DocumentTemplateItem,
   DocumentTemplateMutationPayload,
   DocumentTemplatesData,
@@ -130,6 +134,7 @@ import {
   changeProfilePassword,
   connectProfileImap,
   commentTask,
+  createDemoRecord,
   createEmployee,
   createNote as createSalesNote,
   createTask,
@@ -148,12 +153,14 @@ import {
   deleteGeneratedDocument,
   deleteDocumentTemplate,
   deleteBusinessCard,
+  deleteDemoRecord,
   disconnectProfileEmail,
   deleteTask,
   deleteWeeklyReport,
   downloadScheduleDocument,
   loadDashboardData,
   loadBusinessCardsData,
+  loadDemoRecordsData,
   loadDocumentTemplatesData,
   loadEmployeesData,
   loadMailboxData,
@@ -203,6 +210,7 @@ import {
   toggleDocumentTemplateDefault,
   setDefaultBusinessCard,
   updateDocumentTemplate,
+  updateDemoRecord,
   updateProfile,
   updateTask,
   uploadTaskAttachments,
@@ -629,6 +637,21 @@ type CustomerCalibrationFormState = {
   nextDueDate: string;
   notes: string;
   result: string;
+};
+
+type DemoRecordFormState = {
+  departmentId: string;
+  customerId: string;
+  productId: string;
+  productName: string;
+  serialNumber: string;
+  quantity: string;
+  status: string;
+  startDate: string;
+  expectedReturnDate: string;
+  returnedDate: string;
+  ownerId: string;
+  notes: string;
 };
 
 type SearchableSelectOption = {
@@ -1827,6 +1850,56 @@ const customerCalibrationFormToPayload = (form: CustomerCalibrationFormState): {
   };
 };
 
+const makeDemoRecordForm = (record?: DemoRecordItem | null, defaults: Partial<DemoRecordFormState> = {}): DemoRecordFormState => ({
+  departmentId: defaults.departmentId ?? (record?.departmentId ? String(record.departmentId) : ''),
+  customerId: defaults.customerId ?? (record?.customerId ? String(record.customerId) : ''),
+  productId: defaults.productId ?? (record?.productId ? String(record.productId) : ''),
+  productName: defaults.productName ?? (record?.productId ? '' : record?.productName ?? ''),
+  serialNumber: defaults.serialNumber ?? (record?.serialNumber ?? ''),
+  quantity: defaults.quantity ?? String(record?.quantity || 1),
+  status: defaults.status ?? (record?.status || 'active'),
+  startDate: defaults.startDate ?? (record?.startDate || localDateInputValue()),
+  expectedReturnDate: defaults.expectedReturnDate ?? (record?.expectedReturnDate || ''),
+  returnedDate: defaults.returnedDate ?? (record?.returnedDate || ''),
+  ownerId: defaults.ownerId ?? (record?.ownerId ? String(record.ownerId) : ''),
+  notes: defaults.notes ?? (record?.notes ?? ''),
+});
+
+const demoRecordFormToPayload = (form: DemoRecordFormState): { payload?: DemoRecordPayload; error?: string } => {
+  const departmentId = Number(form.departmentId);
+  if (!departmentId) {
+    return { error: '부서/연구실 계정을 선택하세요.' };
+  }
+  const productId = Number(form.productId);
+  const productName = form.productName.trim();
+  if (!productId && !productName) {
+    return { error: '제품을 선택하세요.' };
+  }
+  const quantity = Number(form.quantity);
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    return { error: '수량은 1 이상으로 입력하세요.' };
+  }
+  if (!form.status) {
+    return { error: '데모 상태를 선택하세요.' };
+  }
+  return {
+    payload: {
+      departmentId,
+      customerId: form.customerId ? Number(form.customerId) : null,
+      productId: productId || null,
+      productName: productName || undefined,
+      serialNumber: form.serialNumber.trim() || undefined,
+      quantity,
+      status: form.status,
+      startDate: form.startDate || undefined,
+      expectedReturnDate: form.expectedReturnDate || undefined,
+      returnedDate: form.returnedDate || undefined,
+      ownerId: form.ownerId ? Number(form.ownerId) : null,
+      notes: form.notes.trim() || undefined,
+    },
+  };
+};
+
 const findCustomerServiceCase = (summary: CustomerAssetSummary | undefined, serviceCaseId: number | null) => {
   if (!summary || !serviceCaseId) {
     return null;
@@ -1921,6 +1994,18 @@ const routeMeta: Record<
       { label: '서비스 기록', href: '/services/', primary: true },
       { label: '장비 디렉터리', href: '/assets/' },
       { label: '고객 목록', href: '/customers/' },
+    ],
+  },
+  demos: {
+    eyebrow: 'Sales CRM / Demos',
+    title: '데모관리',
+    summary: '고객/계정별 데모 제품, 상태, 반납 예정일을 한 화면에서 관리합니다.',
+    primaryHref: '/demos/?create=1',
+    primaryLabel: '데모 등록',
+    actions: [
+      { label: '데모 등록', href: '/demos/?create=1', primary: true },
+      { label: '고객 목록', href: '/customers/' },
+      { label: '제품관리', href: '/products/' },
     ],
   },
   pipeline: {
@@ -2115,6 +2200,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/assets/')) return 'assets';
   if (pathname.startsWith('/services/')) return 'services';
+  if (pathname.startsWith('/demos/')) return 'demos';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/tasks/')) return 'tasks';
@@ -2538,6 +2624,26 @@ function makeCustomerAssetAccountSelectOption(account: CustomerAssetAccountOptio
       contactNames,
       account.ownerNames.join(' '),
     ].filter(Boolean).join(' '),
+  };
+}
+
+function makeDemoAccountSelectOption(account: DemoAccountOption): SearchableSelectOption {
+  const contactNames = account.contacts.map((contact) => contact.name).filter(Boolean).slice(0, 4).join(', ');
+  return {
+    value: String(account.departmentId),
+    label: account.label || joinOptionParts([account.companyName, account.departmentName]),
+    meta: joinOptionParts([`${account.contactCount}명`, contactNames]),
+    searchText: [account.searchText, account.companyName, account.departmentName, contactNames].filter(Boolean).join(' '),
+  };
+}
+
+function makeProductSelectOption(product: ProductOption): SearchableSelectOption {
+  const meta = joinOptionParts([product.specification, product.unit, product.description]);
+  return {
+    value: String(product.id),
+    label: product.productCode || product.name || `제품 #${product.id}`,
+    meta,
+    searchText: [product.productCode, product.name, product.specification, product.description].filter(Boolean).join(' '),
   };
 }
 
@@ -4256,6 +4362,7 @@ function CustomerDetailPage({
   const prepaymentSummary = data.prepaymentSummary;
   const operationalRecords = data.operationalRecords;
   const assetSummary = data.assetSummary;
+  const demoSummary = data.demoSummary;
   const attachments = data.attachments;
   const account = data.account;
   const isAccountDetail = detailMode === 'account';
@@ -4293,6 +4400,12 @@ function CustomerDetailPage({
     { label: '등록 장비', value: `${formatNumber(assetSummary.metrics.assetCount)}건` },
     { label: '운영 장비', value: `${formatNumber(assetSummary.metrics.activeAssetCount)}건` },
     { label: '진행 서비스', value: `${formatNumber(assetSummary.metrics.openServiceCaseCount)}건` },
+  ];
+  const demoMetrics = [
+    { label: '전체 데모', value: `${formatNumber(demoSummary.metrics.total)}건` },
+    { label: '진행중', value: `${formatNumber(demoSummary.metrics.active)}건` },
+    { label: '반납 지연', value: `${formatNumber(demoSummary.metrics.overdue)}건` },
+    { label: '구매전환', value: `${formatNumber(demoSummary.metrics.converted)}건` },
   ];
   const operationalMetrics = [
     { label: '납품', value: `${formatNumber(operationalRecords.metrics.deliveryRecords)}건` },
@@ -4802,6 +4915,62 @@ function CustomerDetailPage({
             <CustomerPrepaymentRecords records={operationalRecords.prepaymentRecords} />
           </section>
         </div>
+      </section>
+
+      <section className="dashboard-panel customer-demo-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Demos</span>
+            <h2>데모 현황</h2>
+          </div>
+          <Archive size={18} />
+        </div>
+        <div className="customer-assets-metrics">
+          {demoMetrics.map((metric) => (
+            <span key={metric.label}>
+              {metric.label}
+              <strong>{metric.value}</strong>
+            </span>
+          ))}
+        </div>
+        {!demoSummary.canManage && demoSummary.message ? (
+          <div className="dashboard-api-alert compact">
+            <ShieldCheck size={16} />
+            <span>{demoSummary.message}</span>
+          </div>
+        ) : null}
+        <div className="customer-assets-actions">
+          {demoSummary.canManage && demoSummary.links.createDemo ? (
+            <a className="route-secondary-action" href={demoSummary.links.createDemo}>
+              <Plus size={15} />
+              데모 등록
+            </a>
+          ) : null}
+          <a className="route-secondary-action" href={demoSummary.links.demos || '/demos/'}>
+            데모관리
+            <MoveUpRight size={15} />
+          </a>
+        </div>
+        {demoSummary.demos.length > 0 ? (
+          <div className="customer-asset-list demo-summary-list">
+            {demoSummary.demos.map((record) => (
+              <article className="customer-asset-card" key={record.id}>
+                <div>
+                  <strong>{record.productName}</strong>
+                  <span>{[record.customerName || '부서 연결', record.serialNumber, `${formatNumber(record.quantity)}개`].filter(Boolean).join(' · ')}</span>
+                </div>
+                <DemoStatusBadge record={record} />
+                <div className="customer-asset-meta">
+                  {record.startDate ? <span>시작 {formatDateLabel(record.startDate)}</span> : null}
+                  {record.expectedReturnDate ? <span>예정 {formatDateLabel(record.expectedReturnDate)}</span> : null}
+                  {record.returnedDate ? <span>회수 {formatDateLabel(record.returnedDate)}</span> : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <DashboardEmpty label="등록된 데모 기록이 없습니다" />
+        )}
       </section>
 
       <section className="dashboard-panel customer-assets-panel">
@@ -7040,6 +7209,447 @@ function ServicesPage({
           {loading ? <Loader2 className="spin-icon" size={18} /> : <Wrench size={18} />}
         </div>
         <ServiceCasesTable serviceCases={data.serviceCases} />
+      </section>
+    </section>
+  );
+}
+
+function DemoStatusBadge({ record }: { record: DemoRecordItem }) {
+  const overdue = record.expectedReturnDate
+    && ['scheduled', 'active'].includes(record.status)
+    && record.expectedReturnDate < localDateInputValue();
+  return (
+    <div className="customer-badge-row service-badge-row">
+      <span className={`service-case-status ${record.status}`}>{record.statusLabel}</span>
+      {overdue ? <span className="schedule-overdue">반납 지연</span> : null}
+    </div>
+  );
+}
+
+function DemoRecordFormPanel({
+  data,
+  editingId,
+  form,
+  open,
+  saving,
+  onClose,
+  onFormChange,
+  onSubmit,
+}: {
+  data: DemoRecordsData;
+  editingId: number | null;
+  form: DemoRecordFormState;
+  open: boolean;
+  saving: boolean;
+  onClose: () => void;
+  onFormChange: (updater: (form: DemoRecordFormState) => DemoRecordFormState) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  const selectedAccount = data.options.accounts.find((account) => String(account.departmentId) === form.departmentId) || null;
+  const contactOptions = selectedAccount?.contacts ?? [];
+  const canUseFallbackProductName = !form.productId;
+
+  return (
+    <section className="dashboard-panel demo-form-panel">
+      <div className="dashboard-panel-heading">
+        <div>
+          <span className="eyebrow">Demo form</span>
+          <h2>{editingId ? '데모 기록 수정' : '데모 등록'}</h2>
+        </div>
+        <button className="route-secondary-action icon-only" onClick={onClose} type="button" aria-label="닫기">
+          <X size={16} />
+        </button>
+      </div>
+      <form className="customer-edit-form" onSubmit={onSubmit}>
+        <div className="customer-edit-grid">
+          <label>
+            <span>부서/연구실</span>
+            <SearchableSelect
+              ariaLabel="데모 계정 선택"
+              onChange={(value) => onFormChange((current) => ({
+                ...current,
+                departmentId: value,
+                customerId: '',
+              }))}
+              options={data.options.accounts.map(makeDemoAccountSelectOption)}
+              placeholder="업체, 부서, 연구원 이름으로 검색"
+              value={form.departmentId}
+            />
+          </label>
+          <label>
+            <span>고객</span>
+            <select
+              disabled={!selectedAccount || contactOptions.length === 0}
+              onChange={(event) => onFormChange((current) => ({ ...current, customerId: event.target.value }))}
+              value={form.customerId}
+            >
+              <option value="">부서에만 연결</option>
+              {contactOptions.map((contact) => (
+                <option key={contact.id} value={contact.id}>{contact.name} · {contact.ownerName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>제품</span>
+            <SearchableSelect
+              allowEmpty
+              ariaLabel="데모 제품 선택"
+              emptyLabel="제품 직접 입력"
+              onChange={(value) => onFormChange((current) => ({ ...current, productId: value, productName: value ? '' : current.productName }))}
+              options={data.options.products.map(makeProductSelectOption)}
+              placeholder="제품 코드/규격 검색"
+              value={form.productId}
+            />
+          </label>
+          {canUseFallbackProductName ? (
+            <label>
+              <span>제품명</span>
+              <input
+                onChange={(event) => onFormChange((current) => ({ ...current, productName: event.target.value }))}
+                placeholder="제품 목록에 없을 때만 입력"
+                value={form.productName}
+              />
+            </label>
+          ) : null}
+          <label>
+            <span>수량</span>
+            <input
+              min="1"
+              onChange={(event) => onFormChange((current) => ({ ...current, quantity: event.target.value }))}
+              type="number"
+              value={form.quantity}
+            />
+          </label>
+          <label>
+            <span>상태</span>
+            <select
+              onChange={(event) => onFormChange((current) => ({ ...current, status: event.target.value }))}
+              value={form.status}
+            >
+              {data.options.statuses.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>시작일</span>
+            <input
+              onChange={(event) => onFormChange((current) => ({ ...current, startDate: event.target.value }))}
+              type="date"
+              value={form.startDate}
+            />
+          </label>
+          <label>
+            <span>반납 예정일</span>
+            <input
+              onChange={(event) => onFormChange((current) => ({ ...current, expectedReturnDate: event.target.value }))}
+              type="date"
+              value={form.expectedReturnDate}
+            />
+          </label>
+          <label>
+            <span>회수일</span>
+            <input
+              onChange={(event) => onFormChange((current) => ({ ...current, returnedDate: event.target.value }))}
+              type="date"
+              value={form.returnedDate}
+            />
+          </label>
+          <label>
+            <span>담당자</span>
+            <select
+              onChange={(event) => onFormChange((current) => ({ ...current, ownerId: event.target.value }))}
+              value={form.ownerId}
+            >
+              <option value="">현재 사용자</option>
+              {data.options.owners.map((owner) => (
+                <option key={owner.id} value={owner.id}>{owner.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>시리얼/식별번호</span>
+            <input
+              onChange={(event) => onFormChange((current) => ({ ...current, serialNumber: event.target.value }))}
+              placeholder="선택 입력"
+              value={form.serialNumber}
+            />
+          </label>
+          <label className="customer-edit-wide">
+            <span>메모</span>
+            <textarea
+              onChange={(event) => onFormChange((current) => ({ ...current, notes: event.target.value }))}
+              placeholder="데모 조건, 설치 위치, 회수 메모"
+              rows={3}
+              value={form.notes}
+            />
+          </label>
+        </div>
+        <div className="route-action-row">
+          <button className="route-secondary-action" onClick={onClose} type="button">취소</button>
+          <button className="route-primary-action" disabled={saving} type="submit">
+            {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
+            저장
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function DemoRecordsTable({
+  demos,
+  order,
+  sort,
+  saving,
+  onDelete,
+  onEdit,
+  onSort,
+}: {
+  demos: DemoRecordItem[];
+  order: string;
+  sort: string;
+  saving: boolean;
+  onDelete: (record: DemoRecordItem) => void;
+  onEdit: (record: DemoRecordItem) => void;
+  onSort: (key: string) => void;
+}) {
+  if (demos.length === 0) {
+    return <DashboardEmpty label="조건에 맞는 데모 기록이 없습니다" />;
+  }
+
+  const sortLabel = (key: string) => (sort === key ? (order === 'asc' ? '↑' : '↓') : '');
+  return (
+    <div className="customers-table-wrap service-cases-table-wrap">
+      <table className="customers-table service-cases-table demos-table">
+        <thead>
+          <tr>
+            <th><button className={`product-sort-button ${sort === 'account' ? 'active' : ''}`.trim()} onClick={() => onSort('account')} type="button">고객/계정 {sortLabel('account')}</button></th>
+            <th><button className={`product-sort-button ${sort === 'product' ? 'active' : ''}`.trim()} onClick={() => onSort('product')} type="button">제품 {sortLabel('product')}</button></th>
+            <th><button className={`product-sort-button ${sort === 'status' ? 'active' : ''}`.trim()} onClick={() => onSort('status')} type="button">상태 {sortLabel('status')}</button></th>
+            <th><button className={`product-sort-button ${sort === 'expectedReturnDate' ? 'active' : ''}`.trim()} onClick={() => onSort('expectedReturnDate')} type="button">기간 {sortLabel('expectedReturnDate')}</button></th>
+            <th>담당/메모</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody>
+          {demos.map((record) => (
+            <tr key={record.id}>
+              <td>
+                <a className="customer-name-link" href={record.customerHref || record.accountHref || '/customers/'}>
+                  <strong>{record.customerName || '담당자 없음'}</strong>
+                  <span>{[record.companyName, record.departmentName].filter(Boolean).join(' · ')}</span>
+                </a>
+                <div className="notes-row-actions">
+                  {record.accountHref ? <a className="customer-row-action" href={record.accountHref}>계정</a> : null}
+                  {record.customerHref ? <a className="customer-row-action" href={record.customerHref}>고객</a> : null}
+                </div>
+              </td>
+              <td>
+                <strong>{record.productName}</strong>
+                <small>{record.quantity ? `${formatNumber(record.quantity)}개` : ''}</small>
+                {record.serialNumber ? <small>{record.serialNumber}</small> : null}
+              </td>
+              <td>
+                <DemoStatusBadge record={record} />
+              </td>
+              <td>
+                <span>{record.startDate ? `시작 ${formatDateLabel(record.startDate)}` : '시작일 없음'}</span>
+                {record.expectedReturnDate ? <small>예정 {formatDateLabel(record.expectedReturnDate)}</small> : null}
+                {record.returnedDate ? <small>회수 {formatDateLabel(record.returnedDate)}</small> : null}
+              </td>
+              <td>
+                <span>{record.ownerName || record.createdByName || '담당자 없음'}</span>
+                {record.notes ? <small>{record.notes}</small> : null}
+              </td>
+              <td>
+                <div className="notes-row-actions">
+                  <button className="customer-row-action" disabled={!record.canManage || saving} onClick={() => onEdit(record)} type="button">수정</button>
+                  <button className="customer-row-action danger" disabled={!record.canManage || saving} onClick={() => onDelete(record)} type="button">삭제</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DemoManagementPage({
+  data,
+  error,
+  form,
+  loading,
+  message,
+  open,
+  owner,
+  product,
+  query,
+  saving,
+  sort,
+  order,
+  status,
+  editingId,
+  onCloseForm,
+  onDelete,
+  onEdit,
+  onFormChange,
+  onOpenCreate,
+  onOwnerChange,
+  onProductChange,
+  onQueryChange,
+  onSort,
+  onStatusChange,
+  onSubmit,
+}: {
+  data: DemoRecordsData | null;
+  error: string;
+  form: DemoRecordFormState;
+  loading: boolean;
+  message: string;
+  open: boolean;
+  owner: string;
+  product: string;
+  query: string;
+  saving: boolean;
+  sort: string;
+  order: string;
+  status: string;
+  editingId: number | null;
+  onCloseForm: () => void;
+  onDelete: (record: DemoRecordItem) => void;
+  onEdit: (record: DemoRecordItem) => void;
+  onFormChange: (updater: (form: DemoRecordFormState) => DemoRecordFormState) => void;
+  onOpenCreate: () => void;
+  onOwnerChange: (value: string) => void;
+  onProductChange: (value: string) => void;
+  onQueryChange: (value: string) => void;
+  onSort: (key: string) => void;
+  onStatusChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (loading && !data) {
+    return (
+      <section className="dashboard-loading">
+        <Loader2 className="spin-icon" size={24} />
+        <span>데모 기록을 불러오는 중입니다</span>
+      </section>
+    );
+  }
+  if (!data) {
+    return null;
+  }
+
+  const metrics = [
+    { label: '전체 데모', value: `${formatNumber(data.summary.total)}건`, detail: data.scope.label, icon: Archive, tone: 'blue' as const },
+    { label: '진행중', value: `${formatNumber(data.summary.active)}건`, detail: '현재 대여/설치', icon: Activity, tone: 'teal' as const },
+    { label: '반납 지연', value: `${formatNumber(data.summary.overdue)}건`, detail: '예정일 경과', icon: AlertTriangle, tone: data.summary.overdue > 0 ? 'red' as const : 'green' as const },
+    { label: '구매전환', value: `${formatNumber(data.summary.converted)}건`, detail: '데모 후 구매', icon: CheckCircle2, tone: 'green' as const },
+  ];
+
+  return (
+    <section className="customers-page demos-page">
+      <div className="dashboard-summary-band">
+        <div>
+          <span className="eyebrow">Demo management</span>
+          <h2>{data.scope.label || '데모관리'}</h2>
+          <p>고객/계정별 데모 제품과 반납 상태를 제품 원장과 연결해 확인합니다.</p>
+        </div>
+        <div className="schedules-summary-actions">
+          {data.permissions.canCreate ? (
+            <button className="route-primary-action" onClick={onOpenCreate} type="button">
+              <Plus size={15} />
+              데모 등록
+            </button>
+          ) : null}
+          <a className="route-secondary-action" href="/products/">제품관리</a>
+        </div>
+      </div>
+
+      {error ? <div className="form-status error">{error}</div> : null}
+      {message ? <div className="form-status success">{message}</div> : null}
+      {!data.permissions.canCreate && data.permissions.readOnlyMessage ? (
+        <div className="dashboard-api-alert compact">
+          <ShieldCheck size={16} />
+          <span>{data.permissions.readOnlyMessage}</span>
+        </div>
+      ) : null}
+
+      <DemoRecordFormPanel
+        data={data}
+        editingId={editingId}
+        form={form}
+        open={open}
+        saving={saving}
+        onClose={onCloseForm}
+        onFormChange={onFormChange}
+        onSubmit={onSubmit}
+      />
+
+      <section className="dashboard-metric-grid customers-metric-grid" aria-label="데모 핵심 지표">
+        {metrics.map((metric) => (
+          <DashboardMetricCard
+            detail={metric.detail}
+            icon={metric.icon}
+            key={metric.label}
+            label={metric.label}
+            tone={metric.tone}
+            value={metric.value}
+          />
+        ))}
+      </section>
+
+      <div className="customers-filter-bar demos-filter-bar">
+        <label className="customers-search">
+          <Search size={17} />
+          <input
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="고객, 부서, 제품, 시리얼 검색"
+            value={query}
+          />
+        </label>
+        <select onChange={(event) => onStatusChange(event.target.value)} value={status}>
+          <option value="all">상태 전체</option>
+          {data.options.statuses.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onProductChange(event.target.value)} value={product}>
+          <option value="">제품 전체</option>
+          {data.options.products.map((item) => (
+            <option key={item.id} value={item.id}>{item.productCode}</option>
+          ))}
+        </select>
+        <select onChange={(event) => onOwnerChange(event.target.value)} value={owner}>
+          <option value="">담당자 전체</option>
+          {data.options.owners.map((item) => (
+            <option key={item.id} value={item.id}>{item.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <section className="dashboard-panel services-main-panel">
+        <div className="dashboard-panel-heading">
+          <div>
+            <span className="eyebrow">Demo list</span>
+            <h2>데모 현황</h2>
+          </div>
+          {loading ? <Loader2 className="spin-icon" size={18} /> : <Archive size={18} />}
+        </div>
+        <DemoRecordsTable
+          demos={data.demos}
+          order={order}
+          saving={saving}
+          sort={sort}
+          onDelete={onDelete}
+          onEdit={onEdit}
+          onSort={onSort}
+        />
       </section>
     </section>
   );
@@ -21133,6 +21743,25 @@ export function App() {
   const [serviceCaseType, setServiceCaseType] = useState(
     () => new URLSearchParams(window.location.search).get('case_type') || new URLSearchParams(window.location.search).get('caseType') || '',
   );
+  const [demosData, setDemosData] = useState<DemoRecordsData | null>(null);
+  const [demosLoading, setDemosLoading] = useState(currentView === 'demos');
+  const [demoQuery, setDemoQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
+  const [demoStatus, setDemoStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || 'active');
+  const [demoProduct, setDemoProduct] = useState(() => new URLSearchParams(window.location.search).get('product') || '');
+  const [demoOwner, setDemoOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
+  const [demoCustomer, setDemoCustomer] = useState(() => new URLSearchParams(window.location.search).get('customer') || '');
+  const [demoDepartment, setDemoDepartment] = useState(() => new URLSearchParams(window.location.search).get('department') || '');
+  const [demoSort, setDemoSort] = useState(() => new URLSearchParams(window.location.search).get('sort') || 'updated');
+  const [demoOrder, setDemoOrder] = useState(() => new URLSearchParams(window.location.search).get('order') || 'desc');
+  const [demoCreateOpen, setDemoCreateOpen] = useState(currentView === 'demos' && shouldOpenCreatePanel());
+  const [demoEditingId, setDemoEditingId] = useState<number | null>(null);
+  const [demoForm, setDemoForm] = useState<DemoRecordFormState>(() => makeDemoRecordForm(null, {
+    departmentId: new URLSearchParams(window.location.search).get('department') || '',
+    customerId: new URLSearchParams(window.location.search).get('customer') || '',
+  }));
+  const [demoSaving, setDemoSaving] = useState(false);
+  const [demoError, setDemoError] = useState('');
+  const [demoMessage, setDemoMessage] = useState('');
   const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
   const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
   const [customerCreating, setCustomerCreating] = useState(false);
@@ -21603,6 +22232,57 @@ export function App() {
     const queryString = params.toString();
     window.history.replaceState(null, '', `/services/${queryString ? `?${queryString}` : ''}`);
   }, [currentView, serviceCaseOwner, serviceCasePriority, serviceCaseQuery, serviceCaseStatus, serviceCaseType]);
+
+  useEffect(() => {
+    if (currentView !== 'demos') {
+      return;
+    }
+    let alive = true;
+    setDemosLoading(true);
+    setDemoError('');
+    loadDemoRecordsData({
+      q: demoQuery,
+      status: demoStatus,
+      product: demoProduct,
+      owner: demoOwner,
+      customer: demoCustomer,
+      department: demoDepartment,
+      sort: demoSort,
+      order: demoOrder,
+    }).then((data) => {
+      if (!alive) {
+        return;
+      }
+      setDemosData(data);
+      setDemosLoading(false);
+    }).catch((error: Error) => {
+      if (!alive) {
+        return;
+      }
+      setDemoError(error.message || '데모 목록을 불러오지 못했습니다.');
+      setDemosLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [currentView, demoCustomer, demoDepartment, demoOrder, demoOwner, demoProduct, demoQuery, demoSort, demoStatus]);
+
+  useEffect(() => {
+    if (currentView !== 'demos') {
+      return;
+    }
+    const params = new URLSearchParams();
+    if (demoQuery.trim()) params.set('q', demoQuery.trim());
+    if (demoStatus && demoStatus !== 'active') params.set('status', demoStatus);
+    if (demoProduct) params.set('product', demoProduct);
+    if (demoOwner) params.set('owner', demoOwner);
+    if (demoCustomer) params.set('customer', demoCustomer);
+    if (demoDepartment) params.set('department', demoDepartment);
+    if (demoSort && demoSort !== 'updated') params.set('sort', demoSort);
+    if (demoOrder && demoOrder !== 'desc') params.set('order', demoOrder);
+    const queryString = params.toString();
+    window.history.replaceState(null, '', `/demos/${queryString ? `?${queryString}` : ''}`);
+  }, [currentView, demoCustomer, demoDepartment, demoOrder, demoOwner, demoProduct, demoQuery, demoSort, demoStatus]);
 
   useEffect(() => {
     if (currentView !== 'customers' || accountCleanupPreviewId || (!customerDetailId && !accountDetailId)) {
@@ -22348,6 +23028,98 @@ export function App() {
     });
     setAssetsData(data);
     return data;
+  };
+  const refreshDemosData = async () => {
+    const data = await loadDemoRecordsData({
+      q: demoQuery,
+      status: demoStatus,
+      product: demoProduct,
+      owner: demoOwner,
+      customer: demoCustomer,
+      department: demoDepartment,
+      sort: demoSort,
+      order: demoOrder,
+    });
+    setDemosData(data);
+    return data;
+  };
+  const handleDemoCreateOpen = (defaults: Partial<DemoRecordFormState> = {}) => {
+    setDemoEditingId(null);
+    setDemoForm(makeDemoRecordForm(null, {
+      departmentId: defaults.departmentId ?? demoDepartment,
+      customerId: defaults.customerId ?? demoCustomer,
+      ...defaults,
+    }));
+    setDemoCreateOpen(true);
+    setDemoError('');
+    setDemoMessage('');
+  };
+  const handleDemoEdit = (record: DemoRecordItem) => {
+    setDemoEditingId(record.id);
+    setDemoForm(makeDemoRecordForm(record));
+    setDemoCreateOpen(true);
+    setDemoError('');
+    setDemoMessage('');
+  };
+  const handleDemoSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const { payload, error } = demoRecordFormToPayload(demoForm);
+    if (error || !payload) {
+      setDemoError(error || '데모 입력값을 확인하세요.');
+      return;
+    }
+    setDemoSaving(true);
+    setDemoError('');
+    setDemoMessage('');
+    try {
+      if (demoEditingId) {
+        await updateDemoRecord(demoEditingId, payload);
+        setDemoMessage('데모 기록을 저장했습니다.');
+      } else {
+        await createDemoRecord(payload);
+        setDemoMessage('데모 기록을 등록했습니다.');
+      }
+      setDemoCreateOpen(false);
+      setDemoEditingId(null);
+      await refreshDemosData();
+      if (customerDetailData) {
+        await refreshCustomerDetailData();
+      }
+    } catch (error) {
+      setDemoError(error instanceof Error ? error.message : '데모 기록 저장에 실패했습니다.');
+    } finally {
+      setDemoSaving(false);
+    }
+  };
+  const handleDemoDelete = async (record: DemoRecordItem) => {
+    if (!window.confirm(`${record.productName} 데모 기록을 삭제할까요?`)) {
+      return;
+    }
+    setDemoSaving(true);
+    setDemoError('');
+    setDemoMessage('');
+    try {
+      await deleteDemoRecord(record.id);
+      setDemoMessage('데모 기록을 삭제했습니다.');
+      await refreshDemosData();
+      if (customerDetailData) {
+        await refreshCustomerDetailData();
+      }
+    } catch (error) {
+      setDemoError(error instanceof Error ? error.message : '데모 기록 삭제에 실패했습니다.');
+    } finally {
+      setDemoSaving(false);
+    }
+  };
+  const handleDemoSort = (key: string) => {
+    setDemoSort((current) => {
+      if (current === key) {
+        setDemoOrder((order) => (order === 'asc' ? 'desc' : 'asc'));
+        return current;
+      }
+      setDemoOrder(key === 'account' || key === 'product' ? 'asc' : 'desc');
+      return key;
+    });
   };
   const refreshCustomerDetailData = async () => {
     if (!customerDetailId && !accountDetailId) {
@@ -23929,6 +24701,48 @@ export function App() {
           onPriorityChange={setServiceCasePriority}
           onQueryChange={setServiceCaseQuery}
           onStatusChange={setServiceCaseStatus}
+        />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'demos') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <DemoManagementPage
+          data={demosData}
+          editingId={demoEditingId}
+          error={demoError}
+          form={demoForm}
+          loading={demosLoading}
+          message={demoMessage}
+          open={demoCreateOpen}
+          order={demoOrder}
+          owner={demoOwner}
+          product={demoProduct}
+          query={demoQuery}
+          saving={demoSaving}
+          sort={demoSort}
+          status={demoStatus}
+          onCloseForm={() => {
+            setDemoCreateOpen(false);
+            setDemoEditingId(null);
+            setDemoError('');
+          }}
+          onDelete={handleDemoDelete}
+          onEdit={handleDemoEdit}
+          onFormChange={(updater) => {
+            setDemoForm(updater);
+            setDemoError('');
+          }}
+          onOpenCreate={() => handleDemoCreateOpen()}
+          onOwnerChange={setDemoOwner}
+          onProductChange={setDemoProduct}
+          onQueryChange={setDemoQuery}
+          onSort={handleDemoSort}
+          onStatusChange={setDemoStatus}
+          onSubmit={handleDemoSubmit}
         />
       </AppShell>
     );

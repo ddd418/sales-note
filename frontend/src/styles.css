@@ -4893,6 +4893,104 @@ h2 {
   color: var(--primary-strong);
 }
 
+.service-badge-row .service-case-status.active,
+.service-badge-row .service-case-status.scheduled {
+  color: var(--primary-strong);
+}
+
+.service-badge-row .service-case-status.returned,
+.service-badge-row .service-case-status.converted {
+  color: #166534;
+}
+
+.demos-table {
+  min-width: 1120px;
+}
+
+.demo-form-panel {
+  margin-bottom: 16px;
+}
+
+.customer-edit-form {
+  display: grid;
+  gap: 16px;
+}
+
+.customer-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.customer-edit-grid label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-edit-grid input,
+.customer-edit-grid select,
+.customer-edit-grid textarea {
+  width: 100%;
+}
+
+.customer-edit-wide {
+  grid-column: 1 / -1;
+}
+
+.form-status {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.form-status.error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.form-status.success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.icon-only {
+  width: 36px;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.demo-summary-list .customer-asset-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.demo-summary-list .customer-asset-card > div:first-child strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.demo-summary-list .customer-asset-card > div:first-child span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 860px) {
+  .customer-edit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .schedules-compact-list {
   display: grid;
   gap: 8px;

@@ -1,4 +1,5 @@
 import { emptyPipelineData, PipelineData, PipelineStage } from '../mockData';
+import { emptyCustomerDemoSummary, normalizeCustomerDemoSummary, type CustomerDemoSummary } from './demos';
 import { getCookie, normalizeCoreCrmHref, normalizeHrefFields, redirectIfLoginRequired } from './shared';
 
 type PipelineApiResponse = PipelineData & {
@@ -1503,6 +1504,7 @@ export type CustomerDetailData = {
   prepaymentSummary: CustomerPrepaymentSummary;
   operationalRecords: CustomerOperationalRecords;
   assetSummary: CustomerAssetSummary;
+  demoSummary: CustomerDemoSummary;
   attachments: CustomerAttachments;
   edit: {
     canEdit: boolean;
@@ -5255,6 +5257,7 @@ const emptyCustomerDetailData: CustomerDetailData = {
     },
     assets: [],
   },
+  demoSummary: emptyCustomerDemoSummary,
   attachments: {
     metrics: {
       totalFiles: 0,
@@ -7885,6 +7888,7 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
         },
         assets: payload.assetSummary?.assets ?? emptyCustomerDetailData.assetSummary.assets,
       },
+      demoSummary: normalizeCustomerDemoSummary(payload.demoSummary),
       attachments: {
         ...emptyCustomerDetailData.attachments,
         ...(payload.attachments ?? {}),

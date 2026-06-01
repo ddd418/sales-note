@@ -11,4 +11,5 @@ export * from './api/ai';
 export * from './api/reports';
 export * from './api/accountCleanup';
 export * from './api/receivables';
+export * from './api/demos';
 export * from './api/legacy';

@@ -478,6 +478,15 @@ urlpatterns = [
         lazy_view('reporting.api.receivables.receivable_item_status_api'),
         name='receivable_item_status_api',
     ),
+
+    # 데모관리 URL/API
+    path('demos/', react_page_retired(
+        static_react_page('demos/'),
+    ), name='demo_records'),
+    path('api/demos/', lazy_view('reporting.api.demos.demo_records_api'), name='demo_records_api'),
+    path('api/demos/create/', lazy_view('reporting.api.demos.demo_record_create_api'), name='demo_record_create_api'),
+    path('api/demos/<int:demo_id>/update/', lazy_view('reporting.api.demos.demo_record_update_api'), name='demo_record_update_api'),
+    path('api/demos/<int:demo_id>/delete/', lazy_view('reporting.api.demos.demo_record_delete_api'), name='demo_record_delete_api'),
     
     # 선결제 URL들
     path('prepayment/', react_page_redirect(

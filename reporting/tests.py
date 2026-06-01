@@ -18,6 +18,7 @@ from reporting.models import (
     Company,
     Department,
     DepartmentMemo,
+    DemoRecord,
     DocumentGenerationLog,
     DocumentTemplate,
     EmailLog,
@@ -32,6 +33,7 @@ from reporting.models import (
     Prepayment,
     PrepaymentLedgerEntry,
     PrepaymentUsage,
+    Product,
     Quote,
     Schedule,
     ScheduledEmail,
@@ -538,6 +540,8 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['businessCards']['label'], '명함')
         self.assertEqual(items_by_id['services']['href'], '/services/')
         self.assertEqual(items_by_id['services']['label'], '서비스')
+        self.assertEqual(items_by_id['demos']['href'], '/demos/')
+        self.assertEqual(items_by_id['demos']['label'], '데모관리')
         self.assertEqual(items_by_id['receivables']['href'], '/receivables/')
         self.assertEqual(items_by_id['receivables']['label'], '외상고객')
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
@@ -584,6 +588,7 @@ class ReactNavigationApiTests(TestCase):
         self.assertNotIn('dataCleanup', salesman_ids)
         self.assertNotIn('downloads', salesman_ids)
         self.assertIn('tasks', salesman_ids)
+        self.assertIn('demos', salesman_ids)
         self.assertIn('receivables', salesman_ids)
         self.assertIn('mail', salesman_ids)
         self.assertNotIn('tasksManager', salesman_ids)
@@ -599,6 +604,7 @@ class ReactNavigationApiTests(TestCase):
         self.assertNotIn('downloads', manager_ids)
         self.assertIn('tasks', manager_ids)
         self.assertIn('tasksManager', manager_ids)
+        self.assertIn('demos', manager_ids)
         self.assertIn('receivables', manager_ids)
         self.assertIn('employees', manager_ids)
         self.assertNotIn('mail', manager_ids)
@@ -614,6 +620,7 @@ class ReactNavigationApiTests(TestCase):
         self.assertNotIn('downloads', admin_ids)
         self.assertIn('tasks', admin_ids)
         self.assertIn('mail', admin_ids)
+        self.assertIn('demos', admin_ids)
         self.assertIn('receivables', admin_ids)
         self.assertIn('userAdmin', admin_ids)
         self.assertNotIn('tasksManager', admin_ids)
@@ -621,6 +628,109 @@ class ReactNavigationApiTests(TestCase):
         self.assertTrue(admin_payload['capabilities']['canManageEmployees'])
         self.assertTrue(admin_payload['capabilities']['canManageUsers'])
         self.assertTrue(admin_payload['capabilities']['canUseMailbox'])
+
+
+class DemoRecordsApiTests(TestCase):
+    """Demo management API regression tests."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user_company = UserCompany.objects.create(name='데모테스트회사')
+        self.user = make_user('demo-user', company=self.user_company)
+        self.manager = make_user('demo-manager', role='manager', company=self.user_company)
+        self.company = Company.objects.create(name='데모고객사', created_by=self.user)
+        self.department = Department.objects.create(company=self.company, name='데모연구실', created_by=self.user)
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.user_company,
+            customer_name='데모담당자',
+            company=self.company,
+            department=self.department,
+        )
+        self.product = Product.objects.create(
+            product_code='DEMO-PRODUCT-1',
+            unit='EA',
+            standard_price=1000000,
+            created_by=self.user,
+        )
+
+    def test_demo_records_api_requires_login_json(self):
+        response = self.client.get(reverse('reporting:demo_records_api'))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_create_and_list_product_linked_demo_record(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:demo_record_create_api'),
+            data=json.dumps({
+                'departmentId': self.department.id,
+                'customerId': self.followup.id,
+                'productId': self.product.id,
+                'quantity': 2,
+                'status': 'active',
+                'startDate': '2026-06-01',
+                'expectedReturnDate': '2026-06-30',
+                'notes': '현장 데모',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = DemoRecord.objects.get()
+        self.assertEqual(created.product, self.product)
+        self.assertEqual(created.product_name, self.product.product_code)
+        self.assertEqual(created.followup, self.followup)
+
+        list_response = self.client.get(reverse('reporting:demo_records_api'), {'status': 'all'})
+        payload = list_response.json()
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(payload['summary']['total'], 1)
+        self.assertEqual(payload['demos'][0]['productName'], self.product.product_code)
+        self.assertEqual(payload['demos'][0]['customerName'], '데모담당자')
+        self.assertEqual(payload['options']['accounts'][0]['departmentId'], self.department.id)
+        self.assertEqual(payload['options']['products'][0]['id'], self.product.id)
+
+    def test_customer_detail_includes_demo_summary(self):
+        DemoRecord.objects.create(
+            company=self.company,
+            department=self.department,
+            followup=self.followup,
+            product=self.product,
+            product_name=self.product.product_code,
+            quantity=1,
+            status='scheduled',
+            owner=self.user,
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_detail_summary_api', args=[self.followup.id]))
+
+        self.assertEqual(response.status_code, 200)
+        demo_summary = response.json()['demoSummary']
+        self.assertEqual(demo_summary['metrics']['total'], 1)
+        self.assertEqual(demo_summary['demos'][0]['productName'], self.product.product_code)
+        self.assertEqual(demo_summary['links']['demos'], f'/demos/?department={self.department.id}')
+
+    def test_manager_cannot_create_demo_record(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            reverse('reporting:demo_record_create_api'),
+            data=json.dumps({
+                'departmentId': self.department.id,
+                'productId': self.product.id,
+                'quantity': 1,
+                'status': 'active',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(DemoRecord.objects.count(), 0)
 
 
 class RemovedStandaloneMenuRouteTests(TestCase):

@@ -2725,6 +2725,7 @@ def navigation_api(request):
         {'id': 'companies', 'label': '업체/부서', 'href': '/companies/'},
         {'id': 'assets', 'label': '장비', 'href': '/assets/'},
         {'id': 'services', 'label': '서비스', 'href': '/services/'},
+        {'id': 'demos', 'label': '데모관리', 'href': '/demos/'},
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
         {'id': 'notes', 'label': '영업노트', 'href': '/notes/'},
         {'id': 'schedules', 'label': '일정', 'href': '/schedules/calendar/'},
@@ -7296,6 +7297,14 @@ def customer_detail_summary_api(request, followup_id):
     can_edit_customer = can_modify_user_data(request.user, followup.user)
     can_create_activity = bool(request.user.id == followup.user_id and not user_profile.is_manager())
     can_manage_account = bool(followup.department_id and _can_manage_department_account(request.user, followup.department))
+    from reporting.api.demos import demo_customer_summary_payload
+
+    demo_summary = demo_customer_summary_payload(
+        request,
+        scope_users,
+        followup=followup,
+        can_manage=can_manage_account or can_edit_customer,
+    )
 
     return JsonResponse({
         'success': True,
@@ -7342,6 +7351,7 @@ def customer_detail_summary_api(request, followup_id):
         'prepaymentSummary': _customer_detail_prepayment_summary_payload(followup, scope_users, request.user),
         'operationalRecords': _customer_operational_records_payload(followup, scope_users, request.user),
         'assetSummary': _customer_asset_summary_payload(request, followup, scope_users, can_edit_customer),
+        'demoSummary': demo_summary,
         'attachments': _customer_detail_attachments_payload(followup, shared_followups, scope_users),
         'edit': _customers_edit_config(request, user_profile, followup, can_edit_customer),
         'recentNotes': [
@@ -7375,6 +7385,14 @@ def _empty_department_account_detail_response(request, department, user_profile,
     today = timezone.localdate()
     can_review_notes = _can_review_notes(user_profile)
     notes_qs = _customer_account_notes_queryset(scope_users, department=department)
+    from reporting.api.demos import demo_customer_summary_payload
+
+    demo_summary = demo_customer_summary_payload(
+        request,
+        scope_users,
+        department=department,
+        can_manage=can_manage_account,
+    )
     overdue_actions = _histories_excluding_stale_quote_submission(list(
         notes_qs.filter(
             next_action_date__lt=today,
@@ -7493,6 +7511,7 @@ def _empty_department_account_detail_response(request, department, user_profile,
             },
             'assets': [],
         },
+        'demoSummary': demo_summary,
         'attachments': {
             'metrics': {
                 'totalFiles': 0,

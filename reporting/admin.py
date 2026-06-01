@@ -7,7 +7,7 @@ from .models import (
     AccountCleanupDecision,
     AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
     CalibrationRecord, CustomerAsset,
-    FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
+    DemoRecord, FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, ServiceCase,
     Company, Department, DepartmentMemo, DocumentTemplate, EmailLog, ScheduledEmail, ScheduledEmailAttachment,
     BusinessCard, CustomerCategory
@@ -376,6 +376,27 @@ class ProductAdmin(admin.ModelAdmin):
     )
     
     readonly_fields = ('total_quoted', 'total_sold')
+
+
+@admin.register(DemoRecord)
+class DemoRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'company', 'department', 'followup', 'product', 'product_name',
+        'quantity', 'status', 'start_date', 'expected_return_date', 'owner', 'updated_at',
+    )
+    list_filter = ('status', 'company', 'owner', 'start_date', 'expected_return_date', 'updated_at')
+    search_fields = (
+        'company__name',
+        'department__name',
+        'followup__customer_name',
+        'product__product_code',
+        'product_name',
+        'serial_number',
+        'notes',
+    )
+    autocomplete_fields = ['company', 'department', 'followup', 'product', 'owner', 'created_by']
+    date_hierarchy = 'updated_at'
+    list_per_page = 30
 
 
 # QuoteItem 인라인

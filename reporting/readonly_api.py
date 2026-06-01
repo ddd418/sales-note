@@ -16,6 +16,7 @@ READONLY_ALLOWED_URL_NAMES = {
     "customer_detail_summary_api",
     "customer_assets_summary_api",
     "service_cases_summary_api",
+    "demo_records_api",
     "notes_summary_api",
     "notes_detail_api",
     "schedules_summary_api",

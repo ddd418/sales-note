@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Demo management menu plan
+
+**Background**:
+
+- User requested a `데모관리` menu to see which customer/account has which demo.
+- Demo records should be connected to products where possible.
+- Customer/account profile pages should also show demo status.
+
+**DB change required**: Yes.
+
+- Add a `DemoRecord` model linked to `Company`, `Department`, optional `FollowUp`, and `Product`.
+- Keep product-linked demos as the primary path, with a fallback product name for historical/manual compatibility.
+
+**Implementation scope**:
+
+- Add DemoRecord model, migration, and Django admin registration.
+- Add authenticated JSON APIs for demo list/create/update/delete with existing salesman/admin/manager edit rules.
+- Add demo summary payloads to customer and customerless account detail APIs.
+- Add React API module and `/demos/` menu/page with filters, status summary, product/account/customer display, and inline create/edit/delete.
+- Add a customer profile `데모 현황` section linking back to the demo management screen.
+- Keep existing CRM routes and permissions unchanged.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\api\demos.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.DemoRecordsApiTests reporting.tests.ReactNavigationApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then run production smoke for `/demos/` and a customer profile.
+
 ## 2026-06-01 Customer priority UI removal plan
 
 **Background**:
