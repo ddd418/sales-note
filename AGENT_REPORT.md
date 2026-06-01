@@ -1,5 +1,66 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 데모 등록 폼 UI 긴급 정리
+
+### 요약
+
+- `/demos/?create=1` 데모 등록 폼이 브라우저 기본 input/select처럼 보이던 문제를 수정했습니다.
+- 데모 폼을 기존 CRM 작성 화면의 `notes-create-form`/`notes-create-grid` 스타일로 맞췄습니다.
+- 제품 직접 입력 필드는 화면에서 제거하고, 데모 등록은 제품 목록 선택을 필수로 하도록 정리했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 데모 등록 화면의 입력 필드, select, textarea, 버튼이 기존 React CRM 폼과 같은 밀도와 스타일로 표시됩니다.
+- 제품은 제품 원장과 연결하는 흐름을 기본으로 강제해 데모관리 목적과 맞게 정리했습니다.
+- 데스크톱/모바일 렌더링을 Playwright로 확인했고, 모바일 가로 overflow는 발생하지 않았습니다.
+
+### 기존 기능 보존
+
+- `DemoRecord` 모델, Django API, 기존 데모 조회/수정/삭제 흐름은 유지했습니다.
+- 서버 쪽 `productName` fallback은 기존/예외 데이터 호환을 위해 유지했습니다.
+- 이번 작업은 React/CSS 정리만 포함하며 DB 변경은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Playwright local render smoke
+→ Opened http://127.0.0.1:5173/demos/?create=1 with mocked demo API data
+→ Captured desktop and mobile screenshots under output/playwright/
+→ Mobile horizontal overflow: false
+```
+
+### 알려진 한계
+
+- 모바일 CRM 전체 내비게이션의 세로 공간 사용은 기존 레이아웃 영향이 남아 있습니다. 이번 수정 범위는 데모 등록 폼 자체입니다.
+
+### Production 배포 상태
+
+- Pending. Commit/push and Railway deployment will follow this report update.
+
+### Manual Server Test Process
+
+1. Open `https://sales-note-frontend-production.up.railway.app/demos/?create=1` after deployment and login.
+2. Confirm the 데모 등록 form uses styled CRM fields, not raw browser inputs.
+3. Confirm 제품 직접 입력 field is not shown.
+4. Select 부서/연구실, 제품, 상태, 담당자, then save a disposable demo record.
+5. Confirm the new demo appears in the list and can still be edited or deleted.
+
 ## 2026-06-01 — 데모관리 메뉴와 고객 프로필 데모 현황
 
 ### 요약

@@ -4911,33 +4911,22 @@ h2 {
   margin-bottom: 16px;
 }
 
-.customer-edit-form {
-  display: grid;
-  gap: 16px;
+.demo-record-form {
+  padding-top: 2px;
 }
 
-.customer-edit-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+.demo-form-grid {
+  grid-template-columns: minmax(280px, 1.2fr) minmax(220px, 0.86fr) minmax(260px, 1fr);
+  gap: 12px;
+  align-items: start;
 }
 
-.customer-edit-grid label {
-  display: grid;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.customer-edit-grid input,
-.customer-edit-grid select,
-.customer-edit-grid textarea {
-  width: 100%;
-}
-
-.customer-edit-wide {
+.demo-field-wide {
   grid-column: 1 / -1;
+}
+
+.demo-form-actions {
+  padding-top: 2px;
 }
 
 .form-status {
@@ -4986,7 +4975,7 @@ h2 {
 }
 
 @media (max-width: 860px) {
-  .customer-edit-grid {
+  .demo-form-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -1,5 +1,32 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Demo form UI cleanup plan
+
+**Background**:
+
+- User reported that the new demo registration form UI is unacceptable.
+- The form was using a new `customer-edit-form` class, so native inputs/selects did not inherit the established CRM form styling.
+- Product fallback input also made the primary product-linked workflow look confusing.
+
+**DB change required**: No.
+
+- Keep the existing `DemoRecord` model and migration.
+- This task is a React/CSS UI correction only.
+
+**Implementation scope**:
+
+- Reuse the established `notes-create-form` and `notes-create-grid` styling for the demo form.
+- Make product selection from the product list the visible primary path and remove the direct product-name field from the form UI.
+- Tighten the form layout, field grouping, control styling, and action row so it matches the CRM product UI.
+- Preserve backend compatibility for `productName` fallback data.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy `sales-note-frontend` to Railway and smoke `/demos/`.
+
 ## 2026-06-01 Demo management menu plan
 
 **Background**:

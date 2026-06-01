@@ -1872,7 +1872,7 @@ const demoRecordFormToPayload = (form: DemoRecordFormState): { payload?: DemoRec
   }
   const productId = Number(form.productId);
   const productName = form.productName.trim();
-  if (!productId && !productName) {
+  if (!productId) {
     return { error: '제품을 선택하세요.' };
   }
   const quantity = Number(form.quantity);
@@ -7251,7 +7251,6 @@ function DemoRecordFormPanel({
 
   const selectedAccount = data.options.accounts.find((account) => String(account.departmentId) === form.departmentId) || null;
   const contactOptions = selectedAccount?.contacts ?? [];
-  const canUseFallbackProductName = !form.productId;
 
   return (
     <section className="dashboard-panel demo-form-panel">
@@ -7264,9 +7263,9 @@ function DemoRecordFormPanel({
           <X size={16} />
         </button>
       </div>
-      <form className="customer-edit-form" onSubmit={onSubmit}>
-        <div className="customer-edit-grid">
-          <label>
+      <form className="notes-create-form demo-record-form" onSubmit={onSubmit}>
+        <div className="notes-create-grid demo-form-grid">
+          <div className="form-field demo-field-account">
             <span>부서/연구실</span>
             <SearchableSelect
               ariaLabel="데모 계정 선택"
@@ -7279,7 +7278,7 @@ function DemoRecordFormPanel({
               placeholder="업체, 부서, 연구원 이름으로 검색"
               value={form.departmentId}
             />
-          </label>
+          </div>
           <label>
             <span>고객</span>
             <select
@@ -7296,25 +7295,13 @@ function DemoRecordFormPanel({
           <label>
             <span>제품</span>
             <SearchableSelect
-              allowEmpty
               ariaLabel="데모 제품 선택"
-              emptyLabel="제품 직접 입력"
-              onChange={(value) => onFormChange((current) => ({ ...current, productId: value, productName: value ? '' : current.productName }))}
+              onChange={(value) => onFormChange((current) => ({ ...current, productId: value, productName: '' }))}
               options={data.options.products.map(makeProductSelectOption)}
               placeholder="제품 코드/규격 검색"
               value={form.productId}
             />
           </label>
-          {canUseFallbackProductName ? (
-            <label>
-              <span>제품명</span>
-              <input
-                onChange={(event) => onFormChange((current) => ({ ...current, productName: event.target.value }))}
-                placeholder="제품 목록에 없을 때만 입력"
-                value={form.productName}
-              />
-            </label>
-          ) : null}
           <label>
             <span>수량</span>
             <input
@@ -7379,7 +7366,7 @@ function DemoRecordFormPanel({
               value={form.serialNumber}
             />
           </label>
-          <label className="customer-edit-wide">
+          <label className="demo-field-wide">
             <span>메모</span>
             <textarea
               onChange={(event) => onFormChange((current) => ({ ...current, notes: event.target.value }))}
@@ -7389,7 +7376,7 @@ function DemoRecordFormPanel({
             />
           </label>
         </div>
-        <div className="route-action-row">
+        <div className="notes-create-actions demo-form-actions">
           <button className="route-secondary-action" onClick={onClose} type="button">취소</button>
           <button className="route-primary-action" disabled={saving} type="submit">
             {saving ? <Loader2 className="spin-icon" size={15} /> : <Check size={15} />}
