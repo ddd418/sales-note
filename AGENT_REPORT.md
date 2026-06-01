@@ -73,7 +73,13 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. 코드 커밋/푸시 후 `web`과 `sales-note-frontend` Railway 배포를 진행해야 합니다.
+- Completed. Commit `c9638d1` deployed successfully.
+- Railway `sales-note-frontend` deployment `372c7cf0-d1f5-44c4-8aef-f3aade3cf587` reached `SUCCESS`.
+- Railway `web` deployment `7b1e6cde-a430-434e-aa09-0f6cc2bf3e66` reached `SUCCESS`; `python manage.py migrate` completed as part of the start command.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `/demos/` returned the React app shell.
+  - `/reporting/api/demos/` returned 401 JSON without auth, as expected.
 
 ### 수동 서버 테스트 절차
 
