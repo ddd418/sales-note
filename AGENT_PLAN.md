@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Quote probability 5 percent step plan
+
+**Background**:
+
+- User requested that quote probability should be entered in 5% increments.
+- Existing quote/schedule probability values that are not multiples of 5 should be aligned to 5% increments.
+
+**DB change required**: Yes, data migration only.
+
+- No schema change is needed.
+- A data migration will round existing `Quote.probability`, `Schedule.probability`, and legacy opportunity probability fields to the nearest 5% and recompute weighted revenue where applicable.
+
+**Implementation scope**:
+
+- Add a shared model helper to clamp probability to `0..100` and round to the nearest 5.
+- Normalize `Schedule.probability`, `Quote.probability`, and `OpportunityTracking.probability` on save.
+- Normalize React schedule create/edit payloads and make probability inputs step by 5.
+- Add a data migration for existing non-5% probabilities.
+- Update focused tests for schedule API rounding and Quote weighted revenue rounding.
+
+**Validation plan**:
+
+- Focused Django tests for schedule create/update probability rounding and Quote probability/weighted revenue.
+- `python -m py_compile reporting\models.py reporting\views.py reporting\admin.py reporting\tests.py reporting\migrations\0116_normalize_probability_to_five_percent.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.ScheduleVatModeTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, run migrations, then production smoke.
+
 ## 2026-06-01 Pipeline selected customer quote-first sidebar plan
 
 **Background**:

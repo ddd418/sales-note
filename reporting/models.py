@@ -1,6 +1,16 @@
 from django.db import models
 from django.contrib.auth.models import User # Django의 기본 사용자 모델
 from django.db.models import Sum
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def normalize_probability_to_five(value):
+    """Clamp a probability to 0..100 and round it to the nearest 5%."""
+    if value is None or value == '':
+        return None
+    decimal_value = Decimal(str(value))
+    rounded = int((decimal_value / Decimal('5')).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * 5)
+    return max(0, min(100, rounded))
 
 # 고객 카테고리 모델
 class CustomerCategory(models.Model):
@@ -841,6 +851,10 @@ class Schedule(models.Model):
         )
         return f"{target} 방문 - {self.visit_date} {self.visit_time}"
 
+    def save(self, *args, **kwargs):
+        self.probability = normalize_probability_to_five(self.probability)
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "일정"
         verbose_name_plural = "일정 목록"
@@ -1665,7 +1679,9 @@ class Quote(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def save(self, *args, **kwargs):
-        from decimal import Decimal, ROUND_HALF_UP
+        self.probability = normalize_probability_to_five(self.probability)
+        if self.probability is None:
+            self.probability = 0
 
         # 할인액 계산
         if self.discount_rate > 0:
@@ -1981,7 +1997,9 @@ class OpportunityTracking(models.Model):
     
     def save(self, *args, **kwargs):
         """저장 시 가중 매출 자동 계산 및 고객 등급 갱신"""
-        from decimal import Decimal
+        self.probability = normalize_probability_to_five(self.probability)
+        if self.probability is None:
+            self.probability = 0
         
         # 가중 매출 계산: 예상 매출 × (확률 / 100)
         if self.expected_revenue and self.probability is not None:

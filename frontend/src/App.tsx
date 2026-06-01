@@ -958,6 +958,19 @@ const makeScheduleCalendarCreateForm = (data: ScheduleCalendarData | null, visit
   return form;
 };
 
+const normalizeProbabilityInputValue = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) {
+    return trimmed;
+  }
+  const normalized = Math.min(100, Math.max(0, Math.round(parsed / 5) * 5));
+  return String(normalized);
+};
+
 const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?: ScheduleCreatePayload; error?: string } => {
   const followupId = Number(form.followupId);
   const departmentId = Number(form.departmentId);
@@ -982,7 +995,7 @@ const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?:
       followupId: followupId || undefined,
       location: form.location.trim() || undefined,
       notes: form.notes.trim() || undefined,
-      probability: form.probability.trim() || undefined,
+      probability: normalizeProbabilityInputValue(form.probability) || undefined,
       visitDate: form.visitDate,
       visitTime: form.visitTime,
     },
@@ -1036,7 +1049,7 @@ const scheduleEditFormToPayload = (form: ScheduleEditFormState): { payload?: Sch
       followupId,
       location: form.location.trim() || undefined,
       notes: form.notes.trim() || undefined,
-      probability: form.probability.trim() || undefined,
+      probability: normalizeProbabilityInputValue(form.probability) || undefined,
       purchaseConfirmed: form.purchaseConfirmed,
       status: form.status,
       visitDate: form.visitDate,
@@ -9905,8 +9918,10 @@ function ScheduleCalendarPage({
                         inputMode="numeric"
                         max="100"
                         min="0"
+                        step="5"
+                        onBlur={(event) => handleCalendarCreateFieldChange('probability', normalizeProbabilityInputValue(event.target.value))}
                         onChange={(event) => handleCalendarCreateFieldChange('probability', event.target.value)}
-                        placeholder="0-100"
+                        placeholder="0-100, 5% 단위"
                         type="number"
                         value={calendarCreateForm.probability}
                       />
@@ -10101,6 +10116,8 @@ function ScheduleCalendarPage({
                         inputMode="numeric"
                         max="100"
                         min="0"
+                        step="5"
+                        onBlur={(event) => handleCalendarEditFieldChange('probability', normalizeProbabilityInputValue(event.target.value))}
                         onChange={(event) => handleCalendarEditFieldChange('probability', event.target.value)}
                         type="number"
                         value={calendarEditForm.probability}
@@ -11270,7 +11287,7 @@ function ScheduleDetailPage({
       followupId,
       location: editForm.location.trim() || undefined,
       notes: editForm.notes.trim() || undefined,
-      probability: editForm.probability.trim() || undefined,
+      probability: normalizeProbabilityInputValue(editForm.probability) || undefined,
       prepayments: usePrepayment
         ? prepaymentSelections.map((row) => ({ id: row.id, amount: row.amountInput.trim() }))
         : [],
@@ -12202,6 +12219,8 @@ function ScheduleDetailPage({
                     inputMode="numeric"
                     max="100"
                     min="0"
+                    step="5"
+                    onBlur={(event) => handleEditFieldChange('probability', normalizeProbabilityInputValue(event.target.value))}
                     onChange={(event) => handleEditFieldChange('probability', event.target.value)}
                     type="number"
                     value={editForm.probability}
@@ -13093,8 +13112,10 @@ function SchedulesPage({
                     inputMode="numeric"
                     max="100"
                     min="0"
+                    step="5"
+                    onBlur={(event) => onCreateFormChange('probability', normalizeProbabilityInputValue(event.target.value))}
                     onChange={(event) => onCreateFormChange('probability', event.target.value)}
-                    placeholder="0-100"
+                    placeholder="0-100, 5% 단위"
                     type="number"
                     value={createForm.probability}
                   />
@@ -22934,7 +22955,7 @@ export function App() {
       followupId: followupId || undefined,
       location: scheduleCreateForm.location.trim() || undefined,
       notes: scheduleCreateForm.notes.trim() || undefined,
-      probability: scheduleCreateForm.probability.trim() || undefined,
+      probability: normalizeProbabilityInputValue(scheduleCreateForm.probability) || undefined,
       visitDate: scheduleCreateForm.visitDate,
       visitTime: scheduleCreateForm.visitTime,
     };

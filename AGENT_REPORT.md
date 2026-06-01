@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 견적 확률 5% 단위 정규화
+
+### 요약
+
+- 견적/일정/영업기회 성공 확률을 저장 시 `0..100` 범위의 5% 단위로 정규화하도록 했습니다.
+- React 일정/견적 입력 화면의 성공 확률 입력을 5% step으로 바꾸고, 직접 입력값도 제출 전 가까운 5% 단위로 보정합니다.
+- 기존 DB에 저장된 5% 단위가 아닌 `Quote`, `Schedule`, `OpportunityTracking`, `FunnelStage` 확률을 정리하는 데이터 마이그레이션을 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/mockData.ts`
+- `reporting/admin.py`
+- `reporting/models.py`
+- `reporting/tests.py`
+- `reporting/views.py`
+- `reporting/migrations/0116_normalize_probability_to_five_percent.py`
+
+### CRM 개선
+
+- 견적 확률이 63%, 82%처럼 애매하게 남지 않고 65%, 80%처럼 5% 단위로 통일됩니다.
+- 확률 기반 가중매출 계산이 정규화된 확률을 기준으로 다시 계산됩니다.
+- 사용자가 어느 React 일정 입력 경로에서 견적 확률을 넣어도 같은 규칙으로 저장됩니다.
+
+### 기존 기능 보존
+
+- 스키마 변경 없이 데이터 마이그레이션만 추가했습니다.
+- 기존 견적/일정 생성, 수정, 권한 흐름은 유지했습니다.
+- 선결제, 납품, 일정 상태 처리 로직은 건드리지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\admin.py reporting\tests.py reporting\migrations\0116_normalize_probability_to_five_percent.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.ScheduleVatModeTests --keepdb
+→ OK, 75 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 `python manage.py check` 기본 설정 로딩 시 기존 `STATICFILES_STORAGE/STORAGES` 조합 문제로 막힐 수 있어, Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending. 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 배포와 production smoke를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/?create=1` 또는 견적 일정 생성 화면에서 성공 확률에 `63`을 입력하고 저장합니다.
+2. 저장 후 상세/목록에서 성공 확률이 `65%`로 보이는지 확인합니다.
+3. 기존 견적/일정/파이프라인 화면에서 확률 값이 모두 5% 단위로 표시되는지 확인합니다.
+4. 견적 금액이 있는 건은 가중매출이 정규화된 확률 기준으로 계산되는지 확인합니다.
+
 ## 2026-06-01 — 파이프라인 선택 고객 견적 우선 사이드바
 
 ### 요약

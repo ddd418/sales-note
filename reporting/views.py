@@ -7,7 +7,7 @@ from django.http import JsonResponse, HttpResponseForbidden, Http404, FileRespon
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch, Case, IntegerField, OuterRef, Subquery, Value, When
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, FunnelTarget, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord
+from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AccountCleanupAuditLog, AccountCleanupDecision, AIWorkspaceActionFeedback, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, WeeklyReport, OpportunityTracking, FunnelTarget, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, CalibrationRecord, normalize_probability_to_five
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -10834,6 +10834,19 @@ def _parse_optional_decimal(value):
     return parsed
 
 
+def _parse_optional_probability(value):
+    value = str(value or '').strip()
+    if not value:
+        return None
+    try:
+        probability = int(value)
+    except (TypeError, ValueError):
+        raise ValueError('성공 확률은 0부터 100 사이의 숫자입니다.')
+    if probability < 0 or probability > 100:
+        raise ValueError('성공 확률은 0부터 100 사이의 숫자입니다.')
+    return normalize_probability_to_five(probability)
+
+
 def _ai_json_dict(value):
     return value if isinstance(value, dict) else {}
 
@@ -11608,15 +11621,10 @@ def schedules_create_api(request):
     location = str(payload.get('location') or '').strip()[:200]
     notes = str(payload.get('notes') or '').strip()
     expected_revenue = _parse_optional_decimal(payload.get('expectedRevenue'))
-    probability_raw = str(payload.get('probability') or '').strip()
-    probability = None
-    if probability_raw:
-        try:
-            probability = int(probability_raw)
-        except (TypeError, ValueError):
-            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
-        if probability < 0 or probability > 100:
-            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
+    try:
+        probability = _parse_optional_probability(payload.get('probability'))
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
     schedule = Schedule.objects.create(
         user=request.user,
@@ -13787,15 +13795,10 @@ def schedules_update_api(request, schedule_id):
     if not visit_time:
         return JsonResponse({'success': False, 'error': '방문 시간을 선택하세요.'}, status=400)
 
-    probability = None
-    probability_raw = str(payload.get('probability') or '').strip()
-    if probability_raw:
-        try:
-            probability = int(probability_raw)
-        except (TypeError, ValueError):
-            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
-        if probability < 0 or probability > 100:
-            return JsonResponse({'success': False, 'error': '성공 확률은 0부터 100 사이의 숫자입니다.'}, status=400)
+    try:
+        probability = _parse_optional_probability(payload.get('probability'))
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
     expected_revenue = _parse_optional_decimal(payload.get('expectedRevenue'))
     expected_close_date = _parse_iso_date_or_none(payload.get('expectedCloseDate'))

@@ -9805,7 +9805,7 @@ class SchedulesSummaryApiTests(TestCase):
                 'location': '고객 회의실',
                 'notes': '견적 일정 등록',
                 'expectedRevenue': '1200000',
-                'probability': '60',
+                'probability': '63',
             }),
             content_type='application/json',
         )
@@ -9819,7 +9819,8 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(schedule.activity_type, 'quote')
         self.assertEqual(schedule.location, '고객 회의실')
         self.assertEqual(int(schedule.expected_revenue), 1200000)
-        self.assertEqual(schedule.probability, 60)
+        self.assertEqual(schedule.probability, 65)
+        self.assertEqual(payload['schedule']['probability'], 65)
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['href'], f'/schedules/{schedule.id}/')
 
@@ -10437,7 +10438,7 @@ class SchedulesSummaryApiTests(TestCase):
                 'location': '수정 회의실',
                 'notes': '일정 수정 메모',
                 'expectedRevenue': '2500000',
-                'probability': '80',
+                'probability': '82',
                 'expectedCloseDate': '2026-06-01',
                 'purchaseConfirmed': True,
             }),
@@ -10457,6 +10458,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(schedule.notes, '일정 수정 메모')
         self.assertEqual(int(schedule.expected_revenue), 2500000)
         self.assertEqual(schedule.probability, 80)
+        self.assertEqual(payload['schedule']['probability'], 80)
         self.assertEqual(schedule.expected_close_date.isoformat(), '2026-06-01')
         self.assertTrue(schedule.purchase_confirmed)
         self.assertEqual(payload['schedule']['id'], schedule.id)
@@ -20048,6 +20050,16 @@ class ScheduleVatModeTests(TestCase):
         schedule = self._make_schedule(vat_mode='excluded')
         quote = self._make_quote(schedule, subtotal_val=100000, probability=50)
         self.assertEqual(quote.weighted_revenue, Decimal('55000'))  # 110000 * 0.5
+
+    def test_quote_probability_is_normalized_to_five_percent_step(self):
+        """견적 성공 확률은 저장 시 가까운 5% 단위로 정규화된다."""
+        from decimal import Decimal
+
+        schedule = self._make_schedule(vat_mode='excluded')
+        quote = self._make_quote(schedule, subtotal_val=100000, probability=63)
+
+        self.assertEqual(quote.probability, 65)
+        self.assertEqual(quote.weighted_revenue, Decimal('71500'))  # 110000 * 0.65
 
     def test_vat_none_weighted_revenue(self):
         """부가세 없음: 가중매출 = total * probability / 100."""

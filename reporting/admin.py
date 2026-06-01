@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django import forms
 from .models import (
     AccountCleanupAuditLog,
     AccountCleanupDecision,
@@ -11,6 +12,19 @@ from .models import (
     Company, Department, DepartmentMemo, DocumentTemplate, EmailLog, ScheduledEmail, ScheduledEmailAttachment,
     BusinessCard, CustomerCategory
 )
+
+
+def probability_step_formfield(db_field, **kwargs):
+    formfield = db_field.formfield(**kwargs)
+    if formfield:
+        formfield.widget = forms.NumberInput(attrs={
+            **formfield.widget.attrs,
+            'min': '0',
+            'max': '100',
+            'step': '5',
+        })
+        formfield.help_text = '0부터 100 사이, 5% 단위로 입력하세요.'
+    return formfield
 
 # UserProfile 인라인 관리자
 class UserProfileInline(admin.StackedInline):
@@ -152,6 +166,11 @@ class ScheduleAdmin(admin.ModelAdmin):
     date_hierarchy = 'visit_date'
     autocomplete_fields = ['followup', 'user'] # ForeignKey 필드 검색 기능 향상
     list_per_page = 20
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'probability':
+            return probability_step_formfield(db_field, **kwargs)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
 
 # History 모델 관리자 설정
 @admin.register(History)
@@ -405,6 +424,11 @@ class QuoteAdmin(admin.ModelAdmin):
     
     readonly_fields = ('subtotal', 'discount_amount', 'tax_amount', 'total_amount', 'weighted_revenue', 'quote_date')
 
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'probability':
+            return probability_step_formfield(db_field, **kwargs)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
 
 # QuoteItem 모델 관리자 설정
 @admin.register(QuoteItem)
@@ -425,6 +449,11 @@ class FunnelStageAdmin(admin.ModelAdmin):
     list_editable = ('stage_order', 'default_probability', 'avg_duration_days')
     ordering = ('stage_order',)
     list_per_page = 20
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'default_probability':
+            return probability_step_formfield(db_field, **kwargs)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
 
 
 # OpportunityTracking 모델 관리자 설정
@@ -458,6 +487,11 @@ class OpportunityTrackingAdmin(admin.ModelAdmin):
     )
     
     readonly_fields = ('stage_entry_date',)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == 'probability':
+            return probability_step_formfield(db_field, **kwargs)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
 
 
 # ============================================
