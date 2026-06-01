@@ -4584,6 +4584,42 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(account['scheduleCount'], 1)
         self.assertEqual(account['upcomingScheduleCount'], 1)
 
+    def test_customers_summary_api_search_includes_empty_department_accounts(self):
+        from reporting.models import Company, Department
+
+        company = Company.objects.create(name='서울시 보건환경연구원', created_by=self.user)
+        department = Department.objects.create(
+            company=company,
+            name='감염병 검사 연구실',
+            notes='담당자 등록 전 계정',
+            created_by=self.user,
+        )
+        self._create_customer(self.user, '검색제외고객')
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url, {'q': '서울시 보건'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['filters']['q'], '서울시 보건')
+        self.assertEqual(payload['metrics']['filteredCustomers'], 0)
+        self.assertEqual(payload['metrics']['filteredAccounts'], 1)
+        self.assertEqual(payload['pagination']['totalRows'], 1)
+        self.assertEqual(payload['pagination']['accountRows'], 1)
+        self.assertEqual(payload['customers'], [])
+        self.assertEqual(len(payload['accounts']), 1)
+        account = payload['accounts'][0]
+        self.assertEqual(account['id'], department.id)
+        self.assertEqual(account['accountId'], department.id)
+        self.assertEqual(account['accountType'], 'department')
+        self.assertIsNone(account['representativeCustomerId'])
+        self.assertEqual(account['customer'], '담당자 없음')
+        self.assertEqual(account['company'], '서울시 보건환경연구원')
+        self.assertEqual(account['department'], '감염병 검사 연구실')
+        self.assertEqual(account['contactCount'], 0)
+        self.assertEqual(account['href'], f'/accounts/{department.id}/')
+        self.assertEqual(account['createScheduleHref'], f'/schedules/?create=1&department={department.id}')
+
     def test_department_autocomplete_finds_department_by_pi_manager_name(self):
         target = self._create_customer(self.user, 'PI검색고객')
         target.manager = '김PI교수'

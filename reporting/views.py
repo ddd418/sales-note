@@ -3911,11 +3911,11 @@ def _customers_followup_payload(followup, today):
     }
 
 
-def _customers_empty_account_customer_payload(department, request_user):
+def _customers_empty_account_customer_payload(department, request_user, *, account_row=False):
     owner = department.created_by or getattr(department.company, 'created_by', None) or request_user
     company_href = reverse('reporting:company_detail', args=[department.company_id]) if department.company_id else ''
     return {
-        'id': 0,
+        'id': department.id if account_row else 0,
         'accountId': department.id,
         'accountType': 'department',
         'representativeCustomerId': None,
@@ -3958,8 +3958,75 @@ def _customers_empty_account_customer_payload(department, request_user):
         'accountHref': f'/accounts/{department.id}/',
         'customerHref': '',
         'companyHref': company_href,
-        'createScheduleHref': '',
+        'createScheduleHref': f'/schedules/?create=1&department={department.id}',
     }
+
+
+def _customers_empty_department_accounts_queryset(request_user, scope_users, filters=None):
+    """Return accessible department accounts with no contacts in the current scope."""
+    filters = filters or {}
+    qs = Department.objects.select_related(
+        'company',
+        'created_by',
+        'company__created_by',
+    ).annotate(
+        scoped_followup_count=Count(
+            'followup_departments',
+            filter=Q(followup_departments__user__in=scope_users),
+            distinct=True,
+        )
+    )
+
+    user_profile = get_user_profile(request_user)
+    if not user_profile.is_admin():
+        qs = qs.filter(
+            Q(created_by__in=scope_users) |
+            Q(company__created_by__in=scope_users) |
+            Q(followup_departments__user__in=scope_users)
+        )
+
+    qs = qs.filter(scoped_followup_count=0)
+
+    if any((filters.get(key) or '').strip() for key in ['priority', 'stage', 'grade', 'level']):
+        return qs.none()
+
+    q = filters.get('q') or ''
+    if q:
+        search_terms = [term.strip() for term in q.split(',') if term.strip()]
+        if search_terms:
+            combined_q = Q()
+            for term in search_terms:
+                combined_q |= (
+                    Q(name__icontains=term) |
+                    Q(company__name__icontains=term) |
+                    Q(address__icontains=term) |
+                    Q(notes__icontains=term)
+                )
+            qs = qs.filter(combined_q)
+
+    owner = filters.get('owner') or ''
+    if owner:
+        try:
+            owner_id = int(owner)
+        except ValueError:
+            owner_id = None
+        if owner_id and scope_users.filter(id=owner_id).exists():
+            qs = qs.filter(Q(created_by_id=owner_id) | Q(company__created_by_id=owner_id))
+        else:
+            qs = qs.none()
+
+    company = filters.get('company') or ''
+    if company:
+        try:
+            company_id = int(company)
+        except ValueError:
+            company_id = None
+        if company_id:
+            qs = qs.filter(company_id=company_id)
+        else:
+            qs = qs.none()
+
+    return qs.distinct().order_by('company__name', 'name', 'id')
 
 
 def _customers_priority_rank(priority):
@@ -4951,6 +5018,8 @@ def customers_summary_api(request):
     page_size = min(max(page_size, 10), 100)
     base_followups = FollowUp.objects.filter(user__in=scope_users)
     followups = _apply_customer_followup_filters(base_followups, filters, scope_users=scope_users)
+    base_empty_departments = _customers_empty_department_accounts_queryset(request.user, scope_users)
+    filtered_empty_departments = _customers_empty_department_accounts_queryset(request.user, scope_users, filters)
 
     priority_order = Case(
         When(priority='urgent', then=Value(0)),
@@ -4982,14 +5051,20 @@ def customers_summary_api(request):
     filtered_account_count = (
         followups.filter(department_id__isnull=False).values('department_id').distinct().count()
         + followups.filter(department_id__isnull=True).count()
+        + filtered_empty_departments.count()
     )
     total_account_count = (
         base_followups.filter(department_id__isnull=False).values('department_id').distinct().count()
         + base_followups.filter(department_id__isnull=True).count()
+        + base_empty_departments.count()
     )
 
     if row_mode == 'account':
         account_rows_all = _customers_account_payloads(list(followups), today, limit=None)
+        account_rows_all.extend(
+            _customers_empty_account_customer_payload(department, request.user, account_row=True)
+            for department in filtered_empty_departments
+        )
         total_rows = len(account_rows_all)
         total_pages = max((total_rows + page_size - 1) // page_size, 1)
         page = min(page, total_pages)

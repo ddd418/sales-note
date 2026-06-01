@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Empty department customer search plan
+
+**Background**:
+
+- User reported that `/customers/?q=서울시+보건` should show department/research-lab accounts even when no customer/contact is connected yet.
+- The current customers summary API builds account rows from `FollowUp` records, so departments with zero scoped contacts are omitted from search results.
+
+**DB change required**: No.
+
+- Existing `Department` rows and empty account detail routes already support customerless department accounts.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Add accessible empty departments to `/reporting/api/customers/` account-mode results.
+- Apply search, owner, and company filters to empty department rows while excluding them from contact-specific filters such as priority/stage/grade/score.
+- Keep contact mode as contact-only, but make account metrics/pagination count empty department accounts.
+- Add a focused API regression test for searching an empty department account.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then run production smoke.
+
 ## 2026-06-01 Department-only note edit plan
 
 **Background**:

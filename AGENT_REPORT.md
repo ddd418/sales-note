@@ -1,5 +1,72 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 고객 검색에 담당자 없는 부서 계정 포함
+
+### 요약
+
+- `/customers/` 계정 기준 검색에서 담당자/고객이 아직 연결되지 않은 부서/연구실도 검색 결과에 나오도록 했습니다.
+- 고객 목록 API가 기존 `FollowUp` 기반 계정 행에 더해, 접근 가능한 `Department` 중 현재 범위에 담당자가 0명인 계정을 `담당자 없음` 행으로 내려줍니다.
+- 검색어, 담당자(owner), 업체(company) 필터는 빈 부서 계정에도 적용하고, 우선순위/파이프라인/등급/점수처럼 담당자 전용 필터가 걸리면 빈 계정은 제외되도록 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- `서울시 보건환경연구원`처럼 부서/연구실 계정만 먼저 만들어둔 경우에도 `/customers/?q=...`에서 바로 찾을 수 있습니다.
+- 검색 결과 행은 `/accounts/:departmentId/`로 연결되어, 담당자 추가나 계정 정보 확인 흐름으로 이어집니다.
+- 빈 계정 행의 일정 링크는 `/schedules/?create=1&department=:id` 형태로 부서-only 일정 생성 흐름에 맞췄습니다.
+
+### 기존 기능 보존
+
+- 담당자 기준(contact mode)은 계속 실제 고객/담당자만 표시합니다.
+- 고객이 이미 있는 계정의 묶음, 기존 고객 검색 필터, 페이지네이션 구조는 유지했습니다.
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb
+→ OK, 61 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 회사 필터 드롭다운의 카운트는 기존 담당자 기반 옵션을 유지합니다. 검색 결과 자체에는 빈 부서 계정이 포함됩니다.
+
+### Production 배포 상태
+
+- Pending. 코드 검증 완료 후 배포 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/customers/?q=%EC%84%9C%EC%9A%B8%EC%8B%9C+%EB%B3%B4%EA%B1%B4`에 접속합니다.
+2. 표시 기준이 `계정 기준`인지 확인합니다.
+3. 담당자가 없는 `서울시 보건...` 부서/연구실 계정이 `담당자 없음` 또는 담당자 0명 상태로 보이는지 확인합니다.
+4. 해당 행을 클릭했을 때 `/accounts/:id/` 계정 상세로 이동하는지 확인합니다.
+
 ## 2026-06-01 — 부서-only 영업노트 수정 저장 허용
 
 ### 요약
