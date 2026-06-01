@@ -58,7 +58,12 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. 코드 검증 완료 후 배포 예정입니다.
+- Completed. Commit `f76eb28` deployed successfully.
+- Railway `web` deployment `f82bdb87-a06f-4fe9-a72d-e507e80c26bc` reached `SUCCESS`.
+- Railway `sales-note-frontend` remained on deployment `a4519b74-0f79-46a9-ab73-01fa78afe150` because no frontend runtime files changed.
+- Production smoke passed for backend health/ready, frontend React routes, protected APIs, static cache headers, and removed `/data-cleanup/` and `/downloads/` routes.
+- Direct frontend check passed for `/accounts/378/` with `200 text/html`.
+- Direct protected API check for `/reporting/api/accounts/378/` returned `401` without auth, as expected.
 
 ### 수동 서버 테스트 절차
 
