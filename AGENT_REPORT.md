@@ -1,5 +1,92 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — Android APK 래퍼 생성
+
+### 요약
+
+- 기존 운영 React CRM을 여는 Android WebView APK 프로젝트를 `android-sales-note/`에 추가했습니다.
+- 앱 이름은 `Sales Note`, 패키지는 `com.salesnote.crm`입니다.
+- 노트/체크/성장선 느낌의 adaptive launcher icon, monochrome icon, legacy vector fallback을 추가했습니다.
+- WebView에서 로그인 세션 쿠키, JavaScript/DOM storage, 파일 업로드, 다운로드, Android 16/API 36 뒤로가기 제스처, 일반 뒤로가기를 처리합니다.
+- 설치 가능한 APK를 `output/sales-note-android-debug.apk`로 생성했습니다.
+
+### 변경된 파일
+
+- `.gitignore`
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `android-sales-note/README.md`
+- `android-sales-note/settings.gradle`
+- `android-sales-note/build.gradle`
+- `android-sales-note/gradle.properties`
+- `android-sales-note/gradlew`
+- `android-sales-note/gradlew.bat`
+- `android-sales-note/gradle/wrapper/gradle-wrapper.jar`
+- `android-sales-note/gradle/wrapper/gradle-wrapper.properties`
+- `android-sales-note/app/build.gradle`
+- `android-sales-note/app/proguard-rules.pro`
+- `android-sales-note/app/src/main/AndroidManifest.xml`
+- `android-sales-note/app/src/main/java/com/salesnote/crm/MainActivity.java`
+- `android-sales-note/app/src/main/res/**`
+
+### CRM 개선
+
+- 안드로이드 홈 화면에서 `Sales Note` 앱으로 바로 운영 CRM에 들어갈 수 있습니다.
+- 다운로드는 Android 다운로드 폴더로 넘기고, 업로드 input은 Android 파일 선택기를 사용합니다.
+- 기존 React/Django 인증, 권한, API, DB 구조를 그대로 사용합니다.
+
+### 기존 기능 보존
+
+- Django/React 운영 코드, URL, API, 모델, 마이그레이션은 변경하지 않았습니다.
+- `/reporting/*`와 운영 Railway 서비스 동작은 그대로 유지됩니다.
+- APK 산출물과 Android build cache는 `.gitignore`로 커밋 대상에서 제외했습니다.
+
+### 실행한 명령과 결과
+
+```text
+gradle wrapper --gradle-version 8.14.3 --distribution-type all
+→ OK
+
+.\gradlew.bat :app:assembleDebug
+→ OK, APK generated
+
+.\gradlew.bat :app:lintDebug
+→ initial run found API 36 back navigation/style issues; fixed
+→ OK after fixes
+
+aapt dump badging output\sales-note-android-debug.apk
+→ OK; package com.salesnote.crm, app label Sales Note, minSdk 23, targetSdk 36
+
+apksigner verify --print-certs output\sales-note-android-debug.apk
+→ OK; debug certificate verified, standard app-metadata warning only
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py check
+→ System check identified no issues
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 현재 APK는 빠른 내부 테스트용 debug-signed APK입니다. 직원들에게 장기 배포하려면 고정 release signing key로 별도 release APK를 만드는 것이 좋습니다.
+- 연결된 Android 기기/emulator가 없어 `adb install` 실기기 설치 테스트는 수행하지 못했습니다.
+
+### Production 배포 상태
+
+- Railway 배포 없음. 이번 작업은 Android 래퍼 프로젝트와 로컬 APK 산출물 추가이며, 운영 Django/React 런타임에는 영향이 없습니다.
+
+### 수동 서버 테스트 절차
+
+1. Android 기기에서 `D:\projects\sales-note\output\sales-note-android-debug.apk`를 설치합니다.
+2. 설치 시 `알 수 없는 앱 설치` 허용이 필요하면 허용합니다.
+3. 홈 화면의 `Sales Note` 앱을 실행합니다.
+4. 로그인 후 대시보드, 영업노트, 고객, 일정 화면이 기존 웹과 동일하게 열리는지 확인합니다.
+5. 파일 첨부 input과 엑셀/PDF 다운로드가 각각 파일 선택기와 다운로드 폴더로 이어지는지 확인합니다.
+
 ## 2026-06-01 — 빈 부서 계정 상세 영업노트 표시
 
 ### 요약

@@ -42,6 +42,13 @@ emergency_backup*.json
 # Local validation artifacts
 output/playwright/
 output/e2e/
+output/*.apk
+output/*.aab
+
+# Android build artifacts
+android-sales-note/**/build/
+android-sales-note/.gradle/
+android-sales-note/local.properties
 
 # Static files (will be collected in production)
 staticfiles/

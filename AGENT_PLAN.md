@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Android APK wrapper plan
+
+**Background**:
+
+- User requested an Android APK for the current Sales Note CRM with a suitable app icon.
+- The CRM runtime already lives at the authenticated React production URL, while Django remains the backend/API/auth server.
+- A thin Android WebView wrapper is the lowest-risk mobile delivery path because it preserves the existing authentication, permissions, API behavior, and React CRM screens.
+
+**DB change required**: No.
+
+- No Django model, migration, API, or production web runtime change is needed.
+- The APK project will load the existing production frontend URL and rely on the current session/login flow.
+
+**Implementation scope**:
+
+- Add a standalone `android-sales-note` Android project.
+- Implement a native `MainActivity` WebView wrapper for `https://sales-note-frontend-production.up.railway.app/`.
+- Preserve WebView cookies/session, JavaScript, DOM storage, file chooser upload, downloads via Android DownloadManager, refresh, and back navigation.
+- Add adaptive launcher icon resources with a CRM-style notebook/check mark look.
+- Build a debug-signed installable APK and copy it to the local `output/` folder for installation.
+- Add Android build outputs/APK artifacts to `.gitignore`.
+
+**Validation plan**:
+
+- Build the Android APK with Gradle.
+- Verify APK metadata with Android SDK build tools where available.
+- `git diff --check`
+- No Railway deployment because this task does not change the web runtime.
+
 ## 2026-06-01 Empty account linked notes plan
 
 **Background**:
