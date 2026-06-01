@@ -1131,6 +1131,7 @@ def _quote_model_pricing(followup, stage):
             'probability': int(probability or 0),
             'valid_until': primary_quote.valid_until,
             'basis_date': selected_entries[0]['date'] if selected_entries else primary_quote.quote_date,
+            'quote_date': selected_entries[0]['date'] if selected_entries else primary_quote.quote_date,
             'count': count,
         }
 
@@ -1190,6 +1191,7 @@ def _select_quote_reference_pricing(followup, stage):
             'probability': int(probability or 0),
             'valid_until': primary_schedule.expected_close_date,
             'basis_date': selected_schedule_entries[0]['date'],
+            'quote_date': selected_schedule_entries[0]['date'],
             'count': count,
         }
 
@@ -1219,6 +1221,7 @@ def _select_quote_reference_pricing(followup, stage):
             'probability': STAGE_PROBABILITY.get(stage, 30),
             'valid_until': None,
             'basis_date': selected_history_entries[0]['date'],
+            'quote_date': selected_history_entries[0]['date'],
             'count': count,
         }
 
@@ -1237,6 +1240,7 @@ def _select_quote_reference_pricing(followup, stage):
                 'probability': quote_schedule.probability or STAGE_PROBABILITY.get(stage, 30),
                 'valid_until': quote_schedule.expected_close_date,
                 'basis_date': quote_schedule.visit_date,
+                'quote_date': quote_schedule.visit_date,
             }
 
     quote_history = quote_histories[0] if quote_histories else None
@@ -1253,6 +1257,7 @@ def _select_quote_reference_pricing(followup, stage):
                 'probability': STAGE_PROBABILITY.get(stage, 30),
                 'valid_until': None,
                 'basis_date': _history_pricing_date(quote_history),
+                'quote_date': _history_pricing_date(quote_history),
             }
 
     return _quote_model_pricing(followup, stage)
@@ -1406,6 +1411,7 @@ def _select_pipeline_pricing(followup, stage):
                 'probability': 100,
                 'valid_until': None,
                 'basis_date': basis_date,
+                'quote_date': None,
             }
 
     if stage in ('quote', 'negotiation'):
@@ -1427,6 +1433,7 @@ def _select_pipeline_pricing(followup, stage):
         'probability': STAGE_PROBABILITY.get(stage, 30),
         'valid_until': None,
         'basis_date': None,
+        'quote_date': None,
     }
 
 
@@ -1663,6 +1670,7 @@ def pipeline_command_center_api(request):
         if pricing['source'] or pricing_amount > 0:
             valid_until = pricing['valid_until']
             basis_date = pricing.get('basis_date')
+            quote_date = pricing.get('quote_date')
             latest_quote_payload = {
                 'number': pricing['number'],
                 'stage': pricing['stage'],
@@ -1672,6 +1680,7 @@ def pipeline_command_center_api(request):
                 'source': pricing['source'],
                 'basisType': pricing['kind'],
                 'basisDate': basis_date.isoformat() if basis_date else None,
+                'quoteDate': quote_date.isoformat() if quote_date else None,
             }
         next_schedule_payload = None
         if next_schedule:

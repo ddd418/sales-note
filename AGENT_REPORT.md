@@ -1,5 +1,76 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 파이프라인 견적일 표시
+
+### 요약
+
+- `/pipeline/` 파이프라인에서 견적 건의 `견적일`이 보드 카드, 리스트 행, 우측 상세 패널에 표시되도록 했습니다.
+- Django 파이프라인 API의 `latestQuote`에 `quoteDate`를 추가했습니다.
+- 수주 단계의 실제 납품 매출 기준 데이터에는 `quoteDate`를 비워, 납품 기준일과 견적일이 혼동되지 않게 했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/mockData.ts`
+- `frontend/src/styles.css`
+- `reporting/funnel_views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 견적 제출/협상 단계 고객을 볼 때 언제 견적이 들어갔는지 카드에서 바로 확인할 수 있습니다.
+- 리스트 보기에서도 대표 금액 밑에 견적일이 함께 보여 정렬/검토 중 날짜 추적이 쉬워집니다.
+- 상세 패널에는 `견적일`과 필요 시 다른 `기준일`을 분리해 표시합니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 `basisDate`, 견적 대비 실제 납품 비교, 단계 이동, AI 브리핑, `/reporting/*` 경로는 유지했습니다.
+- API 응답은 새 필드 추가 방식이라 기존 클라이언트와 backward compatible 합니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\funnel_views.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.PipelineApiTests --keepdb
+→ OK, 13 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 `python manage.py check` 기본 설정 로딩 시 기존 `STATICFILES_STORAGE/STORAGES` 조합 문제로 막힐 수 있어, Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending. 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 smoke test를 진행할 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/pipeline/`에 접속합니다.
+2. 견적 제출 또는 협상 단계 카드에 `견적일 n월 n일`이 보이는지 확인합니다.
+3. 상단에서 리스트 보기로 전환하고 대표 금액 밑에도 `견적일`이 보이는지 확인합니다.
+4. 해당 고객을 클릭해 우측 상세 패널의 견적 박스에도 `견적일`이 표시되는지 확인합니다.
+5. 수주 단계의 실제 납품 매출 카드에는 잘못된 견적일이 붙지 않는지 확인합니다.
+
 ## 2026-06-01 — 영업노트 부서 검색 담당자명 매칭
 
 ### 요약

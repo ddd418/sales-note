@@ -2395,6 +2395,14 @@ const riskLabel: Record<Deal['risk'], string> = {
   high: '지연',
 };
 
+const pipelineQuoteDateLabel = (deal?: Deal | null) => {
+  const quote = deal?.latestQuote;
+  if (!quote?.quoteDate || quote.basisType === 'delivery') {
+    return '';
+  }
+  return formatDateLabel(quote.quoteDate);
+};
+
 const searchableOptionLimit = 80;
 
 const joinOptionParts = (parts: Array<string | undefined>) => parts.filter(Boolean).join(' · ');
@@ -20547,6 +20555,8 @@ function FilterRail({
 }
 
 function DealCard({ deal, selected, onSelect }: { deal: Deal; selected: boolean; onSelect: () => void }) {
+  const quoteDateLabel = pipelineQuoteDateLabel(deal);
+
   return (
     <button className={`deal-card ${selected ? 'selected' : ''}`} onClick={onSelect}>
       <div className="deal-card-top">
@@ -20565,6 +20575,12 @@ function DealCard({ deal, selected, onSelect }: { deal: Deal; selected: boolean;
             {formatSignedWon(deal.quoteComparison.deltaAmount)}
             <small>{formatSignedPercent(deal.quoteComparison.deltaRate)}</small>
           </strong>
+        </div>
+      ) : null}
+      {quoteDateLabel ? (
+        <div className="pipeline-quote-date">
+          <FileText size={13} />
+          <span>견적일 {quoteDateLabel}</span>
         </div>
       ) : null}
       <p>{deal.nextAction}</p>
@@ -20752,29 +20768,35 @@ function PipelineList({
           </tr>
         </thead>
         <tbody>
-          {deals.map((deal) => (
-            <tr key={deal.id} onClick={() => onSelect(deal)}>
-              <td>
-                <strong>{deal.company}</strong>
-                <span>{deal.contact}</span>
-              </td>
-              <td>{stages.find((stage) => stage.id === deal.stage)?.label}</td>
-              <td>{formatWon(deal.value)}</td>
-              <td>
-                {deal.quoteComparison ? (
-                  <>
-                    <strong>{formatSignedWon(deal.quoteComparison.deltaAmount)}</strong>
-                    <span>{deal.quoteComparison.statusLabel}</span>
-                  </>
-                ) : (
-                  '-'
-                )}
-              </td>
-              <td>{deal.probability}%</td>
-              <td>{deal.nextAction}</td>
-              <td>{deal.owner}</td>
-            </tr>
-          ))}
+          {deals.map((deal) => {
+            const quoteDateLabel = pipelineQuoteDateLabel(deal);
+            return (
+              <tr key={deal.id} onClick={() => onSelect(deal)}>
+                <td>
+                  <strong>{deal.company}</strong>
+                  <span>{deal.contact}</span>
+                </td>
+                <td>{stages.find((stage) => stage.id === deal.stage)?.label}</td>
+                <td>
+                  <strong>{formatWon(deal.value)}</strong>
+                  {quoteDateLabel ? <span className="pipeline-list-submeta">견적일 {quoteDateLabel}</span> : null}
+                </td>
+                <td>
+                  {deal.quoteComparison ? (
+                    <>
+                      <strong>{formatSignedWon(deal.quoteComparison.deltaAmount)}</strong>
+                      <span>{deal.quoteComparison.statusLabel}</span>
+                    </>
+                  ) : (
+                    '-'
+                  )}
+                </td>
+                <td>{deal.probability}%</td>
+                <td>{deal.nextAction}</td>
+                <td>{deal.owner}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>
@@ -20887,6 +20909,12 @@ function DetailPanel({
       </aside>
     );
   }
+
+  const latestQuoteDateLabel = pipelineQuoteDateLabel(deal);
+  const latestQuoteBasisDateLabel =
+    deal.latestQuote?.basisDate && deal.latestQuote.basisDate !== deal.latestQuote.quoteDate
+      ? formatDateLabel(deal.latestQuote.basisDate)
+      : '';
 
   return (
     <aside className="detail-panel">
@@ -21042,7 +21070,8 @@ function DetailPanel({
             <strong>{formatWon(deal.latestQuote.amount)}</strong>
             <span>{deal.latestQuote.probability}%</span>
           </div>
-          {deal.latestQuote.basisDate ? <small>기준일 {formatDateLabel(deal.latestQuote.basisDate)}</small> : null}
+          {latestQuoteDateLabel ? <small>견적일 {latestQuoteDateLabel}</small> : null}
+          {latestQuoteBasisDateLabel ? <small>기준일 {latestQuoteBasisDateLabel}</small> : null}
           {deal.latestQuote.validUntil ? <small>유효기한 {deal.latestQuote.validUntil}</small> : null}
         </div>
       ) : null}

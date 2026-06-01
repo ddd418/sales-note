@@ -42,6 +42,7 @@ export type Deal = {
     source?: string;
     basisType?: string;
     basisDate?: string | null;
+    quoteDate?: string | null;
   } | null;
   quoteComparison?: {
     quotedAmount: number;
@@ -140,6 +141,7 @@ export const mockDeals: Deal[] = [
       amount: 18400000,
       probability: 64,
       validUntil: '2026-05-30',
+      quoteDate: '2026-05-03',
     },
     nextSchedule: {
       id: 101,
@@ -178,6 +180,14 @@ export const mockDeals: Deal[] = [
     risk: 'medium',
     tags: ['수주 유력', '관리자 확인'],
     lastActivity: '가격 조정안 공유',
+    latestQuote: {
+      number: 'Q-2026-003',
+      stage: '협상중',
+      amount: 32600000,
+      probability: 78,
+      validUntil: '2026-06-15',
+      quoteDate: '2026-05-20',
+    },
   },
   {
     id: 4,
@@ -210,6 +220,14 @@ export const mockDeals: Deal[] = [
     risk: 'medium',
     tags: ['납기 문의'],
     lastActivity: '견적서 열람 확인',
+    latestQuote: {
+      number: 'Q-2026-005',
+      stage: '발송완료',
+      amount: 12800000,
+      probability: 56,
+      validUntil: '2026-06-07',
+      quoteDate: '2026-05-24',
+    },
   },
   {
     id: 6,

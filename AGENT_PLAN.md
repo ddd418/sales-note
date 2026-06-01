@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Pipeline quote date display plan
+
+**Background**:
+
+- User reported that quote deals on `/pipeline/` should show when the quote was entered.
+- The current pipeline API exposes `basisDate`, but React does not receive a dedicated quote date field and the UI does not surface it on pipeline cards/list/detail.
+
+**DB change required**: No.
+
+- Existing `Quote.quote_date`, quote `Schedule.visit_date`, and quote `History` pricing dates are enough.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Add `quoteDate` to the pipeline API `latestQuote` payload for quote model, quote schedule, and quote history pricing sources.
+- Keep delivery revenue payloads as delivery-based values so won deals do not show a misleading quote-entered date.
+- Display `견적일` on pipeline cards, list rows, and the selected-customer detail panel.
+- Preserve existing `basisDate`, quote comparison, pipeline stage move, AI briefing, and `/reporting/*` behavior.
+
+**Validation plan**:
+
+- Focused Django pipeline API tests for quote model, quote schedule, and quote history `quoteDate`.
+- `python -m py_compile reporting\funnel_views.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.PipelineApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then production smoke.
+
 ## 2026-06-01 Notes department search by contact name plan
 
 **Background**:

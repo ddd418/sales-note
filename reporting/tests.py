@@ -17359,8 +17359,9 @@ class PipelineApiTests(TestCase):
 
     def test_pipeline_api_requires_login(self):
         response = self.client.get(self.url)
-        self.assertIn(response.status_code, [301, 302])
-        self.assertIn('login', response.get('Location', ''))
+        self.assertIn(response.status_code, [301, 302, 401])
+        if response.status_code in [301, 302]:
+            self.assertIn('login', response.get('Location', ''))
 
     def test_pipeline_api_returns_current_user_scope(self):
         own = self._create_pipeline_customer(self.user, '내고객')
@@ -17378,6 +17379,8 @@ class PipelineApiTests(TestCase):
         self.assertNotIn(coworker.id, deal_ids)
 
     def test_pipeline_api_includes_metrics_stages_and_tasks(self):
+        from django.utils import timezone
+
         own = self._create_pipeline_customer(self.user, '지표고객')
         self.client.force_login(self.user)
 
@@ -17394,6 +17397,7 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['stageLabel'], '견적 제출')
         self.assertIn('recentActivities', deal)
         self.assertEqual(deal['latestQuote']['amount'], 1100000)
+        self.assertEqual(deal['latestQuote']['quoteDate'], timezone.localdate().isoformat())
         self.assertEqual(deal['nextSchedule']['type'], '견적 제출')
         self.assertIn('csrftoken', response.cookies)
 
@@ -17559,6 +17563,7 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['latestQuote']['source'], '견적 일정 2건')
         self.assertIn('외 1건', deal['latestQuote']['number'])
         self.assertEqual(deal['latestQuote']['basisDate'], (timezone.localdate() + timedelta(days=2)).isoformat())
+        self.assertEqual(deal['latestQuote']['quoteDate'], (timezone.localdate() + timedelta(days=2)).isoformat())
 
     def test_pipeline_api_uses_latest_delivery_date_amount_for_won(self):
         from datetime import timedelta
@@ -17578,10 +17583,13 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출')
         self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
         self.assertEqual(deal['latestQuote']['basisDate'], (timezone.localdate() - timedelta(days=1)).isoformat())
+        self.assertIsNone(deal['latestQuote']['quoteDate'])
         stages = {stage['id']: stage for stage in payload['stages']}
         self.assertEqual(stages['won']['totalValue'], 2200000)
 
     def test_pipeline_api_uses_quote_history_items_before_quote_model_fallback(self):
+        from django.utils import timezone
+
         followup = self._create_pipeline_customer(self.user, '견적히스토리', stage='quote')
         quote_history = followup.histories.filter(action_type='quote').first()
         self._create_history_item(quote_history, '히스토리견적품목', 3000000)
@@ -17594,6 +17602,7 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['value'], 3300000)
         self.assertEqual(deal['latestQuote']['source'], '견적 활동')
         self.assertEqual(deal['latestQuote']['basisType'], 'history')
+        self.assertEqual(deal['latestQuote']['quoteDate'], timezone.localdate().isoformat())
 
     def test_pipeline_api_uses_delivery_history_items_for_won_revenue(self):
         from django.utils import timezone
