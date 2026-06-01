@@ -9824,6 +9824,77 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['href'], f'/schedules/{schedule.id}/')
 
+    def test_schedules_create_api_requires_quote_probability(self):
+        import json
+
+        followup = self._create_customer(self.user, '견적확률필수')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'quote',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'expectedRevenue': '1200000',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('견적 성공 확률은 필수입니다.', response.json()['error'])
+
+    def test_schedules_create_api_meeting_probability_is_optional_null(self):
+        import json
+        from reporting.models import Schedule
+
+        followup = self._create_customer(self.user, '미팅확률선택')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'customer_meeting',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'notes': '미팅 확률 미입력',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        schedule = Schedule.objects.get(pk=payload['scheduleId'])
+        self.assertIsNone(schedule.probability)
+        self.assertIsNone(payload['schedule']['probability'])
+
+    def test_schedules_create_api_meeting_probability_is_normalized(self):
+        import json
+        from reporting.models import Schedule
+
+        followup = self._create_customer(self.user, '미팅확률보정')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'customer_meeting',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'probability': '62',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        schedule = Schedule.objects.get(pk=payload['scheduleId'])
+        self.assertEqual(schedule.probability, 60)
+        self.assertEqual(payload['schedule']['probability'], 60)
+
     def test_schedules_create_api_salesman_creates_department_only_schedule(self):
         import json
         from reporting.models import Schedule
@@ -9851,6 +9922,8 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIsNone(schedule.followup_id)
         self.assertEqual(schedule.department_id, department.id)
         self.assertEqual(schedule.location, '부서 방문')
+        self.assertIsNone(schedule.probability)
+        self.assertIsNone(payload['schedule']['probability'])
         self.assertEqual(payload['schedule']['customer'], '담당자 미등록')
         self.assertEqual(payload['schedule']['departmentId'], department.id)
         self.assertEqual(payload['schedule']['customerHref'], f'/accounts/{department.id}/')
@@ -10463,6 +10536,28 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertTrue(schedule.purchase_confirmed)
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['message'], '일정을 수정했습니다.')
+
+    def test_schedules_update_api_requires_quote_probability(self):
+        import json
+
+        schedule = self._create_schedule(self.user, '견적수정확률필수', activity_type='quote')
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'quote',
+                'status': 'scheduled',
+                'visitDate': '2026-05-11',
+                'visitTime': '15:45',
+                'expectedRevenue': '2500000',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('견적 성공 확률은 필수입니다.', response.json()['error'])
 
     def test_prepayment_api_list_includes_same_department_and_existing_usage(self):
         from django.utils import timezone

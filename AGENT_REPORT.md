@@ -1,5 +1,77 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 견적 필수/미팅 선택 확률 규칙
+
+### 요약
+
+- 견적 일정은 성공 확률을 반드시 사람이 입력해야 저장되도록 했습니다.
+- 미팅 일정도 5% 단위 입력/저장 보정을 적용하되, 입력하지 않으면 `NULL`로 남도록 했습니다.
+- 일정 API 응답에서 미입력 확률을 `0`으로 바꾸지 않고 `null`로 내려주도록 수정했습니다.
+- 기존 미팅 일정의 non-5% 확률을 다시 5% 단위로 맞추는 데이터 마이그레이션을 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/views.py`
+- `reporting/templates/reporting/schedule_form.html`
+- `reporting/tests.py`
+- `reporting/migrations/0117_normalize_meeting_probability_to_five_percent.py`
+
+### CRM 개선
+
+- 견적 확률이 빠진 견적 일정이 새로 생기지 않습니다.
+- 미팅 확률은 필요할 때만 입력할 수 있고, 미입력 상태가 `0%`로 오해되지 않습니다.
+- 0%를 직접 입력한 경우에는 유효한 값으로 유지됩니다.
+
+### 기존 기능 보존
+
+- 스키마 변경 없이 데이터 마이그레이션만 추가했습니다.
+- 견적/미팅 외 일정 생성, 수정, 선결제, 납품, 서비스 흐름은 유지했습니다.
+- Django legacy 일정 폼도 같은 필수/선택 규칙을 적용하되 React CRM 방향은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\models.py reporting\views.py reporting\admin.py reporting\tests.py reporting\migrations\0117_normalize_meeting_probability_to_five_percent.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.SchedulesSummaryApiTests --keepdb
+→ OK, 71 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 `python manage.py check` 기본 설정 로딩 시 기존 `STATICFILES_STORAGE/STORAGES` 조합 문제로 막힐 수 있어, Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending. 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 배포와 migration `0117` 적용 확인, production smoke를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/?create=1`에서 일정 유형을 `견적`으로 선택하고 성공 확률을 비운 채 저장해 저장이 막히는지 확인합니다.
+2. 견적 성공 확률에 `62`를 입력하면 저장 후 `60%`로 보이는지 확인합니다.
+3. 일정 유형을 `고객 미팅`으로 선택하고 성공 확률을 비운 채 저장하면 상세 화면에서 `확률 미입력`으로 보이는지 확인합니다.
+4. 고객 미팅 성공 확률에 `63`을 입력하면 저장 후 `65%`로 보이는지 확인합니다.
+
 ## 2026-06-01 — 견적 확률 5% 단위 정규화
 
 ### 요약

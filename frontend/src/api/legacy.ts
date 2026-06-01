@@ -2049,7 +2049,7 @@ export type ScheduleItem = {
   priority: string;
   priorityLabel: string;
   expectedRevenue: number;
-  probability: number;
+  probability: number | null;
   expectedCloseDate: string | null;
   purchaseConfirmed?: boolean;
   overdue: boolean;

@@ -918,6 +918,10 @@ const makeEmptyScheduleCreateForm = (visitDate = localDateInputValue()): Schedul
   visitTime: '09:00',
 });
 
+const probabilityInputValueFromSchedule = (probability: number | null | undefined) => (
+  probability === null || probability === undefined ? '' : String(probability)
+);
+
 const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEditFormState => ({
   activityType: schedule?.activityType || 'customer_meeting',
   departmentId: schedule?.departmentId ? String(schedule.departmentId) : '',
@@ -926,7 +930,7 @@ const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEdit
   followupId: schedule?.followupId ? String(schedule.followupId) : '',
   location: schedule?.location || '',
   notes: schedule?.notesFull || schedule?.notes || '',
-  probability: schedule?.probability ? String(schedule.probability) : '',
+  probability: probabilityInputValueFromSchedule(schedule?.probability),
   purchaseConfirmed: Boolean(schedule?.purchaseConfirmed),
   status: schedule?.status || 'scheduled',
   usePrepayment: Boolean(schedule?.usePrepayment),
@@ -971,6 +975,8 @@ const normalizeProbabilityInputValue = (value: string) => {
   return String(normalized);
 };
 
+const isQuoteProbabilityRequired = (activityType: string) => activityType === 'quote';
+
 const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?: ScheduleCreatePayload; error?: string } => {
   const followupId = Number(form.followupId);
   const departmentId = Number(form.departmentId);
@@ -986,6 +992,10 @@ const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?:
   if (!form.visitTime) {
     return { error: '일정 시간을 선택하세요.' };
   }
+  const probability = normalizeProbabilityInputValue(form.probability);
+  if (isQuoteProbabilityRequired(form.activityType) && !probability) {
+    return { error: '견적 성공 확률은 필수입니다.' };
+  }
 
   return {
     payload: {
@@ -995,7 +1005,7 @@ const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?:
       followupId: followupId || undefined,
       location: form.location.trim() || undefined,
       notes: form.notes.trim() || undefined,
-      probability: normalizeProbabilityInputValue(form.probability) || undefined,
+      probability: probability || undefined,
       visitDate: form.visitDate,
       visitTime: form.visitTime,
     },
@@ -1040,6 +1050,10 @@ const scheduleEditFormToPayload = (form: ScheduleEditFormState): { payload?: Sch
   if (!form.visitTime) {
     return { error: '일정 시간을 선택하세요.' };
   }
+  const probability = normalizeProbabilityInputValue(form.probability);
+  if (isQuoteProbabilityRequired(form.activityType) && !probability) {
+    return { error: '견적 성공 확률은 필수입니다.' };
+  }
 
   return {
     payload: {
@@ -1049,7 +1063,7 @@ const scheduleEditFormToPayload = (form: ScheduleEditFormState): { payload?: Sch
       followupId,
       location: form.location.trim() || undefined,
       notes: form.notes.trim() || undefined,
-      probability: normalizeProbabilityInputValue(form.probability) || undefined,
+      probability: probability || undefined,
       purchaseConfirmed: form.purchaseConfirmed,
       status: form.status,
       visitDate: form.visitDate,
@@ -9919,6 +9933,7 @@ function ScheduleCalendarPage({
                         max="100"
                         min="0"
                         step="5"
+                        required={isQuoteProbabilityRequired(calendarCreateForm.activityType)}
                         onBlur={(event) => handleCalendarCreateFieldChange('probability', normalizeProbabilityInputValue(event.target.value))}
                         onChange={(event) => handleCalendarCreateFieldChange('probability', event.target.value)}
                         placeholder="0-100, 5% 단위"
@@ -10117,6 +10132,7 @@ function ScheduleCalendarPage({
                         max="100"
                         min="0"
                         step="5"
+                        required={isQuoteProbabilityRequired(calendarEditForm.activityType)}
                         onBlur={(event) => handleCalendarEditFieldChange('probability', normalizeProbabilityInputValue(event.target.value))}
                         onChange={(event) => handleCalendarEditFieldChange('probability', event.target.value)}
                         type="number"
@@ -11251,6 +11267,11 @@ function ScheduleDetailPage({
       setEditError('일정 시간을 선택하세요.');
       return;
     }
+    const probability = normalizeProbabilityInputValue(editForm.probability);
+    if (isQuoteProbabilityRequired(editForm.activityType) && !probability) {
+      setEditError('견적 성공 확률은 필수입니다.');
+      return;
+    }
 
     const prepaymentSelections = prepaymentRows.filter((row) => row.selected);
     const usePrepayment = editForm.activityType === 'delivery' && editForm.usePrepayment;
@@ -11287,7 +11308,7 @@ function ScheduleDetailPage({
       followupId,
       location: editForm.location.trim() || undefined,
       notes: editForm.notes.trim() || undefined,
-      probability: normalizeProbabilityInputValue(editForm.probability) || undefined,
+      probability: probability || undefined,
       prepayments: usePrepayment
         ? prepaymentSelections.map((row) => ({ id: row.id, amount: row.amountInput.trim() }))
         : [],
@@ -11946,7 +11967,7 @@ function ScheduleDetailPage({
   const metrics = [
     { label: '일정 상태', value: schedule.statusLabel, detail: schedule.activityLabel, icon: CalendarDays, tone: schedule.overdue ? 'red' as const : 'blue' as const },
     { label: '방문 일시', value: schedule.date ? formatDateLabel(schedule.date) : '날짜 없음', detail: schedule.time || '시간 없음', icon: Clock, tone: 'green' as const },
-    { label: '예상 매출', value: schedule.expectedRevenue > 0 ? formatWon(schedule.expectedRevenue) : '없음', detail: schedule.probability ? `${schedule.probability}%` : '확률 미입력', icon: CircleDollarSign, tone: 'amber' as const },
+    { label: '예상 매출', value: schedule.expectedRevenue > 0 ? formatWon(schedule.expectedRevenue) : '없음', detail: schedule.probability === null || schedule.probability === undefined ? '확률 미입력' : `${schedule.probability}%`, icon: CircleDollarSign, tone: 'amber' as const },
     { label: '보고/파일', value: `${formatNumber(schedule.historyCount)} / ${formatNumber(schedule.fileCount)}`, detail: '보고 / 첨부', icon: MessageSquareText, tone: 'teal' as const },
   ];
   const scheduleNoteActionOptions = schedule.activityType === 'service'
@@ -12220,6 +12241,7 @@ function ScheduleDetailPage({
                     max="100"
                     min="0"
                     step="5"
+                    required={isQuoteProbabilityRequired(editForm.activityType)}
                     onBlur={(event) => handleEditFieldChange('probability', normalizeProbabilityInputValue(event.target.value))}
                     onChange={(event) => handleEditFieldChange('probability', event.target.value)}
                     type="number"
@@ -13113,6 +13135,7 @@ function SchedulesPage({
                     max="100"
                     min="0"
                     step="5"
+                    required={isQuoteProbabilityRequired(createForm.activityType)}
                     onBlur={(event) => onCreateFormChange('probability', normalizeProbabilityInputValue(event.target.value))}
                     onChange={(event) => onCreateFormChange('probability', event.target.value)}
                     placeholder="0-100, 5% 단위"
@@ -22947,6 +22970,11 @@ export function App() {
       setScheduleCreateError('일정 시간을 선택하세요.');
       return;
     }
+    const probability = normalizeProbabilityInputValue(scheduleCreateForm.probability);
+    if (isQuoteProbabilityRequired(scheduleCreateForm.activityType) && !probability) {
+      setScheduleCreateError('견적 성공 확률은 필수입니다.');
+      return;
+    }
 
     const payload: ScheduleCreatePayload = {
       activityType: scheduleCreateForm.activityType,
@@ -22955,7 +22983,7 @@ export function App() {
       followupId: followupId || undefined,
       location: scheduleCreateForm.location.trim() || undefined,
       notes: scheduleCreateForm.notes.trim() || undefined,
-      probability: normalizeProbabilityInputValue(scheduleCreateForm.probability) || undefined,
+      probability: probability || undefined,
       visitDate: scheduleCreateForm.visitDate,
       visitTime: scheduleCreateForm.visitTime,
     };

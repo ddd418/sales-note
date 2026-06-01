@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Quote required and meeting optional probability plan
+
+**Background**:
+
+- User clarified quote probability must be manually entered and required.
+- Meeting probability should also use 5% increments, but it is optional.
+- If meeting probability is not entered, it must remain `null`, not `0`.
+- Existing meeting probability values should be aligned to 5% increments.
+
+**DB change required**: Yes, data migration only.
+
+- No schema change is needed.
+- A data migration will normalize existing `Schedule(activity_type='customer_meeting')` probability values to the nearest 5% while preserving `NULL`.
+
+**Implementation scope**:
+
+- Keep model-level probability normalization on save.
+- Fix optional probability parsing so explicit `0` remains valid.
+- Require probability only when a schedule is a quote.
+- Preserve `NULL` probability in schedule API payloads instead of converting missing values to `0`.
+- Update React schedule create/edit forms so quote probability is required and meeting probability is optional.
+- Add focused API tests for required quote probability and optional meeting probability `NULL`.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\models.py reporting\views.py reporting\admin.py reporting\tests.py reporting\migrations\0117_normalize_meeting_probability_to_five_percent.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.SchedulesSummaryApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, confirm migration `0117`, then run production smoke.
+
 ## 2026-06-01 Quote probability 5 percent step plan
 
 **Background**:

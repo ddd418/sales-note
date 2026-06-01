@@ -825,6 +825,11 @@ small.text-muted {
                   <small class="form-text text-muted">활동 유형을 선택하세요</small>
                 </div>
 
+                <div class="mb-3" id="probability-field-wrapper">
+                  {{ form.probability.label_tag }} {{ form.probability }}
+                  <small class="form-text text-muted" id="probability-help">견적은 필수, 미팅은 선택입니다.</small>
+                </div>
+
                 <!-- status 필드 -->
                 <div class="mb-3">
                   {{ form.status.label_tag }} {{ form.status }}
@@ -2515,6 +2520,24 @@ window.toggleSections = function() {
     }
     
     const selectedValue = activityTypeField.value;
+    const probabilityField = document.querySelector('[name="probability"]');
+    const probabilityHelp = document.getElementById('probability-help');
+    if (probabilityField) {
+        probabilityField.setAttribute('min', '0');
+        probabilityField.setAttribute('max', '100');
+        probabilityField.setAttribute('step', '5');
+        if (selectedValue === 'quote') {
+            probabilityField.setAttribute('required', 'required');
+            if (probabilityHelp) {
+                probabilityHelp.textContent = '견적 성공 확률은 필수입니다. 0부터 100 사이, 5% 단위로 입력하세요.';
+            }
+        } else {
+            probabilityField.removeAttribute('required');
+            if (probabilityHelp) {
+                probabilityHelp.textContent = '미팅 성공 확률은 선택입니다. 비워두면 미입력으로 저장됩니다.';
+            }
+        }
+    }
     
     // 품목 섹션: 견적 또는 납품일 때만 표시
     const deliverySection = document.getElementById('delivery-section');

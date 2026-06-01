@@ -585,7 +585,7 @@ class ScheduleForm(forms.ModelForm):
     class Meta:
         model = Schedule
         fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes',
-                  'use_prepayment', 'prepayment', 'prepayment_amount', 'vat_mode']
+                  'probability', 'use_prepayment', 'prepayment', 'prepayment_amount', 'vat_mode']
         widgets = {
             'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
@@ -593,6 +593,7 @@ class ScheduleForm(forms.ModelForm):
             'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
             # status는 위에서 명시적으로 선언했으므로 여기서 제거
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
+            'probability': forms.NumberInput(attrs={'class': 'form-control', 'min': '0', 'max': '100', 'step': '5', 'placeholder': '0-100, 5% 단위'}),
             'use_prepayment': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'id_use_prepayment'}),
             'prepayment_amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '차감할 금액 (원)', 'min': '0', 'id': 'id_prepayment_amount'}),
         }
@@ -603,6 +604,7 @@ class ScheduleForm(forms.ModelForm):
             'location': '장소',
             'status': '상태',
             'notes': '메모',
+            'probability': '성공 확률 (%)',
             'use_prepayment': '선결제 사용',
             'prepayment_amount': '선결제 차감 금액 (원)',
         }
@@ -692,6 +694,16 @@ class ScheduleForm(forms.ModelForm):
                 ('scheduled', '예정됨'),
                 ('cancelled', '취소됨'),
             ]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        activity_type = cleaned_data.get('activity_type')
+        probability = cleaned_data.get('probability')
+        if activity_type == 'quote' and probability is None:
+            self.add_error('probability', '견적 성공 확률은 필수입니다.')
+        if probability is not None:
+            cleaned_data['probability'] = normalize_probability_to_five(probability)
+        return cleaned_data
     
 # 히스토리 폼 클래스
 class HistoryForm(forms.ModelForm):
@@ -10562,7 +10574,7 @@ def _schedules_schedule_payload(schedule, today, can_edit=None):
         'priority': followup.priority if followup else '',
         'priorityLabel': followup.get_priority_display() if followup else '부서 일정',
         'expectedRevenue': _money_int(schedule.expected_revenue),
-        'probability': schedule.probability or 0,
+        'probability': schedule.probability if schedule.probability is not None else None,
         'expectedCloseDate': _date_or_none(schedule.expected_close_date),
         'purchaseConfirmed': bool(schedule.purchase_confirmed),
         'overdue': bool(schedule.status == 'scheduled' and schedule.visit_date < today),
@@ -10614,7 +10626,7 @@ def _schedules_personal_payload(personal_schedule, today, can_edit=False):
         'priority': '',
         'priorityLabel': '',
         'expectedRevenue': 0,
-        'probability': 0,
+        'probability': None,
         'expectedCloseDate': None,
         'purchaseConfirmed': False,
         'overdue': False,
@@ -10835,7 +10847,9 @@ def _parse_optional_decimal(value):
 
 
 def _parse_optional_probability(value):
-    value = str(value or '').strip()
+    if value is None:
+        return None
+    value = str(value).strip()
     if not value:
         return None
     try:
@@ -10845,6 +10859,13 @@ def _parse_optional_probability(value):
     if probability < 0 or probability > 100:
         raise ValueError('성공 확률은 0부터 100 사이의 숫자입니다.')
     return normalize_probability_to_five(probability)
+
+
+def _parse_schedule_probability(activity_type, value):
+    probability = _parse_optional_probability(value)
+    if activity_type == 'quote' and probability is None:
+        raise ValueError('견적 성공 확률은 필수입니다.')
+    return probability
 
 
 def _ai_json_dict(value):
@@ -11622,7 +11643,7 @@ def schedules_create_api(request):
     notes = str(payload.get('notes') or '').strip()
     expected_revenue = _parse_optional_decimal(payload.get('expectedRevenue'))
     try:
-        probability = _parse_optional_probability(payload.get('probability'))
+        probability = _parse_schedule_probability(activity_type, payload.get('probability'))
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -13796,7 +13817,7 @@ def schedules_update_api(request, schedule_id):
         return JsonResponse({'success': False, 'error': '방문 시간을 선택하세요.'}, status=400)
 
     try:
-        probability = _parse_optional_probability(payload.get('probability'))
+        probability = _parse_schedule_probability(activity_type, payload.get('probability'))
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -20714,7 +20735,7 @@ def _schedule_ai_coach_context(schedule, actor):
             'location': schedule.location or '',
             'notes': _ai_workspace_question_text(schedule.notes, 900),
             'expectedRevenue': _money_int(schedule.expected_revenue),
-            'probability': schedule.probability or 0,
+            'probability': schedule.probability if schedule.probability is not None else None,
             'expectedCloseDate': _date_or_none(schedule.expected_close_date),
             'purchaseConfirmed': bool(schedule.purchase_confirmed),
             'vatMode': schedule.vat_mode,
@@ -23447,7 +23468,7 @@ def schedule_api_view(request):
                 'priority': schedule.followup.priority,  # 고객 우선순위 추가
                 # 펀넬 관련 필드 추가
                 'expected_revenue': float(schedule.expected_revenue) if schedule.expected_revenue else 0,
-                'probability': schedule.probability if schedule.probability is not None else 0,
+                'probability': schedule.probability if schedule.probability is not None else None,
                 'expected_close_date': schedule.expected_close_date.strftime('%Y-%m-%d') if schedule.expected_close_date else '',
             }
             
