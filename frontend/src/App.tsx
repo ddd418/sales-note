@@ -359,7 +359,6 @@ type NoteCreateFormState = {
 type NoteEditFormState = NoteCreateFormState & {
   deliveryAmount: string;
   deliveryItems: string;
-  serviceStatus: string;
 };
 
 type ScheduleCreateFormState = {
@@ -868,7 +867,6 @@ const makeNoteEditForm = (note: NoteDetailItem | null): NoteEditFormState => ({
   nextAction: note?.nextAction || '',
   nextActionDate: note?.nextActionDate || '',
   scheduleId: note?.scheduleId ? String(note.scheduleId) : '',
-  serviceStatus: note?.serviceStatus || 'received',
 });
 
 const scheduleActivityToNoteActionType = (activityType: string) => {
@@ -7877,11 +7875,6 @@ function NoteDetailPage({
       setEditError('활동 내용을 입력하세요.');
       return;
     }
-    if (editForm.actionType === 'service' && !editForm.serviceStatus) {
-      setEditError('상태를 선택하세요.');
-      return;
-    }
-
     const payload: NoteEditPayload = {
       actionType: editForm.actionType,
       activityDate: activityDateVisible ? editForm.activityDate || undefined : undefined,
@@ -7892,7 +7885,6 @@ function NoteDetailPage({
       followupId: followupId || undefined,
       nextAction: editForm.nextAction.trim() || undefined,
       nextActionDate: editForm.nextActionDate || undefined,
-      serviceStatus: editForm.actionType === 'service' ? editForm.serviceStatus : undefined,
     };
 
     setEditSaving(true);
@@ -8244,20 +8236,6 @@ function NoteDetailPage({
                     value={editForm.nextActionDate}
                   />
                 </label>
-                {editForm.actionType === 'service' ? (
-                  <label>
-                    <span>상태</span>
-                    <select
-                      onChange={(event) => handleEditFieldChange('serviceStatus', event.target.value)}
-                      required
-                      value={editForm.serviceStatus}
-                    >
-                      {data.edit.serviceStatuses.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
                 {editForm.actionType === 'delivery_schedule' ? (
                   <label>
                     <span>납품 금액</span>

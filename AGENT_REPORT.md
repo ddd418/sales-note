@@ -1,5 +1,75 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 영업노트 수정 폼 상태 필드 제거
+
+### 요약
+
+- `/notes/:id/` 영업노트 수정 폼에서 서비스 타입일 때 뜨던 `상태` 필드를 제거했습니다.
+- React 수정 payload에서도 `serviceStatus`를 보내지 않도록 정리했습니다.
+- Django `notes_update_api`는 `serviceStatus`를 더 이상 필수로 요구하지 않으며, 기존 클라이언트가 값을 보내는 경우에만 유효성을 확인합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 서비스/메모 성격의 영업노트를 수정할 때 불필요한 상태 선택이 보이지 않습니다.
+- 상태 선택 없이도 서비스 타입 영업노트를 저장할 수 있습니다.
+- 숨겨진 상태값이 계속 남지 않도록 React 저장 시 서비스 상태를 비웁니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 API 클라이언트가 유효한 `serviceStatus`를 보내는 경우는 계속 받을 수 있습니다.
+- 영업노트의 활동 유형, 활동 내용, 다음 액션, 날짜, 첨부/댓글 흐름은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.NotesSummaryApiTests --keepdb
+→ OK, 35 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 기존에 이미 저장된 `service_status`는 React에서 해당 노트를 다시 저장하면 비워집니다. 저장 전 상세/목록에 남아 보이는 기존 상태값이 있다면 데이터 정리 작업으로 별도 일괄 제거할 수 있습니다.
+
+### Production 배포 상태
+
+- Pending. 코드 검증 완료 후 배포 예정입니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/815/`에 접속합니다.
+2. `수정`을 누릅니다.
+3. 수정 폼에 `상태` 필드가 보이지 않는지 확인합니다.
+4. 활동 내용 또는 다음 액션을 수정하고 저장합니다.
+5. 상태 선택 오류 없이 저장되는지 확인합니다.
+
 ## 2026-06-01 — 고객 검색에 담당자 없는 부서 계정 포함
 
 ### 요약

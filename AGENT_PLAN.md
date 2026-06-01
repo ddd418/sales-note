@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Remove note edit service status plan
+
+**Background**:
+
+- User reported that `/notes/815/` edit mode shows a `상태` field, which should not exist in the sales note edit flow.
+- The React note edit form still renders service note status and the update API requires it for `service` action notes.
+
+**DB change required**: No.
+
+- Existing `History.service_status` can remain for legacy/backward compatibility.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Remove service status from the React sales note edit form state, validation, and update payload.
+- Keep note update API backward compatible with optional `serviceStatus`, but do not require it.
+- Clear service status when React saves without that field, so the hidden value does not keep driving note status labels.
+- Add a regression test that service note edit works without a status payload.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.NotesSummaryApiTests --keepdb`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then run production smoke.
+
 ## 2026-06-01 Empty department customer search plan
 
 **Background**:

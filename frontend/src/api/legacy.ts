@@ -1974,7 +1974,6 @@ export type NoteEditPayload = {
   followupId?: number;
   nextAction?: string;
   nextActionDate?: string;
-  serviceStatus?: string;
 };
 
 export type NoteEditResponse = NoteDetailData & {

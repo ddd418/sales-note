@@ -10100,7 +10100,7 @@ def notes_update_api(request, history_id):
     next_action_date = _parse_iso_date_or_none(payload.get('nextActionDate'))
     service_status = str(payload.get('serviceStatus') or '').strip()
     valid_service_statuses = {value for value, _label in History.SERVICE_STATUS_CHOICES}
-    if action_type == 'service' and service_status not in valid_service_statuses:
+    if service_status and service_status not in valid_service_statuses:
         return JsonResponse({'success': False, 'error': '상태를 선택하세요.'}, status=400)
 
     history.followup = followup
@@ -10122,7 +10122,7 @@ def notes_update_api(request, history_id):
     history.content = content
     history.next_action = str(payload.get('nextAction') or '').strip()
     history.next_action_date = next_action_date
-    history.service_status = service_status if action_type == 'service' else None
+    history.service_status = service_status if action_type == 'service' and service_status else None
 
     if action_type == 'customer_meeting':
         history.meeting_date = activity_date

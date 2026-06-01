@@ -8112,6 +8112,32 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(payload['note']['customer'], '담당자 미등록')
         self.assertEqual(payload['note']['departmentId'], department.id)
 
+    def test_notes_update_api_updates_service_note_without_status(self):
+        target = self._create_note(self.user, '서비스수정대상', action_type='service', content='서비스 전')
+        target.service_status = 'received'
+        target.save(update_fields=['service_status'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:notes_update_api', args=[target.id]),
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'service',
+                'content': '상태 없이 서비스 노트 수정',
+                'nextAction': '처리 내용 확인',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        target.refresh_from_db()
+        self.assertEqual(target.action_type, 'service')
+        self.assertEqual(target.content, '상태 없이 서비스 노트 수정')
+        self.assertIsNone(target.service_status)
+        self.assertEqual(payload['note']['serviceStatus'], '')
+
     def test_notes_update_api_blocks_manager_and_other_company_customer(self):
         target = self._create_note(self.user, '수정차단', action_type='quote', content='견적 전')
         other_target = self._create_note(self.other_user, '타사고객', action_type='quote', content='타사')
