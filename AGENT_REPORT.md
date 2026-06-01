@@ -63,7 +63,12 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 배포와 production smoke를 진행합니다.
+- Completed. Commit `8ee7f53` deployed successfully.
+- Railway `web` deployment `bc427690-bd6c-4171-a1fc-822b940ec1b1` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `a5a6acc9-2c99-4cdb-a993-d1a52286edfe` reached `SUCCESS`.
+- Web deployment logs confirmed `Applying reporting.0116_normalize_probability_to_five_percent... OK`.
+- Production smoke passed for backend health/ready, frontend React routes, protected APIs, static cache headers, and removed `/data-cleanup/` and `/downloads/` routes.
+- Direct frontend checks passed for `/schedules/` and `/pipeline/`.
 
 ### 수동 서버 테스트 절차
 
