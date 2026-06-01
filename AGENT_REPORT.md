@@ -60,7 +60,12 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. 코드 검증 완료 후 배포 예정입니다.
+- Completed. Commit `8f9e1e1` deployed successfully.
+- Railway `web` deployment `dcfa2e6d-1e74-42a3-a1c4-d8bdffeb5b6e` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `a4519b74-0f79-46a9-ab73-01fa78afe150` reached `SUCCESS`.
+- Production smoke passed for backend health/ready, frontend React routes, protected APIs, static cache headers, and removed `/data-cleanup/` and `/downloads/` routes.
+- Direct frontend check passed for `/notes/815/` with `200 text/html`.
+- Direct protected API check for `/reporting/api/notes/815/` returned `401` without auth, as expected.
 
 ### 수동 서버 테스트 절차
 
