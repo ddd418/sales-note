@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Customer priority UI removal plan
+
+**Background**:
+
+- User reported that the customer menu shows `Priority / 우선 계정`, but the business has no reliable criteria for that priority concept.
+- The customer screen currently exposes a priority filter, a priority badge in status rows, and a `Priority / 우선 계정` side panel.
+- Account/contact edit forms also show customer priority even though users should not manage that field from the customer menu.
+
+**DB change required**: No.
+
+- Keep the existing `FollowUp.priority` field and API payload compatibility for legacy data and backend defaults.
+- This task only removes customer-facing React UI controls/display for customer priority.
+
+**Implementation scope**:
+
+- Remove the customer list priority filter and stop syncing `priority` into `/customers/` URL/query API calls.
+- Remove the `Priority / 우선 계정` side panel from the customer page.
+- Remove visible customer priority badges from customer list/detail status rows.
+- Hide customer priority selectors from account contact add/edit and customer edit forms while preserving backend payload defaults.
+- Keep service/asset priority controls untouched because those are separate operational workflows.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check`
+- `DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Deploy `sales-note-frontend` to Railway and run production smoke for `/customers/`.
+
 ## 2026-06-01 Android APK wrapper plan
 
 **Background**:

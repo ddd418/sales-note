@@ -1265,7 +1265,7 @@ h2 {
 
 .customers-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -2416,13 +2416,8 @@ h2 {
   text-decoration: none;
 }
 
-.customer-priority.urgent,
 .customer-overdue-text {
   color: #991b1b;
-}
-
-.customer-priority.followup {
-  color: #92400e;
 }
 
 .customer-row-action {
@@ -2483,76 +2478,6 @@ h2 {
 
 .customer-count-grid strong {
   color: var(--text);
-}
-
-.customers-priority-list {
-  display: grid;
-  gap: 8px;
-}
-
-.customers-priority-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel-soft);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.customers-priority-row.overdue {
-  border-color: #fecaca;
-  background: #fff7f7;
-}
-
-.customers-priority-row:hover {
-  border-color: var(--primary);
-  color: var(--text);
-}
-
-.customers-priority-row > div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.customers-priority-row span,
-.customers-priority-row small {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.customers-priority-row strong:not(.customer-score),
-.customers-priority-row span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.customer-score {
-  color: var(--primary-strong);
-  font-size: 18px;
-}
-
-.customer-priority-meta {
-  display: grid;
-  justify-items: end;
-  gap: 3px;
-  flex: 0 0 auto;
-}
-
-.customer-priority-meta span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.customer-priority-warning {
-  color: #991b1b !important;
 }
 
 .customers-side-actions {

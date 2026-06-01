@@ -1,5 +1,69 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 고객 메뉴 Priority/우선 계정 제거
+
+### 요약
+
+- `/customers/` React 고객 메뉴에서 `Priority / 우선 계정` 패널을 제거했습니다.
+- 고객 목록 필터의 `우선순위 전체` 셀렉트를 제거하고, 고객 API 호출/URL 동기화에서도 `priority` 필터를 더 이상 사용하지 않도록 했습니다.
+- 고객 목록/상세의 상태 배지에서 고객 priority 표시를 제거했습니다.
+- 계정 상세의 담당자 추가/수정 폼과 고객 정보 수정 폼에서도 고객 priority 선택 UI를 숨겼습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 기준이 불명확한 고객 priority 정보가 고객 메뉴에서 사라져, 계정/담당자/파이프라인/후속조치 중심으로 화면을 볼 수 있습니다.
+- 고객 목록 폭이 넓어져 테이블을 더 편하게 확인할 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- 기존 `FollowUp.priority`와 API payload는 호환성/기본값 용도로 유지했습니다.
+- 서비스/장비의 우선순위 필터와 입력은 별도 운영 흐름이라 그대로 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; npm run build
+→ OK; existing App chunk size warning only
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py check
+→ System check identified no issues
+
+$env:DJANGO_SETTINGS_MODULE='sales_project.settings_production'; $env:SECRET_KEY='test-secret-key'; python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+Local browser preview: http://127.0.0.1:4173/customers/
+→ `Priority`, `우선 계정`, `우선순위 전체` absent from customer page text
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 고객 priority 데이터 자체는 아직 DB/API에 남아 있습니다. 이번 작업은 사용자 화면에서 제거하는 범위입니다.
+
+### Production 배포 상태
+
+- Pending. Commit and Railway frontend deployment will follow this report update.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/customers/`에 접속합니다.
+2. 필터 영역에 `우선순위 전체` 셀렉트가 없는지 확인합니다.
+3. 고객 목록 옆/아래에 `Priority / 우선 계정` 패널이 없는지 확인합니다.
+4. 고객 또는 계정 상세에서 상태 배지와 수정 폼에 고객 우선순위 선택이 보이지 않는지 확인합니다.
+
 ## 2026-06-01 — Android APK 래퍼 생성
 
 ### 요약

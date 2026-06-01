@@ -3094,42 +3094,8 @@ function DashboardTeamActivity({ data }: { data: DashboardData['teamActivity'] }
 function CustomerStatusBadge({ customer }: { customer: CustomerItem }) {
   return (
     <div className="customer-badge-row">
-      <span className={`customer-priority ${customer.priority}`}>{customer.priorityLabel}</span>
       <span>{customer.pipelineLabel}</span>
       {customer.grade ? <span>{customer.grade}</span> : null}
-    </div>
-  );
-}
-
-function CustomersPriorityList({ customers }: { customers: CustomerItem[] }) {
-  if (customers.length === 0) {
-    return <DashboardEmpty label="우선 계정이 없습니다" />;
-  }
-
-  return (
-    <div className="customers-priority-list">
-      {customers.map((customer) => (
-        <a className={`customers-priority-row ${customer.overdue ? 'overdue' : ''}`} href={customer.href} key={`${customer.accountType || 'customer'}-${customer.id}`}>
-          <div>
-            <strong>{customer.company || customer.customer}</strong>
-            <span>{[
-              customer.department || customer.customer,
-              customer.contactCount ? `담당자 ${formatNumber(customer.contactCount)}명` : '',
-              customer.owner,
-            ].filter(Boolean).join(' · ')}</span>
-            {customer.nextAction ? <small>{customer.nextAction}</small> : null}
-            {customer.upcomingSchedule ? (
-              <small>
-                {formatDateLabel(customer.upcomingSchedule.date)} {customer.upcomingSchedule.time} · {customer.upcomingSchedule.activityLabel}
-              </small>
-            ) : null}
-          </div>
-          <div className="customer-priority-meta">
-            <strong className="customer-score">{Math.round(customer.score)}</strong>
-            <span>활동 {formatNumber(customer.activityCount)}</span>
-          </div>
-        </a>
-      ))}
     </div>
   );
 }
@@ -4743,18 +4709,6 @@ function CustomerDetailPage({
                 />
               </label>
               <label>
-                <span>우선순위</span>
-                <select
-                  onChange={(event) => handleAccountContactFieldChange('priority', event.target.value)}
-                  required
-                  value={accountContactForm.priority}
-                >
-                  {(accountManagement?.priorities ?? []).map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
                 <span>파이프라인</span>
                 <select
                   onChange={(event) => handleAccountContactFieldChange('pipelineStage', event.target.value)}
@@ -5306,18 +5260,6 @@ function CustomerDetailPage({
                   />
                 </label>
                 <label>
-                  <span>우선순위</span>
-                  <select
-                    onChange={(event) => handleEditFieldChange('priority', event.target.value)}
-                    required
-                    value={editForm.priority}
-                  >
-                    {data.edit.priorities.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
                   <span>상태</span>
                   <select
                     onChange={(event) => handleEditFieldChange('status', event.target.value)}
@@ -5563,7 +5505,6 @@ function CustomersPage({
   level,
   owner,
   page,
-  priority,
   query,
   rowMode,
   selectedCustomerId,
@@ -5592,7 +5533,6 @@ function CustomersPage({
   onLevelChange,
   onOwnerChange,
   onPageChange,
-  onPriorityChange,
   onQueryChange,
   onRowModeChange,
   onStageChange,
@@ -5621,7 +5561,6 @@ function CustomersPage({
   level: string;
   owner: string;
   page: number;
-  priority: string;
   query: string;
   rowMode: CustomerRowMode;
   selectedCustomerId: number | null;
@@ -5650,7 +5589,6 @@ function CustomersPage({
   onLevelChange: (value: string) => void;
   onOwnerChange: (value: string) => void;
   onPageChange: (value: number) => void;
-  onPriorityChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onRowModeChange: (value: CustomerRowMode) => void;
   onStageChange: (value: string) => void;
@@ -5680,7 +5618,6 @@ function CustomersPage({
   }
 
   const listRows = rowMode === 'contact' ? data.customers : (data.accounts.length > 0 ? data.accounts : data.customers);
-  const priorityRows = data.priorityAccounts.length > 0 ? data.priorityAccounts : data.priorityCustomers;
   const totalAccountCount = data.metrics.totalAccounts || data.metrics.totalCustomers;
   const filteredAccountCount = data.metrics.filteredAccounts || data.metrics.filteredCustomers;
   const rowModeLabel = rowMode === 'contact' ? '담당자 목록' : '계정 목록';
@@ -5698,7 +5635,6 @@ function CustomersPage({
   const createConfig = data.create;
   const canCreateCustomers = createConfig.canCreate;
   const createCompanies = createConfig.companies;
-  const createPriorities = createConfig.priorities.length > 0 ? createConfig.priorities : data.options.priorities;
   const createDepartments = createForm.companyId
     ? createConfig.departments.filter((department) => String(department.companyId) === createForm.companyId)
     : createConfig.departments;
@@ -5799,12 +5735,6 @@ function CustomersPage({
             <option key={option.id} value={option.id}>{option.name}</option>
           ))}
         </select>
-        <select onChange={(event) => onPriorityChange(event.target.value)} value={priority}>
-          <option value="">우선순위 전체</option>
-          {data.options.priorities.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
         <select onChange={(event) => onStageChange(event.target.value)} value={stage}>
           <option value="">파이프라인 전체</option>
           {data.options.stages.map((option) => (
@@ -5864,21 +5794,6 @@ function CustomersPage({
           </div>
         </section>
 
-        <aside className="dashboard-panel customers-side-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Priority</span>
-              <h2>우선 계정</h2>
-            </div>
-            <Bell size={18} />
-          </div>
-          <CustomersPriorityList customers={priorityRows} />
-          <div className="customers-side-actions">
-            <a href="/assets/">장비 디렉터리</a>
-            <a href="/pipeline/">파이프라인</a>
-            <a href="/notes/">영업노트</a>
-          </div>
-        </aside>
       </div>
     </section>
   );
@@ -21186,7 +21101,6 @@ export function App() {
   const [accountCleanupTarget, setAccountCleanupTarget] = useState(getAccountCleanupTargetParam);
   const [customerQuery, setCustomerQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
   const [customerOwner, setCustomerOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
-  const [customerPriority, setCustomerPriority] = useState(() => new URLSearchParams(window.location.search).get('priority') || '');
   const [customerStage, setCustomerStage] = useState(
     () => new URLSearchParams(window.location.search).get('stage') || new URLSearchParams(window.location.search).get('pipeline_stage') || '',
   );
@@ -21545,7 +21459,6 @@ export function App() {
     loadCustomersData({
       q: customerQuery,
       owner: customerOwner,
-      priority: customerPriority,
       stage: customerStage,
       company: customerCompany,
       grade: customerGrade,
@@ -21573,7 +21486,6 @@ export function App() {
     customerLevel,
     customerOwner,
     customerPage,
-    customerPriority,
     customerQuery,
     customerRowMode,
     customerStage,
@@ -21587,7 +21499,6 @@ export function App() {
     if (customerQuery.trim()) params.set('q', customerQuery.trim());
     if (customerCompany) params.set('company', customerCompany);
     if (customerOwner) params.set('owner', customerOwner);
-    if (customerPriority) params.set('priority', customerPriority);
     if (customerStage) params.set('stage', customerStage);
     if (customerGrade) params.set('grade', customerGrade);
     if (customerLevel) params.set('level', customerLevel);
@@ -21605,7 +21516,6 @@ export function App() {
     customerLevel,
     customerOwner,
     customerPage,
-    customerPriority,
     customerQuery,
     customerRowMode,
     customerStage,
@@ -22386,7 +22296,6 @@ export function App() {
     const data = await loadCustomersData({
       q: customerQuery,
       owner: customerOwner,
-      priority: customerPriority,
       stage: customerStage,
       company: customerCompany,
       grade: customerGrade,
@@ -22408,10 +22317,6 @@ export function App() {
   };
   const handleCustomerOwnerChange = (value: string) => {
     setCustomerOwner(value);
-    setCustomerPage(1);
-  };
-  const handleCustomerPriorityChange = (value: string) => {
-    setCustomerPriority(value);
     setCustomerPage(1);
   };
   const handleCustomerStageChange = (value: string) => {
@@ -23937,7 +23842,6 @@ export function App() {
           managementSavingKey={customerManagementSavingKey}
           owner={customerOwner}
           page={customerPage}
-          priority={customerPriority}
           query={customerQuery}
           rowMode={customerRowMode}
           selectedCustomerId={customerDetailId || accountDetailId}
@@ -23966,7 +23870,6 @@ export function App() {
           onLevelChange={handleCustomerLevelChange}
           onOwnerChange={handleCustomerOwnerChange}
           onPageChange={handleCustomerPageChange}
-          onPriorityChange={handleCustomerPriorityChange}
           onQueryChange={handleCustomerQueryChange}
           onRowModeChange={handleCustomerRowModeChange}
           onStageChange={handleCustomerStageChange}
