@@ -3787,9 +3787,9 @@ def _customers_department_search_text_map(departments, scope_users=None):
         followups = followups.filter(user__in=scope_users)
 
     search_map = {department_id: [] for department_id in department_ids}
-    for row in followups.values('department_id', 'customer_name', 'manager', 'email'):
+    for row in followups.values('department_id', 'customer_name', 'manager', 'email', 'phone_number'):
         bucket = search_map.setdefault(row['department_id'], [])
-        for term in [row.get('customer_name'), row.get('manager'), row.get('email')]:
+        for term in [row.get('customer_name'), row.get('manager'), row.get('email'), row.get('phone_number')]:
             value = str(term or '').strip()
             if value and value not in bucket:
                 bucket.append(value)
@@ -9523,9 +9523,14 @@ def _notes_create_action_types(request):
     ]
 
 
+def _department_target_scope_users(user):
+    user_profile = get_user_profile(user)
+    return get_same_company_users(user) if user_profile.can_view_all_users() else User.objects.filter(id=user.id)
+
+
 def _department_targets_queryset(user):
     user_profile = get_user_profile(user)
-    scope_users = get_same_company_users(user) if user_profile.can_view_all_users() else User.objects.filter(id=user.id)
+    scope_users = _department_target_scope_users(user)
     qs = Department.objects.select_related('company')
     if not user_profile.is_admin():
         qs = qs.filter(
@@ -9562,7 +9567,11 @@ def _department_has_own_contacts(user, department):
     return FollowUp.objects.filter(user=user, department=department).exists()
 
 
-def _department_create_target_payload(department):
+def _department_create_target_search_text_map(user, departments):
+    return _customers_department_search_text_map(departments, _department_target_scope_users(user))
+
+
+def _department_create_target_payload(department, search_text=''):
     company = department.company.name if department.company else ''
     customer_count = int(getattr(department, 'customer_count', 0) or 0)
     label = ' · '.join(part for part in [company, department.name] if part) or f'부서 #{department.id}'
@@ -9576,7 +9585,7 @@ def _department_create_target_payload(department):
         'companyName': company,
         'customerCount': customer_count,
         'hasCustomers': customer_count > 0,
-        'searchText': ' '.join(part for part in [company, department.name, department.notes] if part),
+        'searchText': ' '.join(part for part in [company, department.name, department.notes, search_text] if part),
         'href': f'/accounts/{department.id}/',
     }
 
@@ -9661,6 +9670,8 @@ def _notes_edit_config(request, history, can_edit):
     elif not can_edit:
         message = '수정 권한이 없습니다.'
 
+    department_search_map = _department_create_target_search_text_map(history.user, allowed_departments) if allowed_departments else {}
+
     return {
         'canEdit': bool(can_edit and editable_history),
         'message': message,
@@ -9671,7 +9682,10 @@ def _notes_edit_config(request, history, can_edit):
             {'value': value, 'label': label}
             for value, label in History.SERVICE_STATUS_CHOICES
         ],
-        'departments': [_department_create_target_payload(department) for department in allowed_departments],
+        'departments': [
+            _department_create_target_payload(department, department_search_map.get(department.id, ''))
+            for department in allowed_departments
+        ],
         'customers': [_notes_create_target_payload(followup) for followup in allowed_customers],
     }
 
@@ -10195,6 +10209,7 @@ def notes_summary_api(request):
     can_create_note = not user_profile.is_manager()
     create_targets = _notes_create_targets(request.user) if can_create_note else []
     create_departments = _department_create_targets(request.user) if can_create_note else []
+    create_department_search_map = _department_create_target_search_text_map(request.user, create_departments) if create_departments else {}
     create_target_ids = [followup.id for followup in create_targets]
     create_department_ids = [department.id for department in create_departments]
     create_schedules = []
@@ -10307,7 +10322,10 @@ def notes_summary_api(request):
             'message': '' if can_create_note else 'Manager는 영업노트를 직접 작성할 수 없습니다.',
             'submitUrl': reverse('reporting:notes_create_api'),
             'actionTypes': _notes_create_action_types(request),
-            'departments': [_department_create_target_payload(department) for department in create_departments],
+            'departments': [
+                _department_create_target_payload(department, create_department_search_map.get(department.id, ''))
+                for department in create_departments
+            ],
             'customers': [_notes_create_target_payload(followup) for followup in create_targets],
             'schedules': [_notes_create_schedule_payload(schedule) for schedule in create_schedules],
         },
@@ -11265,6 +11283,7 @@ def schedules_summary_api(request):
     can_create_schedule = not user_profile.is_manager()
     create_targets = _schedules_create_targets(request.user) if can_create_schedule else []
     create_departments = _department_create_targets(request.user) if can_create_schedule else []
+    create_department_search_map = _department_create_target_search_text_map(request.user, create_departments) if create_departments else {}
 
     scope_label = '전체'
     if selected_user:
@@ -11393,7 +11412,10 @@ def schedules_summary_api(request):
             'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
             'submitUrl': reverse('reporting:schedules_create_api'),
             'activityTypes': _schedules_create_activity_types(request),
-            'departments': [_department_create_target_payload(department) for department in create_departments],
+            'departments': [
+                _department_create_target_payload(department, create_department_search_map.get(department.id, ''))
+                for department in create_departments
+            ],
             'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
             'personalSchedule': {
                 'canCreate': can_create_schedule,
@@ -11465,6 +11487,7 @@ def schedules_calendar_api(request):
     can_create_schedule = not user_profile.is_manager()
     create_targets = _schedules_create_targets(request.user) if can_create_schedule else []
     create_departments = _department_create_targets(request.user) if can_create_schedule else []
+    create_department_search_map = _department_create_target_search_text_map(request.user, create_departments) if create_departments else {}
 
     return JsonResponse({
         'success': True,
@@ -11504,7 +11527,10 @@ def schedules_calendar_api(request):
             'message': '' if can_create_schedule else 'Manager는 일정을 직접 생성할 수 없습니다.',
             'submitUrl': reverse('reporting:schedules_create_api'),
             'activityTypes': _schedules_create_activity_types(request),
-            'departments': [_department_create_target_payload(department) for department in create_departments],
+            'departments': [
+                _department_create_target_payload(department, create_department_search_map.get(department.id, ''))
+                for department in create_departments
+            ],
             'customers': [_schedules_create_target_payload(followup) for followup in create_targets],
             'personalSchedule': {
                 'canCreate': can_create_schedule,
@@ -11663,6 +11689,8 @@ def _schedules_edit_config(request, schedule, can_edit):
         if schedule.department_id not in allowed_department_ids and schedule.department:
             allowed_departments = [schedule.department, *allowed_departments]
 
+    department_search_map = _department_create_target_search_text_map(schedule.user, allowed_departments) if allowed_departments else {}
+
     return {
         'canEdit': bool(can_edit),
         'message': '' if can_edit else '수정 권한이 없습니다.',
@@ -11673,7 +11701,10 @@ def _schedules_edit_config(request, schedule, can_edit):
             {'value': value, 'label': label}
             for value, label in _schedules_status_choices_for_activity(schedule.activity_type, schedule.status)
         ],
-        'departments': [_department_create_target_payload(department) for department in allowed_departments],
+        'departments': [
+            _department_create_target_payload(department, department_search_map.get(department.id, ''))
+            for department in allowed_departments
+        ],
         'customers': [_schedules_create_target_payload(followup) for followup in allowed_customers],
     }
 

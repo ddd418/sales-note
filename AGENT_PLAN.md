@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## 2026-06-01 Notes department search by contact name plan
+
+**Background**:
+
+- User reported that `/notes/?create=1` should show the correct department/research lab even when typing a researcher/contact name in the department search field.
+- React `SearchableSelect` already supports a hidden `searchText` field, but notes create department options only include company/department text and department notes.
+
+**DB change required**: No.
+
+- Existing `FollowUp.customer_name`, `FollowUp.manager`, `FollowUp.email`, and `FollowUp.phone_number` are enough.
+- No model or migration change is needed.
+
+**Implementation scope**:
+
+- Add scoped contact names and contact metadata to department option `searchText` for notes create/edit payloads.
+- Reuse the same scoped payload enrichment for schedule create/edit department selects because they share the same department selector pattern.
+- Update the notes create placeholder to make person-name search discoverable.
+- Preserve existing permission scope so users do not receive contact names outside their accessible user/company scope.
+
+**Validation plan**:
+
+- Focused Django notes summary API tests for department search text by contact name.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy Sales-note `web` and `sales-note-frontend`, then production smoke.
+
 ## 2026-05-31 Pipeline detail sidebar collapse plan
 
 **Background**:

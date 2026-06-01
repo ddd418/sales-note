@@ -7494,6 +7494,47 @@ class NotesSummaryApiTests(TestCase):
         self.assertTrue(any(item['value'] == 'customer_meeting' for item in payload['create']['actionTypes']))
         self.assertFalse(any(item['value'] == 'memo' for item in payload['create']['actionTypes']))
 
+    def test_notes_summary_api_department_create_options_search_contact_names(self):
+        from reporting.models import FollowUp
+
+        target = self._create_note(self.user, '부서검색대상')
+        FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='홍연구원',
+            manager='김책임교수',
+            email='researcher@example.com',
+            phone_number='010-1234-5678',
+            company=target.followup.company,
+            department=target.followup.department,
+            priority='scheduled',
+            pipeline_stage='potential',
+        )
+        FollowUp.objects.create(
+            user=self.coworker,
+            user_company=self.company,
+            customer_name='동료전용연구원',
+            company=target.followup.company,
+            department=target.followup.department,
+            priority='scheduled',
+            pipeline_stage='potential',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        department_option = next(
+            item for item in payload['create']['departments']
+            if item['id'] == target.followup.department_id
+        )
+        self.assertIn('홍연구원', department_option['searchText'])
+        self.assertIn('김책임교수', department_option['searchText'])
+        self.assertIn('researcher@example.com', department_option['searchText'])
+        self.assertIn('010-1234-5678', department_option['searchText'])
+        self.assertNotIn('동료전용연구원', department_option['searchText'])
+
     def test_notes_summary_api_preloads_more_than_legacy_department_select_limit(self):
         customer_company = Company.objects.create(name='대량부서선택회사', created_by=self.user)
         target_department = None

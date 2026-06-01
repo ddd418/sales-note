@@ -8575,7 +8575,7 @@ function NotesPage({
                     ariaLabel="부서/연구실 선택"
                     onChange={handleCreateDepartmentChange}
                     options={createDepartments.map(makeDepartmentSelectOption)}
-                    placeholder="회사, 부서/연구실 검색"
+                    placeholder="회사, 부서/연구실, 담당자 검색"
                     value={createForm.departmentId}
                   />
                 </div>
@@ -9825,7 +9825,7 @@ function ScheduleCalendarPage({
                         ariaLabel="부서/연구실 선택"
                         onChange={handleCalendarDepartmentChange}
                         options={calendarCreateDepartments.map(makeDepartmentSelectOption)}
-                        placeholder="회사, 부서/연구실 검색"
+                        placeholder="회사, 부서/연구실, 담당자 검색"
                         value={calendarCreateForm.departmentId}
                       />
                     </div>
@@ -13013,7 +13013,7 @@ function SchedulesPage({
                     ariaLabel="부서/연구실 선택"
                     onChange={handleCreateDepartmentChange}
                     options={createDepartments.map(makeDepartmentSelectOption)}
-                    placeholder="회사, 부서/연구실 검색"
+                    placeholder="회사, 부서/연구실, 담당자 검색"
                     value={createForm.departmentId}
                   />
                 </div>

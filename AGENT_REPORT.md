@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-06-01 — 영업노트 부서 검색 담당자명 매칭
+
+### 요약
+
+- `/notes/?create=1`의 `부서/연구실` 검색에서 담당자/연구원 이름을 입력해도 해당 부서/연구실이 검색되도록 했습니다.
+- 부서 옵션 `searchText`에 접근 가능한 담당자의 고객명, 책임자명, 메일, 전화번호를 포함했습니다.
+- 같은 선택 컴포넌트를 쓰는 일정 생성/수정 부서 검색에도 같은 검색 텍스트 보강이 적용됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 영업노트 빠른 작성에서 연구실 이름을 몰라도 담당자 이름으로 부서를 찾을 수 있습니다.
+- 부서에 담당자가 많은 경우에도 고객 선택 전 부서 선택이 더 빨라집니다.
+- 검색 대상은 기존 권한 스코프 안의 담당자 정보로 제한됩니다.
+
+### 기존 기능 보존
+
+- DB 모델과 마이그레이션은 변경하지 않았습니다.
+- `/reporting/*`, 인증/권한, 고객/부서 선택 저장 방식은 유지했습니다.
+- 부서에 고객이 있으면 고객 선택을 요구하는 기존 저장 규칙은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py test reporting.tests.NotesSummaryApiTests --keepdb
+→ OK, 33 tests
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py check
+→ System check identified no issues
+
+DJANGO_SETTINGS_MODULE=sales_project.settings_production SECRET_KEY=test-secret-key python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend; npm run build
+→ OK; existing large App chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이 로컬 Python 환경은 `python manage.py check` 기본 설정 로딩 시 기존 `STATICFILES_STORAGE/STORAGES` 조합 문제로 막혀, Railway에 가까운 `settings_production` 기준으로 Django 검증을 수행했습니다.
+
+### Production 배포 상태
+
+- Pending commit/push and Railway deployment.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/?create=1`에 접속합니다.
+2. `영업노트 빠른 작성`의 `부서/연구실` 검색창에 연구원/담당자 이름을 입력합니다.
+3. 해당 담당자가 속한 부서/연구실이 검색 결과에 뜨는지 확인합니다.
+4. 부서를 선택하면 기존처럼 고객 목록이 그 부서 기준으로 좁혀지는지 확인합니다.
+
 ## 2026-05-31 — 파이프라인 오른쪽 패널 접기/펼치기
 
 ### 요약
