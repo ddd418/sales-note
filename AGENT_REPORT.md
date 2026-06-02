@@ -1,5 +1,100 @@
 # AGENT_REPORT.md
 
+## 2026-06-02 — 계정 상세 서비스 기록에 영업노트가 섞이는 문제 수정
+
+### 요약
+
+- `/accounts/375/`의 `서비스 기록` 섹션에 실제 A/S 케이스나 서비스 일정이 아니라 `History.action_type='service'` 영업노트가 표시되던 문제를 수정했습니다.
+- 고객/계정 상세의 운영 서비스 기록은 이제 구조화된 `ServiceCase`와 `Schedule(activity_type='service')`만 포함합니다.
+- 서비스 영업노트는 삭제하지 않고 일반 영업노트/최근 노트 타임라인에만 남도록 분리했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 서비스 섹션의 `A/S, 수리, 서비스 일정` 설명과 실제 데이터가 일치합니다.
+- 메모성 영업노트가 서비스 원장에 잘못 보이지 않습니다.
+- 서비스 일정에 연결된 영업노트가 있어도 일정 자체는 서비스 일정 기록으로 계속 보입니다.
+
+### 기존 기능 보존
+
+- 영업노트 데이터는 삭제하지 않았습니다.
+- 서비스/A/S 케이스와 서비스 일정 표시 기능은 유지했습니다.
+- `/reporting/*` API 인증/권한 범위는 변경하지 않았습니다.
+
+### 운영 데이터 확인
+
+```text
+/accounts/375/ = 서울시 보건환경연구원 · 세균검사팀
+담당자 FollowUp: 471 최영희
+
+배포 전 원인:
+ServiceCase 0건
+Schedule(activity_type='service') 0건
+History(action_type='service') 2건
+→ 기존 API가 이 History 2건을 서비스 기록에 섞어 표시함
+
+배포 후 새 분류 기준:
+structured_service_cases 0
+service_schedules 0
+api_service_records_after_fix 0
+sales_notes_no_longer_in_service_records 2
+```
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_detail_summary_api_includes_operational_records_with_payment_source --keepdb
+→ OK, 1 test
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb
+→ OK, 62 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; existing Vite large chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이번 변경은 계정/고객 상세의 운영 기록 분류 수정에 한정했습니다.
+- `History.action_type='service'`라는 레거시 타입명 자체는 아직 남아 있으므로, 영업노트 작성/수정 화면의 활동 타입 정리는 별도 과제로 다루는 것이 좋습니다.
+
+### Production 배포 상태
+
+- Completed.
+- Commit `d046ac5 fix: keep sales notes out of account service records` is present on `origin/main`.
+- Railway `web` deployment `4f3554db-a31e-4f88-aa9e-dcaaa3b249a8` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `6605060d-e31f-4389-ac71-8cdff44053da` was `SKIPPED` because no frontend watched files changed.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/accounts/375/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/accounts/375/` returned 401 as expected.
+
+### Manual Server Test Process
+
+1. 로그인 상태로 `https://sales-note-frontend-production.up.railway.app/accounts/375/`에 접속합니다.
+2. `고객 운영 기록`의 `서비스 기록` 섹션을 확인합니다.
+3. 기존에 보이던 “다음 방문 때 밀리퍼 물장치...”와 “에펜도르프를 사용하면서...” 같은 영업노트 메모가 서비스 기록에 표시되지 않는지 확인합니다.
+4. 같은 메모가 영업노트/최근 노트 쪽에는 계속 남아 있는지 확인합니다.
+
 ## 2026-06-02 — AI 레거시 고객 우선순위 참조 제거
 
 ### 요약
