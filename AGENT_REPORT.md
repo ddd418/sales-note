@@ -1,5 +1,87 @@
 # AGENT_REPORT.md
 
+## 2026-06-02 — AI 레거시 고객 우선순위 참조 제거
+
+### 요약
+
+- AI 부서 분석, 개별 고객 분석, AI 워크스페이스 브리핑/피드백에서 예전 고객 우선순위(`FollowUp.priority`)를 참조하거나 갱신하지 않도록 정리했습니다.
+- AI 응답 스키마에서 `prioritySignal`, `followup_priority_recommendations`, `priority_recommendation` 계열을 제거하고, 기존 호출 호환용 카운터는 0/null만 반환하게 했습니다.
+- 저장된 운영 AI JSON에서도 과거 우선순위 추천 키를 제거했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `ai_chat/department_prompt.py`
+- `ai_chat/services.py`
+- `ai_chat/views.py`
+- `ai_chat/tests.py`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- AI가 고객 정렬/추천/후속 동기화에서 옛 `긴급/팔로업/예정/장기` 고객 우선순위를 쓰지 않습니다.
+- 접촉 진행 고객 리스트 답변은 최근 메일, 일정, 영업노트, 견적, 납품 근거와 파이프라인/상태를 기준으로 설명합니다.
+- 서비스 케이스의 별도 A/S 우선도는 `서비스 긴급도`로 구분해 고객 우선순위와 섞이지 않게 했습니다.
+
+### 기존 기능 보존
+
+- 고객/부서/담당자, 파이프라인, 다음 액션, AI 브리핑, AI 피드백 기록은 유지했습니다.
+- `ServiceCase.priority`는 서비스 업무용 필드라 삭제하지 않았습니다.
+- 오래된 React/API 호출이 기대할 수 있는 `priority_updates`, `priority_recommendations`, `priority_updated`, `priority_recommendation` 응답 키는 0/null로만 유지했습니다.
+
+### 운영 DB 정리
+
+```text
+reporting_aiworkspaceactionfeedback.ai_result prioritySignal 제거: 10건
+ai_chat_aidepartmentanalysis.analysis_data 우선순위 추천 키 제거: 4건
+ai_chat_aidepartmentanalysis.recommended_goals 우선순위 필드 정리: 4건
+ai_chat_aifollowupanalysis.analysis_data 우선순위 추천 키 제거: 0건
+
+정리 후 잔여 prioritySignal/priority recommendation 키: 전부 0건
+```
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\department_prompt.py reporting\views.py ai_chat\tests.py reporting\tests.py
+→ OK
+
+python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests reporting.tests.AIWorkspaceSummaryApiTests --keepdb
+→ OK, 106 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이번 변경은 AI 경로와 저장된 AI JSON 정리에 한정했습니다.
+- 일반 고객 목록/대시보드 API의 레거시 priority 표시 필드는 별도 화면 정리 과제로 남아 있습니다.
+
+### Production 배포 상태
+
+- Completed.
+- Commit `59054ae fix: remove legacy customer priority from AI` is present on `origin/main`.
+- Railway `web` deployment `c6f49317-8660-4f75-a4cb-e4f361070eb0` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `4ffc08f6-e734-4e54-b783-ef24832b63b6` was `SKIPPED` because no frontend watched files changed.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/ai-workspace/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/` returned 401 as expected.
+
+### Manual Server Test Process
+
+1. `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에서 AI에게 “현재 내가 접촉을 진행중인 고객을 리스트업 해줘”라고 질문합니다.
+2. 답변 근거가 최근 메일, 일정, 영업노트, 견적, 납품 링크 중심으로 나오는지 확인합니다.
+3. 답변에 고객 우선순위/긴급/팔로업을 CRM 기준 근거로 쓰지 않는지 확인합니다.
+4. AI 피드백 입력 후 고객 우선순위가 바뀌지 않고, 다음 액션/상태/파이프라인 중심으로만 기록되는지 확인합니다.
+
 ## 2026-06-02 — 레거시 고객 긴급/팔로업 우선순위 정리
 
 ### 요약
