@@ -202,8 +202,8 @@ def department_analysis(request, department_id):
 def run_analysis(request, department_id):
     """부서 AI 분석 실행 (새로 생성 또는 재분석)"""
     from .services import (
+        _strip_legacy_customer_priority_ai_fields,
         analyze_department,
-        apply_followup_priority_recommendations,
         apply_verification_memory_to_analysis_result,
         collect_painpoint_verification_memory,
         gather_meeting_data,
@@ -240,11 +240,7 @@ def run_analysis(request, department_id):
             analysis_result,
             verification_memory,
         )
-        priority_recommendations = apply_followup_priority_recommendations(
-            analysis_result,
-            FollowUp.objects.filter(user=request.user, department=department).select_related('company', 'department'),
-        )
-
+        analysis_result = _strip_legacy_customer_priority_ai_fields(analysis_result)
         # 분석 기간 계산
         period_end = timezone.now().date()
         period_start = period_end - timedelta(days=180)
@@ -276,8 +272,8 @@ def run_analysis(request, department_id):
             'redirect_url': f'/ai/department/{department.id}/',
             'cards_created': len(created_cards),
             'cards_preserved': preserved_cards,
-            'priority_updates': len([item for item in priority_recommendations if item.get('changed')]),
-            'priority_recommendations': len(priority_recommendations),
+            'priority_updates': 0,
+            'priority_recommendations': 0,
         })
 
     except Exception as e:
@@ -498,7 +494,7 @@ def followup_analysis_view(request, followup_id):
 def run_followup_analysis(request, followup_id):
     """개별 고객 AI 분석 실행 (AJAX POST)"""
     from reporting.views import can_access_followup
-    from .services import analyze_followup, apply_single_followup_priority_recommendation
+    from .services import _strip_legacy_customer_priority_ai_fields, analyze_followup
 
     followup = get_object_or_404(FollowUp, id=followup_id)
 
@@ -518,7 +514,7 @@ def run_followup_analysis(request, followup_id):
         if not analysis_result:
             return JsonResponse({'error': 'AI 분석 결과를 파싱하지 못했습니다.'}, status=500)
 
-        priority_recommendation = apply_single_followup_priority_recommendation(analysis_result, followup)
+        analysis_result = _strip_legacy_customer_priority_ai_fields(analysis_result)
         analysis.analysis_data = analysis_result
         analysis.meeting_count = meeting_count
         analysis.token_usage = token_usage
@@ -527,8 +523,8 @@ def run_followup_analysis(request, followup_id):
         return JsonResponse({
             'success': True,
             'redirect_url': '/ai/followup/{}/'.format(followup_id),
-            'priority_updated': bool(priority_recommendation and priority_recommendation.get('changed')),
-            'priority_recommendation': priority_recommendation,
+            'priority_updated': False,
+            'priority_recommendation': None,
         })
 
     except Exception as e:

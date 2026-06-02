@@ -14345,7 +14345,7 @@ def _ai_workspace_recent_feedback_goals(user, followup_ids=None, department_id=N
             ),
             'reason': reason,
             'customer': customer,
-            'priority': result.get('prioritySignal') or feedback.status,
+            'priority': feedback.status,
             'priorityLabel': intent_label,
             'source': 'field_feedback',
             'sourceLabel': '최근 현장 답변 기반',
@@ -14520,7 +14520,6 @@ def _ai_workspace_followup_prompt(followup, analysis, user=None):
         f"업체/학교: {company_name}" if company_name else '',
         f"부서/연구실: {department_name}" if department_name else '',
         f"고객: {customer_name}",
-        f"우선순위: {followup.get_priority_display()}",
         f"고객 등급: {followup.customer_grade}" if followup.customer_grade else '',
         f"AI 점수: {float(followup.get_combined_score()):.0f}",
         amount_context,
@@ -14624,73 +14623,15 @@ def _ai_workspace_feedback_intent_label(intent):
 
 
 def _ai_workspace_priority_signal(priority='', reason='', source=''):
-    priority = str(priority or '').strip()
-    if priority not in {choice[0] for choice in FollowUp.PRIORITY_CHOICES}:
-        return None
-    return {
-        'priority': priority,
-        'priorityLabel': dict(FollowUp.PRIORITY_CHOICES).get(priority, priority),
-        'reason': _ai_workspace_prompt_excerpt(reason, 220),
-        'source': source or '',
-    }
+    return None
 
 
 def _ai_workspace_priority_signal_from_feedback(feedback_text, intent='', status=''):
-    normalized = re.sub(r'\s+', '', str(feedback_text or '').lower())
-    if not normalized:
-        return None
-
-    long_term_keywords = [
-        '장기', '보류', '나중', '추후', '천천히', '급하지않', '급하지는않',
-        '우선순위낮', '낮은우선순위', '다음달', '내년', '분기', '한참뒤',
-    ]
-    urgent_keywords = [
-        '긴급', '급함', '급해', '최우선', '빨리', '바로', '즉시',
-        '오늘중', '오늘까지', '금일', '내일까지', '48시간', '이번주안',
-        '급선무', '불만', '클레임', '항의', '문제해결', '우선해결', '우선처리',
-    ]
-    scheduled_keywords = [
-        '일정잡', '일정확정', '날짜잡', '미팅예정', '방문예정', '연락일정', '방문일정',
-    ]
-    followup_keywords = [
-        '팔로업', '후속', '다시연락', '재연락', '다음주', '이번주', '확인필요',
-        '챙겨', '리마인드', '답장대기', '회신대기',
-    ]
-
-    if any(keyword in normalized for keyword in urgent_keywords):
-        return _ai_workspace_priority_signal('urgent', '사용자 답변에 긴급, 고객 불만 또는 즉시 처리 신호가 포함됐습니다.', 'feedback')
-    if any(keyword in normalized for keyword in long_term_keywords):
-        return _ai_workspace_priority_signal('long_term', '사용자 답변에 장기/보류 또는 낮은 긴급도 신호가 포함됐습니다.', 'feedback')
-    if any(keyword in normalized for keyword in scheduled_keywords):
-        return _ai_workspace_priority_signal('scheduled', '사용자 답변에 일정이 정해진 상태라는 신호가 포함됐습니다.', 'feedback')
-    if any(keyword in normalized for keyword in followup_keywords):
-        return _ai_workspace_priority_signal('followup', '사용자 답변에 후속 확인 또는 재연락 신호가 포함됐습니다.', 'feedback')
-
-    if intent == 'resolved_no_purchase':
-        return _ai_workspace_priority_signal('long_term', '구매 보류/종료 의도라 고객 긴급도를 장기로 낮춥니다.', 'fallback')
-    if intent == 'positive_buying_signal':
-        return _ai_workspace_priority_signal('urgent', '긍정 구매 신호라 고객 긴급도를 긴급으로 올립니다.', 'fallback')
-    if intent in {'follow_up_needed', 'email_waiting'} and status == 'next_action':
-        return _ai_workspace_priority_signal('followup', '후속조치가 필요한 상태라 고객 긴급도를 팔로업으로 맞춥니다.', 'fallback')
     return None
 
 
 def _ai_workspace_normalize_priority_signal(value, fallback=None):
-    fallback = fallback if isinstance(fallback, dict) else None
-    priority = ''
-    reason = ''
-    source = ''
-
-    if isinstance(value, dict):
-        priority = value.get('priority') or value.get('value') or ''
-        reason = value.get('reason') or value.get('detail') or ''
-        source = value.get('source') or 'openai'
-    elif value:
-        priority = value
-        source = 'openai'
-
-    signal = _ai_workspace_priority_signal(priority, reason, source)
-    return signal or fallback
+    return None
 
 
 def _ai_workspace_score_amount(value):
@@ -14854,7 +14795,7 @@ def _ai_workspace_service_case_action_payload(service_case, today=None):
         _ai_workspace_evidence('장비', asset.asset_name, _ai_workspace_asset_search_href(asset, {'service': 'open'})),
         _ai_workspace_evidence('유형', service_case.get_case_type_display()),
         _ai_workspace_evidence('상태', service_case.get_status_display()),
-        _ai_workspace_evidence('우선순위', service_case.get_priority_display()),
+        _ai_workspace_evidence('서비스 긴급도', service_case.get_priority_display()),
         _ai_workspace_evidence('처리 예정일', service_case.due_date.isoformat() if service_case.due_date else ''),
         _ai_workspace_evidence('증상/요청', service_case.symptom),
     ]
@@ -15033,7 +14974,6 @@ def _ai_workspace_action_feedback_payload(feedback):
         'reason': _ai_workspace_feedback_display_text(result.get('reason')),
         'decision': result.get('decision') or '',
         'source': result.get('source') or '',
-        'prioritySignal': result.get('prioritySignal') or None,
         'issueFollowups': result.get('issueFollowups') or [],
         'crmSync': result.get('crmSync') or _ai_workspace_empty_crm_sync(intent),
         'updatedAt': _datetime_or_none(feedback.updated_at),
@@ -15462,7 +15402,7 @@ def _ai_workspace_daily_brief(actions, week_start, week_end):
     }
     if actions:
         top = actions[0]
-        summary = f"{top['priorityLabel']} 우선순위는 {top['title']}입니다. 총 {counts['totalActions']}건의 AI 추천 액션이 있습니다."
+        summary = f"{top['priorityLabel']} 실행 필요도 후보는 {top['title']}입니다. 총 {counts['totalActions']}건의 AI 추천 액션이 있습니다."
     else:
         summary = '오늘 바로 처리할 AI 추천 액션이 없습니다.'
     return {
@@ -15964,14 +15904,6 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
     normalized = re.sub(r'\s+', '', str(feedback_text or '').lower())
     title = action.get('title') or 'AI 추천 액션'
 
-    def with_priority(payload):
-        payload['prioritySignal'] = _ai_workspace_priority_signal_from_feedback(
-            feedback_text,
-            payload.get('intent'),
-            payload.get('recommendedStatus'),
-        )
-        return payload
-
     lost_keywords = [
         '안산', '안살', '안사', '구매안', '구입안', '필요없', '필요가없', '거절',
         '취소', '실주', '다른업체', '타사', '예산없', '예산이없', '진행안',
@@ -16004,7 +15936,7 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
     ]
 
     if any(keyword in normalized for keyword in lost_keywords):
-        return with_priority({
+        return {
             'decision': 'hide',
             'recommendedStatus': 'resolved',
             'intent': 'resolved_no_purchase',
@@ -16014,9 +15946,9 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'nextActionDate': None,
             'reason': '구매 거절 또는 실주 신호가 포함되어 있어 반복 추천하지 않습니다.',
             'suggestedDraftType': '',
-        })
+        }
     if any(keyword in normalized for keyword in completed_keywords):
-        return with_priority({
+        return {
             'decision': 'hide',
             'recommendedStatus': 'resolved',
             'intent': 'positive_buying_signal',
@@ -16026,10 +15958,10 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'nextActionDate': None,
             'reason': '완료 신호가 포함되어 있어 추가 추천 액션이 필요하지 않습니다.',
             'suggestedDraftType': '',
-        })
+        }
     if any(keyword in normalized for keyword in urgent_issue_keywords):
         specific = _ai_workspace_specific_issue_feedback(action, feedback_text)
-        return with_priority({
+        return {
             'decision': 'next_action',
             'recommendedStatus': 'next_action',
             'intent': 'follow_up_needed',
@@ -16037,11 +15969,11 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'summary': specific.get('summary') or '현재 고객 불만 또는 긴급 이슈 해결이 우선인 상태로 기록됐습니다.',
             'nextAction': specific.get('nextAction') or f"{title} 관련 고객 불만 사항을 확인하고 해결 방안과 후속 일정을 안내하세요.",
             'nextActionDate': (timezone.localdate() + timedelta(days=1)).isoformat(),
-            'reason': specific.get('reason') or '장기 보류 항목이 있더라도 현재 불만/급선무 표현이 있어 긴급 후속조치로 유지합니다.',
+            'reason': specific.get('reason') or '장기 보류 항목이 있더라도 현재 불만/급선무 표현이 있어 바로 확인할 후속조치로 남깁니다.',
             'suggestedDraftType': 'note',
-        })
+        }
     if any(keyword in normalized for keyword in email_waiting_keywords):
-        return with_priority({
+        return {
             'decision': 'next_action',
             'recommendedStatus': 'next_action',
             'intent': 'email_waiting',
@@ -16051,9 +15983,9 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'nextActionDate': (timezone.localdate() + timedelta(days=2)).isoformat(),
             'reason': '메일 발송과 미회신 표현이 함께 있어 답장 대기 후속조치로 전환합니다.',
             'suggestedDraftType': 'email',
-        })
+        }
     if any(keyword in normalized for keyword in positive_keywords):
-        return with_priority({
+        return {
             'decision': 'next_action',
             'recommendedStatus': 'next_action',
             'intent': 'positive_buying_signal',
@@ -16061,11 +15993,11 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'summary': '고객에게 긍정적인 구매 신호가 있어 다음 단계를 빠르게 확인해야 합니다.',
             'nextAction': f"{title} 건의 구매 절차, 결재 일정, 필요 서류를 확인하세요.",
             'nextActionDate': (timezone.localdate() + timedelta(days=3)).isoformat(),
-            'reason': '긍정 신호가 있어 우선순위 높은 후속조치로 유지합니다.',
+            'reason': '긍정 신호가 있어 구매 절차 확인 후속조치로 유지합니다.',
             'suggestedDraftType': 'email',
-        })
+        }
     if any(keyword in normalized for keyword in hold_keywords):
-        return with_priority({
+        return {
             'decision': 'next_action',
             'recommendedStatus': 'next_action',
             'intent': 'follow_up_needed',
@@ -16075,9 +16007,9 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'nextActionDate': (timezone.localdate() + timedelta(days=14)).isoformat(),
             'reason': '보류 신호가 있어 액션을 닫기보다 재확인 후속조치로 남깁니다.',
             'suggestedDraftType': 'email',
-        })
+        }
     if any(keyword in normalized for keyword in request_keywords):
-        return with_priority({
+        return {
             'decision': 'next_action',
             'recommendedStatus': 'next_action',
             'intent': 'follow_up_needed',
@@ -16087,9 +16019,9 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
             'nextActionDate': (timezone.localdate() + timedelta(days=3)).isoformat(),
             'reason': '추가 요청 신호가 있어 바로 닫지 않고 실행 가능한 다음 행동으로 전환합니다.',
             'suggestedDraftType': 'email',
-        })
+        }
 
-    return with_priority({
+    return {
         'decision': 'keep',
         'recommendedStatus': 'answered',
         'intent': 'needs_human_review',
@@ -16099,7 +16031,7 @@ def _ai_workspace_feedback_fallback(action, feedback_text):
         'nextActionDate': None,
         'reason': '구매 종료, 후속 필요, 긍정 신호, 메일 대기 중 어느 쪽인지 확정하기 어렵습니다.',
         'suggestedDraftType': 'questions',
-    })
+    }
 
 
 def _ai_workspace_text_has_urgent_issue(feedback_text):
@@ -16201,9 +16133,9 @@ def _ai_workspace_specific_issue_feedback(action, feedback_text):
 
     if long_term_followups:
         long_term_topic = long_term_followups[0].get('issue') or '장기 이슈'
-        summary = f"{long_term_topic}는 장기 추적 대상으로 분리하고, 현재 우선순위는 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
+        summary = f"{long_term_topic}는 장기 추적 대상으로 분리하고, 현재 먼저 처리할 일은 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
     else:
-        summary = f"현재 우선순위는 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
+        summary = f"현재 먼저 처리할 일은 {issue} 불만의 원인 확인과 처리 일정 안내입니다."
 
     return {
         'summary': summary,
@@ -16250,14 +16182,6 @@ def _ai_workspace_normalize_feedback_result(data, fallback, action=None, feedbac
     if should_hide and status == 'answered':
         status = 'resolved'
 
-    priority_signal = _ai_workspace_normalize_priority_signal(
-        data.get('prioritySignal') or data.get('priority_signal') or data.get('customerPriority') or data.get('priority'),
-        fallback.get('prioritySignal'),
-    )
-    fallback_priority_signal = fallback.get('prioritySignal') if isinstance(fallback.get('prioritySignal'), dict) else None
-    if fallback_priority_signal and fallback_priority_signal.get('source') == 'feedback':
-        priority_signal = fallback_priority_signal
-
     summary = data.get('summary') or fallback.get('summary')
     next_action = data.get('nextAction') or fallback.get('nextAction')
     reason = data.get('reason') or fallback.get('reason')
@@ -16279,7 +16203,6 @@ def _ai_workspace_normalize_feedback_result(data, fallback, action=None, feedbac
         'nextActionDate': next_action_date,
         'reason': _ai_workspace_prompt_excerpt(reason, 260),
         'suggestedDraftType': data.get('suggestedDraftType') or fallback.get('suggestedDraftType') or '',
-        'prioritySignal': priority_signal,
         'issueFollowups': issue_followups,
     }
 
@@ -16322,12 +16245,12 @@ def _ai_workspace_evaluate_action_feedback(action, feedback_text, force_outcome=
                 '보류, 추가 자료, 일정 확인이 필요하면 next_action/follow_up_needed로 판단한다.',
                 '메일을 보냈고 답장이나 회신이 없다는 표현이면 email_waiting으로 판단한다.',
                 '관심, 승인 예정, 구매 의향처럼 긍정 신호가 있으면 positive_buying_signal로 판단한다.',
-                '사용자가 긴급, 오늘, 즉시, 빨리라고 하면 prioritySignal.priority를 urgent로 둔다.',
-                '사용자가 현재 불만, 클레임, 항의, 급선무, 우선 해결이라고 하면 follow_up_needed로 두고 prioritySignal.priority를 urgent로 둔다.',
+                '사용자가 긴급, 오늘, 즉시, 빨리라고 하면 next_action/follow_up_needed로 두고 다음 행동을 구체화한다.',
+                '사용자가 현재 불만, 클레임, 항의, 급선무, 우선 해결이라고 하면 follow_up_needed로 두고 불만 해결 후속조치를 구체화한다.',
                 '보상판매처럼 일부 항목은 장기라고 해도 현재 해결해야 할 불만/급선무가 함께 있으면 현재 이슈를 우선한다.',
-                '사용자가 후속, 다음주, 재연락, 확인 필요라고 하면 prioritySignal.priority를 followup으로 둔다.',
-                '사용자가 일정 확정, 예정이라고 하면 prioritySignal.priority를 scheduled로 둔다.',
-                '사용자가 장기, 보류, 나중, 급하지 않음, 다음달, 내년이라고 하면 prioritySignal.priority를 long_term으로 둔다.',
+                '사용자가 후속, 다음주, 재연락, 확인 필요라고 하면 next_action/follow_up_needed로 판단한다.',
+                '사용자가 일정 확정, 예정이라고 하면 next_action/follow_up_needed로 판단하고 일정 확인 행동을 남긴다.',
+                '사용자가 장기, 보류, 나중, 급하지 않음, 다음달, 내년이라고 하면 장기 확인일 또는 재연락 기준일을 다음 행동으로 남긴다.',
                 '확신이 낮으면 needs_human_review로 판단하고 자동 상태 변경을 피한다.',
                 'nextAction은 "조치를 취하세요" 같은 일반론으로 쓰지 말고, 확인할 항목, 가능한 해결안, 고객에게 회신할 기준을 포함한다.',
                 '불만/클레임 건은 증상, 사용 제품 규격, 수량/로트, 사진 또는 사용 조건 확인처럼 담당자가 바로 물어볼 항목을 포함한다.',
@@ -16345,8 +16268,7 @@ def _ai_workspace_evaluate_action_feedback(action, feedback_text, force_outcome=
                         '반드시 JSON으로 {"decision":"keep|hide|next_action","recommendedStatus":"answered|next_action|resolved|dismissed",'
                         '"intent":"resolved_no_purchase|follow_up_needed|positive_buying_signal|email_waiting|needs_human_review",'
                         '"shouldHide": boolean,"summary": string,"nextAction": string,"nextActionDate": string|null,'
-                        '"reason": string,"suggestedDraftType": string,'
-                        '"prioritySignal":{"priority":"urgent|followup|scheduled|long_term","reason": string}|null}만 반환한다.'
+                        '"reason": string,"suggestedDraftType": string}만 반환한다.'
                     ),
                 },
                 {
@@ -16532,13 +16454,11 @@ def _ai_workspace_default_next_action_date(intent):
 
 
 def _ai_workspace_sync_history_content(action, feedback_text, result):
-    priority_signal = result.get('prioritySignal') or {}
     return "\n".join(_ai_prompt_context(
         f"[AI 상황 동기화 후속조치] {action.get('title') or action.get('kindLabel') or action.get('id')}",
         f"사용자 입력: {feedback_text}",
         f"AI 요약: {result.get('summary') or ''}",
         f"동기화 의도: {_ai_workspace_feedback_intent_label(result.get('intent'))}",
-        f"고객 긴급도: {priority_signal.get('priorityLabel') or ''}",
         f"다음 액션: {result.get('nextAction') or ''}",
         f"판단 근거: {result.get('reason') or ''}",
     ))
@@ -16657,7 +16577,7 @@ def _ai_workspace_sync_secondary_issue_followups(user, user_profile, followup, a
     return changes, synced
 
 
-def _ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal=None):
+def _ai_workspace_update_followup_for_sync(followup, intent, status):
     changes = []
     update_fields = []
 
@@ -16781,7 +16701,6 @@ def _ai_workspace_sync_commercial_state(user, action, intent, status):
 def _ai_workspace_apply_crm_state_sync(user, user_profile, action, feedback_text, result):
     intent = result.get('intent') or 'needs_human_review'
     status = _ai_workspace_feedback_status_from_result(result)
-    priority_signal = result.get('prioritySignal') or None
     sync = _ai_workspace_empty_crm_sync(intent)
     followup = _ai_workspace_owned_followup(user, action)
     if not followup:
@@ -16803,7 +16722,7 @@ def _ai_workspace_apply_crm_state_sync(user, user_profile, action, feedback_text
             result.get('summary') or 'AI 상황 입력으로 종료 처리',
         ))
         changes.extend(_ai_workspace_sync_commercial_state(user, action, intent, status))
-        changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal))
+        changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status))
         sync['message'] = '후속조치 종료/보류가 CRM 상태에 반영됐습니다.'
     elif intent in {'follow_up_needed', 'positive_buying_signal', 'email_waiting'} and status == 'next_action':
         primary_issue = _ai_workspace_primary_issue_followup(result)
@@ -16859,7 +16778,7 @@ def _ai_workspace_apply_crm_state_sync(user, user_profile, action, feedback_text
             task_history,
         )
         changes.extend(issue_changes)
-        changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal))
+        changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status))
         sync['taskHistoryId'] = task_history.id
         sync['taskHistoryHref'] = reverse('reporting:history_detail', args=[task_history.id])
         sync['issueTaskHistories'] = issue_task_histories
@@ -16879,7 +16798,7 @@ def _ai_workspace_apply_crm_state_sync(user, user_profile, action, feedback_text
             result.get('summary') or '구매/완료 신호로 기존 후속조치 종료',
         ))
         changes.extend(_ai_workspace_sync_commercial_state(user, action, intent, status))
-        changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal))
+        changes.extend(_ai_workspace_update_followup_for_sync(followup, intent, status))
         sync['message'] = '완료/긍정 상태가 CRM에 반영됐습니다.'
     else:
         sync['message'] = '답변은 기록했지만 자동 상태 변경 조건에 해당하지 않았습니다.'
@@ -16892,7 +16811,6 @@ def _ai_workspace_apply_crm_state_sync(user, user_profile, action, feedback_text
 def _ai_workspace_feedback_history_content(action, feedback_text, result):
     status_label = _ai_workspace_feedback_status_label(_ai_workspace_feedback_status_from_result(result))
     crm_sync = result.get('crmSync') or _ai_workspace_empty_crm_sync(result.get('intent'))
-    priority_signal = result.get('prioritySignal') or {}
     change_lines = [
         f"- {change.get('label')}: {change.get('detail') or change.get('href') or change.get('objectId')}"
         for change in crm_sync.get('changes', [])[:8]
@@ -16903,7 +16821,6 @@ def _ai_workspace_feedback_history_content(action, feedback_text, result):
         f"AI 판단: {result.get('summary') or ''}",
         f"동기화 의도: {_ai_workspace_feedback_intent_label(result.get('intent'))}",
         f"처리 상태: {status_label}",
-        f"고객 긴급도: {priority_signal.get('priorityLabel') or ''}",
         f"다음 액션: {result.get('nextAction') or ''}",
         f"판단 근거: {result.get('reason') or ''}",
         f"CRM 반영: {crm_sync.get('message') or ''}",
@@ -17013,7 +16930,6 @@ def _ai_workspace_feedback_history_item(feedback):
         'nextAction': _ai_workspace_feedback_display_text(result.get('nextAction')),
         'nextActionDate': result.get('nextActionDate') or None,
         'reason': _ai_workspace_feedback_display_text(result.get('reason')),
-        'prioritySignal': result.get('prioritySignal') or None,
         'issueFollowups': result.get('issueFollowups') or [],
         'source': result.get('source') or '',
         'historyId': feedback.history_id,
@@ -19113,13 +19029,11 @@ def _ai_workspace_department_question_context(department, user):
                 'name': followup.customer_name or followup.manager or '고객명 미정',
                 'manager': followup.manager or '',
                 'company': followup.company.name if followup.company else '',
-                'department': followup.department.name if followup.department else '',
-                'status': followup.get_status_display(),
-                'statusCode': followup.status or '',
-                'priority': followup.get_priority_display(),
-                'priorityCode': followup.priority or '',
-                'grade': followup.customer_grade or '',
-                'pipelineStage': followup.get_pipeline_stage_display(),
+            'department': followup.department.name if followup.department else '',
+            'status': followup.get_status_display(),
+            'statusCode': followup.status or '',
+            'grade': followup.customer_grade or '',
+            'pipelineStage': followup.get_pipeline_stage_display(),
                 'pipelineStageCode': followup.pipeline_stage or '',
                 **(contact_evidence.get(followup.id) or {}),
             }
@@ -19178,7 +19092,7 @@ def _ai_workspace_question_action_payload(action):
         'department': _ai_workspace_question_text(action.get('department'), 120),
         'customer': _ai_workspace_question_text(action.get('customer'), 120),
         'recommendedAction': _ai_workspace_question_text(action.get('recommendedAction'), 360),
-        'priority': action.get('priorityLabel') or '',
+        'executionNeed': action.get('priorityLabel') or '',
         'priorityScore': action.get('priorityScore') or 0,
         'dueDate': action.get('dueDate') or None,
         'moneyImpact': _money_int(action.get('moneyImpact') or 0),
@@ -19210,13 +19124,13 @@ def _ai_workspace_question_action_item_from_candidate(item, rank):
         180,
     )
     due_date = item.get('dueDate') or item.get('date') or ''
-    priority = _ai_workspace_question_text(item.get('priority') or item.get('priorityLabel'), 80)
+    execution_need = _ai_workspace_question_text(item.get('executionNeed'), 80)
     money_impact = _money_int(item.get('moneyImpact') or 0)
     overdue = bool(item.get('overdue'))
 
     reason_parts = []
-    if priority:
-        reason_parts.append(f'우선순위 {priority}')
+    if execution_need:
+        reason_parts.append(f'실행 필요도 {execution_need}')
     if overdue and due_date:
         reason_parts.append(f'{due_date} 후속 기한이 지났습니다')
     elif due_date:
@@ -19250,7 +19164,8 @@ def _ai_workspace_question_action_item_from_candidate(item, rank):
         'customer': customer,
         'company': company,
         'department': department,
-        'priority': priority or ('긴급' if overdue else '추천'),
+        'priority': execution_need or ('기한 경과' if overdue else '추천'),
+        'executionNeed': execution_need,
         'reason': _ai_workspace_question_text('. '.join(reason_parts), 900),
         'nextAction': next_action,
         'timing': _ai_workspace_question_text(timing, 420),
@@ -19440,7 +19355,6 @@ def _ai_workspace_global_question_context(user):
             'customerCount': 0,
             'customers': [],
             'customerEvidence': [],
-            'urgentCustomers': 0,
             'pipelineStages': {},
             'memoCount': 0,
         }
@@ -19455,7 +19369,6 @@ def _ai_workspace_global_question_context(user):
             'customerCount': 0,
             'customers': [],
             'customerEvidence': [],
-            'urgentCustomers': 0,
             'pipelineStages': {},
         })
         row['customerCount'] += 1
@@ -19471,8 +19384,6 @@ def _ai_workspace_global_question_context(user):
                 'evidenceStrength': (contact_evidence.get(followup.id) or {}).get('evidenceStrength') or '',
                 'lastSignalDate': (contact_evidence.get(followup.id) or {}).get('lastSignalDate') or '',
             })
-        if followup.priority == 'urgent':
-            row['urgentCustomers'] += 1
         stage_label = followup.get_pipeline_stage_display()
         row['pipelineStages'][stage_label] = row['pipelineStages'].get(stage_label, 0) + 1
 
@@ -19610,7 +19521,7 @@ def _ai_workspace_global_question_context(user):
         'department': None,
         'departments': sorted(
             departments.values(),
-            key=lambda item: (item['urgentCustomers'], item['customerCount'], item.get('memoCount', 0)),
+            key=lambda item: (item['customerCount'], item.get('memoCount', 0)),
             reverse=True,
         )[:30],
         'customers': [
@@ -19622,8 +19533,6 @@ def _ai_workspace_global_question_context(user):
                 'department': followup.department.name if followup.department else '',
                 'status': followup.get_status_display(),
                 'statusCode': followup.status or '',
-                'priority': followup.get_priority_display(),
-                'priorityCode': followup.priority or '',
                 'grade': followup.customer_grade or '',
                 'pipelineStage': followup.get_pipeline_stage_display(),
                 'pipelineStageCode': followup.pipeline_stage or '',
@@ -19725,9 +19634,7 @@ def _ai_workspace_contact_progress_answer(question, context):
         date_value = customer.get('lastSignalDate') or ''
         parsed_date = _parse_iso_date_or_none(date_value[:10]) if date_value else None
         date_rank = parsed_date.toordinal() if parsed_date else 0
-        priority_order = {'urgent': 0, 'followup': 1, 'scheduled': 2, 'long_term': 3}
-        priority = priority_order.get(customer.get('priorityCode') or '', 9)
-        return (strength, -date_rank, priority, customer.get('name') or '')
+        return (strength, -date_rank, customer.get('name') or '')
 
     customers.sort(key=sort_key)
     activity_count = len([item for item in customers if item.get('evidenceStrength') == 'activity'])
@@ -20029,7 +19936,7 @@ def _ai_workspace_question_fallback(question, context):
             'bullets': [
                 f"추천 후보 {len(recommended_actions)}건",
                 f"후보 범위: {candidate_scope_text}" if candidate_scope_text else '후보 범위: CRM 추천 액션',
-                '서비스/A/S와 교정 예정도 일반 영업 후속과 함께 우선순위에 반영합니다.',
+                '서비스/A/S와 교정 예정도 일반 영업 후속과 함께 실행 필요도에 반영합니다.',
                 '실행 전 고객에게 보낼 자료, 처리 예정일, 성적서 필요 여부처럼 빠진 조건만 확인하면 됩니다.',
             ],
             'evidence': _ai_workspace_question_evidence_payload(
@@ -20290,7 +20197,7 @@ def _ai_workspace_question_fallback(question, context):
             return {
                 'summary': (
                     f"{scope_label} 기준으로는 추천 액션과 미완료 후속조치가 있는 곳부터 보는 것이 좋습니다. "
-                    '우선순위는 긴급도, 예정일 경과 여부, 금액 영향, 최근 고객 반응이 있는지를 함께 보고 잡았습니다.'
+                    '먼저 볼 후보는 예정일 경과 여부, 금액 영향, 최근 고객 반응이 있는지를 함께 보고 잡았습니다.'
                 ),
                 'bullets': bullets,
                 'evidence': evidence,
@@ -20503,7 +20410,7 @@ def _ai_workspace_normalize_department_question_answer(data, fallback, context=N
             'customer': _ai_workspace_question_text(item.get('customer'), 140),
             'company': _ai_workspace_question_text(item.get('company'), 140),
             'department': _ai_workspace_question_text(item.get('department'), 140),
-            'priority': _ai_workspace_question_text(item.get('priority') or item.get('priorityLabel'), 90),
+            'executionNeed': _ai_workspace_question_text(item.get('executionNeed'), 90),
             'reason': reason,
             'nextAction': next_action,
             'timing': timing,
@@ -20793,7 +20700,6 @@ def _customer_ai_primary_context(followup):
         'manager': followup.manager or '',
         'company': followup.company.name if followup.company else '',
         'department': followup.department.name if followup.department else '',
-        'priority': followup.get_priority_display(),
         'status': followup.get_status_display(),
         'grade': followup.customer_grade or '',
         'score': followup.ai_score or 0,
@@ -20992,7 +20898,7 @@ def _schedule_ai_coach_fallback(context):
         checklist = ['납품 품목/수량 확인', '세금계산서와 결제 방식 확인', '다음 사용 예정일과 재주문 가능성 확인']
         recommended_next_action = '납품 완료 여부와 세금계산서/결제 상태를 노트에 남기고 다음 재구매 확인일을 잡습니다.'
     elif activity_type == 'service':
-        summary = f"{customer_label} 서비스 일정입니다. 증상, 사용 조건, 긴급도, 후속 처리 기준을 분리해 기록하는 것이 핵심입니다."
+        summary = f"{customer_label} 서비스 일정입니다. 증상, 사용 조건, 서비스 처리 기준, 후속 처리 기준을 분리해 기록하는 것이 핵심입니다."
         talk_track = [
             '현재 증상이 언제부터 어떤 조건에서 반복되는지 확인합니다.',
             '사용 제품, 로트, 사진/동영상 근거가 있는지 확인합니다.',
@@ -21014,7 +20920,7 @@ def _schedule_ai_coach_fallback(context):
     if activity_type in {'quote', 'delivery'} and not delivery_items and not (context.get('deliverySummary') or {}).get('itemsText'):
         risks.append({'level': 'medium', 'label': '품목 누락', 'value': '견적/납품 품목이 비어 있어 현장 확인이나 서류 자동화가 흔들릴 수 있습니다.'})
     if amount <= 0 and activity_type in {'quote', 'delivery'}:
-        risks.append({'level': 'low', 'label': '금액 미입력', 'value': '예상 금액이 없어 매출 영향과 우선순위 판단이 약합니다.'})
+        risks.append({'level': 'low', 'label': '금액 미입력', 'value': '예상 금액이 없어 매출 영향과 실행 필요도 판단이 약합니다.'})
     if not (context.get('recentEmails') or []):
         risks.append({'level': 'low', 'label': '메일 근거 부족', 'value': '최근 연결 메일이 없어 고객의 최신 문면 요청은 확인되지 않았습니다.'})
 
@@ -21480,8 +21386,6 @@ def ai_workspace_summary_api(request):
             'department': followup.department.name if followup.department else '',
             'grade': followup.customer_grade or '',
             'score': float(followup.get_combined_score()),
-            'priority': followup.priority,
-            'priorityLabel': followup.get_priority_display(),
             'hasAnalysis': analysis is not None,
             'analysisUpdatedAt': _datetime_or_none(analysis.updated_at) if analysis else None,
             'analysisSummary': _ai_workspace_analysis_summary(analysis) if analysis else '',
@@ -21619,7 +21523,6 @@ def ai_workspace_summary_api(request):
             'subtitle': ' · '.join(_ai_prompt_context(
                 followup.company.name if followup.company else '',
                 followup.department.name if followup.department else '',
-                followup.get_priority_display(),
             )),
             'priority': f'점수 {float(followup.get_combined_score()):.0f}',
             'context': context[:6],
@@ -21715,8 +21618,8 @@ def ai_workspace_summary_api(request):
                 'description': goal.get('description', ''),
                 'reason': goal.get('reason', ''),
                 'customer': goal.get('customer', ''),
-                'priority': goal.get('priority', ''),
-                'priorityLabel': goal.get('priorityLabel', ''),
+                'priority': '',
+                'priorityLabel': '',
                 'source': goal.get('source', ''),
                 'sourceLabel': goal.get('sourceLabel', ''),
                 'updatedAt': goal.get('updatedAt'),

@@ -16,7 +16,7 @@ GENERAL_GOALS = [
 
 DEPARTMENT_GOALS = {
     "영업팀": [
-        "고객 우선순위 정리",
+        "진행 고객 현황 정리",
         "후속 연락 스크립트 작성",
         "견적 후속 전략 작성",
         "고객 이탈 위험 분석",
@@ -36,7 +36,7 @@ DEPARTMENT_GOALS = {
         "클레임 원인 정리",
         "FAQ 생성",
         "응대 스크립트 작성",
-        "이슈 우선순위 분류",
+        "이슈 처리 순서 분류",
         "재발 방지 체크리스트 작성",
     ],
     "구매팀": [
@@ -104,9 +104,9 @@ DEPARTMENT_ALIASES = {
 
 KEYWORD_GOAL_PRIORITIES = {
     "견적": ["견적 후속 전략 작성", "견적 비교표 생성", "구매 의사결정 기준 정리"],
-    "후속": ["후속 연락 스크립트 작성", "고객 우선순위 정리"],
+    "후속": ["후속 연락 스크립트 작성", "진행 고객 현황 정리"],
     "연락": ["후속 연락 스크립트 작성", "응대 스크립트 작성"],
-    "이탈": ["고객 이탈 위험 분석", "고객 우선순위 정리"],
+    "이탈": ["고객 이탈 위험 분석", "진행 고객 현황 정리"],
     "미팅": ["미팅 준비 질문 리스트 생성", "회의 아젠다 작성"],
     "보고서": ["영업 보고서 초안 작성", "보고서 초안 작성", "보고서 구조 작성"],
     "클레임": ["클레임 원인 정리", "재발 방지 체크리스트 작성"],
@@ -153,7 +153,7 @@ def suggest_goals(department: str, situation: str = "", problem: str = "") -> li
     return prioritized + [goal for goal in goals if goal not in prioritized]
 
 DEFAULT_DEPARTMENT_GOALS = [
-    "고객 우선순위 정리",
+    "진행 고객 현황 정리",
     "견적 후속 연락 전략 작성",
     "고객 이탈 위험 분석",
     "이번 주 영업 보고서 초안 작성",
@@ -192,8 +192,8 @@ PAINPOINT_GOAL_TEMPLATES = {
         "description": "고객의 신뢰 우려를 낮추기 위한 근거 자료, 확인 항목, 후속 액션을 정리합니다.",
     },
     "priority": {
-        "title": "고객 우선순위 정리",
-        "description": "먼저 대응해야 할 고객과 이슈를 우선순위 기준에 따라 정리합니다.",
+        "title": "고객 관심도 신호 정리",
+        "description": "고객의 관심도, 보류 사유, 다음 확인 사항을 정리합니다.",
     },
 }
 
@@ -244,13 +244,13 @@ def recommend_output_format(goal: str) -> str:
     """Recommend an output format from the selected goal text."""
     text = (goal or "").lower()
     rules = [
-        (("우선순위", "순서", "먼저"), "우선순위 표(대상/이슈/근거/다음 액션/기한)와 실행 체크리스트"),
-        (("견적",), "견적 후속 우선순위 표 + 고객별 연락 방향 + 메시지 초안"),
+        (("우선순위", "순서", "먼저"), "실행 순서 표(대상/이슈/근거/다음 액션/기한)와 실행 체크리스트"),
+        (("견적",), "견적 후속 실행 순서 표 + 고객별 연락 방향 + 메시지 초안"),
         (("연락", "스크립트", "메시지", "문구"), "상황별 후속 연락 메시지 초안 + 톤별 대안 + 실행 체크리스트"),
         (("보고서", "보고", "요약"), "보고서 목차 + 핵심 요약문 + 표 형식 액션 아이템"),
         (("분석", "원인", "이탈", "리스크"), "원인/영향/대응 표 + 확인 필요 사항"),
         (("체크리스트", "점검"), "체크리스트"),
-        (("전략", "로드맵", "계획"), "실행 로드맵(우선순위/담당/기한) + 리스크 대응표"),
+        (("전략", "로드맵", "계획"), "실행 로드맵(실행 순서/담당/기한) + 리스크 대응표"),
         (("미팅", "질문", "준비"), "질문 리스트 + 미팅 준비자료 + 확인 체크리스트"),
     ]
     for keywords, output_format in rules:
@@ -353,7 +353,7 @@ def summarize_department_analysis(analysis) -> dict:
         priority = action.get("priority")
         parts = [
             sanitize_external_prompt_text(action_text),
-            f"우선순위 {sanitize_external_prompt_text(priority)}" if priority else "",
+            f"실행 필요도 {sanitize_external_prompt_text(priority)}" if priority else "",
             sanitize_external_prompt_text(reason),
         ]
         text = " / ".join(part for part in parts if part)
@@ -386,8 +386,8 @@ def _goal_from_painpoint(card) -> dict:
         title = "미팅 준비 질문 리스트 생성"
         description = "다음 미팅에서 확인해야 할 질문과 준비자료를 정리합니다."
     elif "우선" in lowered or "관심" in lowered:
-        title = "고객 우선순위 정리"
-        description = "먼저 대응해야 할 고객과 이슈를 기준별로 정리합니다."
+        title = "고객 관심도 신호 정리"
+        description = "고객의 관심도와 다음 확인 항목을 기준별로 정리합니다."
     else:
         template = PAINPOINT_GOAL_TEMPLATES.get(card.category, {})
         title = template.get("title", "핵심 문제 대응 액션 정리")
@@ -416,10 +416,9 @@ def _goal_from_action(action: dict) -> dict | None:
         title = f"{title} 실행계획 작성"
     return {
         "title": title,
-        "description": "추천 액션을 바로 실행할 수 있도록 단계, 우선순위, 확인 항목을 정리합니다.",
+        "description": "추천 액션을 바로 실행할 수 있도록 단계, 실행 필요도, 확인 항목을 정리합니다.",
         "reason": _truncate(reason, 140),
         "customer": customer,
-        "priority": sanitize_external_prompt_text(action.get("priority")),
         "source": "next_action",
     }
 
@@ -467,26 +466,9 @@ def _goal_from_ai_recommendation(item: dict) -> dict | None:
     return {
         "title": title,
         "description": sanitize_external_prompt_text(item.get("description")) or "AI 분석이 추천한 고객별 목표입니다.",
-        "reason": sanitize_external_prompt_text(item.get("reason")) or "AI 분석 결과에서 고객별 우선 대응 대상으로 판단되었습니다.",
+        "reason": sanitize_external_prompt_text(item.get("reason")) or "AI 분석 결과에서 후속 확인 대상으로 판단되었습니다.",
         "customer": customer,
-        "priority": sanitize_external_prompt_text(item.get("priority")),
-        "priorityLabel": sanitize_external_prompt_text(item.get("priorityLabel") or item.get("priority_label")),
         "source": item.get("source", "ai_recommendation"),
-    }
-
-
-def _goal_from_priority_recommendation(item: dict) -> dict | None:
-    customer = sanitize_external_prompt_text(item.get("customer"))
-    if not customer:
-        return None
-    return {
-        "title": f"{customer} 후속 우선순위 실행계획 작성",
-        "description": "AI가 재산정한 CRM 우선순위에 맞춰 연락 방향, 확인 질문, 준비자료를 정리합니다.",
-        "reason": sanitize_external_prompt_text(item.get("reason")) or "AI가 고객별 우선순위 추천에 포함했습니다.",
-        "customer": customer,
-        "priority": sanitize_external_prompt_text(item.get("priority")),
-        "priorityLabel": sanitize_external_prompt_text(item.get("priorityLabel") or item.get("priority_label")),
-        "source": "priority_recommendation",
     }
 
 
@@ -510,8 +492,6 @@ def suggest_goals_from_department_analysis(analysis, limit: int = 6, customer_na
             "description": sanitize_external_prompt_text(goal.get("description")),
             "reason": sanitize_external_prompt_text(goal.get("reason")),
             "customer": customer,
-            "priority": sanitize_external_prompt_text(goal.get("priority")),
-            "priorityLabel": sanitize_external_prompt_text(goal.get("priorityLabel") or goal.get("priority_label")),
             "source": goal.get("source", "fallback"),
         })
 
@@ -519,12 +499,6 @@ def suggest_goals_from_department_analysis(analysis, limit: int = 6, customer_na
     for item in _as_list(data.get("recommended_goals")):
         if isinstance(item, dict):
             goal = _goal_from_ai_recommendation(item)
-            if goal:
-                add_goal(goal)
-
-    for item in _as_list(data.get("followup_priority_recommendations")):
-        if isinstance(item, dict):
-            goal = _goal_from_priority_recommendation(item)
             if goal:
                 add_goal(goal)
 

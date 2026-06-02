@@ -874,8 +874,8 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['cards_created'], 1)
         self.assertEqual(payload['cards_preserved'], 1)
-        self.assertEqual(payload['priority_updates'], 1)
-        self.assertEqual(payload['priority_recommendations'], 1)
+        self.assertEqual(payload['priority_updates'], 0)
+        self.assertEqual(payload['priority_recommendations'], 0)
         self.assertTrue(PainPointCard.objects.filter(id=verified.id).exists())
         self.assertFalse(PainPointCard.objects.filter(id=stale_unverified.id).exists())
         self.assertEqual(
@@ -912,15 +912,9 @@ class AIDepartmentAnalysisMemoryTests(TestCase):
             for action in analysis.analysis_data['next_actions']
         ))
         followup.refresh_from_db()
-        self.assertEqual(followup.priority, 'urgent')
-        self.assertEqual(
-            analysis.analysis_data['followup_priority_recommendations'][0]['customer'],
-            '테스트 고객',
-        )
-        self.assertEqual(
-            analysis.analysis_data['followup_priority_recommendations'][0]['priority'],
-            'urgent',
-        )
+        self.assertEqual(followup.priority, 'long_term')
+        self.assertNotIn('followup_priority_recommendations', analysis.analysis_data)
+        self.assertNotIn('priority', analysis.analysis_data['recommended_goals'][0])
         self.assertIn(
             '테스트 고객',
             analysis.analysis_data['recommended_goals'][0]['title'],

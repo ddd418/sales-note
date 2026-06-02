@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-02 AI legacy customer priority reference removal plan
+
+**Background**:
+
+- User is concerned that AI could still reference the retired customer priority field even after the UI/data cleanup.
+- The old `FollowUp.priority` values `urgent` and `followup` were already normalized in production, but AI prompts, payloads, and stored JSON also need to stop using customer priority signals.
+- Service case priority is a separate A/S workflow field and should remain untouched.
+
+**DB change required**: No schema migration.
+
+- One-time production JSON cleanup should remove old AI result keys such as `prioritySignal`, `followup_priority_recommendations`, `customer_priority_recommendations`, and `priority_recommendation`.
+- Strip legacy priority fields from stored recommended goals so old AI analysis history does not keep suggesting priority-based actions.
+- Do not update or delete customer/contact/service records.
+
+**Implementation scope**:
+
+- Remove `FollowUp.priority` and `get_priority_display()` from AI briefing/context prompts.
+- Stop AI department/followup analysis from requesting or applying customer priority recommendations.
+- Keep backward-compatible response counters only where older React callers may expect those keys, with zero/null values.
+- Remove `prioritySignal` from AI workspace feedback prompts, normalized results, action payloads, and history content.
+- Ensure recommended goals and next actions use execution need/status language instead of customer priority language.
+
+**Validation plan**:
+
+- `python -m py_compile ai_chat\services.py ai_chat\views.py ai_chat\department_prompt.py reporting\views.py ai_chat\tests.py reporting\tests.py`
+- `python manage.py test ai_chat.tests.AIDepartmentAnalysisMemoryTests reporting.tests.AIWorkspaceSummaryApiTests --keepdb`
+- `python manage.py check`
+- `git diff --check`
+- Deploy affected backend services to Railway.
+- Verify production AI JSON no longer contains retired customer-priority fields after cleanup.
+
 ## 2026-06-02 Legacy customer priority cleanup plan
 
 **Background**:

@@ -16619,7 +16619,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(feedback.ai_result['crmSync']['taskHistoryId'], history.id)
         self.assertIn('다음주 재연락', history.next_action)
         self.assertEqual(followup.priority, 'scheduled')
-        self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'followup')
+        self.assertNotIn('prioritySignal', feedback.ai_result)
         self.assertEqual(followup.pipeline_stage, 'negotiation')
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
@@ -16740,7 +16740,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
-        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertNotIn('prioritySignal', payload['feedback'])
         self.assertFalse(any(
             '우선순위' in change['label']
             for change in payload['crmSync']['changes']
@@ -16749,7 +16749,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         followup.refresh_from_db()
         self.assertEqual(followup.priority, 'scheduled')
         feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'quote:{quote.id}')
-        self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'urgent')
+        self.assertNotIn('prioritySignal', feedback.ai_result)
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
     def test_ai_workspace_action_feedback_api_keeps_long_term_signal_out_of_customer_priority(self, _mock_client):
@@ -16802,7 +16802,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
-        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'long_term')
+        self.assertNotIn('prioritySignal', payload['feedback'])
         self.assertFalse(any(
             '우선순위' in change['label']
             for change in payload['crmSync']['changes']
@@ -16856,7 +16856,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(followup.pipeline_stage, 'negotiation')
         feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'followup:{history.id}')
         self.assertEqual(feedback.history.action_type, 'memo')
-        self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'followup')
+        self.assertNotIn('prioritySignal', feedback.ai_result)
         self.assertIn('기존 후속조치 갱신', feedback.ai_result['crmSync']['changes'][0]['label'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
@@ -17382,7 +17382,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
         self.assertEqual(payload['feedback']['status'], 'next_action')
-        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertNotIn('prioritySignal', payload['feedback'])
         self.assertIn('팁', payload['feedback']['nextAction'])
         self.assertIn('사용 제품 규격', payload['feedback']['nextAction'])
         self.assertIn('처리 예정 시간', payload['feedback']['nextAction'])
@@ -17431,7 +17431,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertNotIn('prioritySignal', payload['feedback'])
         self.assertEqual(len(payload['feedback']['issueFollowups']), 2)
         self.assertEqual(len(payload['crmSync']['issueTaskHistories']), 1)
         self.assertTrue(any(
@@ -17534,7 +17534,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload['source'], 'openai')
-        self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
+        self.assertNotIn('prioritySignal', payload['feedback'])
         self.assertIn('팁', payload['feedback']['nextAction'])
         self.assertIn('사용 제품 규격', payload['feedback']['nextAction'])
         self.assertIn('처리 예정 시간', payload['feedback']['nextAction'])
