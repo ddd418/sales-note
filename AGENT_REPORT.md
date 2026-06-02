@@ -1,5 +1,82 @@
 # AGENT_REPORT.md
 
+## 2026-06-02 — 레거시 고객 긴급/팔로업 우선순위 정리
+
+### 요약
+
+- 예전 고객 추가 흐름에서 쓰던 `긴급`/`팔로업` 고객 우선순위 입력을 React 고객/계정 담당자 폼에서 제거했습니다.
+- Django 고객 생성/수정 API가 더 이상 요청의 고객 우선순위 값을 검증하거나 반영하지 않도록 정리했습니다.
+- AI 피드백 CRM 동기화도 고객 우선순위를 쓰지 않고 상태/파이프라인/다음 액션 중심으로만 동작하게 했습니다.
+- 기존 진행 관리는 파이프라인 단계(`pipeline_stage`)가 맞습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 고객 추가/수정 화면에서 기준이 불명확한 긴급/팔로업 우선순위를 더 이상 입력하지 않습니다.
+- 담당자 추가/수정에서도 레거시 priority payload를 무시합니다.
+- 레거시 우선순위 변경 URL은 410으로 막고, 파이프라인 사용 안내를 반환합니다.
+
+### 기존 기능 보존
+
+- 고객/부서/담당자 데이터는 삭제하지 않았습니다.
+- 파이프라인 단계, 고객 상태, 다음 액션, AI 브리핑/피드백 기록은 유지했습니다.
+- 서비스 케이스의 `priority`는 별도 A/S 업무 필드라 건드리지 않았습니다.
+
+### 운영 DB 확인
+
+```text
+배포 전 production reporting_followup priority 분포
+followup 85
+long_term 30
+scheduled 268
+urgent 15
+```
+
+### 실행한 명령과 결과
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.PrepaymentCustomerApiTests reporting.tests.AIWorkspaceSummaryApiTests --keepdb
+→ OK, 172 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; Vite chunk-size warning only for the existing large bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이번 변경은 고객 우선순위 기능 폐기와 데이터 정리에 한정했습니다.
+- Vite의 큰 번들 경고는 기존 code splitting 과제로 남아 있습니다.
+
+### Production 배포 상태
+
+- Pending.
+- 배포 후 production DB에서 `urgent` 15건과 `followup` 85건을 `scheduled`로 정리할 예정입니다.
+
+### Manual Server Test Process
+
+1. 배포 후 `https://sales-note-frontend-production.up.railway.app/customers/?create=1`에 접속합니다.
+2. 고객 추가 폼에 긴급/팔로업 우선순위 입력이 없는지 확인합니다.
+3. 고객 상세 또는 계정 담당자 수정에서 고객 상태와 파이프라인은 저장되지만 우선순위 입력은 없는지 확인합니다.
+4. `/pipeline/`에서 고객 진행 단계가 파이프라인 기준으로 보이는지 확인합니다.
+
 ## 2026-06-02 — 파이프라인 접촉/잠재 확률 기본값 제거
 
 ### 요약

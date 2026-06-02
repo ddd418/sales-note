@@ -558,7 +558,6 @@ type CustomerCreateFormState = {
   manager: string;
   notes: string;
   phoneNumber: string;
-  priority: string;
 };
 
 type CustomerCompanyManageOption = CustomersData['create']['companies'][number];
@@ -574,7 +573,6 @@ type CustomerEditFormState = {
   notes: string;
   phoneNumber: string;
   pipelineStage: string;
-  priority: string;
   status: string;
 };
 
@@ -596,7 +594,6 @@ type AccountContactFormState = {
   notes: string;
   phoneNumber: string;
   pipelineStage: string;
-  priority: string;
   status: string;
 };
 
@@ -1601,7 +1598,6 @@ const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
   manager: '',
   notes: '',
   phoneNumber: '',
-  priority: 'scheduled',
 });
 
 const makeCustomerEditForm = (customer: CustomerItem | null): CustomerEditFormState => ({
@@ -1614,7 +1610,6 @@ const makeCustomerEditForm = (customer: CustomerItem | null): CustomerEditFormSt
   notes: customer?.notesFull || customer?.notes || '',
   phoneNumber: customer?.phone || '',
   pipelineStage: customer?.pipelineStage || 'potential',
-  priority: customer?.priority || 'scheduled',
   status: customer?.status || 'active',
 });
 
@@ -1641,7 +1636,6 @@ const makeAccountContactForm = (
     notes: contact?.notesFull || contact?.notes || '',
     phoneNumber: contact?.phone || '',
     pipelineStage: contact?.pipelineStage || management?.stages[0]?.value || 'potential',
-    priority: contact?.priority || management?.priorities[0]?.value || 'scheduled',
     status: contact?.status || management?.statuses[0]?.value || 'active',
   };
 };
@@ -1685,7 +1679,6 @@ const accountContactFormToPayload = (form: AccountContactFormState): { payload: 
       notes: form.notes.trim() || undefined,
       phoneNumber: form.phoneNumber.trim() || undefined,
       pipelineStage: form.pipelineStage || 'potential',
-      priority: form.priority || 'scheduled',
       status: form.status || 'active',
     },
     error: '',
@@ -3951,7 +3944,6 @@ function CustomerDetailPage({
       notes: editForm.notes.trim() || undefined,
       phoneNumber: editForm.phoneNumber.trim() || undefined,
       pipelineStage: editForm.pipelineStage,
-      priority: editForm.priority,
       status: editForm.status,
     };
 
@@ -22327,7 +22319,6 @@ export function App() {
       return;
     }
     const firstCompanyId = customersData.create.companies[0]?.id;
-    const firstPriority = customersData.create.priorities[0]?.value || 'scheduled';
     setCustomerCreateForm((previous) => {
       const companyId = previous.companyId || (firstCompanyId ? String(firstCompanyId) : '');
       const companyDepartments = customersData.create.departments.filter(
@@ -22338,7 +22329,6 @@ export function App() {
         ...previous,
         companyId,
         departmentId: previousDepartmentValid ? previous.departmentId : (companyDepartments[0]?.id ? String(companyDepartments[0].id) : ''),
-        priority: previous.priority || firstPriority,
       };
     });
   }, [accountCleanupPreviewId, accountDetailId, currentView, customerDetailId, customersData]);
@@ -23368,7 +23358,6 @@ export function App() {
   };
   const resetCustomerCreateForm = (data: CustomersData | null) => {
     const nextForm = makeEmptyCustomerCreateForm();
-    nextForm.priority = data?.create.priorities[0]?.value || nextForm.priority;
     nextForm.companyId = data?.create.companies[0]?.id ? String(data.create.companies[0].id) : '';
     const firstDepartment = data?.create.departments.find((department) => String(department.companyId) === nextForm.companyId);
     nextForm.departmentId = firstDepartment?.id ? String(firstDepartment.id) : '';
@@ -23397,10 +23386,6 @@ export function App() {
       setCustomerCreateError('고객명을 입력하세요.');
       return;
     }
-    if (!customerCreateForm.priority) {
-      setCustomerCreateError('우선순위를 선택하세요.');
-      return;
-    }
 
     const payload: CustomerCreatePayload = {
       address: customerCreateForm.address.trim() || undefined,
@@ -23411,7 +23396,6 @@ export function App() {
       manager: customerCreateForm.manager.trim() || undefined,
       notes: customerCreateForm.notes.trim() || undefined,
       phoneNumber: customerCreateForm.phoneNumber.trim() || undefined,
-      priority: customerCreateForm.priority,
     };
 
     setCustomerCreating(true);

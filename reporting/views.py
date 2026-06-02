@@ -7692,11 +7692,8 @@ def account_contact_save_api(request, department_id, followup_id=None):
     if target_department.id not in allowed_department_ids:
         return JsonResponse({'success': False, 'error': '접근 권한이 없는 부서/연구실입니다.'}, status=403)
 
-    priority = request.POST.get('priority', '').strip() or 'scheduled'
     status = request.POST.get('status', '').strip() or 'active'
     pipeline_stage = request.POST.get('pipeline_stage', '').strip() or 'potential'
-    if priority not in {value for value, _label in FollowUp.PRIORITY_CHOICES}:
-        return JsonResponse({'success': False, 'error': '올바른 우선순위를 선택해주세요.'}, status=400)
     if status not in {value for value, _label in FollowUp.STATUS_CHOICES}:
         return JsonResponse({'success': False, 'error': '올바른 상태를 선택해주세요.'}, status=400)
     if pipeline_stage not in {value for value, _label in FollowUp.PIPELINE_STAGE_CHOICES}:
@@ -7722,6 +7719,7 @@ def account_contact_save_api(request, department_id, followup_id=None):
                 company=target_department.company,
                 department=target_department,
             )
+            contact.priority = 'scheduled'
         contact.customer_name = customer_name
         contact.manager = request.POST.get('manager', '').strip()
         contact.contact_role = contact_role
@@ -7729,7 +7727,6 @@ def account_contact_save_api(request, department_id, followup_id=None):
         contact.email = request.POST.get('email', '').strip()
         contact.address = request.POST.get('address', '').strip()
         contact.notes = request.POST.get('notes', '').strip()
-        contact.priority = priority
         contact.status = status
         contact.pipeline_stage = pipeline_stage
         contact.is_active = is_active
@@ -9077,7 +9074,6 @@ def customer_update_api(request, followup_id):
     customer_name = request.POST.get('customer_name', '').strip()
     company_id = request.POST.get('company', '').strip()
     department_id = request.POST.get('department', '').strip()
-    priority = request.POST.get('priority', '').strip()
     status = request.POST.get('status', '').strip()
     pipeline_stage = request.POST.get('pipeline_stage', '').strip()
 
@@ -9087,8 +9083,6 @@ def customer_update_api(request, followup_id):
         return JsonResponse({'success': False, 'error': '업체/학교를 선택해주세요.'}, status=400)
     if not department_id:
         return JsonResponse({'success': False, 'error': '부서/연구실을 선택해주세요.'}, status=400)
-    if priority not in {value for value, _label in FollowUp.PRIORITY_CHOICES}:
-        return JsonResponse({'success': False, 'error': '올바른 우선순위를 선택해주세요.'}, status=400)
     if status not in {value for value, _label in FollowUp.STATUS_CHOICES}:
         return JsonResponse({'success': False, 'error': '올바른 상태를 선택해주세요.'}, status=400)
     if pipeline_stage not in {value for value, _label in FollowUp.PIPELINE_STAGE_CHOICES}:
@@ -9122,7 +9116,6 @@ def customer_update_api(request, followup_id):
     followup.email = request.POST.get('email', '').strip()
     followup.address = request.POST.get('address', '').strip()
     followup.notes = request.POST.get('notes', '').strip()
-    followup.priority = priority
     followup.status = status
     followup.pipeline_stage = pipeline_stage
     if pipeline_changed:
@@ -9136,7 +9129,6 @@ def customer_update_api(request, followup_id):
         'email',
         'address',
         'notes',
-        'priority',
         'status',
         'pipeline_stage',
         'pipeline_manually_set',
@@ -16668,11 +16660,6 @@ def _ai_workspace_sync_secondary_issue_followups(user, user_profile, followup, a
 def _ai_workspace_update_followup_for_sync(followup, intent, status, priority_signal=None):
     changes = []
     update_fields = []
-    priority_signal = priority_signal if isinstance(priority_signal, dict) else None
-    explicit_priority = (priority_signal or {}).get('priority')
-    if explicit_priority not in {choice[0] for choice in FollowUp.PRIORITY_CHOICES}:
-        explicit_priority = None
-    priority_reason = (priority_signal or {}).get('reason') or ''
 
     def set_field(field, value, label, detail=None):
         if getattr(followup, field) != value:
@@ -16686,34 +16673,16 @@ def _ai_workspace_update_followup_for_sync(followup, intent, status, priority_si
                 detail if detail is not None else str(value),
             ))
 
-    def set_priority(default_priority, default_label):
-        priority = explicit_priority or default_priority
-        if not priority:
-            return
-        label = (
-            f"AI 보고 우선순위 {dict(FollowUp.PRIORITY_CHOICES).get(priority, priority)} 반영"
-            if explicit_priority
-            else default_label
-        )
-        detail = priority_reason or dict(FollowUp.PRIORITY_CHOICES).get(priority, priority)
-        set_field('priority', priority, label, detail)
-
     if intent == 'resolved_no_purchase':
         set_field('status', 'paused', '고객 상태 보류')
-        set_field('priority', 'long_term', '우선순위 장기 전환', priority_reason or '구매 보류/종료')
         if not followup.pipeline_manually_set:
             set_field('pipeline_stage', 'lost', '파이프라인 실주 전환')
     elif intent == 'positive_buying_signal':
         set_field('status', 'active', '고객 상태 진행중 유지')
-        set_priority('urgent', '우선순위 긴급 전환')
         if status == 'next_action' and not followup.pipeline_manually_set and followup.pipeline_stage in {'potential', 'contact', 'quote'}:
             set_field('pipeline_stage', 'negotiation', '파이프라인 협상 전환')
     elif intent in {'follow_up_needed', 'email_waiting'}:
         set_field('status', 'active', '고객 상태 진행중 유지')
-        if explicit_priority:
-            set_priority(None, '우선순위 팔로업 전환')
-        elif followup.priority not in {'urgent', 'followup'}:
-            set_priority('followup', '우선순위 팔로업 전환')
 
     if update_fields:
         update_fields.append('updated_at')
@@ -29873,47 +29842,11 @@ def add_manager_memo_to_history_api(request, history_id):
 @require_http_methods(["POST"])
 @login_required
 def customer_priority_update(request, followup_id):
-    """고객 우선순위 업데이트 API"""
-    try:
-        followup = get_object_or_404(FollowUp, pk=followup_id)
-        
-        # 권한 체크: 수정 권한이 있는 경우만 가능
-        if not can_modify_user_data(request.user, followup.user):
-            return JsonResponse({
-                'success': False,
-                'error': '고객 정보를 수정할 권한이 없습니다.'
-            }, status=403)
-        
-        new_priority = request.POST.get('priority')
-        
-        # 유효한 우선순위인지 확인 (모델의 PRIORITY_CHOICES 사용)
-        valid_priorities = [choice[0] for choice in FollowUp.PRIORITY_CHOICES]
-        if new_priority not in valid_priorities:
-            return JsonResponse({
-                'success': False,
-                'error': '유효하지 않은 우선순위입니다.'
-            }, status=400)
-        
-        # 우선순위 업데이트
-        followup.priority = new_priority
-        followup.save()
-        
-        # 응답에 포함할 우선순위 표시명
-        priority_display = dict(FollowUp.PRIORITY_CHOICES).get(new_priority, new_priority)
-        
-        return JsonResponse({
-            'success': True,
-            'message': f'고객 우선순위가 {priority_display}로 변경되었습니다.',
-            'priority': new_priority,
-            'priority_display': priority_display
-        })
-        
-    except Exception as e:
-        logger.error(f"Customer priority update error: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': '우선순위 업데이트 중 오류가 발생했습니다.'
-        }, status=500)
+    """Deprecated customer priority API. Pipeline stage is the active workflow."""
+    return JsonResponse({
+        'success': False,
+        'error': '고객 우선순위는 더 이상 사용하지 않습니다. 파이프라인 단계를 사용해주세요.',
+    }, status=410)
 
 
 @login_required
@@ -30579,7 +30512,7 @@ def followup_create_ajax(request):
         customer_name = request.POST.get('customer_name', '').strip()
         company_id = request.POST.get('company', '').strip()
         department_id = request.POST.get('department', '').strip()
-        priority = request.POST.get('priority', '').strip()
+        priority = 'scheduled'
         
         if not customer_name:
             return JsonResponse({
@@ -30597,12 +30530,6 @@ def followup_create_ajax(request):
             return JsonResponse({
                 'success': False,
                 'error': '부서/연구실을 선택해주세요.'
-            })
-        
-        if not priority:
-            return JsonResponse({
-                'success': False,
-                'error': '우선순위를 선택해주세요.'
             })
         
         # Company와 Department 객체 가져오기
@@ -30659,7 +30586,7 @@ def followup_create_ajax(request):
             manager=request.POST.get('manager', '').strip(),
             phone_number=request.POST.get('phone_number', '').strip(),
             email=request.POST.get('email', '').strip(),
-            priority=priority,  # 요청에서 받은 우선순위 사용
+            priority=priority,
             address=request.POST.get('address', '').strip(),     # 상세주소 추가
             notes=request.POST.get('notes', '').strip(),
             status='active'
@@ -36207,7 +36134,7 @@ def quick_add_customer(request):
         department_name = data.get('department_name', '').strip()
         manager = data.get('manager', '').strip()
         phone_number = data.get('phone_number', '').strip()
-        priority = data.get('priority', 'scheduled').strip()
+        priority = 'scheduled'
         address = data.get('address', '').strip()
         notes = data.get('notes', '').strip()
         

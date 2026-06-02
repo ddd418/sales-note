@@ -784,7 +784,6 @@ export type CustomerCreatePayload = {
   manager?: string;
   notes?: string;
   phoneNumber?: string;
-  priority: string;
 };
 
 export type CustomerCreateResponse = {
@@ -806,7 +805,6 @@ export type CustomerEditPayload = {
   notes?: string;
   phoneNumber?: string;
   pipelineStage: string;
-  priority: string;
   status: string;
 };
 
@@ -843,7 +841,6 @@ export type AccountContactPayload = {
   notes?: string;
   phoneNumber?: string;
   pipelineStage: string;
-  priority: string;
   status: string;
 };
 
@@ -7154,7 +7151,6 @@ export async function createCustomer(
   body.set('customer_name', payload.customerName);
   body.set('company', String(payload.companyId));
   body.set('department', String(payload.departmentId));
-  body.set('priority', payload.priority);
   if (payload.manager) body.set('manager', payload.manager);
   if (payload.phoneNumber) body.set('phone_number', payload.phoneNumber);
   if (payload.email) body.set('email', payload.email);
@@ -7196,7 +7192,6 @@ export async function updateCustomer(
   body.set('customer_name', payload.customerName);
   body.set('company', String(payload.companyId));
   body.set('department', String(payload.departmentId));
-  body.set('priority', payload.priority);
   body.set('status', payload.status);
   body.set('pipeline_stage', payload.pipelineStage);
   if (payload.manager) body.set('manager', payload.manager);
@@ -7298,7 +7293,6 @@ export async function saveAccountContact(
   body.set('contact_role', payload.contactRole);
   body.set('department', String(payload.departmentId));
   body.set('is_active', payload.isActive ? 'true' : 'false');
-  body.set('priority', payload.priority);
   body.set('status', payload.status);
   body.set('pipeline_stage', payload.pipelineStage);
   if (payload.manager) body.set('manager', payload.manager);

@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-06-02 Legacy customer priority cleanup plan
+
+**Background**:
+
+- User confirmed that the old customer "긴급/팔로업" priority flow should no longer be used.
+- Current CRM direction is to manage customer progress through `pipeline_stage`, not `FollowUp.priority`.
+- Production DB still has old `FollowUp.priority` values: `urgent` 15, `followup` 85.
+
+**DB change required**: No schema migration.
+
+- One-time production data cleanup should update old `FollowUp.priority in ('urgent', 'followup')` to `scheduled`.
+- Do not delete customer/contact records.
+- Do not touch `ServiceCase.priority`; that is separate A/S/service workflow priority.
+
+**Implementation scope**:
+
+- Stop React customer/account create and edit flows from sending customer priority.
+- Make Django customer/contact create and edit APIs default missing priority to `scheduled`.
+- Stop AI workspace CRM sync from writing `FollowUp.priority` for urgent/followup signals; keep status/pipeline/history sync behavior.
+- Add/update tests so customer creation no longer requires priority and AI sync no longer writes customer priority.
+- Run production cleanup after deployment.
+
+**Validation plan**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests reporting.tests.PrepaymentCustomerApiTests reporting.tests.AIWorkspaceSummaryApiTests --keepdb`
+- `python manage.py check`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy affected services to Railway.
+- Verify production `reporting_followup` has no `urgent` or `followup` rows after cleanup.
+
 ## 2026-06-02 Pipeline contact/potential probability cleanup plan
 
 **Background**:

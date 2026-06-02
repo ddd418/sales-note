@@ -5039,7 +5039,7 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(followup.customer_name, '빠른등록 담당자')
         self.assertEqual(followup.user, self.user)
         self.assertEqual(followup.user_company, self.company)
-        self.assertEqual(followup.priority, 'urgent')
+        self.assertEqual(followup.priority, 'scheduled')
 
     def test_followup_create_ajax_blocks_manager(self):
         from reporting.models import Company, Department
@@ -6770,6 +6770,7 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(moved.company, other_department.company)
         self.assertEqual(moved.contact_role, FollowUp.CONTACT_ROLE_TAX_INVOICE)
         self.assertFalse(moved.is_active)
+        self.assertEqual(moved.priority, 'scheduled')
         self.assertEqual(moved.status, 'paused')
         self.assertEqual(moved.pipeline_stage, 'quote')
 
@@ -6830,11 +6831,32 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(updated.customer_name, '수정완료 담당자')
         self.assertEqual(updated.company, next_company)
         self.assertEqual(updated.department, next_department)
-        self.assertEqual(updated.priority, 'urgent')
+        self.assertEqual(updated.priority, 'scheduled')
         self.assertEqual(updated.status, 'paused')
         self.assertEqual(updated.pipeline_stage, 'quote')
         self.assertTrue(updated.pipeline_manually_set)
         self.assertEqual(updated.email, 'edited@example.com')
+
+    def test_customer_priority_update_api_is_deprecated(self):
+        from reporting.models import FollowUp
+
+        target = self._create_customer(self.user, '우선순위폐기', priority='scheduled', stage='potential')
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:customer_priority_update', args=[target.id]), {
+            'priority': 'urgent',
+        })
+
+        self.assertEqual(response.status_code, 410)
+        payload = response.json()
+        self.assertFalse(payload['success'])
+        self.assertIn('파이프라인', payload['error'])
+        target.refresh_from_db()
+        self.assertEqual(target.priority, 'scheduled')
+        self.assertEqual(
+            FollowUp.objects.filter(priority__in=['urgent', 'followup'], id=target.id).count(),
+            0,
+        )
 
     def test_customer_update_api_blocks_manager_and_coworker(self):
         target = self._create_customer(self.user, '수정권한차단')
@@ -16445,7 +16467,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         action_ids = {item['id'] for item in summary_response.json()['actionQueue']}
         self.assertNotIn(f'quote:{quote.id}', action_ids)
 
-    def test_backfill_ai_feedback_crm_sync_resolved_legacy_updates_customer_priority(self):
+    def test_backfill_ai_feedback_crm_sync_resolved_legacy_keeps_customer_priority(self):
         from datetime import time, timedelta
         from decimal import Decimal
         from io import StringIO
@@ -16529,16 +16551,16 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIsNotNone(open_history.reviewed_at)
         self.assertEqual(quote_schedule.status, 'cancelled')
         self.assertEqual(followup.status, 'paused')
-        self.assertEqual(followup.priority, 'long_term')
+        self.assertEqual(followup.priority, 'urgent')
         self.assertEqual(followup.pipeline_stage, 'lost')
         self.assertEqual(feedback.ai_result['intent'], 'resolved_no_purchase')
         self.assertTrue(feedback.ai_result['crmSync']['applied'])
-        self.assertTrue(any(
-            change['label'] == '우선순위 장기 전환'
+        self.assertFalse(any(
+            '우선순위' in change['label']
             for change in feedback.ai_result['crmSync']['changes']
         ))
 
-    def test_backfill_ai_feedback_crm_sync_positive_legacy_uses_explicit_followup_priority(self):
+    def test_backfill_ai_feedback_crm_sync_positive_legacy_keeps_customer_priority(self):
         from datetime import timedelta
         from io import StringIO
 
@@ -16596,7 +16618,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertEqual(feedback.ai_result['intent'], 'positive_buying_signal')
         self.assertEqual(feedback.ai_result['crmSync']['taskHistoryId'], history.id)
         self.assertIn('다음주 재연락', history.next_action)
-        self.assertEqual(followup.priority, 'followup')
+        self.assertEqual(followup.priority, 'scheduled')
         self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'followup')
         self.assertEqual(followup.pipeline_stage, 'negotiation')
 
@@ -16671,7 +16693,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('추가 자료', action_payload['feedback']['feedback'])
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
-    def test_ai_workspace_action_feedback_api_applies_explicit_urgent_priority_systemwide(self, _mock_client):
+    def test_ai_workspace_action_feedback_api_keeps_explicit_urgent_signal_out_of_customer_priority(self, _mock_client):
         from datetime import time, timedelta
         from decimal import Decimal
         from reporting.models import AIWorkspaceActionFeedback, Quote, Schedule
@@ -16719,31 +16741,24 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
         self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'urgent')
-        self.assertTrue(any(
-            change['label'] == 'AI 보고 우선순위 긴급 반영'
+        self.assertFalse(any(
+            '우선순위' in change['label']
             for change in payload['crmSync']['changes']
         ))
 
         followup.refresh_from_db()
-        self.assertEqual(followup.priority, 'urgent')
+        self.assertEqual(followup.priority, 'scheduled')
         feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'quote:{quote.id}')
         self.assertEqual(feedback.ai_result['prioritySignal']['priority'], 'urgent')
 
-        dashboard_response = self.client.get(reverse('reporting:dashboard_summary_api'))
-        self.assertEqual(dashboard_response.status_code, 200)
-        priority_customers = dashboard_response.json()['priorityCustomers']
-        dashboard_customer = next(item for item in priority_customers if item['id'] == followup.id)
-        self.assertEqual(dashboard_customer['priority'], 'urgent')
-        self.assertEqual(dashboard_customer['priorityLabel'], '긴급')
-
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
-    def test_ai_workspace_action_feedback_api_downgrades_long_term_priority_systemwide(self, _mock_client):
+    def test_ai_workspace_action_feedback_api_keeps_long_term_signal_out_of_customer_priority(self, _mock_client):
         from datetime import time, timedelta
         from decimal import Decimal
         from reporting.models import Quote, Schedule
 
         followup, department = self._create_customer(self.user, '장기보고')
-        followup.priority = 'urgent'
+        followup.priority = 'scheduled'
         followup.customer_grade = 'C'
         followup.ai_score = 25
         followup.pipeline_stage = 'quote'
@@ -16788,13 +16803,13 @@ class AIWorkspaceSummaryApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload['feedback']['intent'], 'follow_up_needed')
         self.assertEqual(payload['feedback']['prioritySignal']['priority'], 'long_term')
-        self.assertTrue(any(
-            change['label'] == 'AI 보고 우선순위 장기 반영'
+        self.assertFalse(any(
+            '우선순위' in change['label']
             for change in payload['crmSync']['changes']
         ))
 
         followup.refresh_from_db()
-        self.assertEqual(followup.priority, 'long_term')
+        self.assertEqual(followup.priority, 'scheduled')
 
         dashboard_response = self.client.get(reverse('reporting:dashboard_summary_api'))
         self.assertEqual(dashboard_response.status_code, 200)
@@ -16807,6 +16822,8 @@ class AIWorkspaceSummaryApiTests(TestCase):
         from reporting.models import AIWorkspaceActionFeedback, History
 
         followup, department = self._create_customer(self.user, '긍정후속')
+        followup.priority = 'scheduled'
+        followup.save(update_fields=['priority', 'updated_at'])
         self._create_department_analysis(self.user, department)
         today = timezone.localdate()
         history = History.objects.create(
@@ -16835,7 +16852,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('구매 절차', history.next_action)
         self.assertIsNotNone(history.next_action_date)
         followup.refresh_from_db()
-        self.assertEqual(followup.priority, 'followup')
+        self.assertEqual(followup.priority, 'scheduled')
         self.assertEqual(followup.pipeline_stage, 'negotiation')
         feedback = AIWorkspaceActionFeedback.objects.get(user=self.user, action_id=f'followup:{history.id}')
         self.assertEqual(feedback.history.action_type, 'memo')
@@ -17371,7 +17388,7 @@ class AIWorkspaceSummaryApiTests(TestCase):
         self.assertIn('처리 예정 시간', payload['feedback']['nextAction'])
         self.assertIn('보상판매', payload['feedback']['nextAction'])
         selected_followup.refresh_from_db()
-        self.assertEqual(selected_followup.priority, 'urgent')
+        self.assertEqual(selected_followup.priority, 'scheduled')
         self.assertTrue(History.objects.filter(id=payload['crmSync']['taskHistoryId'], followup=selected_followup).exists())
 
     @patch('ai_chat.services.get_openai_client', side_effect=ValueError('OPENAI_API_KEY missing'))
