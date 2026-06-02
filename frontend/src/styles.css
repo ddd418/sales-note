@@ -4617,7 +4617,8 @@ h2 {
   font-weight: 800;
 }
 
-.schedule-delivery-edit-row input {
+.schedule-delivery-edit-row input,
+.schedule-delivery-edit-row textarea {
   width: 100%;
   min-height: 36px;
   padding: 8px 10px;
@@ -4626,6 +4627,12 @@ h2 {
   background: #ffffff;
   color: var(--text);
   font: inherit;
+}
+
+.schedule-delivery-edit-row textarea {
+  min-height: 64px;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 .schedule-delivery-product-field {

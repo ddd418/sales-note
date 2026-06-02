@@ -12021,6 +12021,7 @@ def _schedules_delivery_item_payload(item):
         'quoteGroup': item.quote_group or '',
         'quoteGroupLabel': _quote_group_label(item.quote_group),
         'notes': item.notes or '',
+        'optionDescription': item.notes or '',
         'sourceQuoteScheduleId': item.source_quote_schedule_id,
         'sourceQuoteItemId': item.source_quote_item_id,
     }
@@ -12404,7 +12405,13 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None, target_schedu
         )
         unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
         quote_group = str(raw_item.get('quoteGroup') or raw_item.get('quote_group') or '').strip()[:100]
-        notes = str(raw_item.get('notes') or '').strip()
+        notes = str(
+            raw_item.get('notes')
+            or raw_item.get('optionDescription')
+            or raw_item.get('option_description')
+            or raw_item.get('description')
+            or ''
+        ).strip()
 
         product_id_text = '' if product_id_raw is None else str(product_id_raw).strip()
         quantity_text = '' if quantity_raw is None else str(quantity_raw).replace(',', '').strip()
@@ -33361,6 +33368,8 @@ def _document_template_variable_groups_payload():
                 '품목N_단위',
                 '품목N_규격',
                 '품목N_설명',
+                '품목N_옵션',
+                '품목N_옵션설명',
                 '품목N_적요',
                 '품목N_비고',
                 '품목N_기준단가',
@@ -34693,7 +34702,7 @@ def _expand_xlsx_item_note_rows(xlsx_path, data_map):
     note_data_map = {
         key: value
         for key, value in (data_map or {}).items()
-        if re.fullmatch(r'품목\d+_(적요|비고)', str(key))
+        if re.fullmatch(r'품목\d+_(적요|비고|옵션|옵션설명)', str(key))
     }
     return _expand_xlsx_template_text_rows(xlsx_path, note_data_map)
 
@@ -34917,6 +34926,8 @@ def get_document_template_data(request, document_type, schedule_id):
                 f'품목{idx}_단위': item_unit,
                 f'품목{idx}_규격': item.product.specification if item.product and item.product.specification else '',
                 f'품목{idx}_설명': item.product.description if item.product and item.product.description else '',
+                f'품목{idx}_옵션': item.notes or '',
+                f'품목{idx}_옵션설명': item.notes or '',
                 f'품목{idx}_적요': item.notes or '',
                 f'품목{idx}_비고': item.notes or '',
                 f'품목{idx}_기준단가': _document_base_unit_price_display(price_info, hide_base_unit_price),
@@ -34945,6 +34956,7 @@ def get_document_template_data(request, document_type, schedule_id):
                 'quoteGroup': item.quote_group or '',
                 'quoteGroupLabel': _quote_group_label(item.quote_group),
                 'notes': item.notes or '',
+                'optionDescription': item.notes or '',
                 'subtotal': int(item_subtotal)
             })
         
@@ -35336,6 +35348,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_단위'] = item_unit
                     data_map[f'품목{idx}_규격'] = item.product.specification if item.product and item.product.specification else ''
                     data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
+                    data_map[f'품목{idx}_옵션'] = item.notes or ''
+                    data_map[f'품목{idx}_옵션설명'] = item.notes or ''
                     data_map[f'품목{idx}_적요'] = item.notes or ''
                     data_map[f'품목{idx}_비고'] = item.notes or ''
                     data_map[f'품목{idx}_기준단가'] = _document_base_unit_price_display(price_info, hide_base_unit_price)
@@ -35381,53 +35395,53 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                 
                 temp_modified = temp_path.replace('.xlsx', '_modified.xlsx')
                 replaced_count = 0
+
+                def replace_document_tokens(xml_str):
+                    nonlocal replaced_count
+
+                    for key, value in data_map.items():
+                        pattern = f'{{{{{key}}}}}'
+                        if pattern in xml_str:
+                            xml_str = xml_str.replace(pattern, html.escape(str(value), quote=False))
+                            replaced_count += 1
+
+                    valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
+                    valid_matches = re.findall(valid_date_pattern, xml_str)
+                    for days_str in set(valid_matches):
+                        days = int(days_str)
+                        valid_date = schedule.visit_date + timedelta(days=days)
+                        pattern = f'{{{{유효일+{days_str}}}}}'
+                        formatted_date = valid_date.strftime('%Y년 %m월 %d일')
+                        xml_str = xml_str.replace(pattern, html.escape(formatted_date, quote=False))
+                        replaced_count += 1
+
+                    item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', xml_str)
+                    for item_pattern in set(item_patterns):
+                        item_num = int(item_pattern)
+                        if item_num > len(delivery_items):
+                            pattern = r'\{\{품목' + str(item_num) + r'_\w+\}\}'
+                            xml_str = re.sub(pattern, '', xml_str)
+                    return xml_str
                 
                 with zipfile.ZipFile(temp_path, 'r') as zip_in:
                     with zipfile.ZipFile(temp_modified, 'w', zipfile.ZIP_DEFLATED) as zip_out:
                         for item in zip_in.infolist():
                             data = zip_in.read(item.filename)
                             
-                            # sharedStrings.xml 처리 (한글 변수 치환)
-                            if item.filename == 'xl/sharedStrings.xml':
+                            # sharedStrings.xml 및 inlineStr 워크시트 처리 (한글 변수 치환)
+                            if item.filename == 'xl/sharedStrings.xml' or (
+                                item.filename.startswith('xl/worksheets/sheet')
+                                and item.filename.endswith('.xml')
+                            ):
                                 try:
                                     xml_str = data.decode('utf-8')
-                                    
-                                    # 원본 일부 로그 (처음 500자)
-                                    
-                                    # 변수 치환 (한글 그대로 UTF-8 유지)
-                                    for key, value in data_map.items():
-                                        pattern = f'{{{{{key}}}}}'
-                                        if pattern in xml_str:
-                                            # 그대로 치환 (XML은 이미 올바른 형식이므로)
-                                            xml_str = xml_str.replace(pattern, str(value))
-                                            replaced_count += 1
-                                    
-                                    # {{유효일+숫자}} 패턴 처리
-                                    valid_date_pattern = r'\{\{유효일\+(\d+)\}\}'
-                                    valid_matches = re.findall(valid_date_pattern, xml_str)
-                                    for days_str in set(valid_matches):
-                                        days = int(days_str)
-                                        valid_date = schedule.visit_date + timedelta(days=days)
-                                        pattern = f'{{{{유효일+{days_str}}}}}'
-                                        formatted_date = valid_date.strftime('%Y년 %m월 %d일')
-                                        xml_str = xml_str.replace(pattern, formatted_date)
-                                        replaced_count += 1
-                                    
-                                    # {{품목N_xxx}} 패턴 - 품목 없으면 빈칸
-                                    item_patterns = re.findall(r'\{\{품목(\d+)_\w+\}\}', xml_str)
-                                    for item_pattern in set(item_patterns):
-                                        item_num = int(item_pattern)
-                                        if item_num > len(delivery_items):
-                                            # 해당 품목 변수를 빈칸으로
-                                            pattern = r'\{\{품목' + str(item_num) + r'_\w+\}\}'
-                                            xml_str = re.sub(pattern, '', xml_str)
-                                    
+                                    xml_str = replace_document_tokens(xml_str)
                                     # UTF-8로 인코딩 (한글 그대로)
                                     data = xml_str.encode('utf-8')
                                     
                                     # 수정된 내용 일부 로그
                                 except Exception as xml_error:
-                                    logger.warning(f"[서류생성] sharedStrings.xml 처리 오류: {xml_error}")
+                                    logger.warning(f"[서류생성] XLSX 텍스트 치환 처리 오류({item.filename}): {xml_error}")
                                     import traceback
                                     logger.error(traceback.format_exc())
                             

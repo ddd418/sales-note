@@ -1,5 +1,81 @@
 # AGENT_REPORT.md
 
+## 2026-06-02 — 견적서 품목 행별 옵션/설명 입력 지원
+
+### 요약
+
+- `/schedules/918/` 같은 견적 일정 상세의 `견적 품목` 편집에서 각 행마다 `옵션/설명`을 입력할 수 있게 했습니다.
+- 기존 `DeliveryItem.notes`를 재사용해서 별도 마이그레이션 없이 저장/조회/불러오기 흐름을 유지했습니다.
+- 견적서 템플릿 변수에 `{{품목1_옵션}}`, `{{품목1_옵션설명}}`을 추가했고, 기존 `{{품목1_적요}}`, `{{품목1_비고}}`도 계속 같은 값을 제공합니다.
+- XLSX 다운로드 생성이 `sharedStrings.xml`뿐 아니라 `inlineStr` 워크시트 셀도 치환하도록 보강했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/styles.css`
+- `reporting/account_ledger.py`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 견적 행별 구성 옵션, 설치 조건, 별도 안내 문구를 견적 품목과 같은 행 데이터로 관리할 수 있습니다.
+- 견적 상세 화면에서는 저장된 행 설명이 `옵션/설명: ...`으로 명확히 표시됩니다.
+- 문서 템플릿 관리자가 새 옵션 변수로 견적서 PDF/Excel에 행별 설명을 넣을 수 있습니다.
+
+### 기존 기능 보존
+
+- DB 스키마는 변경하지 않았습니다.
+- 기존 `적요/비고` 템플릿 변수와 `notes` API 필드는 계속 동작합니다.
+- 납품 일정에서는 기존 `적요` 라벨과 입력 흐름을 유지했습니다.
+- `/reporting/*` 인증/권한 흐름은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\account_ledger.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_updates_owned_items_and_history reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_does_not_create_delivery_history_for_quote_schedule reporting.tests.DocumentTemplatesReactApiTests.test_document_templates_api_lists_same_company_and_summary reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_includes_quote_discount_and_note_variables reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_replaces_quote_item_option_variables --keepdb
+→ OK, 6 tests
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --keepdb
+→ OK, 92 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; existing Vite large chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 서류 템플릿에 새 옵션 문구를 출력하려면 템플릿 셀에 `{{품목1_옵션설명}}` 또는 `{{품목1_옵션}}` 변수를 배치해야 합니다.
+- 기본 템플릿 자체의 레이아웃 변경은 이번 작업 범위에 포함하지 않았습니다.
+
+### Production 배포 상태
+
+- Pending. Runtime code has been prepared and verified locally; deploy after commit/push.
+
+### Manual Server Test Process
+
+1. 로그인 상태로 `https://sales-note-frontend-production.up.railway.app/schedules/918/`에 접속합니다.
+2. `견적 품목` 섹션에서 `편집`을 누릅니다.
+3. 각 품목 행의 `옵션/설명`에 구성 옵션이나 별도 설명을 입력하고 저장합니다.
+4. 화면에 `옵션/설명: ...`으로 표시되는지 확인합니다.
+5. 견적서 템플릿에 `{{품목1_옵션설명}}` 변수가 있는 경우, 견적서 Excel/PDF 다운로드에서 해당 문구가 치환되는지 확인합니다.
+
 ## 2026-06-02 — 계정 상세 서비스 기록에 영업노트가 섞이는 문제 수정
 
 ### 요약

@@ -2098,6 +2098,7 @@ export type ScheduleDeliveryItem = {
   quoteGroup: string;
   quoteGroupLabel: string;
   notes: string;
+  optionDescription?: string;
   sourceQuoteScheduleId?: number | null;
   sourceQuoteItemId?: number | null;
 };
@@ -2114,6 +2115,7 @@ export type ScheduleDeliveryItemPayload = {
   taxInvoiceIssued?: boolean;
   quoteGroup?: string;
   notes?: string;
+  optionDescription?: string;
   sourceQuoteScheduleId?: number | null;
   sourceQuoteItemId?: number | null;
 };
@@ -2148,6 +2150,7 @@ export type FollowupQuoteItem = {
   quoteGroup: string;
   quoteGroupLabel: string;
   notes: string;
+  optionDescription?: string;
 };
 
 export type FollowupQuoteOption = {

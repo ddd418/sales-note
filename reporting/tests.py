@@ -10346,6 +10346,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 90000)
         self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
         self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
+        self.assertEqual(payload['deliveryItems'][0]['optionDescription'], 'PCR 적요')
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
         self.assertEqual(payload['links']['toggleTaxInvoice'], '')
@@ -11104,7 +11105,7 @@ class SchedulesSummaryApiTests(TestCase):
                         'discountRate': '10',
                         'taxInvoiceIssued': True,
                         'quoteGroup': '보상판매',
-                        'notes': 'PCR 적요',
+                        'optionDescription': 'PCR 옵션 설명',
                     },
                     {
                         'itemName': 'Buffer',
@@ -11134,7 +11135,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(items[0].total_price), 198000)
         self.assertFalse(items[0].tax_invoice_issued)
         self.assertEqual(items[0].quote_group, '보상판매')
-        self.assertEqual(items[0].notes, 'PCR 적요')
+        self.assertEqual(items[0].notes, 'PCR 옵션 설명')
         self.assertIsNone(items[1].unit_price)
         self.assertEqual(items[1].quote_group, '수리')
         schedule.refresh_from_db()
@@ -11156,7 +11157,8 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 90000)
         self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
         self.assertEqual(payload['deliveryItems'][0]['quoteGroup'], '보상판매')
-        self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
+        self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 옵션 설명')
+        self.assertEqual(payload['deliveryItems'][0]['optionDescription'], 'PCR 옵션 설명')
         self.assertIsNone(payload['deliveryItems'][1]['unitPrice'])
         self.assertIsNone(payload['deliveryItems'][1]['discountUnitPrice'])
         self.assertEqual(
@@ -12425,6 +12427,8 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertIn('{{견적구분}}', variable_tokens)
         self.assertIn('{{견적명}}', variable_tokens)
         self.assertIn('{{견적제목}}', variable_tokens)
+        self.assertIn('{{품목1_옵션}}', variable_tokens)
+        self.assertIn('{{품목1_옵션설명}}', variable_tokens)
         self.assertIn('{{품목1_적요}}', variable_tokens)
         self.assertIn('{{품목1_기준단가}}', variable_tokens)
         self.assertIn('{{품목1_할인율}}', variable_tokens)
@@ -12616,6 +12620,8 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(variables['메모'], '견적 메모')
         self.assertEqual(variables['기타사항'], '전체 견적 기타사항')
         self.assertEqual(variables['견적기타사항'], '전체 견적 기타사항')
+        self.assertEqual(variables['품목1_옵션'], '품목 적요')
+        self.assertEqual(variables['품목1_옵션설명'], '품목 적요')
         self.assertEqual(variables['품목1_적요'], '품목 적요')
         self.assertEqual(variables['품목1_비고'], '품목 적요')
         self.assertEqual(variables['품목1_기준단가'], '100,000')
@@ -12630,6 +12636,7 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['items'][0]['discountUnitPrice'], 90000)
         self.assertEqual(payload['items'][0]['discountRate'], 10.0)
         self.assertEqual(payload['items'][0]['notes'], '품목 적요')
+        self.assertEqual(payload['items'][0]['optionDescription'], '품목 적요')
 
     def test_document_template_data_hides_quotation_base_unit_price_when_requested(self):
         from reporting.models import DeliveryItem
@@ -12872,6 +12879,53 @@ class DocumentTemplatesReactApiTests(TestCase):
             if col.get('hidden') == '1'
         ]
         self.assertEqual([(col.get('min'), col.get('max')) for col in hidden_cols], [('2', '2')])
+
+    def test_document_generate_xlsx_replaces_quote_item_option_variables(self):
+        import io
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook, load_workbook
+        from reporting.models import DeliveryItem
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '{{품목1_이름}}'
+        sheet['B1'] = '{{품목1_옵션설명}}'
+        output = io.BytesIO()
+        workbook.save(output)
+        template = DocumentTemplate.objects.create(
+            company=self.company,
+            document_type='quotation',
+            name='옵션견적서',
+            file=SimpleUploadedFile(
+                'quote-option.xlsx',
+                output.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ),
+            file_type='xlsx',
+            is_default=True,
+            created_by=self.manager,
+        )
+        self.addCleanup(template.file.delete, False)
+        schedule = self._create_schedule(self.manager, name='옵션견적', activity_type='quote')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Option Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            notes='옵션 A 포함, 설치 조건 별도',
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.post(
+            reverse('reporting:generate_document_pdf_format', args=['quotation', schedule.id, 'xlsx']),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        generated = load_workbook(io.BytesIO(response.content))
+        generated_sheet = generated.active
+        self.assertEqual(generated_sheet['A1'].value, 'Option Kit')
+        self.assertEqual(generated_sheet['B1'].value, '옵션 A 포함, 설치 조건 별도')
 
     def test_document_item_note_layout_helper_wraps_and_expands_note_rows(self):
         import os

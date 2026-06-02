@@ -13235,11 +13235,20 @@ function ScheduleDetailPage({
                         />
                       </label>
                       <label className="schedule-delivery-notes-field">
-                        <span>적요</span>
-                        <input
-                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
-                          value={row.notes}
-                        />
+                        <span>{isQuoteSchedule ? '옵션/설명' : '적요'}</span>
+                        {isQuoteSchedule ? (
+                          <textarea
+                            onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
+                            placeholder="예: 구성 옵션, 설치 조건, 별도 안내 문구"
+                            rows={2}
+                            value={row.notes}
+                          />
+                        ) : (
+                          <input
+                            onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
+                            value={row.notes}
+                          />
+                        )}
                       </label>
                       <button
                         aria-label={`${index + 1}번째 ${itemPanelLabel} 삭제`}
@@ -13409,7 +13418,7 @@ function ScheduleDetailPage({
                     item.totalPrice ? formatWon(item.totalPrice) : '',
                     item.cardPaymentReceived ? '카드결제' : item.receivableSettled ? '수금완료' : '외상 진행중',
                   ].filter(Boolean).join(' · ')}</span>
-                  {item.notes ? <p>{item.notes}</p> : null}
+                  {item.notes ? <p>{isQuoteSchedule ? `옵션/설명: ${item.notes}` : item.notes}</p> : null}
                 </div>
               ))}
               {isQuoteSchedule && savedQuoteGroupNotes.length > 0 ? (

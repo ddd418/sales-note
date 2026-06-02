@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## 2026-06-02 Quote item option/explanation plan
+
+**Background**:
+
+- User requested that quote creation from `/schedules/918/` support a separate option/explanation per quote row.
+- Schedule quote rows already persist `DeliveryItem.notes`, but the React label is a generic `적요` and document variables only expose it as `품목N_적요/비고`.
+
+**DB change required**: No schema migration.
+
+- Reuse `DeliveryItem.notes` for row-level quote option/explanation.
+- Preserve existing `적요/비고` variables for template compatibility.
+
+**Implementation scope**:
+
+- Make the React quote row editor show `옵션/설명` with a multiline control for quote schedules.
+- Add API aliases (`optionDescription`, `description`) that map to `DeliveryItem.notes` for backward/forward compatibility.
+- Add document template variables `품목N_옵션` and `품목N_옵션설명` alongside existing `품목N_적요/비고`.
+- Ensure document preview/download data and tests include the new option variables.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --keepdb`
+- `python manage.py check`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy backend/frontend to Railway and smoke `/schedules/918/`.
+
 ## 2026-06-02 Account service records sales-note mixup fix plan
 
 **Background**:

@@ -168,6 +168,7 @@ def delivery_item_payload(item):
         'quoteGroup': item.quote_group or '',
         'quoteGroupLabel': _quote_group_label(item.quote_group),
         'notes': item.notes or '',
+        'optionDescription': item.notes or '',
         'sourceQuoteScheduleId': item.source_quote_schedule_id,
         'sourceQuoteItemId': item.source_quote_item_id,
     }
@@ -312,6 +313,7 @@ def quote_item_payload(item):
         'quoteGroup': '',
         'quoteGroupLabel': _quote_group_label(''),
         'notes': item.description or '',
+        'optionDescription': item.description or '',
         'sourceQuoteScheduleId': None,
         'sourceQuoteItemId': None,
     }
