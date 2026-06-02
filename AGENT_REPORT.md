@@ -74,9 +74,11 @@ git diff --check
 
 - Completed.
 - Runtime commit `44f8da1 feat: add quote item option descriptions` is present on `origin/main`.
-- Corrective backend change for automatic option rows is prepared locally and pending commit/deploy.
+- Corrective runtime commit `74438cb fix: insert quote option rows in documents` is present on `origin/main`.
 - Railway `sales-note-frontend` deployment `6a52a28c-9217-4d0c-b4db-bfe295d73f1f` reached `SUCCESS`.
 - Railway `web` deployment `f68084d1-e835-4be0-b051-3f40f8fa94b4` reached `SUCCESS`.
+- Corrective Railway `web` deployment `e036e2d8-91eb-4cc3-82c5-0ebab3f52430` reached `SUCCESS`.
+- Corrective Railway `sales-note-frontend` deployment `3729a0d1-1f6c-43bc-a47e-b0c1924c2a83` was `SKIPPED` because no frontend watched files changed.
 - Production smoke passed:
   - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
   - `https://sales-note-frontend-production.up.railway.app/schedules/918/` returned 200.
