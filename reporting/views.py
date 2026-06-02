@@ -5674,36 +5674,6 @@ def _customer_service_case_record_payload(case):
     }
 
 
-def _customer_service_history_record_payload(history):
-    schedule = history.schedule
-    customer_name = ''
-    if history.followup:
-        customer_name = history.followup.customer_name or history.followup.manager or ''
-    return {
-        'id': history.id,
-        'recordType': 'service_history',
-        'date': _date_or_none(history.meeting_date) or _datetime_or_none(history.created_at),
-        'dueDate': _date_or_none(history.next_action_date),
-        'completedDate': _datetime_or_none(history.reviewed_at),
-        'customerName': customer_name,
-        'assetName': '',
-        'assetModelName': '',
-        'ownerName': _user_display_name(history.user),
-        'assignedTo': '',
-        'status': history.service_status or '',
-        'statusLabel': history.get_service_status_display() if history.service_status else history.get_action_type_display(),
-        'priority': '',
-        'priorityLabel': '',
-        'caseType': 'service',
-        'caseTypeLabel': history.get_action_type_display(),
-        'summary': history.content or history.next_action or '',
-        'detail': history.next_action or '',
-        'href': f'/notes/{history.id}/',
-        'djangoHref': reverse('reporting:history_detail', args=[history.id]),
-        'scheduleHref': f'/schedules/{schedule.id}/' if schedule else '',
-    }
-
-
 def _customer_service_schedule_record_payload(schedule):
     return {
         'id': schedule.id,
@@ -5750,27 +5720,15 @@ def _customer_operational_records_payload(followup, scope_users, actor):
             'asset', 'followup', 'created_by', 'assigned_to'
         ).distinct().order_by('-received_date', '-created_at', '-id')[:50]
     )
-    service_histories = list(
-        History.objects.filter(
-            followup__in=shared_followups,
-            user__in=scope_users,
-            action_type='service',
-            parent_history__isnull=True,
-        ).select_related('user', 'followup', 'schedule').order_by('-created_at', '-id')[:50]
-    )
-    service_history_schedule_ids = {history.schedule_id for history in service_histories if history.schedule_id}
     service_schedules = list(
         Schedule.objects.filter(
             followup__in=shared_followups,
             user__in=scope_users,
             activity_type='service',
-        ).exclude(
-            id__in=service_history_schedule_ids,
         ).select_related('user', 'followup').order_by('-visit_date', '-visit_time', '-id')[:50]
     )
     service_records = [
         *[_customer_service_case_record_payload(case) for case in service_cases],
-        *[_customer_service_history_record_payload(history) for history in service_histories],
         *[_customer_service_schedule_record_payload(schedule) for schedule in service_schedules],
     ]
     service_records = sorted(

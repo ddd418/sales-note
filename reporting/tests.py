@@ -5549,6 +5549,7 @@ class CustomersSummaryApiTests(TestCase):
             QuoteItem,
             Schedule,
             ServiceCase,
+            History,
         )
 
         today = timezone.localdate()
@@ -5629,6 +5630,25 @@ class CustomersSummaryApiTests(TestCase):
             symptom='운영 서비스 요청',
             created_by=self.user,
             assigned_to=self.user,
+        )
+        service_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            visit_date=today - timedelta(days=4),
+            visit_time=time(9, 30),
+            activity_type='service',
+            status='scheduled',
+            notes='장비 점검 서비스 일정',
+        )
+        service_note = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target,
+            schedule=service_schedule,
+            action_type='service',
+            service_status='received',
+            content='서비스 일정에 연결된 영업노트 메모',
         )
         prepayment = Prepayment.objects.create(
             customer=target,
@@ -5725,14 +5745,21 @@ class CustomersSummaryApiTests(TestCase):
         contact_names = {contact['name'] for contact in payload['account']['contacts']}
         self.assertIn('운영기록고객 담당자', contact_names)
         self.assertIn('운영기록 같은부서 담당자', contact_names)
-        self.assertEqual(records['metrics']['serviceRecords'], 1)
+        self.assertEqual(records['metrics']['serviceRecords'], 2)
         self.assertEqual(records['metrics']['quoteRecords'], 2)
         self.assertEqual(records['metrics']['deliveryRecords'], 3)
         self.assertEqual(records['metrics']['prepaymentDeliveryRecords'], 1)
         self.assertEqual(records['metrics']['normalDeliveryRecords'], 2)
         self.assertEqual(records['metrics']['prepaymentRecords'], 2)
         self.assertEqual(payload['prepaymentSummary']['metrics']['totalCount'], 2)
-        self.assertEqual(records['serviceRecords'][0]['assetName'], '운영 서비스 장비')
+        service_record_types = {record['recordType'] for record in records['serviceRecords']}
+        self.assertIn('service_case', service_record_types)
+        self.assertIn('service_schedule', service_record_types)
+        self.assertNotIn('service_history', service_record_types)
+        self.assertFalse(any(record['summary'] == service_note.content for record in records['serviceRecords']))
+        self.assertTrue(any(record['assetName'] == '운영 서비스 장비' for record in records['serviceRecords']))
+        self.assertTrue(any(record['id'] == service_schedule.id and record['recordType'] == 'service_schedule' for record in records['serviceRecords']))
+        self.assertIn(service_note.id, {note['id'] for note in payload['recentNotes']})
         quote_numbers = {record['quoteNumber'] for record in records['quoteRecords']}
         self.assertIn('OP-Q-001', quote_numbers)
         self.assertIn('OP-Q-SAME-DEPT', quote_numbers)
@@ -5765,6 +5792,11 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(account_payload['operationalRecords']['metrics']['normalDeliveryRecords'], 2)
         self.assertEqual(account_payload['operationalRecords']['metrics']['quoteRecords'], 2)
         self.assertEqual(account_payload['operationalRecords']['metrics']['prepaymentRecords'], 2)
+        self.assertEqual(account_payload['operationalRecords']['metrics']['serviceRecords'], 2)
+        self.assertNotIn('service_history', {
+            record['recordType']
+            for record in account_payload['operationalRecords']['serviceRecords']
+        })
 
     def test_customer_delivery_records_xlsx_export_downloads_department_shared_deliveries(self):
         from datetime import time, timedelta

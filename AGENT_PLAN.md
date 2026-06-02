@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-02 Account service records sales-note mixup fix plan
+
+**Background**:
+
+- User reported that `/accounts/375/` shows a memoed sales note inside the service record section labelled `A/S, 수리, 서비스 일정`.
+- Current account operational records combine `ServiceCase`, `History(action_type='service')`, and `Schedule(activity_type='service')`.
+- `History.ACTION_CHOICES` maps `service` to `메모`, so service-typed sales notes can appear as service records.
+
+**DB change required**: No schema migration.
+
+- Production data should not be deleted.
+- This is an API classification/display fix.
+
+**Implementation scope**:
+
+- Confirm production account 375 has service history rows mixed into service records.
+- Change customer/account operational service records to include only structured `ServiceCase` rows and `Schedule(activity_type='service')` rows.
+- Keep service notes visible in the normal sales-note timeline, not the service record ledger.
+- Preserve service schedules even when they have linked histories.
+- Add regression coverage for account/customer operational records.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb`
+- `python manage.py check`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy affected services to Railway and smoke `/accounts/375/`.
+
 ## 2026-06-02 AI legacy customer priority reference removal plan
 
 **Background**:
