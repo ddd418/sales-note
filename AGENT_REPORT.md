@@ -67,8 +67,20 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending.
-- 배포 후 production DB에서 `urgent` 15건과 `followup` 85건을 `scheduled`로 정리할 예정입니다.
+- Completed.
+- Commit `4207752 fix: retire legacy customer priority input` is present on `origin/main`.
+- Railway `sales-note-frontend` deployment `c26d1759-9da6-4989-b7ac-61f8cfd1ee82` reached `SUCCESS`.
+- Railway `web` deployment `10dc5830-12d2-4f90-b60e-b3858a0e5c6e` reached `SUCCESS`.
+- Production DB cleanup completed:
+  - Before: `urgent` 15, `followup` 85, `scheduled` 268, `long_term` 30.
+  - Updated: 100 rows.
+  - After: `scheduled` 368, `long_term` 30, stale `urgent`/`followup` 0.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/customers/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/pipeline/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/customers/` returned 401 as expected.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/` returned 401 as expected.
 
 ### Manual Server Test Process
 
