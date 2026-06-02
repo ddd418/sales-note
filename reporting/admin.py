@@ -335,7 +335,7 @@ class CalibrationRecordAdmin(admin.ModelAdmin):
 class DeliveryItemAdmin(admin.ModelAdmin):
     list_display = ('schedule', 'item_name', 'quantity', 'unit', 'unit_price', 'total_price', 'created_at')
     list_filter = ('schedule__activity_type', 'unit', 'created_at')
-    search_fields = ('item_name', 'schedule__followup__customer_name', 'notes')
+    search_fields = ('item_name', 'schedule__followup__customer_name', 'notes', 'option_description')
     date_hierarchy = 'created_at'
     list_per_page = 20
     

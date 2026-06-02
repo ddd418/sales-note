@@ -151,6 +151,10 @@ def save_delivery_items(request, instance_obj):
         discount_rate = item_data.get('discount_rate', '').strip()
         discount_unit_price = item_data.get('discount_unit_price', '').strip()
         notes = item_data.get('notes', '').strip()
+        option_description = (
+            item_data.get('option_description', '')
+            or item_data.get('optionDescription', '')
+        ).strip()
         product_id = item_data.get('product_id', '').strip()
         
         if item_name and quantity:
@@ -200,6 +204,7 @@ def save_delivery_items(request, instance_obj):
                         pass
 
                 delivery_item.notes = notes
+                delivery_item.option_description = option_description
                 
                 delivery_item.save()
                 created_count += 1
@@ -12021,7 +12026,7 @@ def _schedules_delivery_item_payload(item):
         'quoteGroup': item.quote_group or '',
         'quoteGroupLabel': _quote_group_label(item.quote_group),
         'notes': item.notes or '',
-        'optionDescription': item.notes or '',
+        'optionDescription': item.option_description or '',
         'sourceQuoteScheduleId': item.source_quote_schedule_id,
         'sourceQuoteItemId': item.source_quote_item_id,
     }
@@ -12405,11 +12410,10 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None, target_schedu
         )
         unit = str(raw_item.get('unit') or 'EA').strip()[:50] or 'EA'
         quote_group = str(raw_item.get('quoteGroup') or raw_item.get('quote_group') or '').strip()[:100]
-        notes = str(
-            raw_item.get('notes')
-            or raw_item.get('optionDescription')
+        notes = str(raw_item.get('notes') or '').strip()
+        option_description = str(
+            raw_item.get('optionDescription')
             or raw_item.get('option_description')
-            or raw_item.get('description')
             or ''
         ).strip()
 
@@ -12499,6 +12503,7 @@ def _schedules_parse_delivery_item_inputs(raw_items, request=None, target_schedu
             'tax_invoice_issued': False,
             'quote_group': quote_group,
             'notes': notes,
+            'option_description': option_description,
         }
         if product:
             item_data['product'] = product
@@ -29764,6 +29769,8 @@ def schedule_delivery_items_api(request, schedule_id):
                 'total_price': float(item_total),
                 'tax_invoice_issued': tax_invoice_status,
                 'notes': item.notes or '',
+                'option_description': item.option_description or '',
+                'optionDescription': item.option_description or '',
             })
         
         return JsonResponse({
@@ -29829,6 +29836,8 @@ def history_delivery_items_api(request, history_id):
                     'total_price': float(item_total),
                     'tax_invoice_issued': history.tax_invoice_issued,  # History 기준으로 강제 설정
                     'notes': item.notes or '',
+                    'option_description': item.option_description or '',
+                    'optionDescription': item.option_description or '',
                     'source': 'history'  # 출처 표시
                 })
         else:
@@ -30681,6 +30690,8 @@ def schedule_delivery_items_api(request, schedule_id):
                 'total_price': float(item.total_price or 0),
                 'tax_invoice_issued': item.tax_invoice_issued,
                 'notes': item.notes or '',
+                'option_description': item.option_description or '',
+                'optionDescription': item.option_description or '',
             })
         
         return JsonResponse({
@@ -31555,6 +31566,8 @@ def followup_quote_items_api(request, followup_id):
                         'quote_group_label': _quote_group_label(quote_group),
                         'quoteGroupLabel': _quote_group_label(quote_group),
                         'notes': item.notes or '',
+                        'option_description': item.option_description or '',
+                        'optionDescription': item.option_description or '',
                     }
                     if quote_group not in grouped_quote_items:
                         grouped_quote_items[quote_group] = {
@@ -35249,7 +35262,7 @@ def get_document_template_data(request, document_type, schedule_id):
             price_info = _document_item_prices(item)
             item_subtotal = price_info['effective_unit_price'] * item.quantity
             item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
-            legacy_item_notes = '' if document_type == 'quotation' else (item.notes or '')
+            item_option_description = item.option_description or ''
             
             item_data = {
                 f'품목{idx}_이름': item.item_name,
@@ -35258,10 +35271,10 @@ def get_document_template_data(request, document_type, schedule_id):
                 f'품목{idx}_단위': item_unit,
                 f'품목{idx}_규격': item.product.specification if item.product and item.product.specification else '',
                 f'품목{idx}_설명': item.product.description if item.product and item.product.description else '',
-                f'품목{idx}_옵션': item.notes or '',
-                f'품목{idx}_옵션설명': item.notes or '',
-                f'품목{idx}_적요': legacy_item_notes,
-                f'품목{idx}_비고': legacy_item_notes,
+                f'품목{idx}_옵션': item_option_description,
+                f'품목{idx}_옵션설명': item_option_description,
+                f'품목{idx}_적요': item.notes or '',
+                f'품목{idx}_비고': item.notes or '',
                 f'품목{idx}_기준단가': _document_base_unit_price_display(price_info, hide_base_unit_price),
                 f'품목{idx}_할인율': _document_discount_rate_label(price_info['discount_rate']),
                 f'품목{idx}_할인단가': _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else '',
@@ -35288,7 +35301,7 @@ def get_document_template_data(request, document_type, schedule_id):
                 'quoteGroup': item.quote_group or '',
                 'quoteGroupLabel': _quote_group_label(item.quote_group),
                 'notes': item.notes or '',
-                'optionDescription': item.notes or '',
+                'optionDescription': item_option_description,
                 'subtotal': int(item_subtotal)
             })
         
@@ -35658,7 +35671,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     item_subtotal = price_info['effective_unit_price'] * item.quantity
                     # 단위 결정: DeliveryItem에 있으면 사용, 없으면 Product에서, 그것도 없으면 'EA'
                     item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
-                    legacy_item_notes = '' if document_type == 'quotation' else (item.notes or '')
+                    item_option_description = item.option_description or ''
 
                     # 품목별 부가세 계산 (schedule의 vat_mode 반영)
                     if _vat_mode == 'included':
@@ -35681,10 +35694,10 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_단위'] = item_unit
                     data_map[f'품목{idx}_규격'] = item.product.specification if item.product and item.product.specification else ''
                     data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
-                    data_map[f'품목{idx}_옵션'] = item.notes or ''
-                    data_map[f'품목{idx}_옵션설명'] = item.notes or ''
-                    data_map[f'품목{idx}_적요'] = legacy_item_notes
-                    data_map[f'품목{idx}_비고'] = legacy_item_notes
+                    data_map[f'품목{idx}_옵션'] = item_option_description
+                    data_map[f'품목{idx}_옵션설명'] = item_option_description
+                    data_map[f'품목{idx}_적요'] = item.notes or ''
+                    data_map[f'품목{idx}_비고'] = item.notes or ''
                     data_map[f'품목{idx}_기준단가'] = _document_base_unit_price_display(price_info, hide_base_unit_price)
                     data_map[f'품목{idx}_할인율'] = _document_discount_rate_label(price_info['discount_rate'])
                     data_map[f'품목{idx}_할인단가'] = _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else ''

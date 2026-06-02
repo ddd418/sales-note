@@ -8,15 +8,16 @@
 - Schedule quote rows already persist `DeliveryItem.notes`, but the React label is a generic `적요` and document variables only expose it as `품목N_적요/비고`.
 - Follow-up correction: the user expects an actual option row under each quote item in the generated quotation, not merely text in the old remarks/summary column.
 
-**DB change required**: No schema migration.
+**DB change required**: Yes.
 
-- Reuse `DeliveryItem.notes` for row-level quote option/explanation.
-- Preserve existing `적요/비고` variables for template compatibility.
+- Add `DeliveryItem.option_description` for row-level quote option/explanation.
+- Keep `DeliveryItem.notes` as the existing row remarks/`적요` field.
+- Copy only recently updated quote item notes from the temporary broken rollout window into `option_description` so entered options are not lost.
 
 **Implementation scope**:
 
-- Make the React quote row editor show `옵션/설명` with a multiline control for quote schedules.
-- Add API aliases (`optionDescription`, `description`) that map to `DeliveryItem.notes` for backward/forward compatibility.
+- Make the React quote row editor show both `적요` and `옵션/설명` for quote schedules.
+- Add API support so `notes` maps to row remarks and `optionDescription` maps to option rows.
 - Add document template variables `품목N_옵션` and `품목N_옵션설명` alongside existing `품목N_적요/비고`.
 - Ensure document preview/download data and tests include the new option variables.
 - Insert a generated option row below each quotation item row when that item has an option/explanation value.
@@ -26,6 +27,7 @@
 - `python -m py_compile reporting\views.py reporting\tests.py`
 - `python manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_inserts_quote_item_option_rows reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_replaces_quote_item_option_variables --keepdb`
 - `python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --keepdb`
+- `python manage.py makemigrations --check --dry-run`
 - `python manage.py check`
 - `cd frontend && npx tsc --noEmit --pretty false`
 - `cd frontend && npm run build`

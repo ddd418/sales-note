@@ -450,11 +450,12 @@ type ScheduleDeliveryEditRow = {
   discountUnitPrice: string;
   quoteGroup: string;
   notes: string;
+  optionDescription: string;
   sourceQuoteScheduleId: string;
   sourceQuoteItemId: string;
 };
 
-type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'quoteGroup' | 'notes';
+type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'quantity' | 'unit' | 'unitPrice' | 'discountRate' | 'discountUnitPrice' | 'quoteGroup' | 'notes' | 'optionDescription';
 
 type ScheduleQuoteGroupNoteState = Record<string, string>;
 
@@ -1135,6 +1136,7 @@ const makeScheduleDeliveryEditRow = (item?: ScheduleDeliveryItem, index = 0): Sc
   discountUnitPrice: item?.discountUnitPrice !== undefined && item.discountUnitPrice !== null ? String(item.discountUnitPrice) : '',
   quoteGroup: item?.quoteGroup || '',
   notes: item?.notes || '',
+  optionDescription: item?.optionDescription || '',
   sourceQuoteScheduleId: item?.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : '',
   sourceQuoteItemId: item?.sourceQuoteItemId ? String(item.sourceQuoteItemId) : '',
 });
@@ -1187,7 +1189,8 @@ const scheduleQuoteGroupsFromRows = (rows: ScheduleDeliveryEditRow[]): string[] 
       row.unitPrice.trim() ||
       row.discountRate.trim() ||
       row.discountUnitPrice.trim() ||
-      row.notes.trim(),
+      row.notes.trim() ||
+      row.optionDescription.trim(),
     );
     if (!hasItemInput && !row.quoteGroup.trim()) {
       return;
@@ -1279,6 +1282,7 @@ const makeScheduleDeliveryEditRowFromQuoteItem = (
     discountUnitPrice: hasExplicitDiscount ? moneyInputValue(item.discountUnitPrice ?? 0) : '',
     quoteGroup: item.quoteGroup || '',
     notes: item.notes || '',
+    optionDescription: item.optionDescription || '',
     sourceQuoteScheduleId: item.sourceQuoteScheduleId ? String(item.sourceQuoteScheduleId) : String(quote.scheduleId || ''),
     sourceQuoteItemId: item.sourceQuoteItemId ? String(item.sourceQuoteItemId) : String(item.id || ''),
   };
@@ -1292,7 +1296,8 @@ const scheduleDeliveryRowsHaveUserInput = (rows: ScheduleDeliveryEditRow[]) => r
   row.discountRate.trim() ||
   row.discountUnitPrice.trim() ||
   row.quoteGroup.trim() ||
-  row.notes.trim()
+  row.notes.trim() ||
+  row.optionDescription.trim()
 ));
 
 const makeEmptyMailComposeForm = (): MailComposeFormState => ({
@@ -12194,6 +12199,7 @@ function ScheduleDetailPage({
       || row.discountUnitPrice.trim()
       || row.quoteGroup.trim()
       || row.notes.trim()
+      || row.optionDescription.trim()
     ));
     if (!rowsWithInput.length) {
       setDeliveryError('품목명과 수량이 있는 납품 품목을 하나 이상 입력하세요.');
@@ -12254,6 +12260,7 @@ function ScheduleDetailPage({
         discountUnitPrice: discountUnitPrice || null,
         quoteGroup: row.quoteGroup.trim(),
         notes: row.notes.trim(),
+        optionDescription: row.optionDescription.trim(),
         sourceQuoteScheduleId: row.sourceQuoteScheduleId ? Number(row.sourceQuoteScheduleId) : null,
         sourceQuoteItemId: row.sourceQuoteItemId ? Number(row.sourceQuoteItemId) : null,
       });
@@ -13235,21 +13242,23 @@ function ScheduleDetailPage({
                         />
                       </label>
                       <label className="schedule-delivery-notes-field">
-                        <span>{isQuoteSchedule ? '옵션/설명' : '적요'}</span>
-                        {isQuoteSchedule ? (
+                        <span>적요</span>
+                        <input
+                          onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
+                          value={row.notes}
+                        />
+                      </label>
+                      {isQuoteSchedule ? (
+                        <label className="schedule-delivery-notes-field">
+                          <span>옵션/설명</span>
                           <textarea
-                            onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
+                            onChange={(event) => handleDeliveryFieldChange(row.rowId, 'optionDescription', event.target.value)}
                             placeholder="예: 구성 옵션, 설치 조건, 별도 안내 문구"
                             rows={2}
-                            value={row.notes}
+                            value={row.optionDescription}
                           />
-                        ) : (
-                          <input
-                            onChange={(event) => handleDeliveryFieldChange(row.rowId, 'notes', event.target.value)}
-                            value={row.notes}
-                          />
-                        )}
-                      </label>
+                        </label>
+                      ) : null}
                       <button
                         aria-label={`${index + 1}번째 ${itemPanelLabel} 삭제`}
                         className="customer-row-action schedule-delivery-remove-button"
@@ -13418,7 +13427,8 @@ function ScheduleDetailPage({
                     item.totalPrice ? formatWon(item.totalPrice) : '',
                     item.cardPaymentReceived ? '카드결제' : item.receivableSettled ? '수금완료' : '외상 진행중',
                   ].filter(Boolean).join(' · ')}</span>
-                  {item.notes ? <p>{isQuoteSchedule ? `옵션/설명: ${item.notes}` : item.notes}</p> : null}
+                  {item.notes ? <p>{isQuoteSchedule ? `적요: ${item.notes}` : item.notes}</p> : null}
+                  {isQuoteSchedule && item.optionDescription ? <p>옵션/설명: {item.optionDescription}</p> : null}
                 </div>
               ))}
               {isQuoteSchedule && savedQuoteGroupNotes.length > 0 ? (

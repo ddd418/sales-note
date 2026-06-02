@@ -1491,6 +1491,7 @@ class DeliveryItem(models.Model):
     )
     quote_group = models.CharField(max_length=100, blank=True, default='', verbose_name="견적서 구분")
     notes = models.TextField(blank=True, null=True, verbose_name="비고")
+    option_description = models.TextField(blank=True, null=True, verbose_name="옵션/별도 설명")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 

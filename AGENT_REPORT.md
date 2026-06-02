@@ -1,14 +1,15 @@
 # AGENT_REPORT.md
 
-## 2026-06-02 — 견적서 품목 행별 옵션/설명 입력 지원
+## 2026-06-02 — 견적서 품목 적요/옵션 분리
 
 ### 요약
 
-- `/schedules/918/` 같은 견적 일정 상세의 `견적 품목` 편집에서 각 행마다 `옵션/설명`을 입력할 수 있게 했습니다.
-- 기존 `DeliveryItem.notes`를 재사용해서 별도 마이그레이션 없이 저장/조회/불러오기 흐름을 유지했습니다.
+- `/schedules/918/` 같은 견적 일정 상세의 `견적 품목` 편집에서 각 행마다 기존 `적요`와 별도 `옵션/설명`을 함께 입력할 수 있게 했습니다.
+- `DeliveryItem.notes`는 계속 `적요`로 보존하고, 새 `DeliveryItem.option_description` 필드를 추가해 옵션 행 전용 데이터로 분리했습니다.
+- 임시 구현 기간에 견적 품목 `notes`에 입력된 옵션 문구는 마이그레이션에서 `option_description`으로 복사하되, 기존 `적요` 값은 삭제하지 않습니다.
 - 견적서 템플릿 변수에 `{{품목1_옵션}}`, `{{품목1_옵션설명}}`을 추가했습니다.
 - 견적서 Excel/PDF 생성 시 옵션이 있는 품목은 그 품목 행 바로 아래에 `옵션: ...` 전용 행이 자동 삽입됩니다.
-- 견적서에서는 기존 `{{품목1_적요}}`, `{{품목1_비고}}` 칸에 옵션을 넣지 않도록 비워 마지막 열에 옵션이 잘못 표시되지 않게 했습니다.
+- 견적서의 기존 `{{품목1_적요}}`, `{{품목1_비고}}` 변수는 다시 `적요`를 표시합니다.
 - XLSX 다운로드 생성이 `sharedStrings.xml`뿐 아니라 `inlineStr` 워크시트 셀도 치환하도록 보강했습니다.
 
 ### 변경된 파일
@@ -19,34 +20,36 @@
 - `frontend/src/api/legacy.ts`
 - `frontend/src/styles.css`
 - `reporting/account_ledger.py`
+- `reporting/admin.py`
+- `reporting/models.py`
+- `reporting/migrations/0119_deliveryitem_option_description.py`
 - `reporting/views.py`
 - `reporting/tests.py`
 
 ### CRM 개선
 
-- 견적 행별 구성 옵션, 설치 조건, 별도 안내 문구를 견적 품목과 같은 행 데이터로 관리할 수 있습니다.
-- 견적 상세 화면에서는 저장된 행 설명이 `옵션/설명: ...`으로 명확히 표시됩니다.
+- 견적 행별 구성 옵션, 설치 조건, 별도 안내 문구를 기존 적요와 섞지 않고 관리할 수 있습니다.
+- 견적 상세 화면에서는 저장된 적요와 옵션 설명이 각각 별도 문구로 표시됩니다.
 - 견적서 표에서는 옵션 설명이 품목 행 아래의 별도 행으로 출력됩니다.
 
 ### 기존 기능 보존
 
-- DB 스키마는 변경하지 않았습니다.
 - 기존 `notes` API 필드는 계속 동작합니다.
-- 납품/거래명세서의 기존 `적요/비고` 템플릿 변수 흐름은 유지했습니다.
+- 납품/거래명세서와 견적서의 기존 `적요/비고` 템플릿 변수 흐름은 유지했습니다.
 - 납품 일정에서는 기존 `적요` 라벨과 입력 흐름을 유지했습니다.
 - `/reporting/*` 인증/권한 흐름은 변경하지 않았습니다.
 
 ### 실행한 명령과 결과
 
 ```text
-python -m py_compile reporting\views.py reporting\account_ledger.py reporting\tests.py
+python manage.py makemigrations --check --dry-run
+→ OK, No changes detected
+
+source compile check for reporting/models.py, reporting/admin.py, reporting/views.py, reporting/account_ledger.py, reporting/tests.py, reporting/migrations/0119_deliveryitem_option_description.py
 → OK
 
-python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_updates_owned_items_and_history reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_does_not_create_delivery_history_for_quote_schedule reporting.tests.DocumentTemplatesReactApiTests.test_document_templates_api_lists_same_company_and_summary reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_includes_quote_discount_and_note_variables reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_replaces_quote_item_option_variables --keepdb
-→ OK, 6 tests
-
-python manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_inserts_quote_item_option_rows reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_replaces_quote_item_option_variables reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_includes_quote_discount_and_note_variables --keepdb
-→ OK, 3 tests
+python manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_inserts_quote_item_option_rows reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_replaces_quote_item_option_variables reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_includes_quote_discount_and_note_variables reporting.tests.SchedulesSummaryApiTests.test_schedules_detail_api_returns_detail_and_edit_config reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_updates_owned_items_and_history --keepdb
+→ OK, 5 tests
 
 python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --keepdb
 → OK, 93 tests
@@ -69,28 +72,19 @@ git diff --check
 
 - 옵션 행 자동 삽입은 템플릿 안에 `{{품목N_이름}}`, `{{품목N_설명}}`, `{{품목N_수량}}` 같은 표준 품목 행 토큰이 있을 때 작동합니다.
 - 품목 행 토큰이 전혀 없는 특수 템플릿은 별도 템플릿 구조 보정이 필요합니다.
+- 이미 다운로드한 견적서 파일은 기존 생성 결과 그대로라 다시 생성해야 `적요`와 `옵션/설명`이 분리되어 보입니다.
 
 ### Production 배포 상태
 
-- Completed.
-- Runtime commit `44f8da1 feat: add quote item option descriptions` is present on `origin/main`.
-- Corrective runtime commit `74438cb fix: insert quote option rows in documents` is present on `origin/main`.
-- Railway `sales-note-frontend` deployment `6a52a28c-9217-4d0c-b4db-bfe295d73f1f` reached `SUCCESS`.
-- Railway `web` deployment `f68084d1-e835-4be0-b051-3f40f8fa94b4` reached `SUCCESS`.
-- Corrective Railway `web` deployment `e036e2d8-91eb-4cc3-82c5-0ebab3f52430` reached `SUCCESS`.
-- Corrective Railway `sales-note-frontend` deployment `3729a0d1-1f6c-43bc-a47e-b0c1924c2a83` was `SKIPPED` because no frontend watched files changed.
-- Production smoke passed:
-  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
-  - `https://sales-note-frontend-production.up.railway.app/schedules/918/` returned 200.
-  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/918/` returned 401 as expected.
+- Pending latest deployment for the `적요`/`옵션` field split.
 
 ### Manual Server Test Process
 
 1. 로그인 상태로 `https://sales-note-frontend-production.up.railway.app/schedules/918/`에 접속합니다.
 2. `견적 품목` 섹션에서 `편집`을 누릅니다.
-3. 각 품목 행의 `옵션/설명`에 구성 옵션이나 별도 설명을 입력하고 저장합니다.
-4. 화면에 `옵션/설명: ...`으로 표시되는지 확인합니다.
-5. 견적서 Excel/PDF를 다운로드해서 옵션이 기존 `적요` 열이 아니라 해당 품목 바로 아래의 `옵션: ...` 행으로 표시되는지 확인합니다.
+3. 각 품목 행의 `적요`와 `옵션/설명`에 서로 다른 내용을 입력하고 저장합니다.
+4. 화면에 `적요: ...`와 `옵션/설명: ...`이 각각 표시되는지 확인합니다.
+5. 견적서 Excel/PDF를 다운로드해서 `적요`는 기존 적요 칸에, `옵션/설명`은 해당 품목 바로 아래의 `옵션: ...` 행에 표시되는지 확인합니다.
 
 ## 2026-06-02 — 계정 상세 서비스 기록에 영업노트가 섞이는 문제 수정
 

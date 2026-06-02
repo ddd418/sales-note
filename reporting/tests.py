@@ -10316,6 +10316,7 @@ class SchedulesSummaryApiTests(TestCase):
             unit_price=100000,
             discount_rate=10,
             notes='PCR 적요',
+            option_description='PCR 옵션 설명',
         )
         schedule_file = ScheduleFile.objects.create(
             schedule=schedule,
@@ -10346,7 +10347,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 90000)
         self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
         self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
-        self.assertEqual(payload['deliveryItems'][0]['optionDescription'], 'PCR 적요')
+        self.assertEqual(payload['deliveryItems'][0]['optionDescription'], 'PCR 옵션 설명')
         self.assertEqual(payload['links']['uploadFiles'], reverse('reporting:schedule_file_upload', args=[schedule.id]))
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
         self.assertEqual(payload['links']['toggleTaxInvoice'], '')
@@ -11105,6 +11106,7 @@ class SchedulesSummaryApiTests(TestCase):
                         'discountRate': '10',
                         'taxInvoiceIssued': True,
                         'quoteGroup': '보상판매',
+                        'notes': 'PCR 적요',
                         'optionDescription': 'PCR 옵션 설명',
                     },
                     {
@@ -11135,7 +11137,8 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(items[0].total_price), 198000)
         self.assertFalse(items[0].tax_invoice_issued)
         self.assertEqual(items[0].quote_group, '보상판매')
-        self.assertEqual(items[0].notes, 'PCR 옵션 설명')
+        self.assertEqual(items[0].notes, 'PCR 적요')
+        self.assertEqual(items[0].option_description, 'PCR 옵션 설명')
         self.assertIsNone(items[1].unit_price)
         self.assertEqual(items[1].quote_group, '수리')
         schedule.refresh_from_db()
@@ -11157,7 +11160,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['deliveryItems'][0]['effectiveUnitPrice'], 90000)
         self.assertEqual(payload['deliveryItems'][0]['totalPrice'], 198000)
         self.assertEqual(payload['deliveryItems'][0]['quoteGroup'], '보상판매')
-        self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 옵션 설명')
+        self.assertEqual(payload['deliveryItems'][0]['notes'], 'PCR 적요')
         self.assertEqual(payload['deliveryItems'][0]['optionDescription'], 'PCR 옵션 설명')
         self.assertIsNone(payload['deliveryItems'][1]['unitPrice'])
         self.assertIsNone(payload['deliveryItems'][1]['discountUnitPrice'])
@@ -12605,6 +12608,7 @@ class DocumentTemplatesReactApiTests(TestCase):
             unit_price=100000,
             discount_rate=10,
             notes='품목 적요',
+            option_description='품목 옵션 설명',
         )
         self.client.force_login(self.salesman)
 
@@ -12620,10 +12624,10 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(variables['메모'], '견적 메모')
         self.assertEqual(variables['기타사항'], '전체 견적 기타사항')
         self.assertEqual(variables['견적기타사항'], '전체 견적 기타사항')
-        self.assertEqual(variables['품목1_옵션'], '품목 적요')
-        self.assertEqual(variables['품목1_옵션설명'], '품목 적요')
-        self.assertEqual(variables['품목1_적요'], '')
-        self.assertEqual(variables['품목1_비고'], '')
+        self.assertEqual(variables['품목1_옵션'], '품목 옵션 설명')
+        self.assertEqual(variables['품목1_옵션설명'], '품목 옵션 설명')
+        self.assertEqual(variables['품목1_적요'], '품목 적요')
+        self.assertEqual(variables['품목1_비고'], '품목 적요')
         self.assertEqual(variables['품목1_기준단가'], '100,000')
         self.assertEqual(variables['품목1_할인율'], '10%')
         self.assertEqual(variables['품목1_할인단가'], '90,000')
@@ -12636,7 +12640,7 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['items'][0]['discountUnitPrice'], 90000)
         self.assertEqual(payload['items'][0]['discountRate'], 10.0)
         self.assertEqual(payload['items'][0]['notes'], '품목 적요')
-        self.assertEqual(payload['items'][0]['optionDescription'], '품목 적요')
+        self.assertEqual(payload['items'][0]['optionDescription'], '품목 옵션 설명')
 
     def test_document_template_data_hides_quotation_base_unit_price_when_requested(self):
         from reporting.models import DeliveryItem
@@ -12927,7 +12931,8 @@ class DocumentTemplatesReactApiTests(TestCase):
             quantity=1,
             unit='EA',
             unit_price=100000,
-            notes='옵션 A 포함, 설치 조건 별도',
+            notes='적요 A',
+            option_description='옵션 A 포함, 설치 조건 별도',
         )
         DeliveryItem.objects.create(
             schedule=schedule,
@@ -12946,7 +12951,7 @@ class DocumentTemplatesReactApiTests(TestCase):
         generated = load_workbook(io.BytesIO(response.content))
         generated_sheet = generated.active
         self.assertEqual(generated_sheet['A2'].value, 'Option Kit')
-        self.assertIn(generated_sheet['E2'].value, (None, ''))
+        self.assertEqual(generated_sheet['E2'].value, '적요 A')
         self.assertEqual(generated_sheet['B3'].value, '옵션: 옵션 A 포함, 설치 조건 별도')
         self.assertIn('B3:E3', [str(merge_range) for merge_range in generated_sheet.merged_cells.ranges])
         self.assertEqual(generated_sheet['A4'].value, 'Plain Kit')
@@ -12985,7 +12990,7 @@ class DocumentTemplatesReactApiTests(TestCase):
             quantity=1,
             unit='EA',
             unit_price=100000,
-            notes='옵션 A 포함, 설치 조건 별도',
+            option_description='옵션 A 포함, 설치 조건 별도',
         )
         self.client.force_login(self.salesman)
 
