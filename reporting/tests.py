@@ -1496,6 +1496,71 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertIn('prepaymentBalance', comparison['deltas'])
         self.assertIn('dateFrom', comparison)
 
+    def test_reports_api_excludes_service_memos_from_customer_operation_services(self):
+        today = timezone.localdate()
+        service_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='service',
+            status='completed',
+            notes='실제 서비스 일정',
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            action_type='service',
+            content='견적 바꾼것을 메일로 보냈음',
+        )
+        History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            schedule=service_schedule,
+            action_type='service',
+            content='서비스 일정에 남긴 영업노트 메모',
+        )
+        asset = CustomerAsset.objects.create(
+            company=self.customer_company,
+            department=self.department,
+            primary_followup=self.followup,
+            asset_name='실제 서비스 장비',
+            status='active',
+            created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            asset=asset,
+            followup=self.followup,
+            case_type='service',
+            status='received',
+            received_date=today,
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'), {
+            'date_from': today.isoformat(),
+            'date_to': today.isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        row = next(
+            item for item in response.json()['customerOperations']['rows']
+            if item['accountKey'] == f'department:{self.department.id}'
+        )
+        self.assertEqual(row['serviceCount'], 2)
+        self.assertEqual(row['openServiceCount'], 1)
+        services = row['drilldown']['services']
+        service_text = json.dumps(services, ensure_ascii=False)
+        self.assertIn('실제 서비스 장비', service_text)
+        self.assertIn('실제 서비스 일정', service_text)
+        self.assertNotIn('견적 바꾼것을 메일로 보냈음', service_text)
+        self.assertNotIn('서비스 일정에 남긴 영업노트 메모', service_text)
+        self.assertFalse(any((record.get('href') or '').startswith('/notes/') for record in services))
+
     def test_common_account_ledger_feeds_reports_customer_detail_and_ai(self):
         from ai_chat.services import gather_prepayment_data, gather_quote_delivery_data
         from reporting.services.account_ledger import account_operational_ledger_for_followups

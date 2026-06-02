@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-02 Reports service drilldown sales-note exclusion plan
+
+**Background**:
+
+- User reported that `/reports/` customer operation drilldown shows normal sales-note memo cards under the `서비스` column.
+- Account/customer detail operational records were already corrected to use only structured `ServiceCase` and `Schedule(activity_type='service')` rows.
+- The reports API still adds `History(action_type='service')` into `customerOperations.rows[].drilldown.services`.
+- `History.ACTION_CHOICES` currently labels `service` as `메모`, so these rows should not be counted as service records.
+
+**DB change required**: No schema migration.
+
+- This is an API classification fix only.
+- Existing sales notes remain in normal note/history surfaces.
+
+**Implementation scope**:
+
+- Remove `History(action_type='service')` from reports customer operation service metrics and service drilldown.
+- Keep structured `ServiceCase` records in the service summary.
+- Keep `Schedule(activity_type='service')` service schedules in the service summary, including schedules that have linked histories.
+- Add a reports API regression test proving memo-type histories do not appear in service counts/drilldown.
+
+**Validation plan**:
+
+- `python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_excludes_service_memos_from_customer_operation_services --keepdb`
+- `python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --keepdb`
+- `python manage.py check`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy backend to Railway and smoke `/reports/`.
+
 ## 2026-06-02 Quote item option/explanation plan
 
 **Background**:

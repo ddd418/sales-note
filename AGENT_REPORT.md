@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-06-02 — 보고서 서비스 컬럼 영업노트 혼입 수정
+
+### 요약
+
+- `/reports/`의 고객 운영 현황 서비스 컬럼에 일반 영업노트 메모가 표시되던 문제를 수정했습니다.
+- 보고서 API의 고객 운영 집계에서 `History(action_type='service')`를 서비스 기록으로 세지 않도록 제거했습니다.
+- 서비스 컬럼은 이제 구조화된 `ServiceCase`와 `Schedule(activity_type='service')`만 표시합니다.
+- 서비스 일정에 연결된 영업노트가 있어도 노트 카드가 아니라 서비스 일정 카드가 표시됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/api/reports.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 보고서의 서비스 건수와 드릴다운이 실제 A/S/수리/서비스 일정 기준으로 정리됩니다.
+- 메일, 견적 상담, 일반 메모성 영업노트가 서비스 업무로 오분류되지 않습니다.
+- 계정 상세과 보고서의 서비스 기록 기준을 맞췄습니다.
+
+### 기존 기능 보존
+
+- 영업노트 데이터는 삭제하지 않았습니다.
+- 일반 영업노트/메모 화면에서는 기존 노트를 계속 볼 수 있습니다.
+- 실제 `ServiceCase`와 `서비스 일정` 집계는 유지했습니다.
+- `/reporting/*` 인증/권한 흐름은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_excludes_service_memos_from_customer_operation_services --keepdb
+→ OK, 1 test
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --keepdb
+→ OK, 27 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; existing Vite large chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이미 브라우저에 열려 있던 `/reports/` 화면은 새로고침해야 수정된 API 응답을 다시 불러옵니다.
+- `History(action_type='service')` 데이터 자체는 삭제하지 않았습니다. 이는 현재 모델상 `메모`로 쓰이는 영업노트 데이터입니다.
+
+### Production 배포 상태
+
+- Pending deployment.
+
+### Manual Server Test Process
+
+1. 로그인 상태로 `https://sales-note-frontend-production.up.railway.app/reports/`에 접속합니다.
+2. 문제 계정의 가로 스크롤 영역에서 `서비스` 컬럼을 확인합니다.
+3. `견적 바꾼것을 메일로 보냈음` 같은 영업노트 메모가 서비스 카드에 표시되지 않는지 확인합니다.
+4. 실제 서비스 일정 또는 A/S 케이스가 있는 계정은 서비스 카드가 계속 표시되는지 확인합니다.
+
 ## 2026-06-02 — 견적서 품목 적요/옵션 분리
 
 ### 요약

@@ -455,39 +455,6 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             'href': f'/assets/?asset={case.asset_id}' if case.asset_id else '',
         })
 
-    service_histories = list(
-        History.objects.filter(
-            followup_id__in=followup_ids,
-            user__in=filter_users,
-            action_type='service',
-            parent_history__isnull=True,
-            created_at__date__gte=date_from,
-            created_at__date__lte=date_to,
-        ).select_related('followup', 'schedule', 'user').order_by('-created_at', '-id')
-    )
-    service_history_schedule_ids = set()
-    for history in service_histories:
-        row = rows_by_key.get(account_key_by_followup_id.get(history.followup_id))
-        if not row:
-            continue
-        if history.schedule_id:
-            service_history_schedule_ids.add(history.schedule_id)
-        activity_date = history.meeting_date or history.created_at.date()
-        row['serviceCount'] += 1
-        if history.service_status in open_service_statuses:
-            row['openServiceCount'] += 1
-        row['lastServiceDate'] = _reports_latest_date(row['lastServiceDate'], activity_date)
-        row['lastActivityDate'] = _reports_latest_date(row['lastActivityDate'], activity_date)
-        _reports_append_drilldown(row, 'services', {
-            'id': history.id,
-            'date': _date_or_none(activity_date),
-            'label': history.content[:80] if history.content else '서비스 기록',
-            'statusLabel': history.get_service_status_display() if history.service_status else '서비스',
-            'customerName': history.followup.customer_name or history.followup.manager or '',
-            'ownerName': _user_display_name(history.user),
-            'href': f'/notes/{history.id}/',
-        })
-
     service_schedules = list(
         Schedule.objects.filter(
             followup_id__in=followup_ids,
@@ -495,8 +462,6 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             activity_type='service',
             visit_date__gte=date_from,
             visit_date__lte=date_to,
-        ).exclude(
-            id__in=service_history_schedule_ids,
         ).select_related('followup', 'user').order_by('-visit_date', '-visit_time', '-id')
     )
     for schedule in service_schedules:
