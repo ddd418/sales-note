@@ -76,7 +76,15 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending latest deployment for the `적요`/`옵션` field split.
+- Completed.
+- Runtime commit `bd83185 fix: separate quote remarks from option rows` is present on `origin/main`.
+- Railway `sales-note-frontend` deployment `2107e249-4891-49ae-871a-2f34f5bb69d9` reached `SUCCESS`.
+- Railway `web` deployment `894d587d-8e54-4ae2-a575-30cb32ac6ca2` reached `SUCCESS`.
+- Production migration passed: `Applying reporting.0119_deliveryitem_option_description... OK`.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/schedules/918/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/918/` returned 401 as expected.
 
 ### Manual Server Test Process
 
