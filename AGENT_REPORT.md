@@ -66,7 +66,14 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending. Runtime code has been prepared and verified locally; deploy after commit/push.
+- Completed.
+- Runtime commit `44f8da1 feat: add quote item option descriptions` is present on `origin/main`.
+- Railway `sales-note-frontend` deployment `6a52a28c-9217-4d0c-b4db-bfe295d73f1f` reached `SUCCESS`.
+- Railway `web` deployment `f68084d1-e835-4be0-b051-3f40f8fa94b4` reached `SUCCESS`.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/schedules/918/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/918/` returned 401 as expected.
 
 ### Manual Server Test Process
 
