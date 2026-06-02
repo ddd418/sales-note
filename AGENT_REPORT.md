@@ -59,7 +59,14 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending deployment.
+- Completed.
+- Runtime commit `5dff511 fix: exclude sales notes from report service drilldown` is present on `origin/main`.
+- Railway `web` deployment `e47a987d-0d88-43d2-a338-2963a8994ae2` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `17e7f478-9e84-48e8-b669-4cbc249f023d` was `SKIPPED` because no frontend watched files changed.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/reports/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/reports/` returned 401 as expected.
 
 ### Manual Server Test Process
 
