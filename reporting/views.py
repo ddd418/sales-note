@@ -34411,6 +34411,337 @@ def _hide_xlsx_base_unit_price_columns(xlsx_path):
     return _hide_xlsx_template_columns(xlsx_path, [r'\{\{품목\d+_기준단가\}\}'])
 
 
+def _insert_xlsx_quote_item_option_rows(xlsx_path, data_map):
+    """견적 품목 옵션/설명이 있으면 해당 품목 행 아래에 별도 옵션 행을 삽입한다."""
+    import math
+    import os
+    import re
+    import shutil
+    import unicodedata
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    option_values = {}
+    for key, value in (data_map or {}).items():
+        match = re.fullmatch(r'품목(\d+)_옵션설명', str(key))
+        text = str(value or '').strip()
+        if match and text:
+            option_values[int(match.group(1))] = text
+    if not option_values:
+        return False
+
+    spreadsheet_ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+    ET.register_namespace('', spreadsheet_ns)
+
+    def qname(name):
+        return f'{{{spreadsheet_ns}}}{name}'
+
+    cell_ref_pattern = re.compile(r'^([A-Z]+)(\d+)$')
+    item_token_pattern = re.compile(
+        r'\{\{품목(\d+)_(이름|품목명|수량|단위|규격|설명|기준단가|할인율|할인단가|단가|공급가액|부가세액|금액|총액)\}\}'
+    )
+
+    def split_cell_ref(ref):
+        normalized = str(ref or '').replace('$', '').upper()
+        match = cell_ref_pattern.match(normalized)
+        if not match:
+            return None
+        col_letters, row_text = match.groups()
+        col_idx = 0
+        for char in col_letters:
+            col_idx = col_idx * 26 + (ord(char) - ord('A') + 1)
+        return col_idx, int(row_text)
+
+    def column_letters(col_idx):
+        letters = []
+        while col_idx > 0:
+            col_idx, remainder = divmod(col_idx - 1, 26)
+            letters.append(chr(ord('A') + remainder))
+        return ''.join(reversed(letters)) or 'A'
+
+    def update_cell_ref(ref, row_delta_at):
+        parsed = split_cell_ref(ref)
+        if not parsed:
+            return ref
+        col_idx, row_idx = parsed
+        if row_idx >= row_delta_at:
+            row_idx += 1
+        return f'{column_letters(col_idx)}{row_idx}'
+
+    def text_content(node):
+        return ''.join(text_node.text or '' for text_node in node.iter(qname('t')))
+
+    def cell_text(cell, shared_strings):
+        if cell.get('t') == 's':
+            value_node = cell.find(qname('v'))
+            if value_node is not None:
+                return shared_strings.get(value_node.text or '', '')
+        if cell.get('t') == 'inlineStr':
+            return text_content(cell)
+        value_node = cell.find(qname('v'))
+        return value_node.text or '' if value_node is not None else ''
+
+    def parse_merge_ref(ref):
+        parts = str(ref or '').split(':')
+        if len(parts) != 2:
+            return None
+        start = split_cell_ref(parts[0])
+        end = split_cell_ref(parts[1])
+        if not start or not end:
+            return None
+        return start[0], start[1], end[0], end[1]
+
+    def merge_ref(start_col, start_row, end_col, end_row):
+        return f'{column_letters(start_col)}{start_row}:{column_letters(end_col)}{end_row}'
+
+    def shift_merge_ref(ref, insert_at):
+        parsed = parse_merge_ref(ref)
+        if not parsed:
+            return ref
+        start_col, start_row, end_col, end_row = parsed
+        if start_row >= insert_at:
+            start_row += 1
+            end_row += 1
+        elif end_row >= insert_at:
+            end_row += 1
+        return merge_ref(start_col, start_row, end_col, end_row)
+
+    def display_width(text):
+        width = 0
+        for char in str(text or ''):
+            width += 2 if unicodedata.east_asian_width(char) in {'F', 'W'} else 1
+        return width
+
+    def estimated_option_height(text, merged_width):
+        line_count = 0
+        chars_per_line = max(int(merged_width * 1.15), 16)
+        for line in str(text or '').replace('\r\n', '\n').replace('\r', '\n').split('\n') or ['']:
+            line_count += max(1, math.ceil(display_width(line) / chars_per_line))
+        return min(120.0, max(18.0, line_count * 16.5 + 3.0))
+
+    def sheet_column_widths(root):
+        widths = []
+        cols_node = root.find(qname('cols'))
+        if cols_node is not None:
+            for col in cols_node.findall(qname('col')):
+                try:
+                    widths.append((int(col.get('min')), int(col.get('max')), float(col.get('width') or 8.43)))
+                except (TypeError, ValueError):
+                    continue
+        sheet_format = root.find(qname('sheetFormatPr'))
+        try:
+            default_width = float(sheet_format.get('defaultColWidth')) if sheet_format is not None and sheet_format.get('defaultColWidth') else 8.43
+        except ValueError:
+            default_width = 8.43
+
+        def width_for_col(col_idx):
+            for min_col, max_col, width in widths:
+                if min_col <= col_idx <= max_col:
+                    return width
+            return default_width
+
+        return width_for_col
+
+    def ensure_merge_cells(root):
+        merge_cells = root.find(qname('mergeCells'))
+        if merge_cells is not None:
+            return merge_cells
+        merge_cells = ET.Element(qname('mergeCells'), {'count': '0'})
+        sheet_data = root.find(qname('sheetData'))
+        children = list(root)
+        insert_index = children.index(sheet_data) + 1 if sheet_data is not None and sheet_data in children else len(children)
+        root.insert(insert_index, merge_cells)
+        return merge_cells
+
+    def add_option_merge(root, start_col, row_idx, end_col):
+        if end_col <= start_col:
+            return
+        merge_cells = ensure_merge_cells(root)
+        merge_cells.append(ET.Element(qname('mergeCell'), {'ref': merge_ref(start_col, row_idx, end_col, row_idx)}))
+        merge_cells.set('count', str(len(merge_cells.findall(qname('mergeCell')))))
+
+    def shift_sheet(root, insert_at):
+        sheet_data = root.find(qname('sheetData'))
+        if sheet_data is None:
+            return
+        for row in reversed(sheet_data.findall(qname('row'))):
+            try:
+                row_idx = int(row.get('r') or 0)
+            except ValueError:
+                row_idx = 0
+            if row_idx < insert_at:
+                continue
+            row.set('r', str(row_idx + 1))
+            for cell in row.findall(qname('c')):
+                cell.set('r', update_cell_ref(cell.get('r'), insert_at))
+
+        dimension = root.find(qname('dimension'))
+        if dimension is not None and dimension.get('ref'):
+            parts = dimension.get('ref').split(':')
+            shifted = []
+            for ref in parts:
+                parsed = split_cell_ref(ref)
+                if parsed:
+                    col_idx, row_idx = parsed
+                    if row_idx >= insert_at:
+                        row_idx += 1
+                    shifted.append(f'{column_letters(col_idx)}{row_idx}')
+                else:
+                    shifted.append(ref)
+            dimension.set('ref', ':'.join(shifted))
+
+        merge_cells = root.find(qname('mergeCells'))
+        if merge_cells is not None:
+            for merge_cell in merge_cells.findall(qname('mergeCell')):
+                merge_cell.set('ref', shift_merge_ref(merge_cell.get('ref'), insert_at))
+
+    def row_insert_index(sheet_data, insert_at):
+        for index, row in enumerate(list(sheet_data)):
+            try:
+                row_idx = int(row.get('r') or 0)
+            except ValueError:
+                row_idx = 0
+            if row_idx >= insert_at:
+                return index
+        return len(list(sheet_data))
+
+    def make_inline_string_cell(ref, style_id, text):
+        attrs = {'r': ref, 't': 'inlineStr'}
+        if style_id not in (None, ''):
+            attrs['s'] = str(style_id)
+        cell = ET.Element(qname('c'), attrs)
+        inline = ET.SubElement(cell, qname('is'))
+        text_node = ET.SubElement(inline, qname('t'))
+        text_node.text = text
+        return cell
+
+    def make_blank_cell(ref, style_id):
+        attrs = {'r': ref}
+        if style_id not in (None, ''):
+            attrs['s'] = str(style_id)
+        return ET.Element(qname('c'), attrs)
+
+    def create_option_row(target):
+        row_idx = target['row'] + 1
+        text = f"옵션: {target['option']}"
+        merged_width = target['mergedWidth']
+        row = ET.Element(qname('row'), {
+            'r': str(row_idx),
+            'ht': f"{estimated_option_height(text, merged_width):.1f}".rstrip('0').rstrip('.'),
+            'customHeight': '1',
+        })
+        for col_idx in range(target['startCol'], target['endCol'] + 1):
+            ref = f'{column_letters(col_idx)}{row_idx}'
+            style_id = target['styles'].get(col_idx, target['textStyle'])
+            if col_idx == target['startCol']:
+                row.append(make_inline_string_cell(ref, style_id, text))
+            else:
+                row.append(make_blank_cell(ref, style_id))
+        return row
+
+    files = {}
+    infos = []
+    with zipfile.ZipFile(xlsx_path, 'r') as zip_in:
+        for item in zip_in.infolist():
+            infos.append(item)
+            files[item.filename] = zip_in.read(item.filename)
+
+    shared_strings = {}
+    shared_strings_data = files.get('xl/sharedStrings.xml')
+    if shared_strings_data:
+        try:
+            shared_root = ET.fromstring(shared_strings_data)
+            for index, shared_item in enumerate(shared_root.findall(qname('si'))):
+                shared_strings[str(index)] = text_content(shared_item)
+        except Exception as shared_error:
+            logger.warning(f"[서류생성] 옵션 행 sharedStrings 분석 실패: {shared_error}")
+
+    changed = False
+    for filename, data in list(files.items()):
+        if not (filename.startswith('xl/worksheets/sheet') and filename.endswith('.xml')):
+            continue
+        try:
+            root = ET.fromstring(data)
+            sheet_data = root.find(qname('sheetData'))
+            if sheet_data is None:
+                continue
+            width_for_col = sheet_column_widths(root)
+            targets = []
+            for row in sheet_data.findall(qname('row')):
+                try:
+                    row_idx = int(row.get('r') or 0)
+                except ValueError:
+                    continue
+                cells = list(row.findall(qname('c')))
+                cell_infos = []
+                row_text_parts = []
+                for cell in cells:
+                    parsed = split_cell_ref(cell.get('r'))
+                    if not parsed:
+                        continue
+                    text = cell_text(cell, shared_strings)
+                    row_text_parts.append(text)
+                    cell_infos.append({
+                        'cell': cell,
+                        'col': parsed[0],
+                        'style': cell.get('s'),
+                        'text': text,
+                    })
+                row_text = '\n'.join(row_text_parts)
+                item_numbers = sorted({
+                    int(match.group(1))
+                    for match in item_token_pattern.finditer(row_text)
+                    if int(match.group(1)) in option_values
+                })
+                if not item_numbers or not cell_infos:
+                    continue
+                min_col = min(info['col'] for info in cell_infos)
+                max_col = max(info['col'] for info in cell_infos)
+                styles = {info['col']: info['style'] for info in cell_infos}
+                for item_number in item_numbers:
+                    preferred_cell = None
+                    for field in ('설명', '품목명', '이름'):
+                        token = f'{{{{품목{item_number}_{field}}}}}'
+                        preferred_cell = next((info for info in cell_infos if token in info['text']), None)
+                        if preferred_cell:
+                            break
+                    start_col = preferred_cell['col'] if preferred_cell else (min_col + 1 if max_col > min_col else min_col)
+                    text_style = preferred_cell['style'] if preferred_cell else styles.get(start_col)
+                    targets.append({
+                        'row': row_idx,
+                        'startCol': start_col,
+                        'endCol': max_col,
+                        'styles': styles,
+                        'textStyle': text_style,
+                        'option': option_values[item_number],
+                        'mergedWidth': sum(width_for_col(col_idx) for col_idx in range(start_col, max_col + 1)),
+                    })
+            if not targets:
+                continue
+            for target in sorted(targets, key=lambda value: value['row'], reverse=True):
+                insert_at = target['row'] + 1
+                shift_sheet(root, insert_at)
+                option_row = create_option_row(target)
+                sheet_data.insert(row_insert_index(sheet_data, insert_at), option_row)
+                add_option_merge(root, target['startCol'], insert_at, target['endCol'])
+                changed = True
+            files[filename] = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+        except Exception as sheet_error:
+            logger.warning(f"[서류생성] 견적 옵션 행 삽입 실패({filename}): {sheet_error}")
+
+    if not changed:
+        return False
+
+    temp_output = xlsx_path.replace('.xlsx', '_quote_option_rows.xlsx')
+    with zipfile.ZipFile(temp_output, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+        for item in infos:
+            zip_out.writestr(item, files[item.filename])
+
+    os.unlink(xlsx_path)
+    shutil.move(temp_output, xlsx_path)
+    return True
+
+
 def _expand_xlsx_template_text_rows(xlsx_path, data_map):
     """치환될 텍스트가 셀 폭보다 길면 줄바꿈과 행 높이를 보정한다."""
     import copy
@@ -34918,6 +35249,7 @@ def get_document_template_data(request, document_type, schedule_id):
             price_info = _document_item_prices(item)
             item_subtotal = price_info['effective_unit_price'] * item.quantity
             item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
+            legacy_item_notes = '' if document_type == 'quotation' else (item.notes or '')
             
             item_data = {
                 f'품목{idx}_이름': item.item_name,
@@ -34928,8 +35260,8 @@ def get_document_template_data(request, document_type, schedule_id):
                 f'품목{idx}_설명': item.product.description if item.product and item.product.description else '',
                 f'품목{idx}_옵션': item.notes or '',
                 f'품목{idx}_옵션설명': item.notes or '',
-                f'품목{idx}_적요': item.notes or '',
-                f'품목{idx}_비고': item.notes or '',
+                f'품목{idx}_적요': legacy_item_notes,
+                f'품목{idx}_비고': legacy_item_notes,
                 f'품목{idx}_기준단가': _document_base_unit_price_display(price_info, hide_base_unit_price),
                 f'품목{idx}_할인율': _document_discount_rate_label(price_info['discount_rate']),
                 f'품목{idx}_할인단가': _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else '',
@@ -35326,6 +35658,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     item_subtotal = price_info['effective_unit_price'] * item.quantity
                     # 단위 결정: DeliveryItem에 있으면 사용, 없으면 Product에서, 그것도 없으면 'EA'
                     item_unit = item.unit if item.unit else (item.product.unit if item.product and item.product.unit else 'EA')
+                    legacy_item_notes = '' if document_type == 'quotation' else (item.notes or '')
 
                     # 품목별 부가세 계산 (schedule의 vat_mode 반영)
                     if _vat_mode == 'included':
@@ -35350,8 +35683,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     data_map[f'품목{idx}_설명'] = item.product.description if item.product and item.product.description else ''
                     data_map[f'품목{idx}_옵션'] = item.notes or ''
                     data_map[f'품목{idx}_옵션설명'] = item.notes or ''
-                    data_map[f'품목{idx}_적요'] = item.notes or ''
-                    data_map[f'품목{idx}_비고'] = item.notes or ''
+                    data_map[f'품목{idx}_적요'] = legacy_item_notes
+                    data_map[f'품목{idx}_비고'] = legacy_item_notes
                     data_map[f'품목{idx}_기준단가'] = _document_base_unit_price_display(price_info, hide_base_unit_price)
                     data_map[f'품목{idx}_할인율'] = _document_discount_rate_label(price_info['discount_rate'])
                     data_map[f'품목{idx}_할인단가'] = _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else ''
@@ -35365,6 +35698,12 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     _expand_xlsx_template_text_rows(temp_path, data_map)
                 except Exception as text_layout_error:
                     logger.warning(f"[서류생성] 템플릿 텍스트 행 높이 보정 실패: {text_layout_error}")
+
+                if document_type == 'quotation':
+                    try:
+                        _insert_xlsx_quote_item_option_rows(temp_path, data_map)
+                    except Exception as option_row_error:
+                        logger.warning(f"[서류생성] 견적 옵션 행 삽입 실패: {option_row_error}")
 
                 if hide_base_unit_price:
                     try:

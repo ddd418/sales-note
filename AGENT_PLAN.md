@@ -6,6 +6,7 @@
 
 - User requested that quote creation from `/schedules/918/` support a separate option/explanation per quote row.
 - Schedule quote rows already persist `DeliveryItem.notes`, but the React label is a generic `적요` and document variables only expose it as `품목N_적요/비고`.
+- Follow-up correction: the user expects an actual option row under each quote item in the generated quotation, not merely text in the old remarks/summary column.
 
 **DB change required**: No schema migration.
 
@@ -18,10 +19,12 @@
 - Add API aliases (`optionDescription`, `description`) that map to `DeliveryItem.notes` for backward/forward compatibility.
 - Add document template variables `품목N_옵션` and `품목N_옵션설명` alongside existing `품목N_적요/비고`.
 - Ensure document preview/download data and tests include the new option variables.
+- Insert a generated option row below each quotation item row when that item has an option/explanation value.
 
 **Validation plan**:
 
 - `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_inserts_quote_item_option_rows reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_replaces_quote_item_option_variables --keepdb`
 - `python manage.py test reporting.tests.SchedulesSummaryApiTests reporting.tests.DocumentTemplatesReactApiTests --keepdb`
 - `python manage.py check`
 - `cd frontend && npx tsc --noEmit --pretty false`

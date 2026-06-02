@@ -12622,8 +12622,8 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(variables['견적기타사항'], '전체 견적 기타사항')
         self.assertEqual(variables['품목1_옵션'], '품목 적요')
         self.assertEqual(variables['품목1_옵션설명'], '품목 적요')
-        self.assertEqual(variables['품목1_적요'], '품목 적요')
-        self.assertEqual(variables['품목1_비고'], '품목 적요')
+        self.assertEqual(variables['품목1_적요'], '')
+        self.assertEqual(variables['품목1_비고'], '')
         self.assertEqual(variables['품목1_기준단가'], '100,000')
         self.assertEqual(variables['품목1_할인율'], '10%')
         self.assertEqual(variables['품목1_할인단가'], '90,000')
@@ -12879,6 +12879,78 @@ class DocumentTemplatesReactApiTests(TestCase):
             if col.get('hidden') == '1'
         ]
         self.assertEqual([(col.get('min'), col.get('max')) for col in hidden_cols], [('2', '2')])
+
+    def test_document_generate_xlsx_inserts_quote_item_option_rows(self):
+        import io
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook, load_workbook
+        from reporting.models import DeliveryItem
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '품목코드'
+        sheet['B1'] = '품목명(규격)'
+        sheet['C1'] = '수량'
+        sheet['D1'] = '단가'
+        sheet['E1'] = '적요'
+        sheet['A2'] = '{{품목1_이름}}'
+        sheet['B2'] = '{{품목1_설명}}'
+        sheet['C2'] = '{{품목1_수량}}'
+        sheet['D2'] = '{{품목1_단가}}'
+        sheet['E2'] = '{{품목1_적요}}'
+        sheet['A3'] = '{{품목2_이름}}'
+        sheet['B3'] = '{{품목2_설명}}'
+        sheet['C3'] = '{{품목2_수량}}'
+        sheet['D3'] = '{{품목2_단가}}'
+        sheet['E3'] = '{{품목2_적요}}'
+        sheet['A4'] = '합계'
+        output = io.BytesIO()
+        workbook.save(output)
+        template = DocumentTemplate.objects.create(
+            company=self.company,
+            document_type='quotation',
+            name='옵션행견적서',
+            file=SimpleUploadedFile(
+                'quote-option-row.xlsx',
+                output.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ),
+            file_type='xlsx',
+            is_default=True,
+            created_by=self.manager,
+        )
+        self.addCleanup(template.file.delete, False)
+        schedule = self._create_schedule(self.manager, name='옵션행견적', activity_type='quote')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Option Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=100000,
+            notes='옵션 A 포함, 설치 조건 별도',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Plain Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=50000,
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.post(
+            reverse('reporting:generate_document_pdf_format', args=['quotation', schedule.id, 'xlsx']),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        generated = load_workbook(io.BytesIO(response.content))
+        generated_sheet = generated.active
+        self.assertEqual(generated_sheet['A2'].value, 'Option Kit')
+        self.assertIn(generated_sheet['E2'].value, (None, ''))
+        self.assertEqual(generated_sheet['B3'].value, '옵션: 옵션 A 포함, 설치 조건 별도')
+        self.assertIn('B3:E3', [str(merge_range) for merge_range in generated_sheet.merged_cells.ranges])
+        self.assertEqual(generated_sheet['A4'].value, 'Plain Kit')
+        self.assertEqual(generated_sheet['A5'].value, '합계')
 
     def test_document_generate_xlsx_replaces_quote_item_option_variables(self):
         import io
