@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-04 AI workspace first-load performance plan
+
+**Background**:
+
+- User reported that `/ai-workspace/` takes too long to load.
+- Investigation showed the first screen does not call OpenAI; it waits on the CRM React bundle and AI workspace summary API.
+- `/ai-workspace/` currently routes through the large `frontend/src/App.tsx` CRM bundle, so the AI screen loads the whole CRM app before rendering.
+- Production static asset timing showed `App-*.js` and global CSS are meaningful first-load costs even before authenticated API work.
+
+**DB change required**: No schema migration.
+
+- This is a frontend routing/code-splitting and loading-state improvement.
+- Existing Django AI APIs remain authenticated and session scoped.
+
+**Implementation scope**:
+
+- Add a dedicated lazy React entry for `/ai-workspace/` so it does not import the full `App.tsx` bundle on first load.
+- Move/rebuild the AI workspace page surface into a focused `frontend/src/pages/ai/AIWorkspacePage.tsx` chunk.
+- Keep the existing AI summary/question/history/memory APIs and payload compatibility.
+- Keep AI behavior briefing-only; do not add strategy/draft generation UI.
+- Keep `/reporting/*` and Django API auth behavior unchanged.
+
+**Validation plan**:
+
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Confirm `dist/assets` has a separate AI workspace chunk and that `App-*.js` is no longer required for `/ai-workspace/` first entry.
+- `python manage.py check`
+- `git diff --check`
+- Deploy affected Railway frontend/backend services and smoke `/ai-workspace/`.
+
 ## 2026-06-04 Same-company company/department management access plan
 
 **Background**:

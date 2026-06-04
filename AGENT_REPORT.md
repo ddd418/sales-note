@@ -1,5 +1,83 @@
 # AGENT_REPORT.md
 
+## 2026-06-04 — AI 워크스페이스 첫 로딩 code splitting
+
+### 요약
+
+- `/ai-workspace/`가 더 이상 거대한 `frontend/src/App.tsx` CRM 번들을 첫 화면에서 로드하지 않도록 별도 React lazy entry로 분리했습니다.
+- AI 전용 API 클라이언트 `frontend/src/api/aiWorkspace.ts`를 추가해 기존 대형 `legacy.ts` API 모듈을 AI 전용 청크에서 끌어오지 않게 했습니다.
+- AI 화면 본문을 `frontend/src/pages/ai/AIWorkspacePage.tsx`로 분리해 부서 검색, 브리핑 질문, 브리핑 기록, 검수 기억 화면을 새 청크에서 처리합니다.
+- 기존 Django AI API, 인증/권한, CSRF/session 흐름은 변경하지 않았습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/api/aiWorkspace.ts`
+- `frontend/src/main.tsx`
+- `frontend/src/pages/ai/AIWorkspacePage.tsx`
+
+### CRM 개선
+
+- `/ai-workspace/` 첫 진입 시 기존 `App-*.js` 565KB 청크 대신 `AIWorkspacePage-*.js` 29KB 청크를 사용합니다.
+- 빌드 기준 새 AI 청크는 gzip 약 7.7KB입니다.
+- AI 화면은 브리핑 전용 문구와 기존 질문/근거 링크/검수 기억 흐름을 유지합니다.
+- 검수 기억 로딩은 본문 렌더 후 별도 패널에서 처리되어 첫 화면 표시를 덜 막습니다.
+
+### 기존 기능 보존
+
+- `/reporting/api/ai-workspace/*` API URL과 payload compatibility는 유지했습니다.
+- 질문 실행, 질문 이력 상세, 이력 삭제, 검수 피드백, 검수 기억 수정/활성화 기능을 React AI 전용 청크에 유지했습니다.
+- `/reporting/*` legacy/backend URL은 변경하지 않았습니다.
+- 다른 CRM 화면은 기존 `App.tsx` 라우트로 계속 동작합니다.
+
+### 실행한 명령과 결과
+
+```text
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ New chunk: AIWorkspacePage-DribF4aj.js 29.22 kB / gzip 7.70 kB
+→ Existing App chunk remains for non-AI routes: App-CxKsXc1o.js 565.90 kB / gzip 117.23 kB
+→ Existing Vite large chunk warning remains for App.tsx
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local Vite preview `/ai-workspace/`
+→ AI shell rendered through the new route chunk
+→ API returned preview-only 502 because local Vite preview does not proxy Django APIs
+```
+
+### 알려진 한계
+
+- `/reporting/api/ai-workspace/` summary API는 아직 단일 엔드포인트라, 인증된 운영 환경에서는 API 응답 시간이 남아 있을 수 있습니다.
+- 전역 CSS는 아직 모든 React 화면 공통으로 로드됩니다.
+- 기존 `App.tsx` 큰 청크는 다른 CRM 화면에서 여전히 사용됩니다. 이번 변경은 AI route 첫 진입을 우선 분리한 작업입니다.
+
+### Production 배포 상태
+
+- Pending deployment.
+
+### Manual Server Test Process
+
+1. 로그인 상태로 `https://sales-note-frontend-production.up.railway.app/ai-workspace/`에 접속합니다.
+2. 첫 화면이 이전보다 빠르게 뜨는지 체감 확인합니다.
+3. 부서/연구실 검색에서 기존 대상이 검색되는지 확인합니다.
+4. 선택 부서 기준으로 질문을 1개 실행하고, 답변의 근거 링크가 열리는지 확인합니다.
+5. `전체 부서` 범위로 전환 후 최근 브리핑 기록/페이지 이동이 동작하는지 확인합니다.
+6. 브리핑 기록 상세(`/ai-workspace/questions/{id}/`)이 열리는지 확인합니다.
+7. 검수 기억 목록, 수정, 활성/비활성 전환이 동작하는지 확인합니다.
+
 ## 2026-06-04 — 같은 회사 업체/부서 공동 관리 권한 수정
 
 ### 요약
