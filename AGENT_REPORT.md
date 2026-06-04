@@ -66,7 +66,14 @@ Local Vite preview `/ai-workspace/`
 
 ### Production 배포 상태
 
-- Pending deployment.
+- Completed by production bundle smoke.
+- Runtime commit `28d498b perf: split ai workspace route bundle` is present on `origin/main`.
+- Railway CLI/MCP deployment listing was unavailable because the local Railway auth session expired with `invalid_grant`.
+- Production frontend HTML now references the new runtime bundle:
+  - `https://sales-note-frontend-production.up.railway.app/ai-workspace/` returned 200 and references `/assets/index-KVbmWk3_.js`.
+  - `https://sales-note-frontend-production.up.railway.app/assets/AIWorkspacePage-DribF4aj.js` returned 200.
+  - Compressed AI chunk transfer size was 7,669 bytes.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/ai-workspace/` returned 401 as expected.
 
 ### Manual Server Test Process
 
