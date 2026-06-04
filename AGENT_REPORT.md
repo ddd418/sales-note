@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-06-04 — 같은 회사 업체/부서 공동 관리 권한 수정
+
+### 요약
+
+- `/companies/`에서 같은 내부 회사 소속 동료가 등록한 업체/부서도 영업 담당자가 수정/관리할 수 있도록 권한을 넓혔습니다.
+- 빈 부서 계정 상세(`/accounts/{department_id}/`)도 같은 회사 소속 동료가 등록한 경우 접근과 담당자 추가가 가능하도록 수정했습니다.
+- 매니저 계정은 기존처럼 읽기 전용을 유지하고, 다른 내부 회사의 업체/부서는 계속 차단합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 같은 회사 안에서 공동 관리하는 업체/부서를 소유자 한 명에게만 묶어두지 않습니다.
+- `/companies/`에서 동료가 등록한 부서의 `계정` 링크로 들어가도 고객 없음 상태의 부서 계정을 열고 관리할 수 있습니다.
+- 담당자 없는 부서에 첫 담당자를 추가하는 흐름도 같은 회사 공동 관리 규칙을 따릅니다.
+
+### 기존 기능 보존
+
+- 관리자 계정은 전체 접근/관리 권한을 유지합니다.
+- 매니저 계정은 기존처럼 수정/삭제 없이 조회 중심으로 유지합니다.
+- 다른 `UserCompany`의 업체/부서 데이터는 노출하거나 관리할 수 없게 유지했습니다.
+- 개인 담당자/고객 레코드의 소유자 기준 편집 정책은 이번 변경 범위에 포함하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_companies_management_api_salesman_owner_permissions_and_search reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_update_and_delete_owner_records reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_block_manager_and_other_user reporting.tests.CustomersSummaryApiTests.test_empty_department_account_detail_allows_same_company_coworker_management --keepdb
+→ OK, 4 tests
+
+python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb
+→ OK, 63 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK; existing Vite large chunk warning only
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 한계
+
+- 이미 열려 있던 `/companies/` 화면은 새로고침해야 새 권한 응답을 다시 불러옵니다.
+- 이번 변경은 업체/부서/빈 계정 공동 관리 권한 수정입니다. 개별 담당자 레코드의 소유자 정책까지 전면 확장한 것은 아닙니다.
+
+### Production 배포 상태
+
+- Pending deployment.
+
+### Manual Server Test Process
+
+1. 로그인 상태로 `https://sales-note-frontend-production.up.railway.app/companies/`에 접속합니다.
+2. 같은 회사 동료가 등록한 업체/부서를 검색합니다.
+3. 해당 업체/부서의 수정 버튼 또는 `계정` 링크가 막히지 않는지 확인합니다.
+4. 담당자가 없는 동료 등록 부서의 계정 상세에서 담당자를 추가할 수 있는지 확인합니다.
+5. 매니저 계정이 있다면 같은 화면에서 수정/삭제가 여전히 제한되는지 확인합니다.
+
 ## 2026-06-02 — 보고서 서비스 컬럼 영업노트 혼입 수정
 
 ### 요약

@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-04 Same-company company/department management access plan
+
+**Background**:
+
+- User reported that `/companies/` should allow access to departments registered by coworkers in the same internal company.
+- The page already lists same-company coworker 업체/부서 through the broader company scope, but management permissions still use `created_by == request.user`.
+- Same-company departments can be shared CRM accounts, so salesman users in the same `UserCompany` should be able to manage those 업체/부서 records.
+
+**DB change required**: No schema migration.
+
+- This is an authorization/scope fix only.
+- Do not expose other internal companies' data.
+
+**Implementation scope**:
+
+- Broaden company/department management helpers so same-company salesman users can manage coworker-created 업체/부서 records.
+- Keep manager accounts read-only.
+- Keep other internal companies blocked.
+- Apply the same rule to account-level department management for empty/coworker-created department accounts.
+- Update regression tests for `/companies/` payload and mutation APIs.
+
+**Validation plan**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests.test_companies_management_api_salesman_owner_permissions_and_search reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_update_and_delete_owner_records reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_block_manager_and_other_user reporting.tests.CustomersSummaryApiTests.test_empty_department_account_detail_allows_same_company_coworker_management --keepdb`
+- `python manage.py test reporting.tests.CustomersSummaryApiTests --keepdb`
+- `python manage.py check`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Deploy backend to Railway and smoke `/companies/`.
+
 ## 2026-06-02 Reports service drilldown sales-note exclusion plan
 
 **Background**:

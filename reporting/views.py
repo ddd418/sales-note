@@ -4309,20 +4309,36 @@ def _parse_form_bool(value, default=False):
     return str(value).strip().lower() in {'1', 'true', 'yes', 'on', '활성', 'active'}
 
 
+def _same_company_manage_user_ids(request_user):
+    cache_attr = '_same_company_manage_user_ids_cache'
+    cached = getattr(request_user, cache_attr, None)
+    if cached is not None:
+        return cached
+    user_ids = set(get_same_company_users(request_user).values_list('id', flat=True))
+    setattr(request_user, cache_attr, user_ids)
+    return user_ids
+
+
 def _can_manage_department_account(request_user, department):
     user_profile = get_user_profile(request_user)
     if user_profile.is_admin():
         return True
     if user_profile.is_manager():
         return False
-    return FollowUp.objects.filter(department=department, user=request_user).exists() or department.created_by_id == request_user.id
+    scoped_user_ids = _same_company_manage_user_ids(request_user)
+    if department.created_by_id and department.created_by_id in scoped_user_ids:
+        return True
+    company_created_by_id = getattr(department.company, 'created_by_id', None)
+    if company_created_by_id and company_created_by_id in scoped_user_ids:
+        return True
+    return FollowUp.objects.filter(department=department, user_id__in=scoped_user_ids).exists()
 
 
 def _can_access_department_account(request_user, department, scope_users=None):
     user_profile = get_user_profile(request_user)
     if user_profile.is_admin():
         return True
-    scoped_users = scope_users if scope_users is not None else get_same_company_users(request_user)
+    scoped_users = get_same_company_users(request_user)
     if FollowUp.objects.filter(department=department, user__in=scoped_users).exists():
         return True
     if department.created_by_id and scoped_users.filter(id=department.created_by_id).exists():
@@ -4339,7 +4355,16 @@ def _can_manage_customer_company(request_user, company):
         return True
     if user_profile.is_manager():
         return False
-    return company.created_by_id == request_user.id
+    scoped_user_ids = _same_company_manage_user_ids(request_user)
+    if company.created_by_id and company.created_by_id in scoped_user_ids:
+        return True
+    return (
+        FollowUp.objects.filter(
+            Q(company=company) | Q(department__company=company),
+            user_id__in=scoped_user_ids,
+        ).exists()
+        or Department.objects.filter(company=company, created_by_id__in=scoped_user_ids).exists()
+    )
 
 
 def _can_manage_customer_department(request_user, department):
@@ -4348,7 +4373,13 @@ def _can_manage_customer_department(request_user, department):
         return True
     if user_profile.is_manager():
         return False
-    return department.created_by_id == request_user.id
+    scoped_user_ids = _same_company_manage_user_ids(request_user)
+    if department.created_by_id and department.created_by_id in scoped_user_ids:
+        return True
+    company_created_by_id = getattr(department.company, 'created_by_id', None)
+    if company_created_by_id and company_created_by_id in scoped_user_ids:
+        return True
+    return FollowUp.objects.filter(department=department, user_id__in=scoped_user_ids).exists()
 
 
 def _customer_delete_message(blockers):
@@ -4417,7 +4448,7 @@ def _customer_company_option_payload(company, request_user):
         'name': company.name,
         'canManage': can_manage,
         'canDelete': can_manage and not delete_message,
-        'manageMessage': '' if can_manage else '본인이 등록한 업체/학교만 수정할 수 있습니다.',
+        'manageMessage': '' if can_manage else '같은 회사 소속 사용자가 등록한 업체/학교만 수정할 수 있습니다.',
         'deleteMessage': delete_message,
         'updateUrl': reverse('reporting:company_update_api', args=[company.id]),
         'deleteUrl': reverse('reporting:company_delete_api', args=[company.id]),
@@ -4438,7 +4469,7 @@ def _customer_department_option_payload(department, request_user, search_text=''
         'searchText': search_text,
         'canManage': can_manage,
         'canDelete': can_manage and not delete_message,
-        'manageMessage': '' if can_manage else '본인이 등록한 부서/연구실만 수정할 수 있습니다.',
+        'manageMessage': '' if can_manage else '같은 회사 소속 사용자가 등록한 부서/연구실만 수정할 수 있습니다.',
         'deleteMessage': delete_message,
         'updateUrl': reverse('reporting:department_update_api', args=[department.id]),
         'deleteUrl': reverse('reporting:department_delete_api', args=[department.id]),
@@ -4583,7 +4614,7 @@ def _company_management_department_payload(department, request_user):
         'companyName': department.company.name,
         'canManage': can_manage,
         'canDelete': can_manage and not delete_message,
-        'manageMessage': '' if can_manage else '본인이 등록한 부서/연구실만 수정할 수 있습니다.',
+        'manageMessage': '' if can_manage else '같은 회사 소속 사용자가 등록한 부서/연구실만 수정할 수 있습니다.',
         'deleteMessage': delete_message,
         'deleteGuidance': _delete_guidance(blockers, target_label='부서/연구실') if delete_message else '',
         'deleteBlockers': _delete_blocker_payload(blockers),
@@ -4611,7 +4642,7 @@ def _company_management_company_payload(company, request_user, scope_users, depa
         'name': company.name,
         'canManage': can_manage,
         'canDelete': can_manage and not delete_message,
-        'manageMessage': '' if can_manage else '본인이 등록한 업체/학교만 수정할 수 있습니다.',
+        'manageMessage': '' if can_manage else '같은 회사 소속 사용자가 등록한 업체/학교만 수정할 수 있습니다.',
         'deleteMessage': delete_message,
         'deleteGuidance': _delete_guidance(blockers, target_label='업체/학교') if delete_message else '',
         'deleteBlockers': _delete_blocker_payload(blockers),

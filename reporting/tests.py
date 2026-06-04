@@ -5199,6 +5199,12 @@ class CustomersSummaryApiTests(TestCase):
             name='수정전 부서',
             created_by=self.user,
         )
+        coworker_company = Company.objects.create(name='동료수정전 업체', created_by=self.coworker)
+        coworker_department = Department.objects.create(
+            company=coworker_company,
+            name='동료수정전 부서',
+            created_by=self.coworker,
+        )
         self.client.force_login(self.user)
 
         company_update = self.client.post(reverse('reporting:company_update_api', args=[company.id]), {
@@ -5207,6 +5213,12 @@ class CustomersSummaryApiTests(TestCase):
         department_update = self.client.post(reverse('reporting:department_update_api', args=[department.id]), {
             'name': '수정후 부서',
         })
+        coworker_company_update = self.client.post(reverse('reporting:company_update_api', args=[coworker_company.id]), {
+            'name': '동료수정후 업체',
+        })
+        coworker_department_update = self.client.post(reverse('reporting:department_update_api', args=[coworker_department.id]), {
+            'name': '동료수정후 부서',
+        })
 
         self.assertEqual(company_update.status_code, 200)
         self.assertTrue(company_update.json()['success'])
@@ -5214,6 +5226,12 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(department_update.status_code, 200)
         self.assertTrue(department_update.json()['success'])
         self.assertEqual(Department.objects.get(id=department.id).name, '수정후 부서')
+        self.assertEqual(coworker_company_update.status_code, 200)
+        self.assertTrue(coworker_company_update.json()['success'])
+        self.assertEqual(Company.objects.get(id=coworker_company.id).name, '동료수정후 업체')
+        self.assertEqual(coworker_department_update.status_code, 200)
+        self.assertTrue(coworker_department_update.json()['success'])
+        self.assertEqual(Department.objects.get(id=coworker_department.id).name, '동료수정후 부서')
 
         department_delete = self.client.post(reverse('reporting:department_delete_api', args=[department.id]))
         company_delete = self.client.post(reverse('reporting:company_delete_api', args=[company.id]))
@@ -5307,8 +5325,8 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(own_company['departments'][0]['canManage'])
         self.assertIn('담당자', own_company['departments'][0]['deleteMessage'])
         self.assertTrue(own_company['departments'][0]['cleanupPreviewHref'].endswith('/cleanup-preview/'))
-        self.assertFalse(coworker_company['canManage'])
-        self.assertFalse(coworker_company['departments'][0]['canManage'])
+        self.assertTrue(coworker_company['canManage'])
+        self.assertTrue(coworker_company['departments'][0]['canManage'])
         self.assertTrue(free_company_payload['canDelete'])
         self.assertEqual(free_company_payload['deleteMessage'], '')
 
@@ -6765,6 +6783,52 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(created.department, department)
         self.assertEqual(created.customer_name, '첫 담당자')
         self.assertEqual(create_response.json()['accountHref'], f'/accounts/{department.id}/')
+
+    def test_empty_department_account_detail_allows_same_company_coworker_management(self):
+        from reporting.models import Company, Department, FollowUp
+
+        company = Company.objects.create(name='동료빈계정 회사', created_by=self.coworker)
+        department = Department.objects.create(
+            company=company,
+            name='동료빈계정 연구실',
+            address='동료가 등록한 주소',
+            notes='동료가 등록한 메모',
+            created_by=self.coworker,
+        )
+        self.client.force_login(self.user)
+
+        detail_response = self.client.get(reverse('reporting:account_detail_summary_api', args=[department.id]))
+
+        self.assertEqual(detail_response.status_code, 200)
+        detail_payload = detail_response.json()
+        self.assertTrue(detail_payload['account']['management']['canManage'])
+        self.assertTrue(detail_payload['permissions']['canManageAccount'])
+
+        update_response = self.client.post(reverse('reporting:account_update_api', args=[department.id]), {
+            'company': str(company.id),
+            'department_name': '동료빈계정 연구실 수정',
+            'address': '내가 수정한 주소',
+            'notes': '공동 관리 메모',
+        })
+        self.assertEqual(update_response.status_code, 200)
+        department.refresh_from_db()
+        self.assertEqual(department.name, '동료빈계정 연구실 수정')
+        self.assertEqual(department.address, '내가 수정한 주소')
+        self.assertEqual(department.notes, '공동 관리 메모')
+
+        create_response = self.client.post(reverse('reporting:account_contact_create_api', args=[department.id]), {
+            'customer_name': '공동관리 담당자',
+            'contact_role': FollowUp.CONTACT_ROLE_PRACTITIONER,
+            'department': str(department.id),
+            'status': 'active',
+            'pipeline_stage': 'contact',
+            'is_active': 'true',
+        })
+        self.assertEqual(create_response.status_code, 200)
+        created = FollowUp.objects.get(id=create_response.json()['followup_id'])
+        self.assertEqual(created.user, self.user)
+        self.assertEqual(created.company, company)
+        self.assertEqual(created.department, department)
 
     def test_empty_department_account_keeps_manager_read_only_and_blocks_other_company(self):
         from reporting.models import Company, Department
