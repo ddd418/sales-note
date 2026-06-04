@@ -58,7 +58,14 @@ git diff --check
 
 ### Production 배포 상태
 
-- Pending deployment.
+- Completed.
+- Runtime commit `608ea96 fix: allow same company department management` is present on `origin/main`.
+- Railway `web` deployment `ebf03dde-08a7-462f-8e6d-1f8a114ba260` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `e0ebe050-9fef-4ee1-b4bc-e0a2423ece75` was `SKIPPED` because no frontend watched files changed.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/companies/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/companies/manage/` returned 401 as expected.
 
 ### Manual Server Test Process
 
