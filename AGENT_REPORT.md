@@ -1,5 +1,93 @@
 # AGENT_REPORT.md
 
+## 2026-06-05 — 계정 정리 영향 미리보기 기능 제거
+
+### 요약
+
+- `/accounts/<id>/cleanup-preview/` 정리 영향 미리보기 화면을 React에서 제거했습니다.
+- 계정 상세, 업체/부서 관리, 리포트 데이터 정리 후보에서 `정리 영향`/`정리 영향 미리보기` 링크를 제거했습니다.
+- `/reporting/api/accounts/<id>/cleanup-preview/`, `/cleanup-merge/` 계열 API URL과 preview/merge 전용 Django helper를 제거했습니다.
+- 삭제된 React 경로 `/accounts/<id>/cleanup-preview/`는 직접 접근해도 404를 반환하도록 처리했습니다.
+
+### 변경된 파일
+
+- `frontend/src/App.tsx`
+- `frontend/src/api/accountCleanup.ts`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/api/reports.ts`
+- `frontend/src/pages/accounts/AccountCleanupPreviewPage.tsx`
+- `frontend/src/pages/companies/CompanyManagementPage.tsx`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+- `frontend/src/styles.css`
+- `reporting/views.py`
+- `reporting/api/accounts.py`
+- `reporting/api/reports.py`
+- `reporting/urls.py`
+- `reporting/tests.py`
+- `sales_project/urls.py`
+
+### CRM 개선
+
+- 사용자가 이해하기 어려웠던 정리 영향 미리보기 화면을 완전히 제거했습니다.
+- 리포트의 데이터 정리 후보 표시는 유지하되, 삭제된 preview 화면으로 이어지는 동선은 없앴습니다.
+- 계정 검색/수동 보류/제외/부서 미지정 담당자 계정 연결 기능은 리포트 데이터 정리 업무에 쓰이므로 유지했습니다.
+
+### 기존 기능 보존
+
+- 계정 상세, 고객 상세, 업체/부서 관리, 리포트 데이터 정리 후보 조회는 유지했습니다.
+- `/reporting/api/accounts/search/`, `/reporting/api/accounts/cleanup-decision/`, `/reporting/api/data-quality/contacts/<id>/assign-account/`는 유지했습니다.
+- 기존 `AccountCleanupAuditLog`, `AccountCleanupDecision` 모델과 이력 데이터는 삭제하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\api\reports.py reporting\api\accounts.py reporting\urls.py reporting\tests.py sales_project\urls.py
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_data_quality_cleanup_candidates reporting.tests.ReactReportsProfileBusinessCardApiTests.test_account_cleanup_account_search_api_finds_by_company_department_pi_contact_and_email reporting.tests.CustomersSummaryApiTests.test_companies_management_api_salesman_owner_permissions_and_search reporting.tests.CustomersSummaryApiTests.test_account_detail_summary_api_includes_management_fields_and_contact_roles --keepdb --verbosity=1
+→ OK, 4 tests
+
+python manage.py test reporting.tests.RemovedStandaloneMenuRouteTests --keepdb --verbosity=1
+→ OK, 2 tests
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 리포트의 `정리 후보` 배지는 후보 존재 여부 표시로만 남습니다.
+- 계정 병합/이관 실행 기능은 이번 삭제 범위에서 제거했습니다.
+
+### 추천 다음 작업
+
+- 리포트 데이터 정리 후보를 계속 쓸지, 아니면 수동 제외/보류 흐름까지 같이 축소할지 결정합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영에서 `/accounts/10/cleanup-preview/`에 직접 접속했을 때 404가 나오는지 확인합니다.
+2. `/accounts/<실제 계정 ID>/` 상단 액션에 `정리 영향` 버튼이 없는지 확인합니다.
+3. `/companies/` 부서 행에 `정리 영향` 버튼이 없는지 확인합니다.
+4. `/reports/` 데이터 정리 후보에서 `정리 영향 미리보기` 링크가 없고, `정리 후보` 표시만 남는지 확인합니다.
+
 ## 2026-06-05 — 부서/연구실 소속 업체 이동 기능
 
 ### 요약

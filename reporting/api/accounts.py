@@ -7,9 +7,6 @@ remaining implementation is delegated to the legacy view module while the large
 
 from reporting.views import (  # noqa: F401
     account_cleanup_account_search_api,
-    account_cleanup_contact_merge_api,
-    account_cleanup_department_merge_api,
-    account_cleanup_preview_api,
     account_contact_save_api,
     account_delivery_records_xlsx_export_api,
     account_detail_summary_api,

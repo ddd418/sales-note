@@ -15,7 +15,6 @@ test.describe('CRM core E2E flows', () => {
     await expect(page.getByRole('heading', { name: '부서/연구실 계정 정보' })).toBeVisible();
     await expect(page.getByText('원장 범위')).toBeVisible();
     await expect(page.getByText('선결제 차감 납품', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: '정리 영향' })).toBeVisible();
 
     await gotoCrmPage(page, seed.paths.accountDetail);
     await expect(page.getByText(seed.labels.sourceDepartment).first()).toBeVisible();
@@ -24,7 +23,7 @@ test.describe('CRM core E2E flows', () => {
     await expect(page.getByRole('heading', { name: '선결제 기록' })).toBeVisible();
   });
 
-  test('salesman can use reports account drilldown and data cleanup links', async ({ page }) => {
+  test('salesman can use reports account drilldown and data cleanup indicators', async ({ page }) => {
     const seed = getSeed();
 
     await gotoCrmPage(page, seed.paths.reports);
@@ -41,7 +40,7 @@ test.describe('CRM core E2E flows', () => {
     await expect(drilldown).toContainText('선결제');
 
     await expect(page.getByRole('heading', { name: '데이터 정리 후보' })).toBeVisible();
-    await expect(page.getByRole('link', { name: /정리 후보|정리 영향/ }).first()).toBeVisible();
+    await expect(page.getByText('정리 후보').first()).toBeVisible();
   });
 
   test('salesman can drill into account prepayments', async ({ page }) => {
@@ -58,19 +57,4 @@ test.describe('CRM core E2E flows', () => {
     await expect(page.getByRole('link', { name: '엑셀' })).toBeVisible();
   });
 
-  test('salesman can preview account cleanup impact with target search', async ({ page }) => {
-    const seed = getSeed();
-
-    await gotoCrmPage(page, seed.paths.cleanupPreview);
-    await expect(page.getByRole('heading', { name: '계정 정리 영향 미리보기' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '대상 계정 검색' })).toBeVisible();
-    await expect(page.getByText('선결제 잔액', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('장비/A/S').first()).toBeVisible();
-
-    await page.getByPlaceholder('예: 서울대 김PI, 한은영, 줄기세포 연구실').fill('Lab');
-    const targetButton = page.getByRole('button', { name: new RegExp(seed.labels.targetDepartment) });
-    await expect(targetButton).toBeVisible({ timeout: 10_000 });
-    await targetButton.click();
-    await expect(page.getByText(/비교 중:/)).toContainText(seed.labels.targetDepartment);
-  });
 });

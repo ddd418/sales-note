@@ -81,11 +81,9 @@ export type ReportsCustomerOperationRow = {
   cleanupCandidateCount: number;
   cleanupRiskLabel: string;
   cleanupTypes: string[];
-  cleanupPreviewHref: string;
   links: {
     account: string;
     prepayments: string;
-    cleanupPreview: string;
     customer: string;
   };
   drilldown: {
@@ -165,7 +163,6 @@ export type ReportsDataQualityDepartment = {
   name: string;
   companyName: string;
   accountHref: string;
-  cleanupPreviewHref: string;
   contactCount: number;
   recordCount: number;
   scheduleCount: number;
@@ -190,7 +187,6 @@ export type ReportsDuplicateAccountGroup = {
   normalizedDepartmentName: string;
   departmentNames: string[];
   departmentIds: number[];
-  cleanupPreviewHref: string;
   contactCount: number;
   recordCount: number;
   riskLevel: string;
@@ -498,14 +494,13 @@ export async function loadReportsData(params: {
           ...(payload.customerOperations?.metrics ?? {}),
         },
         rows: (payload.customerOperations?.rows ?? emptyReportsData.customerOperations.rows).map((customer) => {
-          const normalized = normalizeHrefFields(customer, ['href', 'customerHref', 'djangoHref', 'cleanupPreviewHref']);
+          const normalized = normalizeHrefFields(customer, ['href', 'customerHref', 'djangoHref']);
           return {
             ...normalized,
             accountKey: customer.accountKey ?? (customer.accountId ? `department:${customer.accountId}` : `followup:${customer.representativeCustomerId ?? normalized.id}`),
             links: {
               account: normalizeCoreCrmHref(customer.links?.account ?? normalized.href),
               prepayments: normalizeCoreCrmHref(customer.links?.prepayments ?? ''),
-              cleanupPreview: normalizeCoreCrmHref(customer.links?.cleanupPreview ?? customer.cleanupPreviewHref ?? ''),
               customer: normalizeCoreCrmHref(customer.links?.customer ?? customer.customerHref ?? ''),
             },
             drilldown: {
@@ -551,12 +546,10 @@ export async function loadReportsData(params: {
         },
         duplicateAccounts: (payload.dataQuality?.duplicateAccounts ?? emptyReportsData.dataQuality.duplicateAccounts).map((group) => ({
           ...group,
-          cleanupPreviewHref: normalizeCoreCrmHref(group.cleanupPreviewHref),
           decisionUrl: normalizeCoreCrmHref(group.decisionUrl ?? ''),
           departments: (group.departments ?? []).map((department) => ({
             ...department,
             accountHref: normalizeCoreCrmHref(department.accountHref),
-            cleanupPreviewHref: normalizeCoreCrmHref(department.cleanupPreviewHref),
             contacts: (department.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),
           })),
           contacts: (group.contacts ?? []).map((contact) => normalizeHrefFields(contact, ['href', 'accountHref'])),

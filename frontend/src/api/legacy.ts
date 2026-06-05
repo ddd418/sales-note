@@ -620,7 +620,6 @@ export type CompanyManagementDepartment = CustomerDepartmentOption & {
   deleteGuidance: string;
   deleteBlockers: CompanyManagementBlocker[];
   href: string;
-  cleanupPreviewHref: string;
   djangoEditHref: string;
   createdById: number | null;
   createdByName: string;
@@ -1423,7 +1422,6 @@ export type CustomerAccountSummary = {
   management: CustomerAccountManagementConfig;
   contacts: CustomerAccountContact[];
   href: string;
-  cleanupPreviewHref: string;
   djangoRepresentativeHref: string;
 };
 
@@ -1487,7 +1485,6 @@ export type CustomerDetailData = {
     deliveryRecordsXlsx: string;
     accountDetail: string;
     accountDeliveryRecordsXlsx: string;
-    accountCleanupPreview: string;
     mailCompose: string;
     pipeline: string;
   };
@@ -5169,7 +5166,6 @@ const emptyCustomerDetailData: CustomerDetailData = {
     },
     contacts: [],
     href: '',
-    cleanupPreviewHref: '',
     djangoRepresentativeHref: '',
   },
   metrics: {
@@ -5187,7 +5183,6 @@ const emptyCustomerDetailData: CustomerDetailData = {
     deliveryRecordsXlsx: '',
     accountDetail: '',
     accountDeliveryRecordsXlsx: '',
-    accountCleanupPreview: '',
     mailCompose: '',
     pipeline: '',
   },
@@ -7067,7 +7062,6 @@ function normalizeCompanyManagementDepartment(department: CompanyManagementDepar
     updateUrl: normalizeCoreCrmHref(department.updateUrl || ''),
     deleteUrl: normalizeCoreCrmHref(department.deleteUrl || ''),
     href: normalizeCoreCrmHref(department.href || ''),
-    cleanupPreviewHref: normalizeCoreCrmHref(department.cleanupPreviewHref || ''),
     djangoEditHref: normalizeCoreCrmHref(department.djangoEditHref || ''),
   };
 }
@@ -7818,9 +7812,6 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
           ...(payload.account?.management ?? {}),
         },
         href: normalizeCoreCrmHref(payload.account?.href ?? emptyCustomerDetailData.account.href),
-        cleanupPreviewHref: normalizeCoreCrmHref(
-          payload.account?.cleanupPreviewHref ?? emptyCustomerDetailData.account.cleanupPreviewHref,
-        ),
         djangoRepresentativeHref: normalizeCoreCrmHref(
           payload.account?.djangoRepresentativeHref ?? emptyCustomerDetailData.account.djangoRepresentativeHref,
         ),
@@ -7843,7 +7834,6 @@ async function loadCustomerDetailFromUrl(apiUrl: string, errorPrefix: string): P
         'deliveryRecordsXlsx',
         'accountDetail',
         'accountDeliveryRecordsXlsx',
-        'accountCleanupPreview',
         'mailCompose',
         'pipeline',
       ]),

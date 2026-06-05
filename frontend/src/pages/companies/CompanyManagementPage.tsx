@@ -201,7 +201,6 @@ function DepartmentRow({
       {department.deleteGuidance ? <p className="company-management-guidance">{department.deleteGuidance}</p> : null}
       <div className="company-management-actions">
         <a className="route-secondary-action" href={department.href}>계정<ChevronRight size={14} /></a>
-        {department.cleanupPreviewHref ? <a className="route-secondary-action" href={department.cleanupPreviewHref}>정리 영향</a> : null}
         {editing ? (
           <>
             <button className="route-secondary-action" disabled={saving || !editName.trim() || !editCompanyId} onClick={() => onEditSubmit(department)} type="button">

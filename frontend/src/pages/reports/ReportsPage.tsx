@@ -551,14 +551,6 @@ export function ReportsPage({
                           <strong>{group.companyName || '업체 미지정'}</strong>
                           <span>{group.riskLabel || '검토 필요'}</span>
                         </div>
-                        {group.cleanupPreviewHref ? (
-                          <div className="reports-quality-actions">
-                            <a className="reports-quality-preview-link" href={group.cleanupPreviewHref}>
-                              <MoveUpRight size={14} />
-                              정리 영향 미리보기
-                            </a>
-                          </div>
-                        ) : null}
                         {renderCleanupDecisionActions(group, `${group.companyName || '업체 미지정'} · ${group.departmentNames.join(', ')}`)}
                         <span>{group.departmentNames.join(', ') || '부서명 없음'} · 담당자 {formatNumber(group.contactCount)}명 · 기록 {formatNumber(group.recordCount)}건</span>
                         <small>{group.suggestedAction}</small>
@@ -570,11 +562,6 @@ export function ReportsPage({
                                   <strong>{department.name}</strong>
                                   <small>담당자 {formatNumber(department.contactCount)}명 · 기록 {formatNumber(department.recordCount)}건</small>
                                 </a>
-                                {department.cleanupPreviewHref ? (
-                                  <a className="reports-quality-mini-action" href={department.cleanupPreviewHref}>
-                                    미리보기
-                                  </a>
-                                ) : null}
                               </div>
                             ))}
                           </div>
@@ -724,10 +711,10 @@ export function ReportsPage({
                     </a>
                     {customer.contactPreview?.length ? <small>담당자 {customer.contactPreview.join(', ')}{(customer.contactCount || 0) > customer.contactPreview.length ? ` 외 ${(customer.contactCount || 0) - customer.contactPreview.length}명` : ''}</small> : null}
                     {customer.cleanupCandidateCount > 0 ? (
-                      <a className="reports-cleanup-badge" href={customer.cleanupPreviewHref || customer.href}>
+                      <span className="reports-cleanup-badge">
                         <AlertTriangle size={13} />
                         {customer.cleanupRiskLabel || '정리 후보'} {formatNumber(customer.cleanupCandidateCount)}
-                      </a>
+                      </span>
                     ) : null}
                   </td>
                   <td className="reports-stack-cell">
@@ -874,7 +861,6 @@ function ReportsAccountDrilldown({ customer }: { customer: ReportsData['customer
         <div className="reports-drilldown-actions">
           <a href={customer.links.account || customer.href}>계정 상세</a>
           {customer.links.prepayments ? <a href={customer.links.prepayments}>선결제 현황</a> : null}
-          {customer.links.cleanupPreview ? <a href={customer.links.cleanupPreview}>정리 영향</a> : null}
           {customer.links.customer ? <a href={customer.links.customer}>대표 담당자</a> : null}
         </div>
       </section>

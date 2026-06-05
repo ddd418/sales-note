@@ -325,13 +325,10 @@ import {
   updateAIWorkspaceMemory,
   verifyAiPainpoint,
 } from './api/ai';
-import type { AccountCleanupPreviewData } from './api/accountCleanup';
-import { loadAccountCleanupPreviewData } from './api/accountCleanup';
 import type { ReportsData } from './api/reports';
 import { loadReportsData } from './api/reports';
 import { emptyPipelineData, type Deal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
 import {
-  AccountCleanupPreviewPage,
   CompanyManagementPage,
   ReceivablesPage,
   ReportsPage,
@@ -2246,19 +2243,6 @@ function getAccountDetailId(): number | null {
   }
   const id = Number(match[1]);
   return Number.isFinite(id) && id > 0 ? id : null;
-}
-
-function getAccountCleanupPreviewId(): number | null {
-  const match = window.location.pathname.match(/^\/accounts\/(\d+)\/cleanup-preview\/?$/);
-  if (!match) {
-    return null;
-  }
-  const id = Number(match[1]);
-  return Number.isFinite(id) && id > 0 ? id : null;
-}
-
-function getAccountCleanupTargetParam(): string {
-  return new URLSearchParams(window.location.search).get('target') || '';
 }
 
 function getCustomerRowModeParam(): CustomerRowMode {
@@ -4371,7 +4355,6 @@ function CustomerDetailPage({
   const attachments = data.attachments;
   const account = data.account;
   const isAccountDetail = detailMode === 'account';
-  const cleanupPreviewHref = account.cleanupPreviewHref || data.links.accountCleanupPreview || (account.type === 'department' && account.id ? `/accounts/${account.id}/cleanup-preview/` : '');
   const canCreateNote = data.permissions.canCreateNote && Boolean(data.links.createNote);
   const canCreateSchedule = data.permissions.canCreateSchedule && Boolean(data.links.createSchedule);
   const canEditRepresentative = data.permissions.canEditRepresentative && data.edit.canEdit && !isAccountDetail;
@@ -4487,9 +4470,6 @@ function CustomerDetailPage({
               <Mail size={15} />
               메일
             </a>
-          ) : null}
-          {cleanupPreviewHref ? (
-            <a className="route-secondary-action" href={cleanupPreviewHref}>정리 영향</a>
           ) : null}
           {accountManagement?.canManage ? (
             <>
@@ -21665,7 +21645,6 @@ export function App() {
 
   const customerDetailId = currentView === 'customers' ? getCustomerDetailId() : null;
   const accountDetailId = currentView === 'customers' ? getAccountDetailId() : null;
-  const accountCleanupPreviewId = currentView === 'customers' ? getAccountCleanupPreviewId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
   const taskDetailId = currentView === 'tasks' ? getTaskDetailId() : null;
@@ -21712,9 +21691,6 @@ export function App() {
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
   const [customerDetailLoading, setCustomerDetailLoading] = useState(Boolean(customerDetailId || accountDetailId));
-  const [accountCleanupPreviewData, setAccountCleanupPreviewData] = useState<AccountCleanupPreviewData | null>(null);
-  const [accountCleanupPreviewLoading, setAccountCleanupPreviewLoading] = useState(Boolean(accountCleanupPreviewId));
-  const [accountCleanupTarget, setAccountCleanupTarget] = useState(getAccountCleanupTargetParam);
   const [customerQuery, setCustomerQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
   const [customerOwner, setCustomerOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
   const [customerStage, setCustomerStage] = useState(
@@ -22086,7 +22062,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId) {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId) {
       return;
     }
     let alive = true;
@@ -22112,7 +22088,6 @@ export function App() {
       alive = false;
     };
   }, [
-    accountCleanupPreviewId,
     accountDetailId,
     currentView,
     customerCompany,
@@ -22127,7 +22102,7 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId) {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId) {
       return;
     }
     const params = new URLSearchParams();
@@ -22142,7 +22117,6 @@ export function App() {
     const queryString = params.toString();
     window.history.replaceState(null, '', `/customers/${queryString ? `?${queryString}` : ''}`);
   }, [
-    accountCleanupPreviewId,
     accountDetailId,
     currentView,
     customerCompany,
@@ -22291,7 +22265,7 @@ export function App() {
   }, [currentView, demoCustomer, demoDepartment, demoOrder, demoOwner, demoProduct, demoQuery, demoSort, demoStatus]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || accountCleanupPreviewId || (!customerDetailId && !accountDetailId)) {
+    if (currentView !== 'customers' || (!customerDetailId && !accountDetailId)) {
       setCustomerDetailData(null);
       setCustomerDetailLoading(false);
       return;
@@ -22311,30 +22285,10 @@ export function App() {
     return () => {
       alive = false;
     };
-  }, [accountCleanupPreviewId, accountDetailId, currentView, customerDetailId]);
+  }, [accountDetailId, currentView, customerDetailId]);
 
   useEffect(() => {
-    if (currentView !== 'customers' || !accountCleanupPreviewId) {
-      setAccountCleanupPreviewData(null);
-      setAccountCleanupPreviewLoading(false);
-      return;
-    }
-    let alive = true;
-    setAccountCleanupPreviewLoading(true);
-    loadAccountCleanupPreviewData(accountCleanupPreviewId, accountCleanupTarget).then((data) => {
-      if (!alive) {
-        return;
-      }
-      setAccountCleanupPreviewData(data);
-      setAccountCleanupPreviewLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [accountCleanupPreviewId, accountCleanupTarget, currentView]);
-
-  useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId || accountDetailId || accountCleanupPreviewId || !customersData?.create.canCreate) {
+    if (currentView !== 'customers' || customerDetailId || accountDetailId || !customersData?.create.canCreate) {
       return;
     }
     const firstCompanyId = customersData.create.companies[0]?.id;
@@ -22350,7 +22304,7 @@ export function App() {
         departmentId: previousDepartmentValid ? previous.departmentId : (companyDepartments[0]?.id ? String(companyDepartments[0].id) : ''),
       };
     });
-  }, [accountCleanupPreviewId, accountDetailId, currentView, customerDetailId, customersData]);
+  }, [accountDetailId, currentView, customerDetailId, customersData]);
 
   useEffect(() => {
     if (currentView !== 'notes' || noteDetailId) {
@@ -23134,18 +23088,6 @@ export function App() {
       : await loadCustomerDetailData(customerDetailId as number);
     setCustomerDetailData(data);
     return data;
-  };
-  const updateAccountCleanupTarget = (value: string) => {
-    const nextValue = value.trim();
-    const params = new URLSearchParams(window.location.search);
-    if (nextValue) {
-      params.set('target', nextValue);
-    } else {
-      params.delete('target');
-    }
-    const query = params.toString();
-    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-    setAccountCleanupTarget(nextValue);
   };
   const handleCustomerCreateOpenChange = (open: boolean) => {
     setCustomerCreateOpen(open);
@@ -24568,22 +24510,6 @@ export function App() {
   }
 
   if (currentView === 'customers') {
-    if (accountCleanupPreviewId) {
-      return (
-        <AppShell activeView={currentView}>
-          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-          <LazyPageBoundary>
-            <AccountCleanupPreviewPage
-              data={accountCleanupPreviewData}
-              loading={accountCleanupPreviewLoading}
-              targetDepartmentId={accountCleanupTarget}
-              onTargetDepartmentChange={updateAccountCleanupTarget}
-            />
-          </LazyPageBoundary>
-        </AppShell>
-      );
-    }
-
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />

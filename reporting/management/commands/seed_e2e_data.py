@@ -125,7 +125,7 @@ class Command(BaseCommand):
             company=company,
             name=E2E_TARGET_DEPARTMENT_NAME,
             address='E2E 테스트시 서울 연구동 102호',
-            notes='E2E 정리 영향 미리보기 병합 대상 계정',
+            notes='E2E 데이터 정리 후보 계정',
             created_by=salesman,
         )
         target_contact = FollowUp.objects.create(
@@ -182,7 +182,6 @@ class Command(BaseCommand):
                 'accountDetail': f"/accounts/{source_department.id}/",
                 'reports': '/reports/',
                 'accountPrepayments': f"/prepayments/account/{source_department.id}/",
-                'cleanupPreview': f"/accounts/{source_department.id}/cleanup-preview/",
                 'reportsExcel': '/reporting/api/reports/customer-operations.xlsx',
             },
             'labels': {

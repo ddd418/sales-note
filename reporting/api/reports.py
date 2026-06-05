@@ -6,11 +6,13 @@ unchanged.
 """
 
 import html
+import json
 import re
 import unicodedata
 from datetime import timedelta
 from urllib.parse import urlencode
 
+from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Count, Max, Q
@@ -43,10 +45,6 @@ from reporting.models import (
     ServiceCase,
 )
 from reporting.views import (
-    _account_cleanup_followup_ref,
-    _account_cleanup_payload_text,
-    _account_cleanup_request_payload,
-    _account_cleanup_scope_users,
     _analytics_api_date_range,
     _analytics_api_scope_users,
     _analytics_user_payload,
@@ -62,6 +60,49 @@ from reporting.views import (
 REPORTS_DELIVERY_FILTERS = {'any', 'with', 'without'}
 REPORTS_PREPAYMENT_BALANCE_FILTERS = {'any', 'with', 'without'}
 REPORTS_EXPORT_SCOPES = {'filtered', 'all', 'deliveries', 'prepayment_balance', 'cleanup_candidates'}
+
+
+def _account_cleanup_request_payload(request):
+    if request.body:
+        try:
+            return json.loads(request.body.decode('utf-8') or '{}'), None
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}, JsonResponse({
+                'success': False,
+                'error': 'invalid_json',
+                'message': '요청 JSON 형식이 올바르지 않습니다.',
+            }, status=400)
+    return request.POST.dict(), None
+
+
+def _account_cleanup_payload_text(payload, *keys):
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ''):
+            return str(value).strip()
+    return ''
+
+
+def _account_cleanup_scope_users(request, user_profile):
+    if request.user.is_superuser or (user_profile and user_profile.is_admin()):
+        return User.objects.all()
+    scope_users, _user_list, _selected_user = _analytics_api_scope_users(request, user_profile)
+    return scope_users
+
+
+def _account_cleanup_followup_ref(followup):
+    return {
+        'id': followup.id,
+        'customerName': followup.customer_name or '',
+        'manager': followup.manager or '',
+        'email': followup.email or '',
+        'status': followup.status,
+        'companyId': followup.company_id,
+        'companyName': followup.company.name if followup.company else '',
+        'departmentId': followup.department_id,
+        'departmentName': followup.department.name if followup.department else '',
+        'href': f'/customers/{followup.id}/',
+    }
 
 
 def _reports_request_int(value):
@@ -224,11 +265,9 @@ def _reports_customer_row_base(followup):
         'cleanupCandidateCount': 0,
         'cleanupRiskLabel': '',
         'cleanupTypes': [],
-        'cleanupPreviewHref': '',
         'links': {
             'account': account_href,
             'prepayments': prepayment_href,
-            'cleanupPreview': '',
             'customer': f'/customers/{followup.id}/',
         },
         'drilldown': {
@@ -543,50 +582,46 @@ def _reports_operation_metrics(rows):
 def _reports_cleanup_marker_map(data_quality):
     markers = {'department': {}, 'contact': {}}
 
-    def add_marker(scope, key, marker_type, label, href=''):
+    def add_marker(scope, key, marker_type, label):
         if not key:
             return
         bucket = markers[scope].setdefault(key, {
             'count': 0,
             'types': [],
             'labels': [],
-            'href': '',
         })
         bucket['count'] += 1
         if marker_type not in bucket['types']:
             bucket['types'].append(marker_type)
         if label not in bucket['labels']:
             bucket['labels'].append(label)
-        if href and not bucket['href']:
-            bucket['href'] = href
 
     for group in data_quality.get('duplicateAccounts') or []:
-        group_href = group.get('cleanupPreviewHref') or ''
         for department in group.get('departments') or []:
-            add_marker('department', department.get('id'), 'duplicate_account', '계정명 유사', department.get('cleanupPreviewHref') or group_href)
+            add_marker('department', department.get('id'), 'duplicate_account', '계정명 유사')
         for department_id in group.get('departmentIds') or []:
-            add_marker('department', department_id, 'duplicate_account', '계정명 유사', group_href)
+            add_marker('department', department_id, 'duplicate_account', '계정명 유사')
 
     for group in data_quality.get('duplicateContacts') or []:
         for contact in group.get('contacts') or []:
-            add_marker('contact', contact.get('id'), 'duplicate_contact', '담당자 중복', contact.get('accountHref') or '')
+            add_marker('contact', contact.get('id'), 'duplicate_contact', '담당자 중복')
             if contact.get('departmentId'):
-                add_marker('department', contact.get('departmentId'), 'duplicate_contact', '담당자 중복', contact.get('accountHref') or '')
+                add_marker('department', contact.get('departmentId'), 'duplicate_contact', '담당자 중복')
 
     for contact in data_quality.get('contactsWithoutDepartment') or []:
-        add_marker('contact', contact.get('id'), 'missing_department', '부서 미지정', contact.get('href') or '')
+        add_marker('contact', contact.get('id'), 'missing_department', '부서 미지정')
 
     for contact in data_quality.get('contactsWithoutCompany') or []:
-        add_marker('contact', contact.get('id'), 'missing_company', '업체 미지정', contact.get('href') or '')
+        add_marker('contact', contact.get('id'), 'missing_company', '업체 미지정')
         if contact.get('departmentId'):
-            add_marker('department', contact.get('departmentId'), 'missing_company', '업체 미지정', contact.get('accountHref') or '')
+            add_marker('department', contact.get('departmentId'), 'missing_company', '업체 미지정')
 
     return markers
 
 
 def _reports_attach_cleanup_markers(operations, cleanup_markers):
     for row in operations.get('rows') or []:
-        marker = {'count': 0, 'types': [], 'labels': [], 'href': ''}
+        marker = {'count': 0, 'types': [], 'labels': []}
         department_id = row.get('accountId')
         if department_id:
             marker = cleanup_markers.get('department', {}).get(department_id, marker)
@@ -595,8 +630,6 @@ def _reports_attach_cleanup_markers(operations, cleanup_markers):
         row['cleanupCandidateCount'] = marker.get('count') or 0
         row['cleanupTypes'] = marker.get('types') or []
         row['cleanupRiskLabel'] = '정리 후보' if marker.get('count') else ''
-        row['cleanupPreviewHref'] = marker.get('href') or ''
-        row.setdefault('links', {})['cleanupPreview'] = marker.get('href') or ''
     return operations
 
 
@@ -902,15 +935,6 @@ def _reports_cleanup_contact_payload(followup):
     }
 
 
-def _reports_cleanup_preview_href(source_department_id, target_department_id=None):
-    if not source_department_id:
-        return ''
-    href = f'/accounts/{source_department_id}/cleanup-preview/'
-    if target_department_id and target_department_id != source_department_id:
-        href = f'{href}?target={target_department_id}'
-    return href
-
-
 def _reports_cleanup_peer_target_id(source_department_id, department_ids):
     for department_id in department_ids:
         if department_id and department_id != source_department_id:
@@ -927,14 +951,11 @@ def _reports_cleanup_department_payload(department_id, grouped_followups, peer_d
         return None
     first = department_followups[0]
     contacts = [_reports_cleanup_contact_payload(item) for item in department_followups]
-    peer_department_ids = peer_department_ids or []
-    target_department_id = _reports_cleanup_peer_target_id(department_id, peer_department_ids)
     return {
         'id': department_id,
         'name': first.department.name if first.department else '부서명 없음',
         'companyName': first.company.name if first.company else '',
         'accountHref': f'/accounts/{department_id}/',
-        'cleanupPreviewHref': _reports_cleanup_preview_href(department_id, target_department_id),
         'contactCount': len(department_followups),
         'recordCount': sum(item['recordCount'] for item in contacts),
         'scheduleCount': sum(item['scheduleCount'] for item in contacts),
@@ -1018,7 +1039,6 @@ def _reports_data_quality_payload(followups_qs, filter_users, limit=12, history_
             'normalizedDepartmentName': _reports_cleanup_key(first.department.name if first.department else ''),
             'departmentNames': department_names,
             'departmentIds': department_ids,
-            'cleanupPreviewHref': _reports_cleanup_preview_href(source_department_id, target_department_id),
             'contactCount': len(grouped_followups),
             'recordCount': sum(item['recordCount'] for item in contact_payloads),
             'riskLevel': 'review',

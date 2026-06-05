@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-06-05 Account cleanup preview removal plan
+
+**Background**:
+
+- User requested complete removal of the `정리 영향` / cleanup preview feature at `/accounts/<id>/cleanup-preview/`.
+- The feature currently appears from account detail actions, company department rows, report cleanup candidate links, frontend routing, and `/reporting/api/accounts/<id>/cleanup-preview/`.
+- This should remove the preview workflow itself, not merely hide one menu item.
+
+**DB change required**: No schema migration.
+
+- Do not drop existing `AccountCleanupAuditLog` / `AccountCleanupDecision` tables in this task because they are historical/audit records and reports data-quality decisions still reference them.
+- Remove live links, route handling, preview API, preview page, preview export registry entry, and preview-specific tests.
+
+**Implementation scope**:
+
+- Remove React `/accounts/<id>/cleanup-preview/` route detection, state, lazy page import, and page component.
+- Remove `정리 영향` links from account detail, company management, and reports.
+- Remove cleanup preview fields from account/customer/company/report API payloads.
+- Remove Django cleanup preview API URL and view helpers.
+- Keep unrelated data-quality decisions/hold/dismiss and quick account assignment behavior if still referenced by reports.
+- Add/adjust tests so cleanup-preview URLs are absent from payloads and production route falls back away from the removed preview page.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\api\reports.py reporting\api\accounts.py reporting\urls.py reporting\tests.py`
+- Focused Django tests for account/company/reports payloads after cleanup-preview removal.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke `/accounts/<id>/cleanup-preview/` no longer renders the removed page.
+
+**Status**: Implemented and locally validated. Deployment in progress.
+
 ## 2026-06-05 Department company transfer plan
 
 **Background**:
