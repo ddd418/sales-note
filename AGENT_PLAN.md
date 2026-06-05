@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-06-05 Department company transfer plan
+
+**Background**:
+
+- User needs to move an existing 부서/연구실 from one 업체/학교 to another when the real organization changes, for example `덕성여자대학교 - 푸드테크연구실` moving under `경희대학교`.
+- This should preserve the department/account identity and existing CRM history, not delete/recreate or merge the department.
+- The existing React `/companies/` screen already supports department editing, so the lowest-friction workflow is to add a target 업체/학교 selector to that edit state.
+
+**DB change required**: No schema migration.
+
+- `Department.company` already stores the current owner 업체/학교.
+- Existing records linked directly to the department keep their department id.
+- Records that denormalize both `company` and `department`, especially `FollowUp`, need a consistency update when the department moves.
+
+**Implementation scope**:
+
+- Extend the department update API to accept a target `company_id`/`companyId`.
+- Allow moves only when the user can manage the source department and the target 업체/학교 is in the same permitted management scope.
+- Keep manager users read-only and keep other internal companies blocked.
+- Update current-contact records (`FollowUp`) for the moved department to the new company so customer lists/search/reporting stay consistent.
+- Add a target 업체/학교 selector in the React `/companies/` department edit row and keep the selected company focused after a move.
+- Preserve existing delete/create behavior and `/reporting/*` routes.
+
+**Validation plan**:
+
+- `python manage.py test reporting.tests.CustomersSummaryApiTests.test_department_update_api_moves_department_to_same_scope_company_and_updates_contacts reporting.tests.CustomersSummaryApiTests.test_department_update_api_blocks_move_to_other_company_scope reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_update_and_delete_owner_records reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_block_manager_and_other_user --keepdb`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke `/companies/`.
+
 ## 2026-06-04 AI workspace first-load performance plan
 
 **Background**:

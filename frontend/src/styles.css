@@ -2656,13 +2656,34 @@ h2 {
 
 .company-management-create input,
 .company-management-row-main input,
-.company-management-department-main input {
+.company-management-department-main input,
+.company-management-move-select select {
   min-height: 38px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0 11px;
   color: var(--text);
   background: var(--panel);
+}
+
+.company-management-department-edit-fields {
+  display: grid;
+  gap: 8px;
+  width: min(360px, 100%);
+}
+
+.company-management-move-select {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.company-management-move-select select {
+  width: 100%;
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .company-management-create input {

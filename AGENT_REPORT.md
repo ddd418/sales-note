@@ -1,5 +1,89 @@
 # AGENT_REPORT.md
 
+## 2026-06-05 — 부서/연구실 소속 업체 이동 기능
+
+### 요약
+
+- `/companies/` 업체/부서 관리 화면에서 기존 부서/연구실을 다른 업체/학교로 이동할 수 있게 했습니다.
+- 예: `덕성여자대학교 - 푸드테크연구실`을 삭제/재생성하지 않고 `경희대학교 - 푸드테크연구실`로 소속만 바꿀 수 있습니다.
+- 부서 ID는 유지되므로 기존 영업노트, 일정, 메모, 목표처럼 부서에 직접 연결된 기록은 그대로 따라갑니다.
+- 담당자, 장비, 선결제처럼 회사와 부서를 둘 다 저장하는 현재 계정 데이터는 새 업체/학교로 함께 정리됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/pages/companies/CompanyManagementPage.tsx`
+- `frontend/src/styles.css`
+
+### CRM 개선
+
+- 부서/연구실의 실제 소속 기관 변경을 사용자가 직접 처리할 수 있습니다.
+- `/companies/`에서 부서 수정 시 `소속 업체/학교`를 선택해 이름 수정과 이동을 한 번에 저장합니다.
+- 검색 중에도 이동 대상 업체 목록은 전체 관리 범위에서 제공되어, 현재 필터에 안 보이는 업체로도 이동할 수 있습니다.
+- 이동 후 고객/장비/선결제 카운트가 예전 업체에 남는 문제를 막았습니다.
+
+### 기존 기능 보존
+
+- 부서 삭제/생성/이름 수정 API와 기존 URL은 유지했습니다.
+- 관리자 권한은 유지하고, 매니저는 읽기 전용을 유지했습니다.
+- 같은 내부 회사 범위 밖의 업체/학교로 이동하는 것은 계속 차단합니다.
+- `/reporting/*` legacy/backend URL은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_department_update_api_moves_department_to_same_scope_company_and_updates_contacts reporting.tests.CustomersSummaryApiTests.test_department_update_api_blocks_move_to_other_company_scope reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_update_and_delete_owner_records reporting.tests.CustomersSummaryApiTests.test_company_and_department_manage_apis_block_manager_and_other_user reporting.tests.CustomersSummaryApiTests.test_companies_management_api_salesman_owner_permissions_and_search --keepdb
+→ OK, 5 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK, CRLF normalization warnings only
+
+Local Vite `/companies/` browser smoke
+→ Page title rendered as `업체/부서 - 영업 보고 시스템`
+→ 업체/부서 text present
+→ Browser console error/warning log empty
+```
+
+### 알려진 한계
+
+- 이동은 부서 소속 변경 기능입니다. 같은 회사 안의 중복 부서를 병합하는 기능은 기존 정리/merge 흐름을 사용해야 합니다.
+- 이미 열려 있던 `/companies/` 화면은 새로고침해야 새 API payload를 다시 불러옵니다.
+
+### Production 배포 상태
+
+- Pending commit/push/deployment verification.
+
+### Manual Server Test Process
+
+1. 로그인 상태로 `https://sales-note-frontend-production.up.railway.app/companies/`에 접속합니다.
+2. 이동할 부서가 있는 업체/학교를 선택합니다.
+3. 해당 부서/연구실의 `수정`을 누릅니다.
+4. `소속 업체/학교`에서 새 업체/학교를 선택하고 저장합니다.
+5. 저장 후 새 업체/학교 쪽에 해당 부서가 보이는지 확인합니다.
+6. 해당 부서의 `계정` 링크로 들어가 기존 담당자/영업노트/일정이 유지되는지 확인합니다.
+7. 다른 내부 회사의 업체/학교로 이동이 막히는지 권한 계정이 있으면 확인합니다.
+
 ## 2026-06-04 — AI 워크스페이스 첫 로딩 code splitting
 
 ### 요약

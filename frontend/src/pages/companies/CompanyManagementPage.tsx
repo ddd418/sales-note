@@ -130,37 +130,67 @@ function CompanyRow({
 }
 
 function DepartmentRow({
+  companyOptions,
   department,
+  editCompanyId,
   editName,
   editing,
   saving,
   onDelete,
   onEditCancel,
+  onEditCompanyChange,
   onEditNameChange,
   onEditStart,
   onEditSubmit,
 }: {
+  companyOptions: Array<{ id: number; name: string; canManage?: boolean; manageMessage?: string }>;
   department: CompanyManagementDepartment;
+  editCompanyId: string;
   editName: string;
   editing: boolean;
   saving: boolean;
   onDelete: (department: CompanyManagementDepartment) => void;
   onEditCancel: () => void;
+  onEditCompanyChange: (value: string) => void;
   onEditNameChange: (value: string) => void;
   onEditStart: (department: CompanyManagementDepartment) => void;
   onEditSubmit: (department: CompanyManagementDepartment) => void;
 }) {
+  const moveOptions = companyOptions.some((company) => company.id === department.companyId)
+    ? companyOptions
+    : [{ id: department.companyId, name: department.companyName, canManage: true }, ...companyOptions];
+
   return (
     <article className="company-management-department-row">
       <div className="company-management-department-main">
         <Building2 size={16} />
         <span>
           {editing ? (
-            <input
-              aria-label="부서/연구실명 수정"
-              onChange={(event) => onEditNameChange(event.target.value)}
-              value={editName}
-            />
+            <div className="company-management-department-edit-fields">
+              <input
+                aria-label="부서/연구실명 수정"
+                onChange={(event) => onEditNameChange(event.target.value)}
+                value={editName}
+              />
+              <label className="company-management-move-select">
+                <span>소속 업체/학교</span>
+                <select
+                  aria-label="부서/연구실 소속 업체/학교"
+                  onChange={(event) => onEditCompanyChange(event.target.value)}
+                  value={editCompanyId || String(department.companyId)}
+                >
+                  {moveOptions.map((company) => (
+                    <option
+                      disabled={company.canManage === false && company.id !== department.companyId}
+                      key={company.id}
+                      value={company.id}
+                    >
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           ) : (
             <strong>{department.name}</strong>
           )}
@@ -174,7 +204,7 @@ function DepartmentRow({
         {department.cleanupPreviewHref ? <a className="route-secondary-action" href={department.cleanupPreviewHref}>정리 영향</a> : null}
         {editing ? (
           <>
-            <button className="route-secondary-action" disabled={saving || !editName.trim()} onClick={() => onEditSubmit(department)} type="button">
+            <button className="route-secondary-action" disabled={saving || !editName.trim() || !editCompanyId} onClick={() => onEditSubmit(department)} type="button">
               {saving ? <Loader2 className="spin-icon" size={14} /> : <Check size={14} />}
               저장
             </button>
@@ -209,6 +239,7 @@ export function CompanyManagementPage() {
   const [companyEditName, setCompanyEditName] = useState('');
   const [departmentEditId, setDepartmentEditId] = useState<number | null>(null);
   const [departmentEditName, setDepartmentEditName] = useState('');
+  const [departmentEditCompanyId, setDepartmentEditCompanyId] = useState('');
   const [savingKey, setSavingKey] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -246,6 +277,17 @@ export function CompanyManagementPage() {
   }, [data, departmentIdParam, selectedCompanyId]);
 
   const selectedCompany = data?.companies.find((company) => String(company.id) === selectedCompanyId) ?? data?.companies[0] ?? null;
+  const departmentMoveCompanies = useMemo(() => {
+    const options = data?.departmentMoveCompanies?.length
+      ? data.departmentMoveCompanies
+      : (data?.companies ?? []);
+    const seen = new Set<number>();
+    return options.filter((company) => {
+      if (seen.has(company.id)) return false;
+      seen.add(company.id);
+      return true;
+    });
+  }, [data]);
   const visibleDepartments = (selectedCompany?.departments ?? []).filter((department) => {
     const term = departmentQuery.trim().toLowerCase();
     if (!term) return true;
@@ -299,12 +341,14 @@ export function CompanyManagementPage() {
     setCompanyEditId(company.id);
     setCompanyEditName(company.name);
     setDepartmentEditId(null);
+    setDepartmentEditCompanyId('');
     resetFeedback();
   };
 
   const handleDepartmentEditStart = (department: CompanyManagementDepartment) => {
     setDepartmentEditId(department.id);
     setDepartmentEditName(department.name);
+    setDepartmentEditCompanyId(String(department.companyId));
     setCompanyEditId(null);
     resetFeedback();
   };
@@ -322,11 +366,18 @@ export function CompanyManagementPage() {
 
   const handleDepartmentEditSubmit = (department: CompanyManagementDepartment) => {
     const name = departmentEditName.trim();
-    if (!name || !department.canManage) return;
+    const targetCompanyId = Number(departmentEditCompanyId || department.companyId);
+    if (!name || !targetCompanyId || !department.canManage) return;
     void runAction(`department-${department.id}`, async () => {
-      const result = await updateDepartmentRecord(department.id, name, department.updateUrl);
+      const result = await updateDepartmentRecord(department.id, name, department.updateUrl, targetCompanyId);
       setDepartmentEditId(null);
       setDepartmentEditName('');
+      setDepartmentEditCompanyId('');
+      if (targetCompanyId !== department.companyId) {
+        setQuery('');
+        setDepartmentQuery('');
+        setSelectedCompanyId(String(targetCompanyId));
+      }
       setMessage(result.message || '부서/연구실 정보가 수정되었습니다.');
     });
   };
@@ -511,13 +562,16 @@ export function CompanyManagementPage() {
                 <div className="company-management-department-list">
                   {visibleDepartments.map((department) => (
                     <DepartmentRow
+                      companyOptions={departmentMoveCompanies}
                       department={department}
+                      editCompanyId={departmentEditCompanyId}
                       editName={departmentEditName}
                       editing={departmentEditId === department.id}
                       key={department.id}
                       saving={savingKey === `department-${department.id}`}
                       onDelete={handleDepartmentDelete}
-                      onEditCancel={() => { setDepartmentEditId(null); setDepartmentEditName(''); }}
+                      onEditCancel={() => { setDepartmentEditId(null); setDepartmentEditName(''); setDepartmentEditCompanyId(''); }}
+                      onEditCompanyChange={setDepartmentEditCompanyId}
                       onEditNameChange={setDepartmentEditName}
                       onEditStart={handleDepartmentEditStart}
                       onEditSubmit={handleDepartmentEditSubmit}

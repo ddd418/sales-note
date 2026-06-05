@@ -4633,6 +4633,16 @@ def _company_management_department_payload(department, request_user):
     }
 
 
+def _company_management_move_target_payload(company, request_user):
+    can_manage = _can_manage_customer_company(request_user, company)
+    return {
+        'id': company.id,
+        'name': company.name,
+        'canManage': can_manage,
+        'manageMessage': '' if can_manage else '같은 회사 소속 사용자가 등록한 업체/학교로만 이동할 수 있습니다.',
+    }
+
+
 def _company_management_company_payload(company, request_user, scope_users, departments):
     blockers = _company_delete_blockers(company)
     can_manage = _can_manage_customer_company(request_user, company)
@@ -4707,6 +4717,10 @@ def companies_management_api(request):
         )
         for company in companies
     ]
+    department_move_companies = [
+        _company_management_move_target_payload(company, request.user)
+        for company in Company.objects.filter(id__in=base_company_ids).order_by('name')
+    ]
     department_payloads = [
         department
         for company in company_payloads
@@ -4754,6 +4768,7 @@ def companies_management_api(request):
         },
         'companies': company_payloads,
         'departments': department_payloads,
+        'departmentMoveCompanies': department_move_companies,
     })
 
 
@@ -27166,11 +27181,55 @@ def department_update_api(request, department_id):
     name = request.POST.get('name', '').strip()
     if not name:
         return JsonResponse({'success': False, 'error': '부서/연구실명을 입력해주세요.'}, status=400)
-    if Department.objects.filter(company=department.company, name=name).exclude(pk=department.pk).exists():
-        return JsonResponse({'success': False, 'error': f'{department.company.name}에 이미 존재하는 부서/연구실명입니다.'}, status=400)
 
-    department.name = name
-    department.save(update_fields=['name', 'updated_at'])
+    target_company_id = (
+        request.POST.get('company_id')
+        or request.POST.get('companyId')
+        or request.POST.get('company')
+        or str(department.company_id)
+    )
+    try:
+        target_company = Company.objects.get(pk=target_company_id)
+    except (Company.DoesNotExist, TypeError, ValueError):
+        return JsonResponse({'success': False, 'error': '이동할 업체/학교가 존재하지 않습니다.'}, status=400)
+
+    if not _can_manage_customer_company(request.user, target_company):
+        return JsonResponse({'success': False, 'error': '이 업체/학교로 부서/연구실을 이동할 권한이 없습니다.'}, status=403)
+
+    if Department.objects.filter(company=target_company, name=name).exclude(pk=department.pk).exists():
+        return JsonResponse({'success': False, 'error': f'{target_company.name}에 이미 존재하는 부서/연구실명입니다.'}, status=400)
+
+    old_company_id = department.company_id
+    old_company_name = department.company.name
+    moved = old_company_id != target_company.id
+    related_counts = {
+        'followups': 0,
+        'assets': 0,
+        'prepayments': 0,
+    }
+
+    with transaction.atomic():
+        department.company = target_company
+        department.name = name
+        department.save(update_fields=['company', 'name', 'updated_at'])
+        if moved:
+            now = timezone.now()
+            related_counts['followups'] = FollowUp.objects.filter(
+                department=department,
+            ).exclude(company=target_company).update(company=target_company, updated_at=now)
+            related_counts['assets'] = CustomerAsset.objects.filter(
+                department=department,
+            ).exclude(company=target_company).update(company=target_company, updated_at=now)
+            related_counts['prepayments'] = Prepayment.objects.filter(
+                _prepayment_department_filter(department),
+            ).exclude(company=target_company).update(company=target_company)
+
+    message = f'"{department.company.name} - {department.name}" 부서/연구실 정보가 수정되었습니다.'
+    if moved:
+        message = (
+            f'"{department.name}" 부서/연구실을 "{old_company_name}"에서 '
+            f'"{target_company.name}"로 이동했습니다.'
+        )
     return JsonResponse({
         'success': True,
         'department': {
@@ -27178,8 +27237,14 @@ def department_update_api(request, department_id):
             'name': department.name,
             'company_id': department.company_id,
             'company_name': department.company.name,
+            'companyId': department.company_id,
+            'companyName': department.company.name,
+            'moved': moved,
+            'previous_company_id': old_company_id,
+            'previous_company_name': old_company_name,
+            'updated_counts': related_counts,
         },
-        'message': f'"{department.company.name} - {department.name}" 부서/연구실 정보가 수정되었습니다.',
+        'message': message,
     })
 
 

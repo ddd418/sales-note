@@ -688,6 +688,7 @@ export type CompanyManagementData = {
   };
   companies: CompanyManagementCompany[];
   departments: CompanyManagementDepartment[];
+  departmentMoveCompanies: CustomerCompanyOption[];
 };
 
 export type CustomersData = {
@@ -5074,6 +5075,7 @@ const emptyCompanyManagementData: CompanyManagementData = {
   },
   companies: [],
   departments: [],
+  departmentMoveCompanies: [],
 };
 
 const emptyCustomerAiDepartment: CustomerAiDepartment = {
@@ -7110,6 +7112,7 @@ export async function loadCompanyManagementData(params: {
       throw new Error(payload.error || payload.message || `Companies API unavailable: ${response.status}`);
     }
     const companies = (payload.companies ?? []).map(normalizeCompanyManagementCompany);
+    const departmentMoveCompanies = payload.departmentMoveCompanies ?? companies;
     return {
       ...emptyCompanyManagementData,
       ...payload,
@@ -7135,6 +7138,7 @@ export async function loadCompanyManagementData(params: {
       }, ['companies', 'customers', 'createCompany', 'createDepartment', 'legacyCompanies', 'legacyManagerCompanies']),
       companies,
       departments: (payload.departments ?? companies.flatMap((company) => company.departments)).map(normalizeCompanyManagementDepartment),
+      departmentMoveCompanies,
     };
   } catch (error) {
     return {
@@ -7719,10 +7723,14 @@ export async function updateDepartment(
   departmentId: number,
   name: string,
   submitUrl = `/reporting/api/departments/${departmentId}/update/`,
+  companyId?: number,
 ): Promise<DepartmentManageResponse> {
   const csrfToken = getCookie('csrftoken');
   const body = new URLSearchParams();
   body.set('name', name);
+  if (companyId) {
+    body.set('company_id', String(companyId));
+  }
 
   const response = await fetch(submitUrl, {
     method: 'POST',

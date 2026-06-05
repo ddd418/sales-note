@@ -5243,6 +5243,74 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(company_delete.json()['success'])
         self.assertFalse(Company.objects.filter(id=company.id).exists())
 
+    def test_department_update_api_moves_department_to_same_scope_company_and_updates_contacts(self):
+        from django.utils import timezone
+        from reporting.models import Company, CustomerAsset, Prepayment
+
+        followup = self._create_customer(self.user, '소속이동')
+        department = followup.department
+        target_company = Company.objects.create(name='소속이동 경희대학교', created_by=self.coworker)
+        asset = CustomerAsset.objects.create(
+            company=followup.company,
+            department=department,
+            primary_followup=followup,
+            asset_name='소속이동 장비',
+            created_by=self.user,
+        )
+        prepayment = Prepayment.objects.create(
+            department=department,
+            customer=followup,
+            company=followup.company,
+            amount=100000,
+            balance=100000,
+            payment_date=timezone.localdate(),
+            created_by=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:department_update_api', args=[department.id]), {
+            'name': department.name,
+            'company_id': str(target_company.id),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['department']['moved'])
+        self.assertEqual(payload['department']['company_id'], target_company.id)
+        self.assertEqual(payload['department']['updated_counts']['followups'], 1)
+        self.assertEqual(payload['department']['updated_counts']['assets'], 1)
+        self.assertEqual(payload['department']['updated_counts']['prepayments'], 1)
+        department.refresh_from_db()
+        followup.refresh_from_db()
+        asset.refresh_from_db()
+        prepayment.refresh_from_db()
+        self.assertEqual(department.company_id, target_company.id)
+        self.assertEqual(followup.company_id, target_company.id)
+        self.assertEqual(asset.company_id, target_company.id)
+        self.assertEqual(prepayment.company_id, target_company.id)
+
+    def test_department_update_api_blocks_move_to_other_company_scope(self):
+        from reporting.models import Company
+
+        followup = self._create_customer(self.user, '타사소속이동차단')
+        department = followup.department
+        original_company_id = department.company_id
+        other_company = Company.objects.create(name='타사소속이동 대상', created_by=self.other_user)
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('reporting:department_update_api', args=[department.id]), {
+            'name': department.name,
+            'company_id': str(other_company.id),
+        })
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()['success'])
+        department.refresh_from_db()
+        followup.refresh_from_db()
+        self.assertEqual(department.company_id, original_company_id)
+        self.assertEqual(followup.company_id, original_company_id)
+
     def test_company_and_department_manage_apis_block_manager_and_other_user(self):
         from reporting.models import Company, Department
 
@@ -5302,6 +5370,7 @@ class CustomersSummaryApiTests(TestCase):
         coworker = self._create_customer(self.coworker, '업체관리동료고객')
         other = self._create_customer(self.other_user, '업체관리타사고객')
         free_company = Company.objects.create(name='업체관리 삭제가능', created_by=self.user)
+        hidden_move_target = Company.objects.create(name='숨은 이동 대상', created_by=self.coworker)
         self.client.force_login(self.user)
 
         response = self.client.get(reverse('reporting:companies_management_api'), {'q': '업체관리'})
@@ -5314,7 +5383,10 @@ class CustomersSummaryApiTests(TestCase):
         self.assertIn(own.company_id, company_ids)
         self.assertIn(coworker.company_id, company_ids)
         self.assertIn(free_company.id, company_ids)
+        self.assertNotIn(hidden_move_target.id, company_ids)
         self.assertNotIn(other.company_id, company_ids)
+        move_company_ids = {company['id'] for company in payload['departmentMoveCompanies']}
+        self.assertIn(hidden_move_target.id, move_company_ids)
 
         own_company = next(company for company in payload['companies'] if company['id'] == own.company_id)
         coworker_company = next(company for company in payload['companies'] if company['id'] == coworker.company_id)
