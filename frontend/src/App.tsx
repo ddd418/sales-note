@@ -2188,6 +2188,7 @@ function getCurrentView(): MainView {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
   if (pathname.startsWith('/data-cleanup/') || pathname.startsWith('/downloads/')) return 'notFound';
+  if (/^\/accounts\/\d+\/cleanup-preview\/$/.test(pathname)) return 'notFound';
   if (pathname.startsWith('/reports/')) return 'analytics';
   if (pathname.startsWith('/analytics/')) return 'analytics';
   if (pathname.startsWith('/companies/')) return 'companies';
