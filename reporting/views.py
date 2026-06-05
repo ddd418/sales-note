@@ -9960,6 +9960,18 @@ def _parse_schedule_probability(activity_type, value):
     return probability
 
 
+def _advance_quote_schedule_pipeline(schedule):
+    """Move the linked customer card into the quote pipeline when a quote schedule is active."""
+    if not schedule or schedule.activity_type != 'quote' or schedule.status == 'cancelled' or not schedule.followup_id:
+        return False
+    try:
+        from .funnel_views import _try_advance_pipeline
+        return _try_advance_pipeline(schedule.followup, 'quote')
+    except Exception:
+        logger.exception('Failed to advance quote schedule pipeline for schedule %s', getattr(schedule, 'id', None))
+        return False
+
+
 def _ai_json_dict(value):
     return value if isinstance(value, dict) else {}
 
@@ -10753,6 +10765,7 @@ def schedules_create_api(request):
         expected_revenue=expected_revenue,
         probability=probability,
     )
+    _advance_quote_schedule_pipeline(schedule)
 
     return JsonResponse({
         'success': True,
@@ -12971,6 +12984,7 @@ def schedules_update_api(request, schedule_id):
                 else:
                     _schedules_restore_prepayments(schedule)
             sync_schedule_delivery_payment_type(schedule)
+        _advance_quote_schedule_pipeline(schedule)
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -21712,6 +21726,7 @@ def schedule_create_view(request):
                 except PermissionError as exc:
                     messages.error(request, str(exc))
                 sync_schedule_delivery_payment_type(schedule)
+            _advance_quote_schedule_pipeline(schedule)
             
             messages.success(request, '일정이 성공적으로 생성되었습니다.')
             
@@ -22027,6 +22042,7 @@ def schedule_edit_view(request, pk):
                     messages.error(request, str(exc))
                 sync_schedule_delivery_payment_type(updated_schedule)
 
+            _advance_quote_schedule_pipeline(updated_schedule)
             
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
             return redirect('reporting:schedule_detail', pk=schedule.pk)
@@ -25682,6 +25698,7 @@ def schedule_status_update_api(request, schedule_id):
         
         schedule.status = new_status
         schedule.save()
+        _advance_quote_schedule_pipeline(schedule)
         
         status_display = {
             'scheduled': '예정됨',

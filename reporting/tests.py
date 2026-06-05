@@ -9901,6 +9901,44 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['href'], f'/schedules/{schedule.id}/')
 
+    def test_schedules_create_api_quote_advances_pipeline_card(self):
+        import json
+        from reporting.models import Schedule
+
+        followup = self._create_customer(self.user, '자동견적카드')
+        followup.pipeline_stage = 'contact'
+        followup.save(update_fields=['pipeline_stage'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': followup.id,
+                'activityType': 'quote',
+                'visitDate': '2026-05-10',
+                'visitTime': '10:30',
+                'expectedRevenue': '1200000',
+                'probability': '63',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        schedule = Schedule.objects.get(pk=response.json()['scheduleId'])
+        followup.refresh_from_db()
+        self.assertEqual(schedule.activity_type, 'quote')
+        self.assertEqual(followup.pipeline_stage, 'quote')
+
+        pipeline_response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+        self.assertEqual(pipeline_response.status_code, 200)
+        deal = next(item for item in pipeline_response.json()['deals'] if item['id'] == followup.id)
+        self.assertEqual(deal['stage'], 'quote')
+        self.assertEqual(deal['stageLabel'], '견적 제출')
+        self.assertEqual(deal['value'], 1200000)
+        self.assertEqual(deal['latestQuote']['basisType'], 'schedule')
+        self.assertEqual(deal['latestQuote']['source'], '견적 일정')
+        self.assertEqual(deal['latestQuote']['quoteDate'], '2026-05-10')
+
     def test_schedules_create_api_requires_quote_probability(self):
         import json
 
@@ -10637,6 +10675,42 @@ class SchedulesSummaryApiTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('견적 성공 확률은 필수입니다.', response.json()['error'])
+
+    def test_schedules_update_api_quote_advances_pipeline_card(self):
+        import json
+
+        schedule = self._create_schedule(self.user, '견적수정카드', activity_type='customer_meeting')
+        schedule.followup.pipeline_stage = 'contact'
+        schedule.followup.save(update_fields=['pipeline_stage'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'quote',
+                'status': 'scheduled',
+                'visitDate': '2026-05-12',
+                'visitTime': '16:15',
+                'expectedRevenue': '2500000',
+                'probability': '82',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        schedule.refresh_from_db()
+        schedule.followup.refresh_from_db()
+        self.assertEqual(schedule.activity_type, 'quote')
+        self.assertEqual(schedule.probability, 80)
+        self.assertEqual(schedule.followup.pipeline_stage, 'quote')
+
+        pipeline_response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+        self.assertEqual(pipeline_response.status_code, 200)
+        deal = next(item for item in pipeline_response.json()['deals'] if item['id'] == schedule.followup_id)
+        self.assertEqual(deal['stage'], 'quote')
+        self.assertEqual(deal['value'], 2500000)
+        self.assertEqual(deal['probability'], 80)
 
     def test_prepayment_api_list_includes_same_department_and_existing_usage(self):
         from django.utils import timezone

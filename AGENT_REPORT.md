@@ -1,5 +1,83 @@
 # AGENT_REPORT.md
 
+## 2026-06-05 — 견적 제출 시 파이프라인 견적 카드 자동 반영
+
+### 요약
+
+- React 일정 생성 API에서 `activityType=quote` 견적 일정을 저장하면 연결 고객의 파이프라인 단계가 자동으로 `견적 제출`로 올라가게 했습니다.
+- React 일정 수정 API에서 기존 미팅/납품 일정을 견적으로 바꿔 저장해도 동일하게 quote 카드로 반영됩니다.
+- 기존 Django schedule form 생성/수정 흐름과 빠른 상태 변경 API에도 같은 자동 반영 헬퍼를 연결했습니다.
+- 별도 테이블이나 마이그레이션 없이 기존 `FollowUp.pipeline_stage`와 `Schedule(activity_type='quote')` 기반으로 처리했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 견적 일정을 제출한 고객은 `/pipeline/`의 `견적 제출` 칼럼에 바로 카드로 들어갑니다.
+- 파이프라인 API가 이미 읽고 있던 견적 일정의 금액, 확률, 견적일이 카드의 `latestQuote`로 표시됩니다.
+- `won`/`lost` 또는 더 앞 단계로 간 고객은 뒤로 내리지 않고, 앞으로만 자동 진행합니다.
+
+### 기존 기능 보존
+
+- 일정 생성/수정 저장 성공 여부는 파이프라인 반영 실패에 의존하지 않도록 했습니다.
+- 견적 취소 일정은 자동 quote 반영 대상에서 제외했습니다.
+- Manager의 읽기 전용 권한과 일정 생성/수정 권한 제한은 유지했습니다.
+- 모델 필드와 migration은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_quote_advances_pipeline_card reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_quote_advances_pipeline_card --keepdb --verbosity=1
+→ OK, 2 tests
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_salesman_creates_own_schedule reporting.tests.SchedulesSummaryApiTests.test_schedules_create_api_quote_advances_pipeline_card reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_updates_owned_schedule reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_quote_advances_pipeline_card reporting.tests.PipelineApiTests.test_pipeline_api_includes_metrics_stages_and_tasks --keepdb --verbosity=1
+→ OK, 5 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- 고객 없는 부서-only 견적 일정은 현재 파이프라인 카드 모델이 `FollowUp` 기반이라 카드로 만들지 않습니다. 담당 고객이 연결된 견적 일정만 자동 카드화됩니다.
+
+### 추천 다음 작업
+
+- 부서-only 견적도 파이프라인에서 별도 카드로 관리할지 정책을 정한 뒤, 필요하면 department 기반 카드 모델/API를 설계합니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 확인합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/schedules/` 또는 `/schedules/calendar/`에서 고객이 연결된 견적 일정을 생성합니다.
+2. 운영 `/pipeline/`으로 이동해 해당 고객 카드가 `견적 제출` 칼럼에 들어왔는지 확인합니다.
+3. 카드 우측 `들어간 견적`에 견적일, 금액, 확률이 표시되는지 확인합니다.
+4. 기존 미팅 일정을 견적으로 수정 저장한 경우에도 같은 방식으로 카드가 이동하는지 확인합니다.
+
 ## 2026-06-05 — 업체/부서 소속 업체 검색 선택과 선택 고정 제거
 
 ### 요약

@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-06-05 Quote schedule auto pipeline card plan
+
+**Background**:
+
+- User requested that submitting a quote automatically puts a quote card into `/pipeline/`.
+- Current React pipeline cards are `FollowUp` based.
+- Quote schedules and quote items are already available to the pipeline API for amount/item display, but quote schedule creation/update does not reliably advance the customer pipeline stage to `quote`.
+
+**DB change required**: No schema migration.
+
+- Use existing `FollowUp.pipeline_stage` and `Schedule(activity_type='quote')`.
+- Do not add a separate quote-card table.
+
+**Implementation scope**:
+
+- Add a small shared helper that advances the linked `FollowUp` to `quote` when a non-cancelled quote schedule is saved.
+- Apply it to React schedule create/update APIs.
+- Apply it to legacy Django schedule create/edit form flows for compatibility.
+- Preserve manual forward-only behavior: do not move `won`/`lost` backward and do not downgrade later stages.
+- Add tests proving quote schedule creation/update moves the customer into the quote pipeline and appears in the pipeline API.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused schedule/pipeline tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Commit, push, deploy, and smoke `/pipeline/` plus schedule create API protection.
+
+**Status**: Implemented and locally validated. Deployment in progress.
+
 ## 2026-06-05 Company management search move selector plan
 
 **Background**:
