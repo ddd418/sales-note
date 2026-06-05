@@ -28,7 +28,7 @@
 - `cd frontend && npm run build`
 - Commit, push, deploy, and smoke `/companies/`.
 
-**Status**: Implemented and locally validated. Deployment in progress.
+**Status**: Implemented, locally validated, pushed, and deployed to Railway.
 
 ## 2026-06-05 Account cleanup preview removal plan
 

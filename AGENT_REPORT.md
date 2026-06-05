@@ -54,6 +54,30 @@ cd frontend && npx tsc --noEmit --pretty false
 cd frontend && npm run build
 → OK
 → Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK
+
+git commit -m "Improve company department move selector"
+→ 3068970
+
+git push origin main
+→ OK
+
+railway deployment list --service sales-note-frontend --limit 1
+→ f5395c0a-7ae4-4194-a346-3d206def251f SUCCESS
+
+railway deployment list --service web --limit 1
+→ e7cdb0b4-4af1-49c0-bf50-5e4c76bfd1e9 SUCCESS
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/companies/
+→ 200
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/companies/manage/
+→ 401 login_required
+
+Production CompanyManagementPage bundle check
+→ Search label present, `선택 고정` absent
 ```
 
 ### 알려진 제한
@@ -66,7 +90,11 @@ cd frontend && npm run build
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 진행합니다.
+- 커밋 `3068970`을 `main`에 푸시했습니다.
+- Railway frontend deployment `f5395c0a-7ae4-4194-a346-3d206def251f` 성공.
+- Railway backend deployment `e7cdb0b4-4af1-49c0-bf50-5e4c76bfd1e9` 성공.
+- 운영 `/companies/` 200 응답과 미인증 API 401 응답을 확인했습니다.
+- 운영 프론트 번들에서 `소속 업체/학교 검색` 문구가 있고 `선택 고정` 문구가 없는 것을 확인했습니다.
 
 ### 수동 서버 테스트 절차
 
