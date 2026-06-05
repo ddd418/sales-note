@@ -31,7 +31,7 @@
 - `cd frontend && npm run build`
 - Commit, push, deploy, and smoke `/pipeline/` plus schedule create API protection.
 
-**Status**: Implemented and locally validated. Deployment in progress.
+**Status**: Implemented, locally validated, pushed, and deployed to Railway.
 
 ## 2026-06-05 Company management search move selector plan
 

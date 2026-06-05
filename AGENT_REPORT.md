@@ -57,6 +57,27 @@ cd frontend && npm run build
 
 git diff --check
 → OK
+
+git commit -m "Auto-advance quote schedules into pipeline"
+→ f0344f5
+
+git push origin main
+→ OK
+
+railway deployment list --service web --limit 1
+→ a19b4d05-c204-4b9b-a191-0bac990ec670 SUCCESS
+
+railway deployment list --service sales-note-frontend --limit 1
+→ 734cc482-5d5b-4c5d-a8b3-d2b6e97f4b7d SKIPPED
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/pipeline/
+→ 200
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/pipeline/
+→ 401 login_required
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/schedules/create/
+→ 405
 ```
 
 ### 알려진 제한
@@ -69,7 +90,10 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 확인합니다.
+- 커밋 `f0344f5`를 `main`에 푸시했습니다.
+- Railway backend deployment `a19b4d05-c204-4b9b-a191-0bac990ec670` 성공.
+- Railway frontend deployment `734cc482-5d5b-4c5d-a8b3-d2b6e97f4b7d`는 frontend 변경이 없어 SKIPPED 처리됐습니다.
+- 운영 `/pipeline/` 200 응답, 미인증 `/reporting/api/pipeline/` 401 응답, schedule create API GET 405 응답을 확인했습니다.
 
 ### 수동 서버 테스트 절차
 
