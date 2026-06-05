@@ -72,7 +72,15 @@ Local Vite `/companies/` browser smoke
 
 ### Production 배포 상태
 
-- Pending commit/push/deployment verification.
+- Completed.
+- Runtime commit `61da07d feat: allow department company transfers` is present on `origin/main`.
+- Railway `web` deployment `3c685100-cef5-45bc-b216-087cd73bdf08` reached `SUCCESS`.
+- Railway `sales-note-frontend` deployment `b3ef5334-920a-424e-bad4-3e8d966ac918` reached `SUCCESS`.
+- Production smoke passed:
+  - `https://sales-note-frontend-production.up.railway.app/healthz/` returned 200.
+  - `https://sales-note-frontend-production.up.railway.app/companies/` returned 200.
+  - Anonymous `https://sales-note-frontend-production.up.railway.app/reporting/api/companies/manage/` returned 401 as expected.
+  - `https://sales-note-frontend-production.up.railway.app/assets/CompanyManagementPage-CF0CXhJ6.js` returned 200 and contains the new `소속 업체/학교` move selector code.
 
 ### Manual Server Test Process
 
