@@ -33,7 +33,7 @@
 - `git diff --check`
 - Commit, push, deploy affected Railway services, and smoke `/accounts/<id>/cleanup-preview/` no longer renders the removed page.
 
-**Status**: Implemented and locally validated. Deployment in progress.
+**Status**: Implemented, locally validated, pushed, and deployed to Railway.
 
 ## 2026-06-05 Department company transfer plan
 

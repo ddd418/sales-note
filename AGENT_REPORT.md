@@ -79,7 +79,18 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 진행합니다.
+- 배포 완료.
+- Git commits:
+  - `1f3c64d remove account cleanup preview workflow`
+  - `e6c5ba9 route removed cleanup preview to not found`
+- Railway deployments:
+  - `sales-note-frontend`: `33cf2a74-3956-41ae-9a5e-c5b4539ff530` SUCCESS
+  - `web`: `d0eb1d07-9f8d-4105-ac5c-3e177b9b52a9` SUCCESS
+- 운영 smoke:
+  - `/reporting/api/accounts/10/cleanup-preview/` → 404
+  - `/reports/` → 200 React shell
+  - `/accounts/10/` → 200 React shell
+  - `/accounts/10/cleanup-preview/` 미인증 접근 → 로그인 화면, 기존 `계정 정리 영향 미리보기` 화면 미노출
 
 ### 수동 서버 테스트 절차
 
