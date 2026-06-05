@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-05 Company management search move selector plan
+
+**Background**:
+
+- User requested `/companies/` department move editing to use searchable company selection instead of a long plain select.
+- User also requested the `선택 고정` button and its supporting code to be removed.
+
+**DB change required**: No schema migration.
+
+**Implementation scope**:
+
+- Replace the department edit `소속 업체/학교` `<select>` with a searchable company picker in React.
+- Preserve department move permission behavior by disabling non-manageable company targets.
+- Remove `선택 고정` UI from the selected company detail header.
+- Remove the fixed-selection `company_id` URL/API echo path that supported that button.
+- Remove company-level link fields used only by that fixed-selection action from frontend types/normalization and Django company management payload.
+- Add/adjust tests so the company management API no longer exposes fixed-selection href fields.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused company management API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Commit, push, deploy, and smoke `/companies/`.
+
+**Status**: Implemented and locally validated. Deployment in progress.
+
 ## 2026-06-05 Account cleanup preview removal plan
 
 **Background**:

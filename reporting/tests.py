@@ -4961,6 +4961,7 @@ class CustomersSummaryApiTests(TestCase):
         payload = response.json()
         self.assertTrue(payload['permissions']['canCreateCompany'])
         self.assertFalse(payload['permissions']['readOnly'])
+        self.assertNotIn('companyId', payload['filters'])
         company_ids = {company['id'] for company in payload['companies']}
         self.assertIn(own.company_id, company_ids)
         self.assertIn(coworker.company_id, company_ids)
@@ -4976,6 +4977,10 @@ class CustomersSummaryApiTests(TestCase):
         self.assertTrue(own_company['canManage'])
         self.assertFalse(own_company['canDelete'])
         self.assertIn('부서', own_company['deleteMessage'])
+        self.assertNotIn('href', own_company)
+        self.assertNotIn('djangoHref', own_company)
+        self.assertNotIn('departmentsUrl', own_company)
+        self.assertNotIn('customersUrl', own_company)
         self.assertTrue(own_company['departments'][0]['canManage'])
         self.assertIn('담당자', own_company['departments'][0]['deleteMessage'])
         self.assertNotIn('cleanupPreviewHref', own_company['departments'][0])

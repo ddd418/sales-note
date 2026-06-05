@@ -1,5 +1,80 @@
 # AGENT_REPORT.md
 
+## 2026-06-05 — 업체/부서 소속 업체 검색 선택과 선택 고정 제거
+
+### 요약
+
+- `/companies/` 부서/연구실 수정 시 `소속 업체/학교`를 긴 select가 아니라 검색 입력 + 결과 버튼으로 선택하도록 바꿨습니다.
+- 선택된 업체/학교는 수정 폼 안에서 별도로 표시됩니다.
+- `선택 고정` 버튼을 제거했습니다.
+- `선택 고정` URL 고정에 쓰이던 `company_id` 초기화/API 반사값도 제거했습니다.
+- `선택 고정`에 쓰이던 company-level `href`, `djangoHref`, `departmentsUrl`, `customersUrl` payload/type/normalization 코드를 제거했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/pages/companies/CompanyManagementPage.tsx`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/styles.css`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 업체/학교가 많아도 부서 이동 대상 업체를 검색으로 빠르게 찾을 수 있습니다.
+- 이동 불가 업체는 결과에는 보이되 비활성 상태와 사유를 유지합니다.
+- 불명확했던 `선택 고정` 동선을 제거해 `/companies/` 화면의 의미를 단순화했습니다.
+
+### 기존 기능 보존
+
+- 업체/학교 검색, 회사 선택, 부서 생성/수정/삭제, 업체 생성/수정/삭제는 유지했습니다.
+- 부서 소속 업체 이동 API와 권한 차단 로직은 유지했습니다.
+- 부서 행의 `계정` 링크는 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_companies_management_api_salesman_owner_permissions_and_search reporting.tests.CustomersSummaryApiTests.test_department_update_api_moves_department_to_same_scope_company_and_updates_contacts --keepdb --verbosity=1
+→ OK, 2 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+```
+
+### 알려진 제한
+
+- 검색 결과는 화면 안정성을 위해 최대 12개까지 표시합니다.
+
+### 추천 다음 작업
+
+- `/companies/`에서 업체 목록 자체도 필요하면 키보드 탐색/검색 결과 직접 선택 흐름을 더 다듬습니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/companies/`에서 아무 부서/연구실의 `수정`을 누릅니다.
+2. `소속 업체/학교`에서 업체명을 입력하면 결과 버튼이 필터링되는지 확인합니다.
+3. 다른 업체/학교를 선택하고 저장했을 때 부서가 해당 업체로 이동하는지 확인합니다.
+4. 우측 부서 패널 상단에 `선택 고정` 버튼이 없는지 확인합니다.
+
 ## 2026-06-05 — 계정 정리 영향 미리보기 기능 제거
 
 ### 요약

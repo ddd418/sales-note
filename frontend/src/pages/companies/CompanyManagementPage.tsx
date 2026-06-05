@@ -30,7 +30,6 @@ import { DashboardEmpty } from '../../components/shared/FeedbackStates';
 const formatNumber = (value: number | null | undefined) => new Intl.NumberFormat('ko-KR').format(value ?? 0);
 
 const initialSearch = () => new URLSearchParams(window.location.search).get('q') || new URLSearchParams(window.location.search).get('search') || '';
-const initialCompanyId = () => new URLSearchParams(window.location.search).get('company_id') || '';
 const initialDepartmentId = () => new URLSearchParams(window.location.search).get('department_id') || '';
 
 function BlockerBadges({ blockers }: { blockers: Array<{ label: string; count: number }> }) {
@@ -159,6 +158,23 @@ function DepartmentRow({
   const moveOptions = companyOptions.some((company) => company.id === department.companyId)
     ? companyOptions
     : [{ id: department.companyId, name: department.companyName, canManage: true }, ...companyOptions];
+  const selectedMoveCompanyId = Number(editCompanyId || department.companyId);
+  const selectedMoveCompany = moveOptions.find((company) => company.id === selectedMoveCompanyId) ?? null;
+  const [companySearch, setCompanySearch] = useState('');
+
+  useEffect(() => {
+    if (editing) {
+      setCompanySearch(selectedMoveCompany?.name || department.companyName || '');
+    }
+  }, [department.companyName, department.id, editing, selectedMoveCompany?.name]);
+
+  const companySearchTerm = companySearch.trim().toLowerCase();
+  const visibleMoveOptions = moveOptions
+    .filter((company) => (
+      !companySearchTerm || company.name.toLowerCase().includes(companySearchTerm)
+    ))
+    .slice(0, 12);
+  const selectedMoveCompanyName = selectedMoveCompany?.name || department.companyName || '업체/학교 미지정';
 
   return (
     <article className="company-management-department-row">
@@ -172,24 +188,47 @@ function DepartmentRow({
                 onChange={(event) => onEditNameChange(event.target.value)}
                 value={editName}
               />
-              <label className="company-management-move-select">
+              <div className="company-management-move-picker">
                 <span>소속 업체/학교</span>
-                <select
-                  aria-label="부서/연구실 소속 업체/학교"
-                  onChange={(event) => onEditCompanyChange(event.target.value)}
-                  value={editCompanyId || String(department.companyId)}
-                >
-                  {moveOptions.map((company) => (
-                    <option
-                      disabled={company.canManage === false && company.id !== department.companyId}
-                      key={company.id}
-                      value={company.id}
-                    >
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <div className="company-management-move-current">
+                  <small>선택됨</small>
+                  <strong>{selectedMoveCompanyName}</strong>
+                </div>
+                <div className="company-management-move-search">
+                  <Search size={15} />
+                  <input
+                    aria-label="부서/연구실 소속 업체/학교 검색"
+                    onChange={(event) => setCompanySearch(event.target.value)}
+                    placeholder="업체/학교명 검색"
+                    value={companySearch}
+                  />
+                </div>
+                <div className="company-management-move-results">
+                  {visibleMoveOptions.length > 0 ? visibleMoveOptions.map((company) => {
+                    const disabled = company.canManage === false && company.id !== department.companyId;
+                    const selected = company.id === selectedMoveCompanyId;
+                    return (
+                      <button
+                        className={selected ? 'selected' : ''}
+                        disabled={disabled}
+                        key={company.id}
+                        onClick={() => {
+                          if (disabled) return;
+                          onEditCompanyChange(String(company.id));
+                          setCompanySearch(company.name);
+                        }}
+                        title={disabled ? company.manageMessage || '이동할 수 없습니다.' : ''}
+                        type="button"
+                      >
+                        <span>{company.name}</span>
+                        <small>{disabled ? company.manageMessage || '이동 불가' : selected ? '현재 선택' : '선택'}</small>
+                      </button>
+                    );
+                  }) : (
+                    <span className="company-management-move-empty">검색 결과가 없습니다</span>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
             <strong>{department.name}</strong>
@@ -230,7 +269,7 @@ export function CompanyManagementPage() {
   const [data, setData] = useState<CompanyManagementData | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(initialSearch);
-  const [selectedCompanyId, setSelectedCompanyId] = useState(initialCompanyId);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [departmentQuery, setDepartmentQuery] = useState('');
   const [companyCreateName, setCompanyCreateName] = useState('');
   const [departmentCreateName, setDepartmentCreateName] = useState('');
@@ -248,7 +287,6 @@ export function CompanyManagementPage() {
     setLoading(true);
     const nextData = await loadCompanyManagementData({
       q: query,
-      companyId: selectedCompanyId,
       departmentId: departmentIdParam,
     });
     setData(nextData);
@@ -536,7 +574,6 @@ export function CompanyManagementPage() {
               <span className="eyebrow">Departments</span>
               <h2>{selectedCompany?.name || '부서/연구실'}</h2>
             </div>
-            {selectedCompany ? <a className="route-secondary-action" href={selectedCompany.href}>선택 고정</a> : null}
           </div>
           {selectedCompany ? (
             <>

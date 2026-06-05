@@ -4641,10 +4641,6 @@ def _company_management_company_payload(company, request_user, scope_users, depa
         'deleteBlockers': _delete_blocker_payload(blockers),
         'updateUrl': reverse('reporting:company_update_api', args=[company.id]),
         'deleteUrl': reverse('reporting:company_delete_api', args=[company.id]),
-        'href': f'/companies/?company_id={company.id}',
-        'djangoHref': reverse('reporting:company_detail', args=[company.id]),
-        'departmentsUrl': reverse('reporting:api_company_departments', args=[company.id]),
-        'customersUrl': reverse('reporting:api_company_customers', args=[company.id]),
         'createdById': company.created_by_id,
         'createdByName': _user_display_name(company.created_by) if company.created_by else '',
         'departmentCount': blockers[0][1],
@@ -4668,7 +4664,6 @@ def companies_management_api(request):
     user_profile = get_user_profile(request.user)
     scope_users, base_companies_qs, scope_label = _company_management_scope(request, user_profile)
     q = (request.GET.get('q') or request.GET.get('search') or '').strip()
-    selected_company_id = request.GET.get('company_id') or ''
     selected_department_id = request.GET.get('department_id') or ''
 
     base_company_ids = list(base_companies_qs.values_list('id', flat=True).distinct())
@@ -4729,7 +4724,6 @@ def companies_management_api(request):
         },
         'filters': {
             'q': q,
-            'companyId': selected_company_id,
             'departmentId': selected_department_id,
         },
         'metrics': {

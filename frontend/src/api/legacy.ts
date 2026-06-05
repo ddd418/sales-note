@@ -632,10 +632,6 @@ export type CompanyManagementDepartment = CustomerDepartmentOption & {
 export type CompanyManagementCompany = CustomerCompanyOption & {
   deleteGuidance: string;
   deleteBlockers: CompanyManagementBlocker[];
-  href: string;
-  djangoHref: string;
-  departmentsUrl: string;
-  customersUrl: string;
   createdById: number | null;
   createdByName: string;
   assetCount: number;
@@ -665,7 +661,6 @@ export type CompanyManagementData = {
   };
   filters: {
     q: string;
-    companyId: string;
     departmentId: string;
   };
   metrics: {
@@ -5050,7 +5045,6 @@ const emptyCompanyManagementData: CompanyManagementData = {
   },
   filters: {
     q: '',
-    companyId: '',
     departmentId: '',
   },
   metrics: {
@@ -7071,22 +7065,16 @@ function normalizeCompanyManagementCompany(company: CompanyManagementCompany): C
     ...company,
     updateUrl: normalizeCoreCrmHref(company.updateUrl || ''),
     deleteUrl: normalizeCoreCrmHref(company.deleteUrl || ''),
-    href: normalizeCoreCrmHref(company.href || ''),
-    djangoHref: normalizeCoreCrmHref(company.djangoHref || ''),
-    departmentsUrl: normalizeCoreCrmHref(company.departmentsUrl || ''),
-    customersUrl: normalizeCoreCrmHref(company.customersUrl || ''),
     departments: (company.departments ?? []).map(normalizeCompanyManagementDepartment),
   };
 }
 
 export async function loadCompanyManagementData(params: {
   q?: string;
-  companyId?: string;
   departmentId?: string;
 } = {}): Promise<CompanyManagementData> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
-  if (params.companyId) query.set('company_id', params.companyId);
   if (params.departmentId) query.set('department_id', params.departmentId);
   try {
     const response = await fetch(`/reporting/api/companies/manage/${query.toString() ? `?${query.toString()}` : ''}`, {
