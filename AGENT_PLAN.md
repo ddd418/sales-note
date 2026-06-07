@@ -28,7 +28,7 @@
 - `cd frontend && npm run build`
 - Commit, push, deploy backend, and smoke `/weekly-reports/new/` plus weekly schedules API login protection.
 
-**Status**: Implemented and locally validated. Deployment in progress.
+**Status**: Implemented, locally validated, pushed, and deployed to Railway.
 
 ## 2026-06-05 Quote schedule auto pipeline card plan
 

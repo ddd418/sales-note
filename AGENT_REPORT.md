@@ -69,7 +69,11 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 코드 커밋/푸시 후 Railway backend 배포를 확인합니다.
+- 코드 커밋/푸시 완료: `225ceae` (`Fix weekly report schedule loading for department-only schedules`)
+- Railway `web` 배포 완료: `16bf64ed-014f-493b-8be9-a21c8675b123` → `SUCCESS`
+- 운영 스모크:
+  - `/weekly-reports/new/` → `200`
+  - 비로그인 `/reporting/api/weekly-reports/schedules/` → 로그인 페이지로 `302`, 인증 보호 유지
 
 ### 수동 서버 테스트 절차
 
