@@ -1,5 +1,83 @@
 # AGENT_REPORT.md
 
+## 2026-06-08 — 주간보고 일정 불러오기 부서-only 일정 오류 수정
+
+### 요약
+
+- `/weekly-reports/new/`의 `일정 불러오기`가 실패하던 원인을 수정했습니다.
+- 원인은 `/reporting/api/weekly-reports/schedules/`가 모든 일정에 담당 고객 `followup`이 있다고 가정한 점입니다.
+- 고객 없이 부서/연구실만 연결된 일정이 해당 기간에 있으면 `fu.customer_name` 접근에서 500이 발생할 수 있었습니다.
+- 이제 `followup`이 없으면 `Schedule.department` 기준으로 업체/부서명을 내려주고, 고객명은 `담당자 미등록`으로 표시합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 고객 등록 전 부서/연구실 일정도 주간보고에 불러올 수 있습니다.
+- 주간보고의 기존 flat `schedules`와 categorized `activity` / `quote_delivery` 응답 구조는 유지했습니다.
+- 최근 추가된 “부서만 있는 일정 작성” 흐름과 주간보고 작성 흐름이 충돌하지 않게 됐습니다.
+
+### 기존 기능 보존
+
+- 담당 고객이 연결된 기존 일정, 견적, 납품 금액/견적 금액 표시는 유지했습니다.
+- 다른 사용자의 일정은 계속 제외됩니다.
+- 로그인 보호와 주간보고 권한 흐름은 유지했습니다.
+- 모델 변경과 migration은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.WeeklyReportLoadSchedulesExtendedTests.test_department_only_schedule_loads_without_followup --keepdb --verbosity=1
+→ OK, 1 test
+
+python manage.py test reporting.tests.WeeklyReportTests.test_load_schedules_authenticated reporting.tests.WeeklyReportTests.test_load_schedules_bad_dates reporting.tests.WeeklyReportLoadSchedulesExtendedTests --keepdb --verbosity=1
+→ OK, 12 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- 부서-only 일정은 고객명이 없으므로 주간보고에는 `담당자 미등록`으로 표시합니다.
+
+### 추천 다음 작업
+
+- 주간보고 일정 불러오기 패널에서 부서-only 일정에 별도 배지를 붙이면 작성자가 더 빨리 구분할 수 있습니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 코드 커밋/푸시 후 Railway backend 배포를 확인합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/weekly-reports/new/`에 접속합니다.
+2. 이번 주 기간을 선택한 뒤 `일정 불러오기`를 누릅니다.
+3. 고객 연결 일정과 부서-only 일정이 모두 에러 없이 표시되는지 확인합니다.
+4. 일정을 선택해 `영업활동에 삽입` 또는 `견적/납품에 삽입`이 정상 동작하는지 확인합니다.
+
 ## 2026-06-05 — 견적 제출 시 파이프라인 견적 카드 자동 반영
 
 ### 요약

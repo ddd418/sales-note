@@ -36311,7 +36311,8 @@ def weekly_report_load_schedules(request):
         visit_date__gte=week_start,
         visit_date__lte=week_end,
     ).select_related(
-        'followup', 'followup__company', 'followup__department'
+        'followup', 'followup__company', 'followup__department',
+        'department', 'department__company',
     ).prefetch_related(
         # 이 일정에 직접 연결된 History (History.schedule FK)
         Prefetch(
@@ -36399,8 +36400,35 @@ def weekly_report_load_schedules(request):
             return _decimal_or_zero(schedule.expected_revenue), True
         return Decimal('0'), False
 
+    def _schedule_target_labels(schedule):
+        followup = schedule.followup
+        department = (
+            followup.department
+            if followup and followup.department_id
+            else schedule.department
+        )
+        company = (
+            followup.company
+            if followup and followup.company_id
+            else department.company
+            if department and department.company_id
+            else None
+        )
+        if followup:
+            customer = followup.customer_name or followup.manager or '고객명 미정'
+            manager = followup.manager or ''
+        else:
+            customer = '담당자 미등록'
+            manager = ''
+        return {
+            'customer': customer,
+            'company': str(company) if company else '',
+            'department': str(department) if department else '',
+            'manager': manager,
+        }
+
     for s in schedules:
-        fu = s.followup
+        target_labels = _schedule_target_labels(s)
         quotes = [
             {
                 'number': q.quote_number,
@@ -36426,10 +36454,10 @@ def weekly_report_load_schedules(request):
             'id': s.pk,
             'date': s.visit_date.strftime('%m/%d'),
             'weekday': ['월', '화', '수', '목', '금', '토', '일'][s.visit_date.weekday()],
-            'customer': fu.customer_name or '-',
-            'company': str(fu.company) if fu.company else '',
-            'department': str(fu.department) if fu.department else '',
-            'manager': fu.manager or '',
+            'customer': target_labels['customer'],
+            'company': target_labels['company'],
+            'department': target_labels['department'],
+            'manager': target_labels['manager'],
             'activity_type': s.activity_type,
             'activity_type_display': s.get_activity_type_display(),
             'notes': s.notes or '',
@@ -36461,7 +36489,7 @@ def weekly_report_load_schedules(request):
     # 기존 flat 형식도 유지 (backward compatibility)
     flat_data = []
     for s_obj in list(schedules):
-        fu = s_obj.followup
+        target_labels = _schedule_target_labels(s_obj)
         flat_amount = ''
         flat_amount_label = ''
         flat_schedule_amount_value, has_flat_schedule_amount = _schedule_amount_value(s_obj)
@@ -36475,9 +36503,9 @@ def weekly_report_load_schedules(request):
         flat_data.append({
             'id': s_obj.pk,
             'date': s_obj.visit_date.strftime('%m/%d'),
-            'customer': fu.customer_name or '-',
-            'company': str(fu.company) if fu.company else '',
-            'department': str(fu.department) if fu.department else '',
+            'customer': target_labels['customer'],
+            'company': target_labels['company'],
+            'department': target_labels['department'],
             'activity_type': s_obj.get_activity_type_display(),
             'notes': s_obj.notes or '',
             'amount': flat_amount,

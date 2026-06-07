@@ -19867,6 +19867,8 @@ class WeeklyReportLoadSchedulesExtendedTests(TestCase):
 
         company = Company.objects.create(name='주간보고고객사', created_by=self.salesman)
         dept = Department.objects.create(name='주간보고부서', company=company, created_by=self.salesman)
+        self.customer_company = company
+        self.department = dept
         self.followup = FollowUp.objects.create(
             user=self.salesman, customer_name='주간보고담당자',
             company=company, department=dept,
@@ -19991,6 +19993,40 @@ class WeeklyReportLoadSchedulesExtendedTests(TestCase):
         payload = next(item for item in quote_items if item['id'] == quote_schedule.pk)
         self.assertEqual(payload['amount'], '320,000원')
         self.assertEqual(payload['amount_label'], '견적 금액')
+
+    def test_department_only_schedule_loads_without_followup(self):
+        """담당 고객 없이 부서만 연결된 일정도 주간보고 일정 불러오기에 포함"""
+        from reporting.models import Schedule
+        import datetime
+
+        department_only = Schedule.objects.create(
+            user=self.salesman,
+            department=self.department,
+            visit_date=datetime.date(2026, 4, 23),
+            visit_time=datetime.time(13, 0),
+            activity_type='customer_meeting',
+            status='scheduled',
+            notes='고객 등록 전 부서 미팅',
+        )
+
+        r = self.client.get(
+            reverse('reporting:weekly_report_load_schedules'),
+            {'week_start': '2026-04-21', 'week_end': '2026-04-27'},
+        )
+
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        flat_payload = next(item for item in data['schedules'] if item['id'] == department_only.pk)
+        self.assertEqual(flat_payload['customer'], '담당자 미등록')
+        self.assertEqual(flat_payload['company'], '주간보고고객사')
+        self.assertEqual(flat_payload['department'], '주간보고부서')
+        activity_payload = next(
+            item for item in data['categorized']['activity']
+            if item['id'] == department_only.pk
+        )
+        self.assertEqual(activity_payload['customer'], '담당자 미등록')
+        self.assertEqual(activity_payload['manager'], '')
+        self.assertEqual(activity_payload['notes'], '고객 등록 전 부서 미팅')
 
     def test_delivery_schedule_returns_delivery_item_amount(self):
         """납품 일정은 DeliveryItem 합계 금액을 함께 반환"""

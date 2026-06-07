@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-08 Weekly report schedule load department-only fix plan
+
+**Background**:
+
+- User reported `/weekly-reports/new/` cannot load schedules.
+- The React editor calls `/reporting/api/weekly-reports/schedules/`.
+- The Django API assumes every `Schedule` has `followup`; recent CRM behavior allows department-only schedules, so a department-only schedule in the selected week can raise a 500 when reading `fu.customer_name`.
+
+**DB change required**: No schema migration.
+
+**Implementation scope**:
+
+- Make `weekly_report_load_schedules` safely handle schedules with `followup=None` and `department` present.
+- Include `Schedule.department` and `department.company` in the query.
+- Return clear fallback labels such as `담당자 미등록` for customerless department schedules.
+- Preserve the existing flat and categorized response shapes.
+- Add a focused test covering department-only schedules in weekly report loading.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused weekly report schedule load tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Commit, push, deploy backend, and smoke `/weekly-reports/new/` plus weekly schedules API login protection.
+
+**Status**: Implemented and locally validated. Deployment in progress.
+
 ## 2026-06-05 Quote schedule auto pipeline card plan
 
 **Background**:
