@@ -202,8 +202,18 @@ class IMAPEmailService:
             
             # 필터링 (target_emails가 있는 경우)
             if target_emails:
+                target_lookup = {
+                    str(email or '').strip().lower()
+                    for email in target_emails
+                    if str(email or '').strip()
+                }
                 all_recipients = [to_email] + cc_emails
-                if not any(email in target_emails for email in [from_email] + all_recipients):
+                message_addresses = {
+                    str(email or '').strip().lower()
+                    for email in [from_email] + all_recipients
+                    if str(email or '').strip()
+                }
+                if target_lookup and not target_lookup.intersection(message_addresses):
                     return None
             
             # 제목

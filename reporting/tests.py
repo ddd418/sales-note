@@ -2892,6 +2892,72 @@ class ReactMailboxApiTests(TestCase):
         self.email.refresh_from_db()
         self.assertTrue(self.email.is_starred)
 
+    def test_mailbox_sync_uses_gmail_metadata_before_full_detail(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.gmail_last_sync_at = None
+        profile.save(update_fields=['gmail_token', 'gmail_email', 'gmail_last_sync_at'])
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.get_messages.return_value = {
+                'messages': [
+                    {'id': 'gmail-sync-irrelevant'},
+                    {'id': 'gmail-sync-relevant'},
+                ],
+                'next_page_token': None,
+            }
+            gmail_service.get_message_metadata.side_effect = [
+                {
+                    'id': 'gmail-sync-irrelevant',
+                    'thread_id': 'gmail-thread-news',
+                    'from': 'News <news@example.com>',
+                    'to': 'Sales <sales@example.com>',
+                    'date': 'Wed, 08 May 2024 12:00:00 +0900',
+                    'subject': '뉴스레터',
+                    'labels': ['INBOX'],
+                    'snippet': '관련 없는 메일',
+                },
+                {
+                    'id': 'gmail-sync-relevant',
+                    'thread_id': 'gmail-thread-customer-sync',
+                    'from': 'Customer <customer@example.com>',
+                    'to': 'Sales <sales@example.com>',
+                    'date': 'Wed, 08 May 2024 12:30:00 +0900',
+                    'subject': '고객 동기화 메일',
+                    'labels': ['INBOX', 'UNREAD'],
+                    'snippet': '고객 메일',
+                },
+            ]
+            gmail_service.get_message_detail.return_value = {
+                'id': 'gmail-sync-relevant',
+                'thread_id': 'gmail-thread-customer-sync',
+                'from': 'Customer <customer@example.com>',
+                'to': 'Sales <sales@example.com>',
+                'date': 'Wed, 08 May 2024 12:30:00 +0900',
+                'subject': '고객 동기화 메일',
+                'body_text': '고객 메일 본문입니다.',
+                'body_html': '',
+                'snippet': '고객 메일',
+                'attachments': [],
+            }
+
+            response = self.client.post(reverse('reporting:mailbox_api_sync'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['synced'], 1)
+        self.assertEqual(gmail_service.get_message_metadata.call_count, 2)
+        gmail_service.get_message_detail.assert_called_once_with('gmail-sync-relevant')
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sync-relevant')
+        self.assertEqual(email_log.followup, self.followup)
+        self.assertEqual(email_log.body, '고객 메일 본문입니다.')
+        profile.refresh_from_db()
+        self.assertIsNotNone(profile.gmail_last_sync_at)
+
     def test_mailbox_send_api_accepts_attachments(self):
         profile = self.user.userprofile
         profile.gmail_token = {'access_token': 'test-token'}
@@ -2935,6 +3001,52 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.attachments_info[0]['filename'], 'quote.txt')
         self.assertEqual(email_log.attachments_info[0]['size'], len(b'quote attachment body'))
         self.assertEqual(email_log.attachments_info[0]['mimetype'], 'text/plain')
+
+    def test_mailbox_send_api_queue_send_defers_network_delivery(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+
+        uploaded_file = SimpleUploadedFile(
+            'queued.txt',
+            b'queued attachment body',
+            content_type='text/plain',
+        )
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            response = self.client.post(
+                reverse('reporting:mailbox_api_send'),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': '빠른 발송 큐 테스트',
+                    'body_text': '화면 응답을 먼저 돌려주는 발송입니다.',
+                    'selected_followup_id': str(self.followup.id),
+                    'queue_send': '1',
+                    'attachments': uploaded_file,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['queued'])
+        self.assertFalse(payload['scheduled'])
+        self.assertEqual(payload['href'], '/mailbox/?box=scheduled')
+        gmail_service_class.assert_not_called()
+        self.assertFalse(EmailLog.objects.filter(subject='빠른 발송 큐 테스트').exists())
+
+        scheduled_email = ScheduledEmail.objects.get(subject='빠른 발송 큐 테스트')
+        self.assertEqual(scheduled_email.status, 'pending')
+        self.assertEqual(scheduled_email.followup, self.followup)
+        self.assertLessEqual(scheduled_email.scheduled_at, timezone.now())
+        self.assertTrue(scheduled_email.metadata['queuedImmediate'])
+        attachment = ScheduledEmailAttachment.objects.get(scheduled_email=scheduled_email)
+        self.addCleanup(attachment.file.delete, False)
+        self.assertEqual(attachment.filename, 'queued.txt')
+        with attachment.file.open('rb') as file_handle:
+            self.assertEqual(file_handle.read(), b'queued attachment body')
 
     def test_mailbox_send_api_schedules_email_without_immediate_send(self):
         from datetime import timedelta

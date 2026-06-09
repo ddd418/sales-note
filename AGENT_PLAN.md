@@ -1,5 +1,36 @@
 # AGENT_PLAN.md
 
+## 2026-06-09 Mail sync/send responsiveness plan
+
+**Background**:
+
+- User reported that mail synchronization and sending feel too slow.
+- React mailbox calls `/reporting/api/mailbox/send/`, `/reporting/api/mailbox/reply/<id>/`, and `/reporting/api/mailbox/sync/`.
+- Current React send/reply path waits for Gmail/SMTP network delivery inside the web request.
+- Current Gmail sync fetches full message details for every listed Gmail message before it knows whether the message is relevant, and first sync with zero new matched mail can repeat the same scan because `gmail_last_sync_at` is not updated.
+
+**DB change required**: No schema migration.
+
+**Implementation scope**:
+
+- Add a React-only queued send mode so immediate compose/reply requests can create a due `ScheduledEmail` and return quickly; the existing scheduled-mail inline worker will deliver it shortly after.
+- Keep legacy Django template send behavior synchronous for compatibility.
+- Reduce Gmail sync work by using metadata-only fetches before full body fetches, avoiding full detail calls for already-stored messages, bulk-checking existing Gmail ids, and always updating successful Gmail sync timestamps.
+- Let the React mailbox sync button work for any connected mailbox provider while preserving auth and CSRF behavior.
+- Add focused tests for queued React sending and faster Gmail sync behavior.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\gmail_views.py reporting\gmail_utils.py reporting\tests.py`
+- Focused mailbox API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- Commit, push, deploy affected Railway services, and smoke `/mailbox/` plus mailbox API login protection.
+
+**Status**: Implemented and locally validated. Deployment in progress.
+
 ## 2026-06-08 Weekly report schedule load department-only fix plan
 
 **Background**:

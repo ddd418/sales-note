@@ -15955,7 +15955,7 @@ function MailboxPage({
           </p>
         </div>
         <div className="mailbox-summary-actions">
-          <button className="route-secondary-action" disabled={syncing || !mailbox?.connection.gmailConnected} onClick={onSync} type="button">
+          <button className="route-secondary-action" disabled={syncing || !mailbox?.connection.connected} onClick={onSync} type="button">
             {syncing ? <Loader2 className="spin-icon" size={16} /> : <RefreshCw size={16} />}
             동기화
           </button>
@@ -24243,6 +24243,7 @@ export function App() {
     subject: form.subject.trim(),
     bodyText: form.bodyText.trim(),
     bodyHtml: form.bodyHtml.trim() || undefined,
+    queueSend: form.sendMode === 'now',
     scheduledAt: form.sendMode === 'scheduled' ? form.scheduledAt : undefined,
     followupId: form.followupId ? Number(form.followupId) : undefined,
     scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
@@ -24271,9 +24272,9 @@ export function App() {
     setMailComposeMessage('');
     try {
       const result = await sendMailboxEmail(payload, mailboxData.create.submitUrl);
-      setMailComposeMessage(result.message || (payload.scheduledAt ? '메일을 예약했습니다.' : '메일을 발송했습니다.'));
+      setMailComposeMessage(result.message || (payload.scheduledAt ? '메일을 예약했습니다.' : '메일 발송 요청을 접수했습니다.'));
       setMailComposeForm(makeEmptyMailComposeForm());
-      if (payload.scheduledAt) {
+      if (payload.scheduledAt || result.queued) {
         setMailboxBox('scheduled');
         setMailboxPage(1);
         window.history.replaceState(null, '', '/mailbox/?box=scheduled');
@@ -24455,8 +24456,12 @@ export function App() {
     setMailReplyMessage('');
     try {
       const result = await replyMailboxEmail(submitUrl, payload);
-      setMailReplyMessage(result.message || (payload.scheduledAt ? '답장을 예약했습니다.' : '답장을 발송했습니다.'));
+      setMailReplyMessage(result.message || (payload.scheduledAt ? '답장을 예약했습니다.' : '답장 발송 요청을 접수했습니다.'));
       setMailReplyForm(makeEmptyMailComposeForm());
+      if (payload.scheduledAt || result.queued) {
+        window.location.href = '/mailbox/?box=scheduled';
+        return;
+      }
       await refreshMailboxThreadData();
     } catch (error) {
       setMailReplyError(error instanceof Error ? error.message : '답장 발송에 실패했습니다.');

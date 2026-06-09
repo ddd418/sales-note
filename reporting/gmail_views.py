@@ -850,8 +850,8 @@ def _sync_emails_by_days(user, days=1):
     Returns:
         동기화된 메일 개수
     """
+    import os
     from django.utils import timezone
-    from datetime import timedelta
     
     profile = user.userprofile
     
@@ -860,18 +860,18 @@ def _sync_emails_by_days(user, days=1):
     
     gmail_service = GmailService(profile)
     
-    # 팔로우업 및 일정 관련 이메일 주소 목록
-    target_emails = set()
-    followups = FollowUp.objects.filter(user=user)
-    for followup in followups:
-        if followup.email:
-            target_emails.add(followup.email.lower())
-    
-    # 일정 관련 이메일도 추가
-    schedules = Schedule.objects.filter(user=user).select_related('followup')
-    for schedule in schedules:
-        if schedule.followup and schedule.followup.email:
-            target_emails.add(schedule.followup.email.lower())
+    followups = list(
+        FollowUp.objects
+        .filter(user=user)
+        .exclude(email='')
+        .select_related('company', 'department')
+    )
+    followup_by_email = {
+        followup.email.strip().lower(): followup
+        for followup in followups
+        if followup.email
+    }
+    target_emails = set(followup_by_email)
     
     if not target_emails:
         return 0
@@ -880,143 +880,255 @@ def _sync_emails_by_days(user, days=1):
     if profile.gmail_last_sync_at:
         # 마지막 동기화 이후 메일만
         query = f'after:{int(profile.gmail_last_sync_at.timestamp())}'
-        max_results = 100
+        max_results = 80
     else:
         # 첫 동기화 또는 지정된 일수
         query = f'newer_than:{days}d'
-        max_results = 200 if days > 7 else 100
+        max_results = 120 if days > 7 else 80
+    try:
+        env_limit = int(os.environ.get('GMAIL_SYNC_MAX_RESULTS', max_results))
+        max_results = max(10, min(env_limit, 200))
+    except (TypeError, ValueError):
+        pass
     
     result = gmail_service.get_messages(query=query, max_results=max_results)
     messages_list = result.get('messages', [])
-    
-    synced_count = 0
-    with transaction.atomic():
-        for msg in messages_list:
-            # 이미 DB에 있는지 확인 (중복 방지)
-            existing_email = EmailLog.objects.filter(gmail_message_id=msg['id']).first()
-            if existing_email:
-                if not existing_email.attachments_info:
-                    msg_detail = gmail_service.get_message_detail(msg['id'])
-                    attachments_info = _sanitize_received_attachments(
-                        (msg_detail or {}).get('attachments') or [],
-                        (msg_detail or {}).get('id') or msg['id'],
-                    )
-                    if attachments_info:
-                        existing_email.attachments_info = attachments_info
-                        existing_email.save(update_fields=['attachments_info', 'updated_at'])
-                continue
-            
-            msg_detail = gmail_service.get_message_detail(msg['id'])
-            if not msg_detail:
-                continue
-            
-            # From/To 주소 추출
-            from_header = msg_detail.get('from', '')
-            to_header = msg_detail.get('to', '')
-            
-            # From 이메일 추출
-            from_email = ''
-            if from_header:
-                if '<' in from_header:
-                    try:
-                        from_email = from_header.split('<')[1].split('>')[0].lower()
-                    except:
-                        from_email = from_header.lower()
-                else:
-                    from_email = from_header.lower()
-            
-            # To 이메일 추출 (첫 번째 수신자만)
-            to_email = ''
-            if to_header:
-                # 여러 수신자가 있을 수 있으므로 쉼표로 분리
-                first_to = to_header.split(',')[0].strip()
-                if '<' in first_to:
-                    try:
-                        to_email = first_to.split('<')[1].split('>')[0].lower()
-                    except:
-                        to_email = first_to.lower()
-                else:
-                    to_email = first_to.lower()
-            
-            if not from_email or not to_email:
-                continue
-            
-            # 수신 메일인지 발신 메일인지 확인
-            is_sent = from_email == profile.gmail_email.lower()
-            
-            # 팔로우업 또는 일정 이메일과 매칭
-            matched_followup = None
-            matched_schedule = None
-            target_email = to_email if is_sent else from_email
-            
-            # 먼저 일정 확인 (스레드 ID로 매칭)
-            if msg_detail.get('thread_id'):
-                existing_email = EmailLog.objects.filter(
-                    gmail_thread_id=msg_detail['thread_id']
-                ).select_related('schedule', 'followup').first()
-                
-                if existing_email:
-                    matched_schedule = existing_email.schedule
-                    matched_followup = existing_email.followup or matched_followup
-            
-            # 일정이 없으면 팔로우업으로 매칭
-            if not matched_followup:
-                for followup in followups:
-                    if followup.email and followup.email.lower() == target_email:
-                        matched_followup = followup
-                        break
-            
-            if not matched_followup and not matched_schedule:
-                continue
-            
-            # 본문 내용 처리 (HTML 우선, 없으면 텍스트)
-            body_html = msg_detail.get('body_html', '')
-            body_text = msg_detail.get('body_text', '')
-            
-            # body 필드는 HTML이 있으면 HTML, 없으면 텍스트 사용
-            body_content = body_html if body_html else body_text
-            
-            # 둘 다 없으면 snippet 사용
-            if not body_content:
-                body_content = msg_detail.get('snippet', '')
-            
-            # 날짜 파싱
-            from email.utils import parsedate_to_datetime
-            email_date = None
-            if msg_detail.get('date'):
-                try:
-                    email_date = parsedate_to_datetime(msg_detail['date'])
-                except:
-                    pass
-            
-            EmailLog.objects.create(
-                email_type='sent' if is_sent else 'received',
-                sender=user if is_sent else None,
-                sender_email=from_email,
-                recipient_email=to_email,
-                subject=msg_detail['subject'],
-                body=body_content,
-                body_html=body_html,
-                gmail_message_id=msg_detail['id'],
-                gmail_thread_id=msg_detail['thread_id'],
-                followup=matched_followup,
-                schedule=matched_schedule,
-                attachments_info=_sanitize_received_attachments(
-                    msg_detail.get('attachments') or [],
-                    msg_detail.get('id') or msg['id'],
-                ),
-                is_read=True if is_sent else False,
-                status='sent' if is_sent else 'received',
-                sent_at=email_date if is_sent else None,
-                received_at=email_date if not is_sent else None
-            )
-            synced_count += 1
-    
-    # 동기화 시점 업데이트
-    if synced_count > 0 or profile.gmail_last_sync_at:
+    message_ids = [
+        str(msg.get('id') or '').strip()
+        for msg in messages_list
+        if msg.get('id')
+    ]
+    if not message_ids:
         profile.gmail_last_sync_at = timezone.now()
         profile.save(update_fields=['gmail_last_sync_at'])
+        return 0
+
+    existing_ids = set(
+        EmailLog.objects
+        .filter(gmail_message_id__in=message_ids)
+        .exclude(gmail_message_id='')
+        .values_list('gmail_message_id', flat=True)
+    )
+
+    metadata_rows = []
+    for message_id in message_ids:
+        if message_id in existing_ids:
+            continue
+        metadata = gmail_service.get_message_metadata(
+            message_id,
+            metadata_headers=['From', 'To', 'Cc', 'Bcc', 'Date', 'Subject'],
+        )
+        if metadata:
+            metadata_rows.append(metadata)
+
+    thread_ids = {
+        row.get('thread_id')
+        for row in metadata_rows
+        if row.get('thread_id')
+    }
+    from django.db.models import Q
+
+    thread_contexts = {
+        email.gmail_thread_id: email
+        for email in EmailLog.objects.filter(
+            Q(sender=user) | Q(user=user) | Q(followup__user=user) | Q(schedule__user=user),
+            gmail_thread_id__in=thread_ids,
+        ).select_related('schedule', 'followup')
+        if email.gmail_thread_id
+    }
     
+    synced_count = 0
+    own_email = (profile.gmail_email or '').strip().lower()
+
+    for metadata in metadata_rows:
+        from_addresses = {
+            address.lower()
+            for address in _email_address_list(metadata.get('from'))
+        }
+        recipient_addresses = {
+            address.lower()
+            for address in _email_address_list([
+                metadata.get('to'),
+                metadata.get('cc'),
+                metadata.get('bcc'),
+            ])
+        }
+        is_sent = bool(own_email and own_email in from_addresses)
+        candidate_addresses = recipient_addresses if is_sent else from_addresses
+        matched_followup = next(
+            (
+                followup_by_email[address]
+                for address in candidate_addresses
+                if address in followup_by_email
+            ),
+            None,
+        )
+        existing_thread_email = thread_contexts.get(metadata.get('thread_id') or '')
+        matched_schedule = existing_thread_email.schedule if existing_thread_email else None
+        if existing_thread_email and not matched_followup:
+            matched_followup = existing_thread_email.followup
+
+        if not matched_followup and not matched_schedule:
+            continue
+
+        msg_detail = gmail_service.get_message_detail(metadata['id'])
+        if not msg_detail:
+            continue
+
+        from_header = msg_detail.get('from') or metadata.get('from') or ''
+        to_header = msg_detail.get('to') or metadata.get('to') or ''
+        from_email = (_email_address_list(from_header) or [from_header.lower()])[0].lower()
+        to_email = (_email_address_list(to_header) or [to_header.lower()])[0].lower()
+        if not from_email or not to_email:
+            continue
+
+        body_html = msg_detail.get('body_html', '')
+        body_text = msg_detail.get('body_text', '')
+        body_content = body_html or body_text or msg_detail.get('snippet', '') or metadata.get('snippet', '')
+
+        from email.utils import parsedate_to_datetime
+        email_date = None
+        if msg_detail.get('date') or metadata.get('date'):
+            try:
+                email_date = parsedate_to_datetime(msg_detail.get('date') or metadata.get('date'))
+            except Exception:
+                pass
+
+        EmailLog.objects.create(
+            email_type='sent' if is_sent else 'received',
+            sender=user if is_sent else None,
+            sender_email=from_email,
+            recipient_email=to_email,
+            subject=msg_detail.get('subject') or metadata.get('subject') or '(제목 없음)',
+            body=body_content,
+            body_html=body_html,
+            gmail_message_id=msg_detail.get('id') or metadata['id'],
+            gmail_thread_id=msg_detail.get('thread_id') or metadata.get('thread_id') or '',
+            followup=matched_followup,
+            schedule=matched_schedule,
+            attachments_info=_sanitize_received_attachments(
+                msg_detail.get('attachments') or [],
+                msg_detail.get('id') or metadata['id'],
+            ),
+            is_read=True if is_sent else False,
+            status='sent' if is_sent else 'received',
+            sent_at=email_date if is_sent else None,
+            received_at=email_date if not is_sent else None
+        )
+        synced_count += 1
+    
+    profile.gmail_last_sync_at = timezone.now()
+    profile.save(update_fields=['gmail_last_sync_at'])
+    
+    return synced_count
+
+
+def _sync_imap_emails_by_days(user, days=1):
+    """현재 React 메일함 API에서 쓰는 IMAP 동기화 경로."""
+    from django.utils import timezone
+    from .imap_utils import IMAPEmailService
+
+    profile = user.userprofile
+    if not profile.imap_connected_at:
+        return 0
+
+    followups = list(
+        FollowUp.objects
+        .filter(user=user)
+        .exclude(email='')
+        .select_related('company', 'department')
+    )
+    followup_by_email = {
+        followup.email.strip().lower(): followup
+        for followup in followups
+        if followup.email
+    }
+    target_emails = set(followup_by_email)
+    if not target_emails:
+        profile.imap_last_sync_at = timezone.now()
+        profile.save(update_fields=['imap_last_sync_at'])
+        return 0
+
+    imap_service = IMAPEmailService(profile)
+    if not imap_service.connect():
+        raise Exception('이메일 서버 연결에 실패했습니다.')
+
+    try:
+        emails = imap_service.fetch_emails(
+            folder='INBOX',
+            days=max(1, min(int(days or 1), 7)),
+            target_emails=list(target_emails),
+        )
+    finally:
+        imap_service.disconnect()
+
+    message_ids = [
+        str(email.get('message_id') or '').strip()
+        for email in emails
+        if email.get('message_id')
+    ]
+    existing_ids = set(
+        EmailLog.objects
+        .filter(user=user, provider='imap', message_id__in=message_ids)
+        .exclude(message_id='')
+        .values_list('message_id', flat=True)
+    )
+
+    synced_count = 0
+    for email_data in emails:
+        message_id = str(email_data.get('message_id') or '').strip()
+        if not message_id or message_id in existing_ids:
+            continue
+
+        from_email = (email_data.get('from_email') or '').strip().lower()
+        to_email = (email_data.get('to_email') or '').strip().lower()
+        cc_emails = [
+            str(address or '').strip().lower()
+            for address in email_data.get('cc_emails') or []
+            if str(address or '').strip()
+        ]
+        candidate_addresses = {from_email, to_email, *cc_emails}
+        matched_followup = next(
+            (
+                followup_by_email[address]
+                for address in candidate_addresses
+                if address in followup_by_email
+            ),
+            None,
+        )
+        if not matched_followup:
+            continue
+
+        received_at = email_data.get('date') or timezone.now()
+        if timezone.is_naive(received_at):
+            received_at = timezone.make_aware(received_at, timezone.get_current_timezone())
+
+        EmailLog.objects.create(
+            user=user,
+            provider='imap',
+            message_id=message_id,
+            thread_id=email_data.get('thread_id') or message_id,
+            email_type='received',
+            is_sent=False,
+            from_email=from_email,
+            from_name=email_data.get('from_name') or '',
+            to_email=to_email,
+            sender_email=from_email,
+            recipient_email=to_email,
+            cc_emails=_email_address_text(cc_emails),
+            subject=(email_data.get('subject') or '(제목 없음)')[:500],
+            body=email_data.get('body') or '',
+            attachments_info=email_data.get('attachments') or [],
+            followup=matched_followup,
+            status='received',
+            received_at=received_at,
+            is_read=False,
+        )
+        existing_ids.add(message_id)
+        synced_count += 1
+
+    profile.imap_last_sync_at = timezone.now()
+    profile.save(update_fields=['imap_last_sync_at'])
     return synced_count
 
 
@@ -1374,7 +1486,8 @@ def _handle_email_send(
         attachments_info = [_attachment_info(attachment) for attachment in attachment_entries]
 
         profile = request.user.userprofile
-        scheduled_at, scheduled_error = _parse_mailbox_scheduled_at(_mailbox_scheduled_at_value(request))
+        requested_scheduled_at = _mailbox_scheduled_at_value(request)
+        scheduled_at, scheduled_error = _parse_mailbox_scheduled_at(requested_scheduled_at)
         if scheduled_error:
             messages.error(request, scheduled_error)
             return {
@@ -1390,6 +1503,14 @@ def _handle_email_send(
                     'business_card_id': business_card_id,
                 }
             }
+        queue_immediate_send = (
+            not scheduled_at
+            and str(request.POST.get('queue_send') or request.POST.get('queueSend') or '').lower()
+            in {'1', 'true', 'yes', 'on'}
+        )
+        if queue_immediate_send:
+            from django.utils import timezone
+            scheduled_at = timezone.now()
 
         if scheduled_at:
             with transaction.atomic():
@@ -1410,13 +1531,17 @@ def _handle_email_send(
                     scheduled_at=scheduled_at,
                     metadata={
                         'autoAttachmentCount': len(attachments_info),
+                        'queuedImmediate': queue_immediate_send,
                     },
                 )
                 _save_scheduled_email_attachments(scheduled_email, attachment_entries)
 
             from django.utils import timezone
-            scheduled_label = timezone.localtime(scheduled_at).strftime('%Y-%m-%d %H:%M')
-            messages.success(request, f'이메일이 {scheduled_label} 발송으로 예약되었습니다.')
+            if queue_immediate_send:
+                messages.success(request, '이메일 발송 요청을 접수했습니다. 잠시 후 발송됩니다.')
+            else:
+                scheduled_label = timezone.localtime(scheduled_at).strftime('%Y-%m-%d %H:%M')
+                messages.success(request, f'이메일이 {scheduled_label} 발송으로 예약되었습니다.')
             return redirect('/mailbox/?box=scheduled')
 
         # Gmail 또는 IMAP/SMTP로 이메일 발송
@@ -2377,10 +2502,22 @@ def mailbox_api_send(request):
 
     location = result.get('Location', '/mailbox/?box=sent') if hasattr(result, 'get') else '/mailbox/?box=sent'
     scheduled_requested = bool(_mailbox_scheduled_at_value(request))
+    queued_requested = (
+        not scheduled_requested
+        and str(request.POST.get('queue_send') or request.POST.get('queueSend') or '').lower()
+        in {'1', 'true', 'yes', 'on'}
+    )
     return JsonResponse({
         'success': True,
         'scheduled': scheduled_requested,
-        'message': '이메일을 예약했습니다.' if scheduled_requested else '이메일이 발송되었습니다.',
+        'queued': queued_requested,
+        'message': (
+            '이메일을 예약했습니다.'
+            if scheduled_requested
+            else '이메일 발송 요청을 접수했습니다. 잠시 후 발송됩니다.'
+            if queued_requested
+            else '이메일이 발송되었습니다.'
+        ),
         'href': location.replace('/reporting/mailbox/thread/', '/mailbox/thread/') if location else '/mailbox/?box=sent',
         'djangoHref': location,
     })
@@ -2410,12 +2547,24 @@ def mailbox_api_reply(request, email_id):
 
     thread_id = _email_thread_identifier(email)
     scheduled_requested = bool(_mailbox_scheduled_at_value(request))
+    queued_requested = (
+        not scheduled_requested
+        and str(request.POST.get('queue_send') or request.POST.get('queueSend') or '').lower()
+        in {'1', 'true', 'yes', 'on'}
+    )
     return JsonResponse({
         'success': True,
         'scheduled': scheduled_requested,
-        'message': '답장을 예약했습니다.' if scheduled_requested else '답장을 발송했습니다.',
-        'href': '/mailbox/?box=scheduled' if scheduled_requested else f'/mailbox/thread/{thread_id}/',
-        'djangoHref': '/mailbox/?box=scheduled' if scheduled_requested else reverse('reporting:mailbox_thread', args=[thread_id]),
+        'queued': queued_requested,
+        'message': (
+            '답장을 예약했습니다.'
+            if scheduled_requested
+            else '답장 발송 요청을 접수했습니다. 잠시 후 발송됩니다.'
+            if queued_requested
+            else '답장을 발송했습니다.'
+        ),
+        'href': '/mailbox/?box=scheduled' if scheduled_requested or queued_requested else f'/mailbox/thread/{thread_id}/',
+        'djangoHref': '/mailbox/?box=scheduled' if scheduled_requested or queued_requested else reverse('reporting:mailbox_thread', args=[thread_id]),
     })
 
 
@@ -2959,7 +3108,10 @@ def sync_received_emails(request):
     
     try:
         # 마지막 동기화 시점 이후의 메일만 동기화
-        synced_count = _sync_emails_by_days(request.user, days=1)
+        if profile.gmail_token:
+            synced_count = _sync_emails_by_days(request.user, days=1)
+        else:
+            synced_count = _sync_imap_emails_by_days(request.user, days=1)
         
         if synced_count > 0:
             message = f'{synced_count}개의 새 메일을 동기화했습니다.'

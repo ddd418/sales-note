@@ -316,6 +316,56 @@ class GmailService:
         except HttpError as error:
             print(f'Gmail API 오류: {error}')
             return {'messages': [], 'next_page_token': None}
+
+    def get_message_metadata(self, message_id, metadata_headers=None):
+        """
+        메시지 메타데이터만 조회한다.
+
+        동기화 단계에서 관련 고객 메일인지 먼저 판단할 때 사용한다. 본문과
+        첨부 파트를 내려받지 않으므로 full 조회보다 훨씬 가볍다.
+        """
+        service = self.get_service()
+        if not service:
+            return None
+
+        try:
+            from email.header import decode_header, make_header
+
+            request_kwargs = {
+                'userId': 'me',
+                'id': message_id,
+                'format': 'metadata',
+            }
+            if metadata_headers:
+                request_kwargs['metadataHeaders'] = metadata_headers
+
+            message = service.users().messages().get(**request_kwargs).execute()
+            headers = {}
+            for header in message.get('payload', {}).get('headers', []):
+                headers[header.get('name', '').lower()] = header.get('value', '')
+
+            raw_subject = headers.get('subject', '(제목 없음)')
+            try:
+                decoded_subject = str(make_header(decode_header(raw_subject)))
+            except Exception:
+                decoded_subject = raw_subject
+
+            return {
+                'id': message.get('id') or message_id,
+                'thread_id': message.get('threadId', ''),
+                'subject': decoded_subject,
+                'from': headers.get('from', ''),
+                'to': headers.get('to', ''),
+                'cc': headers.get('cc', ''),
+                'bcc': headers.get('bcc', ''),
+                'date': headers.get('date', ''),
+                'labels': message.get('labelIds', []),
+                'snippet': message.get('snippet', ''),
+            }
+
+        except HttpError as error:
+            print(f'Gmail API 오류: {error}')
+            return None
     
     def get_message_detail(self, message_id):
         """

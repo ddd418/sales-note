@@ -1,5 +1,94 @@
 # AGENT_REPORT.md
 
+## 2026-06-09 — 메일 동기화/발송 응답속도 개선
+
+### 요약
+
+- React 메일 작성/답장 API의 바로 발송을 큐 기반으로 바꿨습니다.
+- 사용자가 `바로 발송`을 누르면 Gmail/SMTP 외부 발송 완료까지 기다리지 않고, 즉시 `ScheduledEmail`에 등록한 뒤 응답합니다.
+- 기존 예약메일 inline worker가 곧바로 due 상태의 큐 메일을 실제 발송합니다.
+- Gmail 동기화는 본문 full fetch 전에 metadata만 먼저 조회해 관련 고객 메일인지 판별하도록 바꿨습니다.
+- 이미 저장된 Gmail message id는 full detail을 다시 가져오지 않고 건너뜁니다.
+- 성공한 Gmail 동기화는 새 메일이 0개여도 `gmail_last_sync_at`을 갱신해 같은 범위를 반복 스캔하지 않게 했습니다.
+- React 동기화 버튼은 Gmail뿐 아니라 IMAP 연결 상태에서도 활성화되도록 바꿨습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/gmail_utils.py`
+- `reporting/gmail_views.py`
+- `reporting/imap_utils.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 메일 발송 버튼을 눌렀을 때 브라우저가 Gmail/SMTP 응답 시간만큼 오래 멈추는 문제를 줄였습니다.
+- 바로 발송 요청은 예약메일 탭에서 대기 상태로 보이며, worker가 처리하면 기존 보낸 메일 로그로 전환됩니다.
+- 메일 동기화는 관련 없는 메일의 본문/첨부 구조를 가져오지 않아 외부 API 호출 비용과 응답 시간이 줄어듭니다.
+- IMAP 주소 매칭을 대소문자 무관하게 처리해 동기화 누락 가능성을 낮췄습니다.
+
+### 기존 기능 보존
+
+- 기존 Django template 발송 경로는 동기 발송 호환성을 유지했습니다.
+- 명시 예약 발송, 첨부파일, 자동 견적/거래명세서 첨부, 내부 참조, 답장, 예약메일 취소 흐름을 유지했습니다.
+- 로그인/CSRF 보호와 사용자별 메일 조회 범위를 유지했습니다.
+- 모델 변경과 migration은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\gmail_views.py reporting\gmail_utils.py reporting\imap_utils.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_queue_send_defers_network_delivery reporting.tests.ReactMailboxApiTests.test_mailbox_sync_uses_gmail_metadata_before_full_detail reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_accepts_attachments reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_schedules_email_without_immediate_send reporting.tests.ReactMailboxApiTests.test_process_due_scheduled_emails_sends_and_creates_email_log --keepdb --verbosity=1
+→ OK, 5 tests
+
+python manage.py test reporting.tests.ReactMailboxApiTests --keepdb --verbosity=1
+→ OK, 33 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK
+```
+
+### 알려진 제한
+
+- 바로 발송은 화면상 즉시 `예약메일` 대기 상태로 들어갔다가 worker가 처리합니다. 운영 worker interval 설정에 따라 실제 발송까지 최대 수십 초가 걸릴 수 있습니다.
+- 자동 첨부 PDF 생성은 아직 요청 시점에 처리합니다. 매우 큰 PDF 생성이 병목이면 다음 단계에서 문서 생성까지 큐로 넘기는 개선이 필요합니다.
+
+### 추천 다음 작업
+
+- 예약메일 목록에 `발송 대기 중` / `발송 실패` 상태를 더 눈에 띄게 표시하고, 실패 메일 재시도 버튼을 추가하면 운영 대응이 쉬워집니다.
+
+### 운영 배포 상태
+
+- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 확인합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/mailbox/`에 접속합니다.
+2. `메일 작성`에서 고객, 제목, 본문을 입력하고 `바로 발송`을 누릅니다.
+3. 화면이 오래 멈추지 않고 예약메일 탭으로 이동하는지 확인합니다.
+4. 잠시 후 예약메일이 worker에 의해 보낸 메일/스레드로 전환되는지 확인합니다.
+5. 받은편지함에서 `동기화`를 눌러 새 메일 동기화 메시지가 빠르게 반환되는지 확인합니다.
+6. 답장도 같은 방식으로 오래 멈추지 않는지 확인합니다.
+
 ## 2026-06-08 — 주간보고 일정 불러오기 부서-only 일정 오류 수정
 
 ### 요약
