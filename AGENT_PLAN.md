@@ -29,7 +29,7 @@
 - `cd frontend && npm run build`
 - Commit, push, deploy affected Railway services, and smoke `/mailbox/` plus mailbox API login protection.
 
-**Status**: Implemented and locally validated. Deployment in progress.
+**Status**: Implemented, locally validated, pushed, and deployed to Railway.
 
 ## 2026-06-08 Weekly report schedule load department-only fix plan
 

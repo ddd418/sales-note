@@ -78,7 +78,14 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 전입니다. 코드 커밋/푸시 후 Railway backend/frontend 배포를 확인합니다.
+- 코드 커밋/푸시 완료: `069f040` (`Improve mailbox sync and send responsiveness`)
+- Railway `web` 배포 완료: `85d8a355-cf36-45a7-a55f-2bb52ca76a85` → `SUCCESS`
+- Railway `sales-note-frontend` 배포 완료: `83af7fbb-9246-477a-9ef2-b54fb3b1b9a1` → `SUCCESS`
+- 운영 스모크:
+  - `/mailbox/` → `200`
+  - backend `/healthz/` → `200`
+  - 비로그인 `/reporting/api/mailbox/` → `401`, API 인증 보호 유지
+  - 비로그인 `/reporting/api/mailbox/sync/` → 로그인 페이지로 `302`, 인증 보호 유지
 
 ### 수동 서버 테스트 절차
 
