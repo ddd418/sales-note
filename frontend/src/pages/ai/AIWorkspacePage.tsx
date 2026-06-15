@@ -6,10 +6,11 @@ import {
   Link2,
   Loader2,
   Search,
+  Send,
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import {
   askAIWorkspaceDepartmentQuestion,
   deleteAIWorkspaceQuestionLog,
@@ -144,8 +145,9 @@ function AIWorkspaceDepartmentList({
 }) {
   const [query, setQuery] = useState('');
   const normalizedQuery = query.trim().toLowerCase();
+  const hasSearchQuery = normalizedQuery.length > 0;
   const filteredDepartments = useMemo(() => {
-    if (!normalizedQuery) return departments.slice(0, 8);
+    if (!normalizedQuery) return [];
     return departments.filter((department) => {
       const searchableText = [
         department.company,
@@ -155,8 +157,9 @@ function AIWorkspaceDepartmentList({
         ...department.customerPreview,
       ].join(' ').toLowerCase();
       return searchableText.includes(normalizedQuery);
-    }).slice(0, 8);
+    });
   }, [departments, normalizedQuery]);
+  const visibleDepartments = filteredDepartments.slice(0, 6);
 
   if (!departments.length) return <DashboardEmpty label="AI 브리핑 대상 부서가 없습니다" />;
 
@@ -173,34 +176,47 @@ function AIWorkspaceDepartmentList({
       <div className="ai-department-list-meta">
         <span>
           전체 {formatNumber(departments.length)}개
-          {normalizedQuery ? ` · 검색 ${formatNumber(filteredDepartments.length)}개` : ''}
+          {hasSearchQuery ? ` · 검색 ${formatNumber(filteredDepartments.length)}개` : ''}
         </span>
-        <strong>{normalizedQuery ? '검색 결과' : '최근/상위 8개'}</strong>
+        <strong>{hasSearchQuery ? '검색 결과' : '검색 후 표시'}</strong>
       </div>
-      <div className="ai-department-list">
-        {filteredDepartments.map((department) => {
-          const selected = department.id === selectedDepartmentId;
-          return (
-            <button
-              className={`ai-department-row ${department.hasAnalysis ? 'ready' : ''} ${selected ? 'selected' : ''}`}
-              key={department.id}
-              onClick={() => onSelect(department)}
-              type="button"
-            >
-              <div>
-                <strong>{department.company || department.name}</strong>
-                <span>{[department.name, `${formatNumber(department.customerCount)}명`].filter(Boolean).join(' · ')}</span>
-                {department.summary ? <small>{department.summary}</small> : null}
-                {!department.summary && department.customerPreview.length ? <small>{department.customerPreview.join(', ')}</small> : null}
-              </div>
-              <div className="ai-row-meta">
-                <strong>{department.hasAnalysis ? '분석 있음' : 'CRM 기록'}</strong>
-                <small>미팅 {formatNumber(department.meetingCount)} · 견적 {formatNumber(department.quoteCount)} · 납품 {formatNumber(department.deliveryCount)}</small>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      {!hasSearchQuery ? (
+        <p className="ai-department-list-hint">
+          기관명, 부서/연구실명, 고객명, PI/담당자 이름을 입력하면 해당 대상만 표시됩니다.
+        </p>
+      ) : visibleDepartments.length ? (
+        <div className="ai-department-list">
+          {visibleDepartments.map((department) => {
+            const selected = department.id === selectedDepartmentId;
+            return (
+              <button
+                className={`ai-department-row ${department.hasAnalysis ? 'ready' : ''} ${selected ? 'selected' : ''}`}
+                key={department.id}
+                onClick={() => onSelect(department)}
+                type="button"
+              >
+                <div>
+                  <strong>{department.company || department.name}</strong>
+                  <span>{[department.name, `${formatNumber(department.customerCount)}명`].filter(Boolean).join(' · ')}</span>
+                  {department.summary ? <small>{department.summary}</small> : null}
+                  {!department.summary && department.customerPreview.length ? <small>{department.customerPreview.join(', ')}</small> : null}
+                </div>
+                <div className="ai-row-meta">
+                  <strong>{selected ? '선택됨' : department.hasAnalysis ? '분석 있음' : 'CRM 기록'}</strong>
+                  <small>미팅 {formatNumber(department.meetingCount)} · 견적 {formatNumber(department.quoteCount)} · 납품 {formatNumber(department.deliveryCount)}</small>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <DashboardEmpty label="검색 결과가 없습니다" />
+      )}
+      {hasSearchQuery && filteredDepartments.length > visibleDepartments.length ? (
+        <p className="ai-department-list-hint">
+          {formatNumber(filteredDepartments.length - visibleDepartments.length)}개가 더 있습니다. 검색어를 더 구체적으로 입력하세요.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -336,6 +352,11 @@ function AIWorkspaceQuestionPanel({
     }
   }
 
+  function handleQuestionSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitQuestion();
+  }
+
   async function submitReview(rating: AIWorkspaceQuestionFeedbackRating) {
     if (!result || reviewSaving) return;
     setReviewSaving(rating);
@@ -388,45 +409,57 @@ function AIWorkspaceQuestionPanel({
     <section className="dashboard-panel ai-department-question-panel">
       <div className="dashboard-panel-heading">
         <div>
-          <span className="eyebrow">Briefing question</span>
+          <span className="eyebrow">CRM briefing</span>
           <h2>CRM 브리핑 질문</h2>
         </div>
         <Sparkles size={18} />
       </div>
-      <div className="ai-question-scope-toggle">
-        <button className={questionScope === 'department' ? 'active' : ''} onClick={() => onScopeChange('department')} type="button">
+      <div className="ai-department-question-scope">
+        <span>{allScopeSelected ? '전체 부서 기준' : selectedDepartmentLabel}</span>
+        <small>{allScopeSelected ? `부서 ${formatNumber(data.metrics.departmentsWithCustomers)}개` : `고객 ${formatNumber(data.featuredDepartment?.customerCount || 0)}명`}</small>
+      </div>
+      <div className="segmented-control ai-question-scope-toggle" aria-label="AI 브리핑 범위">
+        <button
+          className={questionScope === 'department' ? 'active' : ''}
+          disabled={!departmentId}
+          onClick={() => onScopeChange('department')}
+          type="button"
+        >
           선택 부서
         </button>
         <button className={questionScope === 'all' ? 'active' : ''} onClick={() => onScopeChange('all')} type="button">
           전체 부서
         </button>
       </div>
-      <div className="ai-department-question-scope">
-        <span>{allScopeSelected ? '전체 부서 기준' : selectedDepartmentLabel}</span>
-        <small>{allScopeSelected ? `부서 ${formatNumber(data.metrics.departmentsWithCustomers)}개` : `고객 ${formatNumber(data.featuredDepartment?.customerCount || 0)}명`}</small>
+      <div className="segmented-control ai-question-model-toggle" aria-label="AI 브리핑 모델">
+        {modelChoices.map((choice) => (
+          <button
+            className={model === choice.id ? 'active' : ''}
+            key={choice.id}
+            onClick={() => setModel(choice.id)}
+            type="button"
+          >
+            {choice.label}
+          </button>
+        ))}
       </div>
-      <div className="ai-question-model-toggle">
-        <select onChange={(event) => setModel(event.target.value)} value={model}>
-          {modelChoices.map((choice) => (
-            <option key={choice.id} value={choice.id}>{choice.label}</option>
-          ))}
-        </select>
-      </div>
-      <div className="ai-department-question-form">
+      <form className="ai-department-question-form" onSubmit={handleQuestionSubmit}>
         <textarea
+          maxLength={600}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={handleQuestionKeyDown}
           placeholder="예: 현재 내가 접촉을 진행중인 고객을 근거와 링크까지 리스트업해줘"
+          rows={3}
           value={question}
         />
         <div>
-          <span>AI는 CRM 데이터 브리핑만 제공합니다. Ctrl+Enter로 실행할 수 있습니다.</span>
-          <button disabled={!canSubmit} onClick={submitQuestion} type="button">
-            {loading ? <Loader2 className="spin-icon" size={15} /> : <Sparkles size={15} />}
+          <span>{formatNumber(trimmedQuestion.length)} / 600 · Ctrl+Enter</span>
+          <button disabled={!canSubmit} type="submit">
+            {loading ? <Loader2 className="spin-icon" size={15} /> : <Send size={15} />}
             {loading ? '브리핑 중' : '브리핑'}
           </button>
         </div>
-      </div>
+      </form>
       {questionScope === 'department' && !departmentId ? (
         <div className="dashboard-api-alert compact">
           <AlertTriangle size={16} />

@@ -1,5 +1,95 @@
 # AGENT_REPORT.md
 
+## 2026-06-15 — AI 브리핑 UI 복구 및 메일 바로 발송 예약 우회 제거
+
+### 요약
+
+- `/ai-workspace/`의 `부서 브리핑 대상` 목록이 검색 전에는 표시되지 않도록 복구했습니다.
+- 검색어를 입력했을 때만 해당 기관/부서 후보가 표시되며, 검색 결과가 많으면 더 구체적인 검색을 안내합니다.
+- 분리된 `AIWorkspacePage`의 `CRM 브리핑 질문` 영역을 기존 CRM 스타일의 segmented control/form UI로 맞췄습니다.
+- 메일 `바로 발송` 요청에 과거 `queue_send` 값이 들어와도 더 이상 예약메일 테이블로 보내지 않고 즉시 발송하도록 백엔드에서 차단했습니다.
+- 실제 `예약 발송`과 예약메일 상세의 `바로 보내기` 기능은 유지했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/pages/ai/AIWorkspacePage.tsx`
+- `reporting/gmail_views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- AI 부서 선택 화면이 검색 중심으로 동작해 불필요한 후보 리스트가 먼저 펼쳐지지 않습니다.
+- AI 질문 패널이 React CRM의 공통 조작감으로 돌아와 HTML 기본 컨트롤처럼 보이지 않습니다.
+- 메일 발송에서 "바로 발송"과 "예약 발송"의 의미가 서버 단에서 명확히 분리되었습니다.
+
+### 기존 기능 보존
+
+- AI 브리핑 API, 부서 선택, 전체/선택 부서 질문, 브리핑 기록, 검수 기억 기능을 유지했습니다.
+- 명시적인 `scheduled_at` 예약메일 생성과 예약메일 즉시 발송 API를 유지했습니다.
+- 모델 변경과 migration은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\gmail_views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_ignores_queue_send_and_sends_immediately reporting.tests.ReactMailboxApiTests.test_mailbox_reply_api_ignores_queue_send_and_sends_immediately reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_schedules_email_without_immediate_send reporting.tests.ReactMailboxApiTests.test_mailbox_send_scheduled_now_api_sends_pending_scheduled_email --keepdb --verbosity=1
+→ OK, 4 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing warning only: App chunk larger than 500 kB
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 브라우저 확인
+
+- 로컬 Vite + mock AI API로 `/ai-workspace/` 렌더링을 확인했습니다.
+- 검색 전 `.ai-department-row` 개수: `0`
+- `부서 브리핑 대상` 검색 후 `서울시 · 보건환경연구원`만 표시됨
+- `CRM 브리핑 질문` 영역이 `segmented-control` class와 styled panel background를 사용함을 확인했습니다.
+
+### 알려진 제한
+
+- 운영 로그인 세션에서 실제 메일 계정으로 발송 버튼을 누르는 최종 확인은 사용자 수동 확인이 필요합니다.
+
+### 추천 다음 작업
+
+- 메일 발송이 느린 원인은 별도 작업으로 Gmail/SMTP 호출 시간과 첨부 자동 생성 시간을 분리 계측하는 것이 좋습니다.
+
+### 운영 배포 상태
+
+- 배포 예정: 코드 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 운영 스모크를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/ai-workspace/`에 접속합니다.
+2. `부서 브리핑 대상`에 아무 검색어가 없을 때 부서 리스트가 보이지 않는지 확인합니다.
+3. `서울시 보건`처럼 검색어를 입력했을 때 해당 기관/부서만 표시되는지 확인합니다.
+4. `CRM 브리핑 질문`의 범위/모델 선택 버튼과 입력 폼이 CRM 스타일로 보이는지 확인합니다.
+5. 운영 `/mailbox/scheduled/5/`에서 `바로 보내기`를 눌렀을 때 예약메일함으로 다시 빠지지 않고 발송 결과/보낸 메일 스레드로 이동하는지 확인합니다.
+6. 새 메일 작성에서 `바로 발송`을 눌렀을 때 예약메일함으로 이동하지 않는지 확인합니다.
+
 ## 2026-06-15 — 부서-only 견적 체크 후 납품 저장 500 오류 수정
 
 ### 요약

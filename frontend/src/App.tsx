@@ -24344,7 +24344,7 @@ export function App() {
     setMailComposeMessage('');
     try {
       const result = await sendMailboxEmail(payload, mailboxData.create.submitUrl);
-      setMailComposeMessage(result.message || (payload.scheduledAt ? '메일을 예약했습니다.' : '메일 발송 요청을 접수했습니다.'));
+      setMailComposeMessage(result.message || (payload.scheduledAt ? '메일을 예약했습니다.' : '메일이 발송되었습니다.'));
       setMailComposeForm(makeEmptyMailComposeForm());
       if (payload.scheduledAt || result.queued) {
         setMailboxBox('scheduled');
@@ -24544,7 +24544,7 @@ export function App() {
     setMailReplyMessage('');
     try {
       const result = await replyMailboxEmail(submitUrl, payload);
-      setMailReplyMessage(result.message || (payload.scheduledAt ? '답장을 예약했습니다.' : '답장 발송 요청을 접수했습니다.'));
+      setMailReplyMessage(result.message || (payload.scheduledAt ? '답장을 예약했습니다.' : '답장을 발송했습니다.'));
       setMailReplyForm(makeEmptyMailComposeForm());
       if (payload.scheduledAt || result.queued) {
         window.location.href = '/mailbox/?box=scheduled';

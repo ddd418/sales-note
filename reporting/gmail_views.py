@@ -1503,15 +1503,6 @@ def _handle_email_send(
                     'business_card_id': business_card_id,
                 }
             }
-        queue_immediate_send = (
-            not scheduled_at
-            and str(request.POST.get('queue_send') or request.POST.get('queueSend') or '').lower()
-            in {'1', 'true', 'yes', 'on'}
-        )
-        if queue_immediate_send:
-            from django.utils import timezone
-            scheduled_at = timezone.now()
-
         if scheduled_at:
             with transaction.atomic():
                 scheduled_email = ScheduledEmail.objects.create(
@@ -1531,17 +1522,14 @@ def _handle_email_send(
                     scheduled_at=scheduled_at,
                     metadata={
                         'autoAttachmentCount': len(attachments_info),
-                        'queuedImmediate': queue_immediate_send,
+                        'queuedImmediate': False,
                     },
                 )
                 _save_scheduled_email_attachments(scheduled_email, attachment_entries)
 
             from django.utils import timezone
-            if queue_immediate_send:
-                messages.success(request, '이메일 발송 요청을 접수했습니다. 잠시 후 발송됩니다.')
-            else:
-                scheduled_label = timezone.localtime(scheduled_at).strftime('%Y-%m-%d %H:%M')
-                messages.success(request, f'이메일이 {scheduled_label} 발송으로 예약되었습니다.')
+            scheduled_label = timezone.localtime(scheduled_at).strftime('%Y-%m-%d %H:%M')
+            messages.success(request, f'이메일이 {scheduled_label} 발송으로 예약되었습니다.')
             return redirect('/mailbox/?box=scheduled')
 
         # Gmail 또는 IMAP/SMTP로 이메일 발송
@@ -2503,20 +2491,13 @@ def mailbox_api_send(request):
 
     location = result.get('Location', '/mailbox/?box=sent') if hasattr(result, 'get') else '/mailbox/?box=sent'
     scheduled_requested = bool(_mailbox_scheduled_at_value(request))
-    queued_requested = (
-        not scheduled_requested
-        and str(request.POST.get('queue_send') or request.POST.get('queueSend') or '').lower()
-        in {'1', 'true', 'yes', 'on'}
-    )
     return JsonResponse({
         'success': True,
         'scheduled': scheduled_requested,
-        'queued': queued_requested,
+        'queued': False,
         'message': (
             '이메일을 예약했습니다.'
             if scheduled_requested
-            else '이메일 발송 요청을 접수했습니다. 잠시 후 발송됩니다.'
-            if queued_requested
             else '이메일이 발송되었습니다.'
         ),
         'href': location.replace('/reporting/mailbox/thread/', '/mailbox/thread/') if location else '/mailbox/?box=sent',
@@ -2548,24 +2529,17 @@ def mailbox_api_reply(request, email_id):
 
     thread_id = _email_thread_identifier(email)
     scheduled_requested = bool(_mailbox_scheduled_at_value(request))
-    queued_requested = (
-        not scheduled_requested
-        and str(request.POST.get('queue_send') or request.POST.get('queueSend') or '').lower()
-        in {'1', 'true', 'yes', 'on'}
-    )
     return JsonResponse({
         'success': True,
         'scheduled': scheduled_requested,
-        'queued': queued_requested,
+        'queued': False,
         'message': (
             '답장을 예약했습니다.'
             if scheduled_requested
-            else '답장 발송 요청을 접수했습니다. 잠시 후 발송됩니다.'
-            if queued_requested
             else '답장을 발송했습니다.'
         ),
-        'href': '/mailbox/?box=scheduled' if scheduled_requested or queued_requested else f'/mailbox/thread/{thread_id}/',
-        'djangoHref': '/mailbox/?box=scheduled' if scheduled_requested or queued_requested else reverse('reporting:mailbox_thread', args=[thread_id]),
+        'href': '/mailbox/?box=scheduled' if scheduled_requested else f'/mailbox/thread/{thread_id}/',
+        'djangoHref': '/mailbox/?box=scheduled' if scheduled_requested else reverse('reporting:mailbox_thread', args=[thread_id]),
     })
 
 

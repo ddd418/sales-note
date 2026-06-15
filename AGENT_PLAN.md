@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-06-15 AI workspace UI and mailbox direct-send fix plan
+
+**Background**:
+
+- User reported `/ai-workspace/` has two UI regressions:
+  - `부서 브리핑 대상` should not show department rows until the user searches.
+  - `CRM 브리핑 질문` appears like raw HTML because the split AI page does not match the styled controls used by the existing React CRM UI.
+- User also reported `/mailbox/scheduled/5/` still falls into scheduled mail. The frontend no longer intentionally sends `queue_send`, but the backend still treats any `queue_send` request as a queued `ScheduledEmail`, so stale clients or alternate paths can still create reservation-like mail.
+
+**DB change required**: No schema migration.
+
+- Existing AI and mailbox models are sufficient.
+
+**Implementation scope**:
+
+- Bring the split AI workspace page back in line with the styled CRM controls.
+- Hide department target rows until a search query exists, and show only searched institutions/departments.
+- Keep selected department briefing state through URL params, but do not auto-pick a visible target when no query is entered.
+- Remove the backend `queue_send` immediate-send fallback for React mailbox send/reply APIs so `바로 발송` either sends now or requires explicit future `scheduled_at`.
+- Keep real scheduled mail and scheduled-email `바로 보내기` behavior.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\gmail_views.py reporting\tests.py`
+- Focused mailbox send/reply tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke `/ai-workspace/`, `/mailbox/scheduled/5/`, protected API behavior.
+
+**Status**: Implemented and locally validated; commit/deployment pending.
+
 ## 2026-06-15 Department-only checked quote delivery 500 fix plan
 
 **Background**:

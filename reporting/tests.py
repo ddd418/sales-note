@@ -3010,7 +3010,7 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.attachments_info[0]['size'], len(b'quote attachment body'))
         self.assertEqual(email_log.attachments_info[0]['mimetype'], 'text/plain')
 
-    def test_mailbox_send_api_queue_send_defers_network_delivery(self):
+    def test_mailbox_send_api_ignores_queue_send_and_sends_immediately(self):
         profile = self.user.userprofile
         profile.gmail_token = {'access_token': 'test-token'}
         profile.gmail_email = 'sales@example.com'
@@ -3024,6 +3024,11 @@ class ReactMailboxApiTests(TestCase):
         )
 
         with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-sent-queue-ignored',
+                'thread_id': 'gmail-thread-queue-ignored',
+            }
             response = self.client.post(
                 reverse('reporting:mailbox_api_send'),
                 {
@@ -3039,22 +3044,16 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload['success'])
-        self.assertTrue(payload['queued'])
+        self.assertFalse(payload['queued'])
         self.assertFalse(payload['scheduled'])
-        self.assertEqual(payload['href'], '/mailbox/?box=scheduled')
-        gmail_service_class.assert_not_called()
-        self.assertFalse(EmailLog.objects.filter(subject='빠른 발송 큐 테스트').exists())
+        self.assertIn('/mailbox/thread/', payload['href'])
+        gmail_service.send_email.assert_called_once()
+        self.assertFalse(ScheduledEmail.objects.filter(subject='빠른 발송 큐 테스트').exists())
 
-        scheduled_email = ScheduledEmail.objects.get(subject='빠른 발송 큐 테스트')
-        self.assertEqual(scheduled_email.status, 'pending')
-        self.assertEqual(scheduled_email.followup, self.followup)
-        self.assertLessEqual(scheduled_email.scheduled_at, timezone.now())
-        self.assertTrue(scheduled_email.metadata['queuedImmediate'])
-        attachment = ScheduledEmailAttachment.objects.get(scheduled_email=scheduled_email)
-        self.addCleanup(attachment.file.delete, False)
-        self.assertEqual(attachment.filename, 'queued.txt')
-        with attachment.file.open('rb') as file_handle:
-            self.assertEqual(file_handle.read(), b'queued attachment body')
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-sent-queue-ignored')
+        self.assertEqual(email_log.subject, '빠른 발송 큐 테스트')
+        self.assertEqual(email_log.followup, self.followup)
+        self.assertEqual(email_log.attachments_info[0]['filename'], 'queued.txt')
 
     def test_mailbox_send_api_schedules_email_without_immediate_send(self):
         from datetime import timedelta
@@ -3816,6 +3815,43 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.in_reply_to, self.email)
         self.assertNotIn('<html', email_log.body_html)
         self.assertNotIn('&lt;html', email_log.body_html)
+
+    def test_mailbox_reply_api_ignores_queue_send_and_sends_immediately(self):
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-reply-queue-ignored',
+                'thread_id': 'gmail-thread-react-1',
+            }
+
+            response = self.client.post(
+                reverse('reporting:mailbox_api_reply', args=[self.email.id]),
+                {
+                    'to_email': 'customer@example.com',
+                    'subject': 'Re: React mailbox inbound',
+                    'body_text': '답장 즉시 발송입니다.',
+                    'queue_send': '1',
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertFalse(payload['queued'])
+        self.assertFalse(payload['scheduled'])
+        self.assertIn('/mailbox/thread/', payload['href'])
+        gmail_service.send_email.assert_called_once()
+        self.assertFalse(ScheduledEmail.objects.filter(subject='Re: React mailbox inbound').exists())
+
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-reply-queue-ignored')
+        self.assertEqual(email_log.in_reply_to, self.email)
+        self.assertEqual(email_log.body, '답장 즉시 발송입니다.')
 
     def test_mailbox_reply_api_can_reply_to_sent_only_thread_recipient_with_rich_format(self):
         profile = self.user.userprofile
