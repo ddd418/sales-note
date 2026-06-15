@@ -47,6 +47,19 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment 48fc0de0-5ac8-4043-b9d7-2d03aa35cd45 reached SUCCESS for commit a936efe
+
+railway deployment list --service sales-note-frontend --environment production --limit 3 --json
+→ Frontend deployment d0e58b0d-3929-4330-94c7-06b361b029ac was SKIPPED because no frontend watched files changed
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+
+curl schedule 930 and direct schedule API anonymous checks
+→ /schedules/930/ returned HTTP 200 React shell
+→ /reporting/api/schedules/930/ returned HTTP 401 protected API
 ```
 
 ### 알려진 제한
@@ -59,7 +72,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending. 로컬 검증과 운영 DB rollback probe는 완료했고, commit/push 후 Railway 배포와 smoke test가 필요합니다.
+- Completed.
+- Commit `a936efe Fix schedule quote completion lock` is present on `origin/main`.
+- Railway backend `web` GitHub deployment `48fc0de0-5ac8-4043-b9d7-2d03aa35cd45` succeeded for commit `a936efe`.
+- Railway frontend `sales-note-frontend` deployment `d0e58b0d-3929-4330-94c7-06b361b029ac` was skipped because no frontend watched files changed.
+- Production smoke passed for backend health/readiness, frontend shell, protected API behavior, and removed `/data-cleanup/` plus `/downloads/` routes.
+- Anonymous `/schedules/930/` route serves the React shell with HTTP 200, and direct `/reporting/api/schedules/930/` remains protected with HTTP 401.
 
 ### 수동 서버 테스트 절차
 
