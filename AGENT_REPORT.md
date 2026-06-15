@@ -77,7 +77,16 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 예정: 코드 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 서비스 배포와 운영 스모크를 진행합니다.
+- 코드 커밋/푸시 완료: `4526682` (`Fix mailbox immediate and scheduled send actions`)
+- Railway `web` 배포 완료: `32307094-a038-4453-945a-51b77307e29f` → `SUCCESS`
+- Railway `sales-note-frontend` 배포 완료: `ccd65970-03e0-45fe-bd04-82c4e5abb346` → `SUCCESS`
+- 운영 스모크:
+  - backend `/healthz/` → `200`
+  - backend `/readyz/` → `200`
+  - frontend `/healthz/` → `200`
+  - frontend `/mailbox/` → `200`
+  - 비로그인 `/reporting/api/mailbox/` → `401`, API 인증 보호 유지
+  - 공통 post-deploy smoke 전체 통과
 
 ### 수동 서버 테스트 절차
 

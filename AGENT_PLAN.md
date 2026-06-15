@@ -38,7 +38,7 @@
 - `git diff --check`
 - Commit, push, deploy affected Railway services, and smoke `/mailbox/` plus protected mailbox API behavior.
 
-**Status**: In progress.
+**Status**: Implemented, locally validated, pushed, and deployed to Railway.
 
 ## 2026-06-15 Quote-linked delivery completion by checked quote plan
 
