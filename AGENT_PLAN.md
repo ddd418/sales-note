@@ -28,7 +28,7 @@
 - `git diff --check`
 - Commit, push, deploy backend, and smoke `/schedules/930/` plus protected schedule API behavior.
 
-**Status**: In progress.
+**Status**: Implemented, locally validated, pushed, deployed to Railway, and smoke-tested.
 
 ## 2026-06-15 Mail immediate send and scheduled send-now UX plan
 
