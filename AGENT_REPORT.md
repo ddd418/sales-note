@@ -62,6 +62,21 @@ cd frontend && node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment f7e379fb-c604-4c22-8b20-da7944eb7cba reached SUCCESS for commit ef63f79
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ Frontend deployment 1d40ff2f-75fc-40e2-bc8c-f7f5c9a2352b reached SUCCESS for commit ef63f79
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+
+curl anonymous note/schedule routes and protected APIs
+→ /notes/?create=1 returned HTTP 200 React shell
+→ /schedules/ returned HTTP 200 React shell
+→ /reporting/api/notes/ returned HTTP 401 protected API
+→ /reporting/api/schedules/ returned HTTP 401 protected API
 ```
 
 ### 알려진 제한
@@ -75,7 +90,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending. 로컬 검증은 완료했고, commit/push 후 Railway backend/frontend 배포와 smoke test가 필요합니다.
+- Completed.
+- Commit `ef63f79 Create follow-up meeting from sales note` is present on `origin/main`.
+- Railway backend `web` GitHub deployment `f7e379fb-c604-4c22-8b20-da7944eb7cba` succeeded for commit `ef63f79`.
+- Railway frontend `sales-note-frontend` deployment `1d40ff2f-75fc-40e2-bc8c-f7f5c9a2352b` succeeded for commit `ef63f79`.
+- Production smoke passed for backend health/readiness, frontend shell, removed `/data-cleanup/` plus `/downloads/` routes, and protected API behavior.
+- Anonymous `/notes/?create=1` and `/schedules/` serve the React shell with HTTP 200, while direct `/reporting/api/notes/` and `/reporting/api/schedules/` remain protected with HTTP 401.
 
 ### 수동 서버 테스트 절차
 

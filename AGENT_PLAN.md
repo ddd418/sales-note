@@ -30,7 +30,7 @@
 - `git diff --check`
 - Commit, push, deploy backend, and smoke `/notes/?create=1`, `/schedules/`, and protected API behavior.
 
-**Status**: Implemented and locally validated; deployment pending.
+**Status**: Implemented, pushed, deployed to Railway, and smoke-tested.
 
 ## 2026-06-15 Asset 1 service overdue completion-date fix plan
 
