@@ -41,7 +41,7 @@ import json
 import re
 import html
 import unicodedata
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -8754,6 +8754,67 @@ def _parse_iso_date_or_none(value):
         return None
 
 
+_NOTE_FOLLOWUP_SCHEDULE_MARKER = '자동 생성: 영업노트 후속 미팅'
+_NOTE_FOLLOWUP_SCHEDULE_TIME = time(9, 0)
+
+
+def _notes_followup_schedule_notes(history):
+    parts = [
+        _NOTE_FOLLOWUP_SCHEDULE_MARKER,
+        f'원본 노트: /notes/{history.id}/',
+    ]
+    next_action = (history.next_action or '').strip()
+    if next_action:
+        parts.append(f'다음 액션: {next_action}')
+    return '\n'.join(parts)
+
+
+def _notes_find_existing_followup_schedule(user, followup, department, next_action_date):
+    queryset = Schedule.objects.filter(
+        user=user,
+        activity_type='customer_meeting',
+        status='scheduled',
+        visit_date=next_action_date,
+    )
+    if followup:
+        queryset = queryset.filter(followup=followup)
+    elif department:
+        queryset = queryset.filter(followup__isnull=True, department=department)
+    else:
+        return None
+    return queryset.order_by('visit_time', 'id').first()
+
+
+def _notes_create_followup_schedule_for_history(history):
+    next_action_date = history.next_action_date
+    followup = history.followup
+    department = history.department or (followup.department if followup and followup.department else None)
+    if not next_action_date or (not followup and not department):
+        return None, False
+
+    existing_schedule = _notes_find_existing_followup_schedule(
+        history.user,
+        followup,
+        department,
+        next_action_date,
+    )
+    if existing_schedule:
+        return existing_schedule, False
+
+    schedule = Schedule.objects.create(
+        user=history.user,
+        company=history.company,
+        followup=followup,
+        department=department,
+        visit_date=next_action_date,
+        visit_time=_NOTE_FOLLOWUP_SCHEDULE_TIME,
+        activity_type='customer_meeting',
+        status='scheduled',
+        notes=_notes_followup_schedule_notes(history),
+    )
+    return schedule, True
+
+
 def _notes_action_types_for_edit(request, history):
     action_types = _notes_create_action_types(request)
     action_values = {item['value'] for item in action_types}
@@ -9607,7 +9668,12 @@ def notes_create_api(request):
         history_kwargs['delivery_items'] = delivery_text
         history_kwargs['delivery_amount'] = delivery_amount
 
-    history = History.objects.create(**history_kwargs)
+    with transaction.atomic():
+        history = History.objects.create(**history_kwargs)
+        followup_schedule, followup_schedule_created = _notes_create_followup_schedule_for_history(history)
+        if followup_schedule and not linked_schedule:
+            history.schedule = followup_schedule
+            history.save(update_fields=['schedule'])
 
     try:
         if history.action_type == 'customer_meeting' and history.followup:
@@ -9616,12 +9682,21 @@ def notes_create_api(request):
     except Exception:
         pass
 
+    followup_schedule_payload = _notes_create_schedule_payload(followup_schedule) if followup_schedule else None
+    message = '영업노트를 저장했습니다.'
+    if followup_schedule_created:
+        message = '영업노트를 저장하고 후속 미팅 일정을 생성했습니다.'
+    elif followup_schedule:
+        message = '영업노트를 저장하고 기존 후속 미팅 일정에 연결했습니다.'
+
     return JsonResponse({
         'success': True,
-        'message': '영업노트를 저장했습니다.',
+        'message': message,
         'historyId': history.id,
         'href': reverse('reporting:history_detail', args=[history.id]),
         'reactHref': f'/notes/{history.id}/',
+        'followupSchedule': followup_schedule_payload,
+        'followupScheduleCreated': bool(followup_schedule_created),
         'note': _notes_history_payload(history, timezone.localdate(), False),
     }, status=201)
 

@@ -23575,7 +23575,7 @@ export function App() {
     setNoteCreateError('');
     setNoteCreateMessage('');
     try {
-      await createSalesNote(payload, notesData.create.submitUrl);
+      const result = await createSalesNote(payload, notesData.create.submitUrl);
       const refreshedData = await loadNotesData({
         q: noteQuery,
         dateFrom: noteDateFrom,
@@ -23587,7 +23587,7 @@ export function App() {
       });
       setNotesData(refreshedData);
       resetNoteCreateForm(refreshedData);
-      setNoteCreateMessage('영업노트를 저장했습니다.');
+      setNoteCreateMessage(result.message || '영업노트를 저장했습니다.');
     } catch (error) {
       setNoteCreateError(error instanceof Error ? error.message : '영업노트 저장에 실패했습니다.');
     } finally {

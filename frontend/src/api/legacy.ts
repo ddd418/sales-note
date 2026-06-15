@@ -1955,6 +1955,8 @@ export type NoteCreateResponse = {
   historyId?: number;
   href?: string;
   reactHref?: string;
+  followupSchedule?: NoteCreateScheduleOption | null;
+  followupScheduleCreated?: boolean;
   note?: NoteItem;
 };
 

@@ -1,5 +1,90 @@
 # AGENT_REPORT.md
 
+## 2026-06-15 — 영업노트 후속일 자동 미팅 일정 생성
+
+### 요약
+
+- 영업노트 빠른 작성에서 `다음 예정일`을 입력하면 해당 날짜에 `고객 미팅` 일정이 자동으로 생성되도록 했습니다.
+- 고객 연결 노트와 부서/연구실만 연결한 노트 모두 지원합니다.
+- 같은 사용자, 같은 고객/부서, 같은 날짜에 이미 예정된 고객 미팅이 있으면 새로 만들지 않고 기존 일정을 재사용합니다.
+- 자동 생성된 일정은 기본 `09:00`, 상태 `예정됨`, 유형 `고객 미팅`으로 저장됩니다.
+- 자동 일정 메모에는 원본 노트 링크와 다음 액션을 남겨 추적할 수 있게 했습니다.
+- 프론트는 서버 응답 메시지를 표시하도록 바꿔, 저장 직후 `후속 미팅 일정을 생성했습니다` 메시지가 보입니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 영업노트 작성 후 후속 미팅 일정을 따로 다시 등록하는 중복 작업을 줄였습니다.
+- 고객 없는 부서/연구실 노트도 후속 미팅 일정으로 이어집니다.
+- 기존 미팅 일정이 있는 경우 재사용해 일정 중복을 줄입니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 기존 `scheduleId`로 연결한 소스 일정은 유지합니다.
+- 다음 예정일이 없는 노트는 일정이 자동 생성되지 않습니다.
+- 매니저 작성 차단, 고객/부서 권한 체크, 일정/고객 mismatch 검증은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.NotesSummaryApiTests.test_notes_create_api_creates_own_customer_note reporting.tests.NotesSummaryApiTests.test_notes_create_api_creates_department_only_note reporting.tests.NotesSummaryApiTests.test_notes_create_api_creates_department_only_followup_meeting_schedule reporting.tests.NotesSummaryApiTests.test_notes_create_api_reuses_existing_followup_meeting_schedule reporting.tests.NotesSummaryApiTests.test_notes_create_api_links_schedule_and_uses_schedule_date reporting.tests.NotesSummaryApiTests.test_notes_create_api_links_department_only_schedule reporting.tests.NotesSummaryApiTests.test_notes_create_api_blocks_manager_and_other_owner_customer --keepdb --verbosity=1
+→ OK, 7 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing warning only: App chunk larger than 500 kB
+
+cd frontend && node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 자동 생성 일정 시간은 현재 `09:00` 고정입니다. 사용자가 시간까지 고를 필요가 생기면 노트 폼에 후속 시간 필드를 추가해야 합니다.
+- 노트 수정 시 후속일 변경으로 일정을 새로 만들거나 옮기는 기능은 이번 범위에 포함하지 않았습니다.
+
+### 추천 다음 작업
+
+- 영업노트 폼에 `후속 시간` 선택을 추가하거나, 자동 생성된 일정 링크를 성공 메시지 옆에 바로 표시하는 UX를 보강할 수 있습니다.
+
+### 운영 배포 상태
+
+- Pending. 로컬 검증은 완료했고, commit/push 후 Railway backend/frontend 배포와 smoke test가 필요합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/notes/?create=1`에 로그인 상태로 접속합니다.
+2. 고객 또는 부서/연구실을 선택하고 활동 내용, 다음 액션, 다음 예정일을 입력합니다.
+3. 저장 후 성공 메시지에 후속 미팅 일정 생성 문구가 보이는지 확인합니다.
+4. `/schedules/`에서 해당 날짜의 `고객 미팅` 일정이 생성되었는지 확인합니다.
+5. 같은 고객/부서와 같은 날짜로 다시 노트를 저장했을 때 일정이 중복 생성되지 않는지 확인합니다.
+
 ## 2026-06-15 — 장비 A/S 완료일 기록의 처리 지연 오표시 수정
 
 ### 요약

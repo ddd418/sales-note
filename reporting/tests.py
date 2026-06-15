@@ -7879,10 +7879,11 @@ class NotesSummaryApiTests(TestCase):
 
     def test_notes_create_api_creates_own_customer_note(self):
         from django.utils import timezone
-        from reporting.models import History
+        from reporting.models import History, Schedule
 
         target = self._create_note(self.user, '빠른작성기준')
         self.client.force_login(self.user)
+        followup_date = timezone.localdate()
 
         response = self.client.post(
             self.create_url,
@@ -7891,7 +7892,7 @@ class NotesSummaryApiTests(TestCase):
                 'actionType': 'customer_meeting',
                 'content': 'React에서 바로 작성한 영업노트',
                 'nextAction': '다음 주 견적 확인',
-                'nextActionDate': timezone.localdate().isoformat(),
+                'nextActionDate': followup_date.isoformat(),
                 'activityDate': timezone.localdate().isoformat(),
             }),
             content_type='application/json',
@@ -7906,10 +7907,24 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(created.content, 'React에서 바로 작성한 영업노트')
         self.assertEqual(created.next_action, '다음 주 견적 확인')
         self.assertEqual(created.meeting_date, timezone.localdate())
+        followup_schedule = Schedule.objects.get(
+            user=self.user,
+            followup=target.followup,
+            visit_date=followup_date,
+            activity_type='customer_meeting',
+        )
+        self.assertEqual(followup_schedule.visit_time.strftime('%H:%M'), '09:00')
+        self.assertEqual(followup_schedule.status, 'scheduled')
+        self.assertIn('자동 생성: 영업노트 후속 미팅', followup_schedule.notes)
+        self.assertIn(f'/notes/{created.id}/', followup_schedule.notes)
+        self.assertEqual(created.schedule_id, followup_schedule.id)
+        self.assertTrue(payload['followupScheduleCreated'])
+        self.assertEqual(payload['followupSchedule']['id'], followup_schedule.id)
+        self.assertIn('후속 미팅 일정을 생성', payload['message'])
 
     def test_notes_create_api_creates_department_only_note(self):
         from django.utils import timezone
-        from reporting.models import History
+        from reporting.models import History, Schedule
 
         department = self._create_department_only(self.user, '고객없는노트')
         self.client.force_login(self.user)
@@ -7935,6 +7950,93 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(payload['note']['customer'], '담당자 미등록')
         self.assertEqual(payload['note']['departmentId'], department.id)
         self.assertEqual(payload['note']['customerHref'], f'/accounts/{department.id}/')
+        self.assertEqual(Schedule.objects.count(), 0)
+
+    def test_notes_create_api_creates_department_only_followup_meeting_schedule(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import History, Schedule
+
+        department = self._create_department_only(self.user, '부서후속일정')
+        followup_date = timezone.localdate() + timedelta(days=3)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'departmentId': department.id,
+                'actionType': 'customer_meeting',
+                'content': '부서만 연결한 영업노트',
+                'nextAction': '담당자 만나서 요구사항 확인',
+                'nextActionDate': followup_date.isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        created = History.objects.get(pk=payload['historyId'])
+        followup_schedule = Schedule.objects.get(
+            user=self.user,
+            followup__isnull=True,
+            department=department,
+            visit_date=followup_date,
+            activity_type='customer_meeting',
+        )
+        self.assertEqual(created.schedule_id, followup_schedule.id)
+        self.assertEqual(followup_schedule.company, self.company)
+        self.assertIn('담당자 만나서 요구사항 확인', followup_schedule.notes)
+        self.assertTrue(payload['followupScheduleCreated'])
+        self.assertEqual(payload['followupSchedule']['departmentId'], department.id)
+
+    def test_notes_create_api_reuses_existing_followup_meeting_schedule(self):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from reporting.models import History, Schedule
+
+        target = self._create_note(self.user, '기존후속일정')
+        followup_date = timezone.localdate() + timedelta(days=5)
+        existing_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            department=target.followup.department,
+            visit_date=followup_date,
+            visit_time=time(14, 0),
+            activity_type='customer_meeting',
+            status='scheduled',
+            notes='이미 등록한 후속 미팅',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'customer_meeting',
+                'content': '기존 후속 미팅이 있는 영업노트',
+                'nextAction': '미팅에서 예산 확인',
+                'nextActionDate': followup_date.isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        created = History.objects.get(pk=payload['historyId'])
+        self.assertEqual(
+            Schedule.objects.filter(
+                user=self.user,
+                followup=target.followup,
+                visit_date=followup_date,
+                activity_type='customer_meeting',
+            ).count(),
+            1,
+        )
+        self.assertEqual(created.schedule_id, existing_schedule.id)
+        self.assertFalse(payload['followupScheduleCreated'])
+        self.assertEqual(payload['followupSchedule']['id'], existing_schedule.id)
+        self.assertIn('기존 후속 미팅 일정', payload['message'])
 
     def test_notes_create_api_requires_customer_when_department_has_contacts(self):
         target = self._create_note(self.user, '고객있는부서')

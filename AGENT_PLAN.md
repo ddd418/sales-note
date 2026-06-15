@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-06-15 Sales note next-action auto meeting schedule plan
+
+**Background**:
+
+- User wants a meeting schedule to be created automatically on the selected follow-up date when writing a sales note.
+- React quick note creation already sends `nextActionDate` to `notes_create_api`.
+- Existing models are sufficient: `History.next_action_date` stores the follow-up date and `Schedule` stores customer/department meeting schedules.
+
+**DB change required**: No schema migration.
+
+- Use existing `History.schedule` and `Schedule` fields.
+
+**Implementation scope**:
+
+- Add a backend helper that creates or reuses a `customer_meeting` `Schedule` for the note's `next_action_date`.
+- Support both customer-linked and department-only sales notes.
+- Avoid duplicate auto-created schedules for the same owner, target, date, and auto-note marker.
+- Keep linked source schedules intact; the auto-created schedule should be the future follow-up meeting, not the source meeting/report schedule.
+- Return the created/reused follow-up schedule in the note create API response and show a useful success message.
+- Add focused tests for customer notes, department-only notes, no-date notes, and duplicate prevention.
+
+**Validation plan**:
+
+- Focused notes create API tests.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Commit, push, deploy backend, and smoke `/notes/?create=1`, `/schedules/`, and protected API behavior.
+
+**Status**: Implemented and locally validated; deployment pending.
+
 ## 2026-06-15 Asset 1 service overdue completion-date fix plan
 
 **Background**:
