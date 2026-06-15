@@ -12020,7 +12020,7 @@ def _schedules_mark_source_quote_schedules_completed(
     if not all_source_quote_schedule_ids or delivery_schedule.activity_type != 'delivery':
         return []
 
-    quote_schedules = Schedule.objects.select_for_update().select_related(
+    quote_schedules = Schedule.objects.select_for_update(of=('self',)).select_related(
         'followup',
         'followup__department',
     ).filter(

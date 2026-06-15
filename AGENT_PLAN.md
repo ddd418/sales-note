@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-06-15 Schedule 930 delivery item save PostgreSQL lock fix plan
+
+**Background**:
+
+- User reported `/schedules/930/` still returns `{"success": false, "error": "납품 품목 저장 중 오류가 발생했습니다."}` when saving delivery items after checking quote import.
+- A rollback-only reproduction against the production PostgreSQL database returned the same 500 without persisting changes.
+- The actual exception is `FOR UPDATE cannot be applied to the nullable side of an outer join` in `_schedules_mark_source_quote_schedules_completed`.
+- Root cause: `Schedule.objects.select_for_update().select_related('followup', 'followup__department')` creates nullable outer joins while PostgreSQL tries to lock all selected joined tables.
+
+**DB change required**: No schema migration.
+
+- Existing schema is correct; production `reporting_deliveryitem.option_description` and quote source columns exist.
+
+**Implementation scope**:
+
+- Limit the quote schedule row lock to the `Schedule` table with `select_for_update(of=('self',))`.
+- Keep the followup/department eager loads for target matching.
+- Keep the existing checked quote completion regression tests focused on completion/permission behavior.
+- Verify the PostgreSQL lock behavior with a rollback-only production DB probe before deployment.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused schedule delivery item checked quote tests.
+- Rollback-only production DB reproduction for schedule `930` and quote `919`.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Commit, push, deploy backend, and smoke `/schedules/930/` plus protected schedule API behavior.
+
+**Status**: Fixed and locally validated; deployment pending.
+
 ## 2026-06-15 AI workspace UI and mailbox direct-send fix plan
 
 **Background**:

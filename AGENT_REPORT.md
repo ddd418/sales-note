@@ -1,5 +1,73 @@
 # AGENT_REPORT.md
 
+## 2026-06-15 — 일정 930 납품 품목 저장 PostgreSQL lock 오류 수정
+
+### 요약
+
+- `/schedules/930/`에서 견적 `919`를 체크한 뒤 납품 품목을 저장하면 `납품 품목 저장 중 오류가 발생했습니다.` 500이 나는 원인을 확인했습니다.
+- 실제 원인은 PostgreSQL이 `select_for_update()`와 nullable `select_related('followup__department')` outer join을 함께 처리하지 못해 발생한 `FOR UPDATE cannot be applied to the nullable side of an outer join` 오류였습니다.
+- 견적일정 완료 처리 시 잠금 대상을 `Schedule` 테이블 자체로 제한하도록 수정했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 견적을 직접 불러오지 않고 체크만 한 납품 일정도 저장 후 연결 견적일정을 완료 처리할 수 있습니다.
+- 기존 납품 품목, 옵션 설명, 견적 그룹 메모, 선결제 처리 흐름은 유지했습니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 견적/납품 target 검증과 권한 체크는 그대로 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+Rollback-only production DB probe for schedule 930 and quote 919
+→ Before fix: reproduced HTTP 500 with PostgreSQL FOR UPDATE nullable outer join error
+→ After fix: HTTP 200, success true, transaction rolled back
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_checked_quote_completed_without_imported_items reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_checked_department_only_quote_completed reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_rejects_checked_quote_from_different_department reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_imported_quote_completed --keepdb --verbosity=1
+→ OK, 4 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 화면에서 사용자가 실제 로그인 세션으로 `/schedules/930/` 저장 버튼을 눌러 최종 확인해야 합니다.
+
+### 추천 다음 작업
+
+- 견적 체크 기반 납품 완료 처리 UX를 운영에서 한 번 더 확인한 뒤, 동일 패턴이 있는 다른 일정 저장 API도 PostgreSQL lock 방식 점검을 진행하는 것이 좋습니다.
+
+### 운영 배포 상태
+
+- Pending. 로컬 검증과 운영 DB rollback probe는 완료했고, commit/push 후 Railway 배포와 smoke test가 필요합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/schedules/930/`에 로그인 상태로 접속합니다.
+2. 납품 품목 영역에서 기존 품목을 유지한 채 저장합니다.
+3. 견적 `919` 체크 상태로 저장해도 `납품 품목 저장 중 오류가 발생했습니다.`가 뜨지 않는지 확인합니다.
+4. 저장 후 `/schedules/919/` 또는 파이프라인에서 해당 견적일정이 완료 처리되는지 확인합니다.
+
 ## 2026-06-15 — AI 브리핑 UI 복구 및 메일 바로 발송 예약 우회 제거
 
 ### 요약
