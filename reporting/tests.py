@@ -6314,6 +6314,52 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(asset_payload['latestCalibration']['dueState'], 'due30')
         self.assertEqual(asset_payload['latestCalibration']['certificateLabel'], '성적서 없음')
 
+    def test_customer_assets_summary_api_treats_completed_date_open_status_as_closed(self):
+        target = self._create_customer(self.user, '완료일장비고객')
+        asset = CustomerAsset.objects.create(
+            company=target.company,
+            department=target.department,
+            primary_followup=target,
+            asset_name='Completed Pipette',
+            model_name='CP-10',
+            status='active',
+            created_by=self.user,
+        )
+        service_case = ServiceCase.objects.create(
+            asset=asset,
+            followup=target,
+            case_type='service',
+            status='received',
+            priority='high',
+            received_date=timezone.localdate() - timedelta(days=20),
+            due_date=timezone.localdate() - timedelta(days=10),
+            completed_date=timezone.localdate() - timedelta(days=9),
+            symptom='처리 완료된 접수 상태 케이스',
+            resolution='서비스 처리 완료',
+            created_by=self.user,
+            assigned_to=self.user,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:customer_assets_summary_api'))
+        overdue_response = self.client.get(reverse('reporting:customer_assets_summary_api'), {'service': 'overdue'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        asset_payload = next(item for item in payload['assets'] if item['id'] == asset.id)
+        self.assertFalse(asset_payload['serviceOverdue'])
+        self.assertEqual(asset_payload['serviceStateLabel'], '진행 A/S 없음')
+        self.assertEqual(asset_payload['openServiceCount'], 0)
+        self.assertEqual(asset_payload['latestServiceCase']['id'], service_case.id)
+        self.assertEqual(asset_payload['latestServiceCase']['status'], 'completed')
+        self.assertEqual(asset_payload['latestServiceCase']['statusLabel'], '완료')
+        self.assertEqual(asset_payload['latestServiceCase']['lifecycleLabel'], '완료')
+        self.assertFalse(asset_payload['latestServiceCase']['overdue'])
+        self.assertEqual(payload['metrics']['openServiceAssets'], 0)
+        self.assertNotIn(f'service-{service_case.id}', {item['id'] for item in payload['workQueue']})
+        self.assertEqual(overdue_response.status_code, 200)
+        self.assertNotIn(asset.id, {item['id'] for item in overdue_response.json()['assets']})
+
     def test_customer_asset_directory_mutation_updates_asset_service_and_calibration(self):
         target = self._create_customer(self.user, '장비운영고객')
         asset = CustomerAsset.objects.create(
@@ -6360,7 +6406,7 @@ class CustomersSummaryApiTests(TestCase):
             reverse('reporting:customer_asset_directory_service_case_update_api', args=[asset.id, service_case.id]),
             {
                 'case_type': 'inspection',
-                'status': 'completed',
+                'status': 'received',
                 'priority': 'normal',
                 'received_date': timezone.localdate().isoformat(),
                 'completed_date': timezone.localdate().isoformat(),
@@ -9439,6 +9485,37 @@ class ServiceCasesSummaryApiTests(TestCase):
         self.assertEqual(payload['serviceCases'][0]['companyName'], 'PCR 업체')
         self.assertTrue(payload['serviceCases'][0]['overdue'])
         self.assertTrue(any(option['value'] == 'open' for option in payload['options']['statuses']))
+
+    def test_service_cases_summary_api_treats_completed_date_open_status_as_completed(self):
+        service_case = self._create_service_case(
+            self.user,
+            '완료일접수',
+            status='received',
+            priority='high',
+            case_type='service',
+        )
+        service_case.completed_date = timezone.localdate()
+        service_case.save(update_fields=['completed_date'])
+        self.client.force_login(self.user)
+
+        open_response = self.client.get(self.url, {'status': 'open'})
+        completed_response = self.client.get(self.url, {'status': 'completed'})
+
+        self.assertEqual(open_response.status_code, 200)
+        open_payload = open_response.json()
+        self.assertEqual(open_payload['metrics']['openCases'], 0)
+        self.assertEqual(open_payload['metrics']['overdueCases'], 0)
+        self.assertEqual(open_payload['metrics']['completedCases'], 1)
+        self.assertNotIn(service_case.id, {item['id'] for item in open_payload['serviceCases']})
+
+        self.assertEqual(completed_response.status_code, 200)
+        completed_payload = completed_response.json()
+        self.assertEqual(completed_payload['metrics']['filteredCases'], 1)
+        self.assertEqual(completed_payload['serviceCases'][0]['id'], service_case.id)
+        self.assertEqual(completed_payload['serviceCases'][0]['status'], 'completed')
+        self.assertEqual(completed_payload['serviceCases'][0]['statusLabel'], '완료')
+        self.assertEqual(completed_payload['serviceCases'][0]['lifecycleLabel'], '완료')
+        self.assertFalse(completed_payload['serviceCases'][0]['overdue'])
 
     def test_service_cases_summary_api_manager_sees_same_company_only(self):
         own = self._create_service_case(self.user, '내서비스')

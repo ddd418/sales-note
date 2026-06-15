@@ -5795,6 +5795,42 @@ def _parse_asset_date(value, field_label):
         return None, f'{field_label} 형식이 올바르지 않습니다.'
 
 
+_SERVICE_CASE_OPEN_STATUSES = ('received', 'in_progress', 'waiting')
+_SERVICE_CASE_STATUS_LABELS = dict(ServiceCase.STATUS_CHOICES)
+
+
+def _service_case_open_q():
+    return Q(status__in=_SERVICE_CASE_OPEN_STATUSES, completed_date__isnull=True)
+
+
+def _service_case_overdue_q(today):
+    return _service_case_open_q() & Q(due_date__lt=today)
+
+
+def _service_case_effective_status(case):
+    if case.status in _SERVICE_CASE_OPEN_STATUSES and case.completed_date:
+        return 'completed'
+    return case.status
+
+
+def _service_case_status_label(status):
+    return _SERVICE_CASE_STATUS_LABELS.get(status, status)
+
+
+def _service_case_is_open(case):
+    return case.status in _SERVICE_CASE_OPEN_STATUSES and not case.completed_date
+
+
+def _service_case_is_overdue(case, today):
+    return bool(_service_case_is_open(case) and case.due_date and case.due_date < today)
+
+
+def _normalize_service_case_status(status, completed_date):
+    if status in _SERVICE_CASE_OPEN_STATUSES and completed_date:
+        return 'completed'
+    return status
+
+
 def _service_case_payload(case, followup_id=None, asset_scoped=False):
     update_url = ''
     if asset_scoped and case.asset_id:
@@ -5802,8 +5838,8 @@ def _service_case_payload(case, followup_id=None, asset_scoped=False):
     elif followup_id:
         update_url = reverse('reporting:customer_service_case_update_api', args=[followup_id, case.id])
     today = timezone.localdate()
-    open_statuses = {'received', 'in_progress', 'waiting'}
-    overdue = bool(case.status in open_statuses and case.due_date and case.due_date < today)
+    effective_status = _service_case_effective_status(case)
+    overdue = _service_case_is_overdue(case, today)
 
     return {
         'id': case.id,
@@ -5811,8 +5847,8 @@ def _service_case_payload(case, followup_id=None, asset_scoped=False):
         'followupId': case.followup_id,
         'caseType': case.case_type,
         'caseTypeLabel': case.get_case_type_display(),
-        'status': case.status,
-        'statusLabel': case.get_status_display(),
+        'status': effective_status,
+        'statusLabel': _service_case_status_label(effective_status),
         'priority': case.priority,
         'priorityLabel': case.get_priority_display(),
         'receivedDate': _date_or_none(case.received_date),
@@ -5825,7 +5861,7 @@ def _service_case_payload(case, followup_id=None, asset_scoped=False):
         'reportLabel': '리포트 첨부' if case.service_report else '리포트 없음',
         'reportUrl': reverse('reporting:customer_asset_service_report_download_api', args=[case.id]) if case.service_report else '',
         'overdue': overdue,
-        'lifecycleLabel': '처리 지연' if overdue else case.get_status_display(),
+        'lifecycleLabel': '처리 지연' if overdue else _service_case_status_label(effective_status),
         'updateUrl': update_url,
         'updatedAt': _datetime_or_none(case.updated_at),
     }
@@ -5887,8 +5923,8 @@ def _customer_asset_payload(asset, service_cases=None, calibration_records=None,
     elif followup_id:
         update_url = reverse('reporting:customer_asset_update_api', args=[followup_id, asset.id])
     today = timezone.localdate()
-    open_service_cases = [case for case in service_cases if case.status not in ['completed', 'cancelled']]
-    service_overdue = any(case.due_date and case.due_date < today for case in open_service_cases)
+    open_service_cases = [case for case in service_cases if _service_case_is_open(case)]
+    service_overdue = any(_service_case_is_overdue(case, today) for case in open_service_cases)
     calibration_alert, calibration_alert_label = _calibration_due_state(latest_calibration, today)
     account_label = ' · '.join(
         value for value in [
@@ -6189,14 +6225,14 @@ def _customer_asset_account_options(request, user_profile, q='', limit=80):
 
 def _customer_asset_work_queue_payload(scope_users, today):
     due_limit = today + timedelta(days=30)
-    open_service_statuses = ['received', 'in_progress', 'waiting']
     priority_rank = {'urgent': 0, 'high': 1, 'normal': 2, 'low': 3}
     items = []
 
     service_cases = list(
         ServiceCase.objects.filter(
             asset__created_by__in=scope_users,
-            status__in=open_service_statuses,
+        ).filter(
+            _service_case_open_q()
         ).select_related(
             'asset',
             'asset__company',
@@ -6215,7 +6251,7 @@ def _customer_asset_work_queue_payload(scope_users, today):
     for case in service_cases[:8]:
         asset = case.asset
         followup = asset.primary_followup
-        is_overdue = bool(case.due_date and case.due_date < today)
+        is_overdue = _service_case_is_overdue(case, today)
         items.append({
             'id': f'service-{case.id}',
             'kind': 'service_overdue' if is_overdue else 'service_open',
@@ -6227,7 +6263,7 @@ def _customer_asset_work_queue_payload(scope_users, today):
             'departmentName': asset.department.name if asset.department else '',
             'ownerName': _user_display_name(asset.created_by) if asset.created_by else '',
             'dueDate': _date_or_none(case.due_date),
-            'statusLabel': case.get_status_display(),
+            'statusLabel': _service_case_status_label(_service_case_effective_status(case)),
             'priorityLabel': case.get_priority_display(),
             'href': f'/assets/?asset={asset.id}',
             'customerHref': f'/customers/{followup.id}/' if followup else '',
@@ -6299,7 +6335,6 @@ def customer_assets_summary_api(request):
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
     today = timezone.localdate()
     due_limit = today + timedelta(days=30)
-    open_service_statuses = ['received', 'in_progress', 'waiting']
     can_manage_assets = not user_profile.is_manager()
 
     q = request.GET.get('q', '').strip()
@@ -6354,10 +6389,14 @@ def customer_assets_summary_api(request):
         )
 
     if service == 'open':
-        queryset = queryset.filter(service_cases__status__in=open_service_statuses)
+        queryset = queryset.filter(
+            service_cases__status__in=_SERVICE_CASE_OPEN_STATUSES,
+            service_cases__completed_date__isnull=True,
+        )
     elif service == 'overdue':
         queryset = queryset.filter(
-            service_cases__status__in=open_service_statuses,
+            service_cases__status__in=_SERVICE_CASE_OPEN_STATUSES,
+            service_cases__completed_date__isnull=True,
             service_cases__due_date__lt=today,
         )
     elif service == 'none':
@@ -6410,7 +6449,8 @@ def customer_assets_summary_api(request):
     total_assets = base_assets.count()
     active_assets = base_assets.filter(status='active').count()
     open_service_assets = base_assets.filter(
-        service_cases__status__in=open_service_statuses
+        service_cases__status__in=_SERVICE_CASE_OPEN_STATUSES,
+        service_cases__completed_date__isnull=True,
     ).distinct().count()
     due_calibration_assets = base_assets.filter(
         calibration_records__next_due_date__gte=today,
@@ -6644,14 +6684,15 @@ def _service_case_list_payload(case, today):
     customer_name = ''
     if followup:
         customer_name = followup.customer_name or followup.manager or ''
-    open_statuses = {'received', 'in_progress', 'waiting'}
+    effective_status = _service_case_effective_status(case)
+    overdue = _service_case_is_overdue(case, today)
     asset_href = f'/assets/?asset={asset.id}' if asset else '/assets/'
     return {
         'id': case.id,
         'caseType': case.case_type,
         'caseTypeLabel': case.get_case_type_display(),
-        'status': case.status,
-        'statusLabel': case.get_status_display(),
+        'status': effective_status,
+        'statusLabel': _service_case_status_label(effective_status),
         'priority': case.priority,
         'priorityLabel': case.get_priority_display(),
         'receivedDate': _date_or_none(case.received_date),
@@ -6676,8 +6717,8 @@ def _service_case_list_payload(case, today):
         'customerHref': f'/customers/{followup.id}/' if followup else '',
         'accountHref': f'/accounts/{department.id}/' if department else '',
         'updateUrl': reverse('reporting:customer_asset_directory_service_case_update_api', args=[asset.id, case.id]) if asset else '',
-        'overdue': bool(case.status in open_statuses and case.due_date and case.due_date < today),
-        'lifecycleLabel': '처리 지연' if case.status in open_statuses and case.due_date and case.due_date < today else case.get_status_display(),
+        'overdue': overdue,
+        'lifecycleLabel': '처리 지연' if overdue else _service_case_status_label(effective_status),
         'updatedAt': _datetime_or_none(case.updated_at),
     }
 
@@ -6694,7 +6735,6 @@ def service_cases_summary_api(request):
     user_profile = get_user_profile(request.user)
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
     today = timezone.localdate()
-    open_statuses = ['received', 'in_progress', 'waiting']
 
     q = request.GET.get('q', '').strip()
     status = request.GET.get('status', '').strip()
@@ -6735,12 +6775,19 @@ def service_cases_summary_api(request):
             queryset = queryset.none()
 
     valid_statuses = {value for value, _label in ServiceCase.STATUS_CHOICES}
-    if status in valid_statuses:
+    if status in _SERVICE_CASE_OPEN_STATUSES:
+        queryset = queryset.filter(status=status, completed_date__isnull=True)
+    elif status == 'completed':
+        queryset = queryset.filter(
+            Q(status='completed') |
+            Q(status__in=_SERVICE_CASE_OPEN_STATUSES, completed_date__isnull=False)
+        )
+    elif status in valid_statuses:
         queryset = queryset.filter(status=status)
     elif status == 'open':
-        queryset = queryset.filter(status__in=open_statuses)
+        queryset = queryset.filter(_service_case_open_q())
     elif status == 'overdue':
-        queryset = queryset.filter(status__in=open_statuses, due_date__lt=today)
+        queryset = queryset.filter(_service_case_overdue_q(today))
 
     if priority in {value for value, _label in ServiceCase.PRIORITY_CHOICES}:
         queryset = queryset.filter(priority=priority)
@@ -6804,9 +6851,12 @@ def service_cases_summary_api(request):
         'metrics': {
             'totalCases': base_cases.count(),
             'filteredCases': filtered_count,
-            'openCases': base_cases.filter(status__in=open_statuses).count(),
-            'overdueCases': base_cases.filter(status__in=open_statuses, due_date__lt=today).count(),
-            'completedCases': base_cases.filter(status='completed').count(),
+            'openCases': base_cases.filter(_service_case_open_q()).count(),
+            'overdueCases': base_cases.filter(_service_case_overdue_q(today)).count(),
+            'completedCases': base_cases.filter(
+                Q(status='completed') |
+                Q(status__in=_SERVICE_CASE_OPEN_STATUSES, completed_date__isnull=False)
+            ).count(),
             'urgentCases': base_cases.filter(priority='urgent').count(),
             'returnedCases': len(cases),
             'truncated': filtered_count > len(cases),
@@ -6959,6 +7009,7 @@ def customer_asset_directory_service_case_save_api(request, asset_id, case_id=No
     completed_date, completed_error = _parse_asset_date(request.POST.get('completed_date'), '완료일')
     if completed_error:
         return JsonResponse({'success': False, 'error': completed_error}, status=400)
+    status = _normalize_service_case_status(status, completed_date)
 
     service_report = request.FILES.get('service_report')
     if service_report:
@@ -8217,6 +8268,7 @@ def customer_service_case_save_api(request, followup_id, case_id=None):
     completed_date, completed_error = _parse_asset_date(request.POST.get('completed_date'), '완료일')
     if completed_error:
         return JsonResponse({'success': False, 'error': completed_error}, status=400)
+    status = _normalize_service_case_status(status, completed_date)
 
     service_report = request.FILES.get('service_report')
     if service_report:
@@ -14160,12 +14212,10 @@ def _ai_workspace_build_action_queue(user, week_start, week_end, limit=20, depar
             },
         ))
 
-    open_service_statuses = ['received', 'in_progress', 'waiting']
     service_case_qs = ServiceCase.objects.filter(
         asset__created_by=user,
         asset__status='active',
-        status__in=open_service_statuses,
-    )
+    ).filter(_service_case_open_q())
     if department_id:
         service_case_qs = service_case_qs.filter(asset__department_id=department_id)
     service_case_qs = service_case_qs.select_related(

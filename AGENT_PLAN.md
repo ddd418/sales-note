@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-06-15 Asset 1 service overdue completion-date fix plan
+
+**Background**:
+
+- User reported `/assets/?asset=1` still shows `A/S · 처리 지연` even after the service was handled.
+- Production read-only probe shows asset `1` has one `ServiceCase` with `status=received`, `due_date=2026-05-26`, `completed_date=2026-05-22`, and a resolution note.
+- Root cause: service overdue/open calculations only check `status` and `due_date`; they ignore `completed_date`, so a handled case with a stale open status is still treated as overdue.
+
+**DB change required**: No schema migration.
+
+- Existing `ServiceCase.completed_date` and `status` fields are sufficient.
+- No production data mutation is required because payload/read calculations can treat completed-date cases as closed, and future saves can normalize the status.
+
+**Implementation scope**:
+
+- Add shared service-case helpers for open/effective status/lifecycle labeling.
+- Exclude `completed_date` cases from open/overdue asset metrics, filters, work queue, and service list metrics.
+- Return an effective `completed` status/label in API payloads when `completed_date` exists but status is still open.
+- Normalize future service saves so entering a completed date marks the case completed.
+- Add focused regression tests for completed-date service cases with stale open statuses.
+
+**Validation plan**:
+
+- Focused customer asset and service summary API tests.
+- Rollback/read-only production DB probe for asset `1` payload behavior.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Commit, push, deploy backend, and smoke `/assets/?asset=1` plus protected API behavior.
+
+**Status**: Fixed and locally validated; deployment pending.
+
 ## 2026-06-15 Schedule 930 delivery item save PostgreSQL lock fix plan
 
 **Background**:

@@ -1,5 +1,85 @@
 # AGENT_REPORT.md
 
+## 2026-06-15 — 장비 A/S 완료일 기록의 처리 지연 오표시 수정
+
+### 요약
+
+- `/assets/?asset=1`에서 이미 처리한 A/S가 `A/S · 처리 지연`으로 표시되는 원인을 확인했습니다.
+- 운영 DB의 asset `1` 서비스 케이스는 `완료일=2026-05-22`와 처리 내용이 있지만 `status=received`, `처리 예정일=2026-05-26`으로 남아 있었습니다.
+- 기존 계산식은 `status`와 `due_date`만 보고 `completed_date`를 무시해서 완료일이 있는 케이스도 지연으로 계산했습니다.
+- 완료일이 있는 open 상태 서비스 케이스는 API 응답에서 완료로 취급하고, 진행/지연 지표와 작업 큐에서 제외하도록 수정했습니다.
+- 앞으로 저장할 때 완료일을 넣으면 상태가 접수/진행/대기여도 서버에서 `completed`로 정리합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 장비 디렉터리, 서비스 목록, 작업 큐, AI action queue가 같은 기준으로 완료된 A/S를 제외합니다.
+- 완료일이 있는 과거 데이터는 별도 DB 수정 없이 즉시 `완료`로 표시됩니다.
+- 서비스 저장 시 완료일과 상태가 서로 충돌하는 데이터가 새로 쌓이는 것을 줄였습니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 기존 `completed/cancelled` 상태 처리와 권한 체크는 유지했습니다.
+- 완료일이 없는 접수/진행/대기 건만 진행/지연 A/S로 계산합니다.
+
+### 실행한 명령과 결과
+
+```text
+Production read-only DB probe for asset 1 before fix
+→ status=received, due_date=2026-05-26, completed_date=2026-05-22, overdue=True
+
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_treats_completed_date_open_status_as_closed reporting.tests.CustomersSummaryApiTests.test_customer_assets_summary_api_returns_work_queue_and_directory_links reporting.tests.CustomersSummaryApiTests.test_customer_asset_directory_mutation_updates_asset_service_and_calibration reporting.tests.ServiceCasesSummaryApiTests.test_service_cases_summary_api_treats_completed_date_open_status_as_completed reporting.tests.ServiceCasesSummaryApiTests.test_service_cases_summary_api_lists_and_filters_records --keepdb --verbosity=1
+→ OK, 5 tests
+
+Production read-only API probe for asset 1 after fix
+→ HTTP 200
+→ serviceOverdue=False
+→ serviceStateLabel=진행 A/S 없음
+→ openServiceCount=0
+→ latestServiceCase status/statusLabel/lifecycleLabel=completed/완료/완료
+→ service-1 absent from workQueue
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 배포 후 사용자가 로그인 세션에서 실제 `/assets/?asset=1` 화면 표시를 확인해야 합니다.
+
+### 추천 다음 작업
+
+- 장비 서비스 UI에서 완료일 입력 시 상태 select도 즉시 `완료`로 바뀌도록 프론트 상호작용을 보강하면 사용자가 더 덜 헷갈립니다.
+
+### 운영 배포 상태
+
+- Pending. 로컬 검증과 운영 DB read-only probe는 완료했고, commit/push 후 Railway 배포와 smoke test가 필요합니다.
+
+### 수동 서버 테스트 절차
+
+1. `https://sales-note-frontend-production.up.railway.app/assets/?asset=1`에 로그인 상태로 접속합니다.
+2. 오른쪽 장비 상세에서 `A/S · 처리 지연`이 아니라 `A/S · 진행 A/S 없음`으로 보이는지 확인합니다.
+3. 서비스 이력의 최신 케이스가 `A/S · 완료`로 보이는지 확인합니다.
+4. `/services/`에서 `처리 지연` 필터에 해당 케이스가 나오지 않는지 확인합니다.
+
 ## 2026-06-15 — 일정 930 납품 품목 저장 PostgreSQL lock 오류 수정
 
 ### 요약
