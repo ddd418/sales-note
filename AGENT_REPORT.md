@@ -79,7 +79,17 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 예정: 코드 커밋/푸시 후 Railway `web`과 `sales-note-frontend` 배포 및 운영 스모크를 진행합니다.
+- 코드 커밋/푸시 완료: `702d836` (`Fix AI workspace UI and direct mail send`)
+- Railway `web` 배포 완료: `a4bb10fa-1c82-4613-a55b-b222f1301b29` → `SUCCESS`
+- Railway `sales-note-frontend` 배포 완료: `23cda535-df1e-44d2-81c0-d0f2d2edae08` → `SUCCESS`
+- 운영 스모크 완료:
+  - backend `/healthz/` → `200`
+  - backend `/readyz/` → `200`
+  - frontend `/ai-workspace/` → `200`
+  - frontend `/mailbox/scheduled/5/` → `200`
+  - 비로그인 `/reporting/api/ai-workspace/` → `401`
+  - 비로그인 `/reporting/api/mailbox/scheduled/5/` → `302` login redirect
+  - `scripts/post_deploy_smoke.py` 전체 통과
 
 ### 수동 서버 테스트 절차
 

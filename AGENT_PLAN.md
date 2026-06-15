@@ -33,7 +33,7 @@
 - `git diff --check`
 - Commit, push, deploy affected Railway services, and smoke `/ai-workspace/`, `/mailbox/scheduled/5/`, protected API behavior.
 
-**Status**: Implemented and locally validated; commit/deployment pending.
+**Status**: Implemented, locally validated, pushed, deployed to Railway, and smoke-tested.
 
 ## 2026-06-15 Department-only checked quote delivery 500 fix plan
 
