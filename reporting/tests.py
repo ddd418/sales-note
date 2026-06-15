@@ -2564,6 +2564,10 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(payload['emails'][0]['subject'], '연결 없이 확인할 예약메일')
         self.assertTrue(payload['emails'][0]['isScheduled'])
         self.assertEqual(payload['emails'][0]['threadHref'], f'/mailbox/scheduled/{scheduled_email.id}/')
+        self.assertEqual(
+            payload['emails'][0]['sendNowHref'],
+            reverse('reporting:mailbox_api_send_scheduled_now', args=[scheduled_email.id]),
+        )
 
     def test_mailbox_api_returns_scheduled_email_detail(self):
         from datetime import timedelta
@@ -2594,6 +2598,7 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(payload['links']['reply'], '')
         self.assertEqual(payload['emails'][0]['bodyText'], '예약메일 상세 본문입니다.')
         self.assertEqual(payload['emails'][0]['cancelHref'], reverse('reporting:mailbox_api_cancel_scheduled', args=[scheduled_email.id]))
+        self.assertEqual(payload['emails'][0]['sendNowHref'], reverse('reporting:mailbox_api_send_scheduled_now', args=[scheduled_email.id]))
 
     def test_mailbox_api_list_returns_schedule_auto_attachments_for_compose(self):
         schedule = Schedule.objects.create(
@@ -2990,7 +2995,10 @@ class ReactMailboxApiTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()['success'])
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertFalse(payload['queued'])
+        self.assertFalse(payload['scheduled'])
         gmail_service.send_email.assert_called_once()
         sent_attachments = gmail_service.send_email.call_args.kwargs['attachments']
         self.assertEqual(sent_attachments[0]['filename'], 'quote.txt')
@@ -3148,6 +3156,47 @@ class ReactMailboxApiTests(TestCase):
         self.assertEqual(email_log.subject, '만기 예약 메일')
         self.assertEqual(email_log.followup, self.followup)
         self.assertEqual(email_log.attachments_info[0]['scheduledAttachmentId'], attachment.id)
+
+    def test_mailbox_send_scheduled_now_api_sends_pending_scheduled_email(self):
+        from datetime import timedelta
+
+        profile = self.user.userprofile
+        profile.gmail_token = {'access_token': 'test-token'}
+        profile.gmail_email = 'sales@example.com'
+        profile.save(update_fields=['gmail_token', 'gmail_email'])
+        scheduled_email = ScheduledEmail.objects.create(
+            user=self.user,
+            provider='gmail',
+            sender_email='sales@example.com',
+            to_email='customer@example.com',
+            subject='마음 바뀐 예약 메일',
+            body='지금 바로 보낼 본문입니다.',
+            body_html='<div>지금 바로 보낼 본문입니다.</div>',
+            followup=self.followup,
+            scheduled_at=timezone.now() + timedelta(days=1),
+            status='pending',
+        )
+        self.client.force_login(self.user)
+
+        with patch('reporting.gmail_views.GmailService') as gmail_service_class:
+            gmail_service = gmail_service_class.return_value
+            gmail_service.send_email.return_value = {
+                'message_id': 'gmail-send-now',
+                'thread_id': 'gmail-send-now-thread',
+            }
+            response = self.client.post(reverse('reporting:mailbox_api_send_scheduled_now', args=[scheduled_email.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['href'], '/mailbox/thread/gmail-send-now-thread/')
+        gmail_service.send_email.assert_called_once()
+        scheduled_email.refresh_from_db()
+        self.assertEqual(scheduled_email.status, 'sent')
+        self.assertIsNotNone(scheduled_email.sent_email)
+        email_log = EmailLog.objects.get(gmail_message_id='gmail-send-now')
+        self.assertEqual(email_log.subject, '마음 바뀐 예약 메일')
+        self.assertEqual(email_log.followup, self.followup)
 
     def test_scheduled_email_inline_worker_defaults_on_in_railway_server_process(self):
         import os

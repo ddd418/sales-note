@@ -2132,6 +2132,7 @@ def _serialize_scheduled_email_item(scheduled_email):
         'trashHref': '',
         'restoreHref': '',
         'deleteHref': '',
+        'sendNowHref': reverse('reporting:mailbox_api_send_scheduled_now', args=[scheduled_email.id]),
         'cancelHref': reverse('reporting:mailbox_api_cancel_scheduled', args=[scheduled_email.id]),
         'followup': {
             'id': followup.id if followup else None,
@@ -2589,6 +2590,52 @@ def mailbox_api_cancel_scheduled(request, scheduled_email_id):
         'success': True,
         'message': '예약 메일을 취소했습니다.',
         'href': '/mailbox/?box=scheduled',
+    })
+
+
+@login_required
+def mailbox_api_send_scheduled_now(request, scheduled_email_id):
+    """예약 메일을 사용자가 즉시 발송한다."""
+    if request.method != 'POST':
+        return _json_method_error()
+
+    with transaction.atomic():
+        scheduled_email = (
+            ScheduledEmail.objects
+            .select_for_update()
+            .select_related('user', 'followup', 'schedule', 'reply_to', 'business_card')
+            .prefetch_related('attachments')
+            .filter(
+                _scheduled_email_q(request.user),
+                id=scheduled_email_id,
+                status='pending',
+            )
+            .first()
+        )
+        if not scheduled_email:
+            return JsonResponse({'success': False, 'error': '발송할 예약 메일을 찾을 수 없습니다.'}, status=404)
+        scheduled_email.status = 'sending'
+        scheduled_email.attempt_count += 1
+        from django.utils import timezone
+        scheduled_email.last_attempt_at = timezone.now()
+        scheduled_email.save(update_fields=['status', 'attempt_count', 'last_attempt_at', 'updated_at'])
+
+    if not send_scheduled_email(scheduled_email):
+        scheduled_email.refresh_from_db()
+        return JsonResponse({
+            'success': False,
+            'error': scheduled_email.error_message or '예약 메일 즉시 발송에 실패했습니다.',
+            'href': f'/mailbox/scheduled/{scheduled_email.id}/',
+        }, status=400)
+
+    scheduled_email.refresh_from_db()
+    sent_email = scheduled_email.sent_email
+    href = f'/mailbox/thread/{_email_thread_identifier(sent_email)}/' if sent_email else '/mailbox/?box=sent'
+    return JsonResponse({
+        'success': True,
+        'message': '예약 메일을 바로 발송했습니다.',
+        'href': href,
+        'djangoHref': reverse('reporting:mailbox_thread', args=[_email_thread_identifier(sent_email)]) if sent_email else reverse('reporting:mailbox_sent'),
     })
 
 

@@ -15274,6 +15274,29 @@ const sanitizeMailEditorHtml = (html: string) => {
   return container.innerHTML;
 };
 
+const extractMailEditorLinks = (html: string) => {
+  if (typeof document === 'undefined') {
+    return [];
+  }
+  const container = document.createElement('div');
+  container.innerHTML = sanitizeMailEditorHtml(html || '');
+  const seen = new Set<string>();
+  return Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]'))
+    .map((anchor) => {
+      const href = normalizeMailEditorUrl(anchor.getAttribute('href') || '');
+      const label = (anchor.textContent || href).trim() || href;
+      return { href, label };
+    })
+    .filter((link) => {
+      if (!link.href || seen.has(link.href)) {
+        return false;
+      }
+      seen.add(link.href);
+      return true;
+    })
+    .slice(0, 8);
+};
+
 const mailHtmlHasMeaningfulContent = (html: string) => {
   if (typeof document === 'undefined') {
     return /<(img|a|strong|b|em|i|u|p|div|span|li|table)\b/i.test(html || '');
@@ -15297,6 +15320,7 @@ function MailRichTextEditor({
   const [empty, setEmpty] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [draftLinks, setDraftLinks] = useState<Array<{ href: string; label: string }>>([]);
 
   const emitChange = () => {
     const editor = editorRef.current;
@@ -15306,6 +15330,7 @@ function MailRichTextEditor({
     const bodyText = (editor.innerText || '').replace(/\u00a0/g, ' ').replace(/\n{4,}/g, '\n\n\n');
     const bodyHtml = sanitizeMailEditorHtml(editor.innerHTML || '');
     setEmpty(!bodyText.trim() && !/<img\b/i.test(bodyHtml));
+    setDraftLinks(extractMailEditorLinks(bodyHtml));
     onChange(bodyText, bodyHtml);
   };
 
@@ -15320,6 +15345,7 @@ function MailRichTextEditor({
     }
     const bodyText = (editor.innerText || '').replace(/\u00a0/g, ' ');
     setEmpty(!bodyText.trim() && !/<img\b/i.test(nextHtml));
+    setDraftLinks(extractMailEditorLinks(nextHtml));
   }, [valueHtml]);
 
   const focusEditor = () => {
@@ -15519,6 +15545,23 @@ function MailRichTextEditor({
         suppressContentEditableWarning
       />
       {uploadError ? <div className="mail-rich-error">{uploadError}</div> : null}
+      {draftLinks.length > 0 ? (
+        <div className="mail-link-test-panel" aria-label="본문 링크 테스트">
+          <div>
+            <Link2 size={14} />
+            <span>본문 링크 테스트</span>
+          </div>
+          <div className="mail-link-test-list">
+            {draftLinks.map((link) => (
+              <a href={link.href} key={link.href} rel="noopener noreferrer" target="_blank">
+                <span>{link.label}</span>
+                <small>{link.href}</small>
+                <MoveUpRight size={13} />
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -15921,7 +15964,7 @@ function MailboxPage({
   composeMessage: string;
   syncing: boolean;
   actioningId: number | null;
-  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel') => void;
+  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel' | 'sendNow') => void;
   onComposeAutoAttachmentRemove: (key: string) => void;
   onComposeAttachmentRemove: (index: number) => void;
   onComposeAttachmentsChange: (files: File[]) => void;
@@ -16076,9 +16119,14 @@ function MailboxPage({
                     <time>{formatDateTimeLabel(email.happenedAt)}</time>
                     <div className="mail-row-actions">
                       {selectedBox === 'scheduled' ? (
-                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'cancel')} type="button" aria-label="예약 취소">
-                          <X size={15} />
-                        </button>
+                        <>
+                          <button disabled={actioningId === email.id || !email.sendNowHref} onClick={() => onAction(email, 'sendNow')} type="button" aria-label="바로 보내기" title="바로 보내기">
+                            <Send size={15} />
+                          </button>
+                          <button disabled={actioningId === email.id || !email.cancelHref} onClick={() => onAction(email, 'cancel')} type="button" aria-label="예약 취소" title="예약 취소">
+                            <X size={15} />
+                          </button>
+                        </>
                       ) : (
                         <>
                           <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
@@ -16149,7 +16197,7 @@ function MailboxThreadPage({
   replyError: string;
   replyMessage: string;
   actioningId: number | null;
-  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel') => void;
+  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel' | 'sendNow') => void;
   onReplyAttachmentRemove: (index: number) => void;
   onReplyAttachmentsChange: (files: File[]) => void;
   onReplyBodyChange: (bodyText: string, bodyHtml: string) => void;
@@ -16208,15 +16256,26 @@ function MailboxThreadPage({
             <a className="route-secondary-action" href={thread.links.djangoThread}>Django 보기</a>
           ) : null}
           {isScheduledThread ? (
-            <button
-              className="route-primary-action"
-              disabled={!lastEmail || !lastEmail.cancelHref || actioningId === lastEmail.id}
-              onClick={() => lastEmail && onAction(lastEmail, 'cancel')}
-              type="button"
-            >
-              <X size={16} />
-              예약 취소
-            </button>
+            <>
+              <button
+                className="route-primary-action"
+                disabled={!lastEmail || !lastEmail.sendNowHref || actioningId === lastEmail.id}
+                onClick={() => lastEmail && onAction(lastEmail, 'sendNow')}
+                type="button"
+              >
+                <Send size={16} />
+                바로 보내기
+              </button>
+              <button
+                className="route-secondary-action"
+                disabled={!lastEmail || !lastEmail.cancelHref || actioningId === lastEmail.id}
+                onClick={() => lastEmail && onAction(lastEmail, 'cancel')}
+                type="button"
+              >
+                <X size={16} />
+                예약 취소
+              </button>
+            </>
           ) : (
             <button className="route-primary-action" disabled={!lastEmail} onClick={() => onReplyOpenChange(true)} type="button">
               <Reply size={16} />
@@ -16283,9 +16342,14 @@ function MailboxThreadPage({
                   </div>
                   <div className="mail-row-actions">
                     {email.isScheduled ? (
-                      <button disabled={actioningId === email.id || !email.cancelHref} onClick={() => onAction(email, 'cancel')} type="button" aria-label="예약 취소">
-                        <X size={15} />
-                      </button>
+                      <>
+                        <button disabled={actioningId === email.id || !email.sendNowHref} onClick={() => onAction(email, 'sendNow')} type="button" aria-label="바로 보내기" title="바로 보내기">
+                          <Send size={15} />
+                        </button>
+                        <button disabled={actioningId === email.id || !email.cancelHref} onClick={() => onAction(email, 'cancel')} type="button" aria-label="예약 취소" title="예약 취소">
+                          <X size={15} />
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
@@ -24252,7 +24316,6 @@ export function App() {
     subject: form.subject.trim(),
     bodyText: form.bodyText.trim(),
     bodyHtml: form.bodyHtml.trim() || undefined,
-    queueSend: form.sendMode === 'now',
     scheduledAt: form.sendMode === 'scheduled' ? form.scheduledAt : undefined,
     followupId: form.followupId ? Number(form.followupId) : undefined,
     scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
@@ -24316,7 +24379,7 @@ export function App() {
   };
   const handleMailboxAction = async (
     email: MailboxEmailItem,
-    action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel',
+    action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel' | 'sendNow',
   ) => {
     if (mailActioningId !== null) {
       return;
@@ -24328,6 +24391,7 @@ export function App() {
       restore: email.restoreHref,
       delete: email.deleteHref,
       cancel: email.cancelHref || '',
+      sendNow: email.sendNowHref || '',
     }[action];
     if (!url) {
       return;
@@ -24335,12 +24399,27 @@ export function App() {
     if (action === 'cancel' && !window.confirm('예약 메일을 취소하시겠습니까?')) {
       return;
     }
+    if (action === 'sendNow' && !window.confirm('예약 메일을 지금 바로 발송하시겠습니까?')) {
+      return;
+    }
     if (action === 'delete' && !window.confirm('메일을 영구 삭제하시겠습니까?')) {
       return;
     }
     setMailActioningId(email.id);
     try {
-      await runMailboxAction(url);
+      const result = await runMailboxAction(url);
+      if (action === 'sendNow') {
+        if (mailboxDetailRoute) {
+          window.location.href = result.href || '/mailbox/?box=sent';
+          return;
+        }
+        setMailComposeMessage(result.message || '예약 메일을 바로 발송했습니다.');
+        setMailboxBox('sent');
+        setMailboxPage(1);
+        window.history.replaceState(null, '', '/mailbox/?box=sent');
+        setMailboxData(await loadMailboxData({ box: 'sent', q: mailboxQuery, page: 1 }));
+        return;
+      }
       if (action === 'cancel' && mailboxScheduledId) {
         window.location.href = '/mailbox/?box=scheduled';
         return;

@@ -1,5 +1,45 @@
 # AGENT_PLAN.md
 
+## 2026-06-15 Mail immediate send and scheduled send-now UX plan
+
+**Background**:
+
+- User reported that pressing `바로 발송` in React mailbox is currently handled as a scheduled/queued email, which is confusing and must be fixed.
+- User wants links inserted in a mail body to be testable before sending.
+- User wants pending scheduled emails to support `바로 보내기` when plans change.
+
+**DB change required**: No schema migration.
+
+- Existing `ScheduledEmail`, `ScheduledEmailAttachment`, and `EmailLog` models are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Backend:
+  - Add a POST API to send a pending `ScheduledEmail` immediately.
+  - Reuse `send_scheduled_email()` so attachments, Gmail/SMTP logic, reply linkage, and `EmailLog` creation stay consistent.
+  - Preserve scheduled email cancellation and permission scoping.
+- Frontend:
+  - Stop sending `queue_send` for `바로 발송`; direct sends should return to/refresh sent mail instead of the scheduled mailbox.
+  - Add a link-test area to the rich editor that lists links in the draft body and opens them in a new tab before sending.
+  - Add `바로 보내기` buttons to scheduled email list rows and scheduled detail pages.
+- Tests:
+  - Add or update focused mailbox API tests for direct immediate send and scheduled send-now.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\gmail_views.py reporting\urls.py reporting\tests.py`
+- Focused mailbox API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke `/mailbox/` plus protected mailbox API behavior.
+
+**Status**: In progress.
+
 ## 2026-06-15 Quote-linked delivery completion by checked quote plan
 
 **Background**:

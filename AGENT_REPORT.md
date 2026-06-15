@@ -1,5 +1,93 @@
 # AGENT_REPORT.md
 
+## 2026-06-15 — 메일 바로 발송/링크 테스트/예약메일 즉시 발송 개선
+
+### 요약
+
+- React 메일 작성/답장의 `바로 발송`이 더 이상 예약메일 큐로 들어가지 않도록 수정했습니다.
+- 메일 본문에 링크를 넣으면 작성 화면에서 발송 전에 링크를 새 탭으로 열어 테스트할 수 있게 했습니다.
+- 예약메일 목록과 예약메일 상세 화면에 `바로 보내기` 액션을 추가했습니다.
+- 예약메일 즉시 발송 API를 추가해 기존 예약메일 첨부/답장/고객 연결 정보를 유지한 채 바로 `EmailLog` 발송 기록으로 전환합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `frontend/src/styles.css`
+- `reporting/gmail_views.py`
+- `reporting/tests.py`
+- `reporting/urls.py`
+
+### CRM 개선
+
+- 사용자가 `바로 발송`을 눌렀을 때 예약메일함으로 이동하는 혼란을 제거했습니다.
+- 본문 링크를 발송 전 직접 열어볼 수 있어 잘못된 URL 발송 위험을 줄였습니다.
+- 예약메일을 취소하지 않고도 마음이 바뀌면 즉시 발송할 수 있습니다.
+
+### 기존 기능 보존
+
+- 예약 발송, 예약 취소, 예약메일 worker 처리, 첨부파일, 자동 문서 첨부, 답장 연결, 고객/일정 연결을 유지했습니다.
+- 로그인/CSRF 보호와 사용자별 예약메일 접근 범위를 유지했습니다.
+- 모델 변경과 migration은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\gmail_views.py reporting\urls.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_accepts_attachments reporting.tests.ReactMailboxApiTests.test_mailbox_api_lists_scheduled_mail_without_connected_provider reporting.tests.ReactMailboxApiTests.test_mailbox_api_returns_scheduled_email_detail reporting.tests.ReactMailboxApiTests.test_mailbox_send_api_schedules_email_without_immediate_send reporting.tests.ReactMailboxApiTests.test_process_due_scheduled_emails_sends_and_creates_email_log reporting.tests.ReactMailboxApiTests.test_mailbox_send_scheduled_now_api_sends_pending_scheduled_email --keepdb --verbosity=1
+→ OK, 6 tests
+
+python manage.py test reporting.tests.ReactMailboxApiTests --keepdb --verbosity=1
+→ OK, 34 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- `바로 발송`은 이제 실제 외부 Gmail/SMTP 발송 완료까지 기다립니다. 외부 메일 서버가 느리면 버튼 로딩 시간이 늘어날 수 있습니다.
+- 링크 테스트는 본문에 삽입된 `<a href>` 링크를 최대 8개까지 표시합니다.
+
+### 추천 다음 작업
+
+- 발송 중 UI에 “Gmail/SMTP에 실제 전송 중” 상태 문구를 추가하면 기다리는 동안 사용자가 더 명확하게 이해할 수 있습니다.
+
+### 운영 배포 상태
+
+- 배포 예정: 코드 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 서비스 배포와 운영 스모크를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/mailbox/`에 접속합니다.
+2. `메일 작성`에서 링크를 하나 삽입하고, 본문 아래 `본문 링크 테스트`에서 새 탭으로 열리는지 확인합니다.
+3. `바로 발송`으로 메일을 보내고 예약메일함으로 이동하지 않는지 확인합니다.
+4. 예약 발송으로 테스트 메일을 하나 만든 뒤 `/mailbox/?box=scheduled`에서 해당 row의 `바로 보내기` 버튼을 누릅니다.
+5. 확인 후 보낸편지함 또는 발송 스레드로 이동하고, 예약메일 목록에서 사라졌는지 확인합니다.
+6. 예약메일 상세 화면에서도 `바로 보내기`와 `예약 취소`가 각각 동작하는지 확인합니다.
+
 ## 2026-06-15 — 납품 저장 시 체크한 원본 견적 일정 완료 처리
 
 ### 요약

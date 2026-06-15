@@ -11142,6 +11142,73 @@ tbody tr:hover {
   font-weight: 800;
 }
 
+.mail-link-test-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.mail-link-test-panel > div:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mail-link-test-list {
+  display: grid;
+  gap: 6px;
+}
+
+.mail-link-test-list a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 2px 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.mail-link-test-list a:hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.mail-link-test-list span,
+.mail-link-test-list small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-link-test-list span {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mail-link-test-list small {
+  grid-column: 1 / 2;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mail-link-test-list svg {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--primary-strong);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

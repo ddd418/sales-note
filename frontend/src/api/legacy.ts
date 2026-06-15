@@ -344,6 +344,7 @@ export type MailboxEmailItem = {
   trashHref: string;
   restoreHref: string;
   deleteHref: string;
+  sendNowHref?: string;
   cancelHref?: string;
   followup: {
     id: number | null;
@@ -489,7 +490,6 @@ export type MailboxSendPayload = {
   toEmail: string;
   ccEmails?: string;
   bccEmails?: string;
-  queueSend?: boolean;
   includeInternalCc?: boolean;
   internalCcEmails?: string[];
   subject: string;
@@ -6884,7 +6884,6 @@ function mailboxPayloadToBody(payload: MailboxSendPayload): FormData {
   body.set('to_email', payload.toEmail);
   body.set('subject', payload.subject);
   body.set('body_text', payload.bodyText);
-  if (payload.queueSend) body.set('queue_send', '1');
   if (payload.bodyHtml) body.set('body_html', payload.bodyHtml);
   if (payload.scheduledAt) body.set('scheduled_at', payload.scheduledAt);
   if (payload.ccEmails) body.set('cc_emails', payload.ccEmails);
