@@ -59,6 +59,20 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment 883b06f7-8c56-44be-a2d3-994c2204d275 reached SUCCESS for commit 1149092
+
+railway deployment list --service sales-note-frontend --environment production --limit 3 --json
+→ Frontend deployment 775de3b7-d515-46d7-a71a-4d7461592d98 was SKIPPED because no frontend watched files changed
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+
+curl anonymous asset route and protected service APIs
+→ /assets/?asset=1 returned HTTP 200 React shell
+→ /reporting/api/customer-assets/?asset=1 returned HTTP 401 protected API
+→ /reporting/api/services/?status=overdue returned HTTP 401 protected API
 ```
 
 ### 알려진 제한
@@ -71,7 +85,12 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending. 로컬 검증과 운영 DB read-only probe는 완료했고, commit/push 후 Railway 배포와 smoke test가 필요합니다.
+- Completed.
+- Commit `1149092 Fix completed service overdue status` is present on `origin/main`.
+- Railway backend `web` GitHub deployment `883b06f7-8c56-44be-a2d3-994c2204d275` succeeded for commit `1149092`.
+- Railway frontend `sales-note-frontend` deployment `775de3b7-d515-46d7-a71a-4d7461592d98` was skipped because no frontend watched files changed.
+- Production smoke passed for backend health/readiness, frontend shell, removed `/data-cleanup/` plus `/downloads/` routes, and protected API behavior.
+- Anonymous `/assets/?asset=1` route serves the React shell with HTTP 200, while direct `/reporting/api/customer-assets/?asset=1` and `/reporting/api/services/?status=overdue` remain protected with HTTP 401.
 
 ### 수동 서버 테스트 절차
 
