@@ -11533,6 +11533,24 @@ def _schedules_source_quote_id_values(raw_value):
     return [raw_value]
 
 
+def _schedules_normalize_source_quote_schedule_ids(raw_values):
+    source_ids = []
+    seen = set()
+    for raw_id in raw_values:
+        if raw_id in (None, ''):
+            continue
+        try:
+            source_id = int(str(raw_id).strip())
+        except (TypeError, ValueError):
+            raise ValueError('불러온 원본 견적 일정 정보가 올바르지 않습니다.')
+        if source_id <= 0:
+            raise ValueError('불러온 원본 견적 일정 정보가 올바르지 않습니다.')
+        if source_id not in seen:
+            seen.add(source_id)
+            source_ids.append(source_id)
+    return source_ids
+
+
 def _schedules_parse_source_quote_schedule_ids(payload):
     if not isinstance(payload, dict):
         return []
@@ -11556,21 +11574,26 @@ def _schedules_parse_source_quote_schedule_ids(payload):
             raw_values.extend(_schedules_source_quote_id_values(raw_item.get('sourceQuoteScheduleId')))
             raw_values.extend(_schedules_source_quote_id_values(raw_item.get('source_quote_schedule_id')))
 
-    source_ids = []
-    seen = set()
-    for raw_id in raw_values:
-        if raw_id in (None, ''):
-            continue
-        try:
-            source_id = int(str(raw_id).strip())
-        except (TypeError, ValueError):
-            raise ValueError('불러온 원본 견적 일정 정보가 올바르지 않습니다.')
-        if source_id <= 0:
-            raise ValueError('불러온 원본 견적 일정 정보가 올바르지 않습니다.')
-        if source_id not in seen:
-            seen.add(source_id)
-            source_ids.append(source_id)
-    return source_ids
+    return _schedules_normalize_source_quote_schedule_ids(raw_values)
+
+
+def _schedules_parse_checked_quote_schedule_ids(payload):
+    if not isinstance(payload, dict):
+        return []
+
+    raw_values = []
+    for key in (
+        'checkedQuoteScheduleIds',
+        'checked_quote_schedule_ids',
+        'completedQuoteScheduleIds',
+        'completed_quote_schedule_ids',
+        'completeQuoteScheduleIds',
+        'complete_quote_schedule_ids',
+        'deliveredQuoteScheduleIds',
+        'delivered_quote_schedule_ids',
+    ):
+        raw_values.extend(_schedules_source_quote_id_values(payload.get(key)))
+    return _schedules_normalize_source_quote_schedule_ids(raw_values)
 
 
 def _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
@@ -11968,38 +11991,51 @@ def _schedules_validate_source_quote_item_quantities(delivery_items, target_sche
                 )
 
 
-def _schedules_mark_source_quote_schedules_completed(delivery_schedule, actor, source_quote_schedule_ids):
-    if not source_quote_schedule_ids or delivery_schedule.activity_type != 'delivery':
+def _schedules_mark_source_quote_schedules_completed(
+    delivery_schedule,
+    actor,
+    source_quote_schedule_ids,
+    force_complete_source_quote_schedule_ids=None,
+):
+    force_complete_source_quote_schedule_ids = force_complete_source_quote_schedule_ids or []
+    all_source_quote_schedule_ids = []
+    for source_id in [*source_quote_schedule_ids, *force_complete_source_quote_schedule_ids]:
+        if source_id not in all_source_quote_schedule_ids:
+            all_source_quote_schedule_ids.append(source_id)
+
+    if not all_source_quote_schedule_ids or delivery_schedule.activity_type != 'delivery':
         return []
 
     quote_schedules = Schedule.objects.select_for_update().select_related(
         'followup',
         'followup__department',
     ).filter(
-        id__in=source_quote_schedule_ids,
+        id__in=all_source_quote_schedule_ids,
         activity_type='quote',
     )
     quote_by_id = {quote_schedule.id: quote_schedule for quote_schedule in quote_schedules}
-    missing_ids = [source_id for source_id in source_quote_schedule_ids if source_id not in quote_by_id]
+    missing_ids = [source_id for source_id in all_source_quote_schedule_ids if source_id not in quote_by_id]
     if missing_ids:
         raise ValueError('불러온 원본 견적 일정을 찾을 수 없습니다.')
 
+    force_complete_source_quote_schedule_ids = set(force_complete_source_quote_schedule_ids)
     completed_ids = []
-    for source_id in source_quote_schedule_ids:
+    for source_id in all_source_quote_schedule_ids:
         quote_schedule = quote_by_id[source_id]
         if quote_schedule.user_id != actor.id:
             raise PermissionError('본인이 작성한 견적 일정만 납품 완료 처리할 수 있습니다.')
         if not _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
             raise PermissionError('납품 일정과 다른 고객/부서의 견적은 완료 처리할 수 없습니다.')
-        remaining_entries, _has_import_activity, _has_sold_items = _schedules_remaining_quote_item_entries(
-            quote_schedule,
-            include_legacy_matches=True,
-        )
-        if remaining_entries:
-            if quote_schedule.status == 'completed':
-                quote_schedule.status = 'scheduled'
-                quote_schedule.save(update_fields=['status', 'updated_at'])
-            continue
+        if source_id not in force_complete_source_quote_schedule_ids:
+            remaining_entries, _has_import_activity, _has_sold_items = _schedules_remaining_quote_item_entries(
+                quote_schedule,
+                include_legacy_matches=True,
+            )
+            if remaining_entries:
+                if quote_schedule.status == 'completed':
+                    quote_schedule.status = 'scheduled'
+                    quote_schedule.save(update_fields=['status', 'updated_at'])
+                continue
         if quote_schedule.status != 'completed':
             quote_schedule.status = 'completed'
             quote_schedule.save(update_fields=['status', 'updated_at'])
@@ -13018,6 +13054,7 @@ def schedules_delivery_items_update_api(request, schedule_id):
     try:
         delivery_items = _schedules_parse_delivery_item_inputs(payload.get('items'), request, schedule)
         source_quote_schedule_ids = _schedules_parse_source_quote_schedule_ids(payload)
+        checked_quote_schedule_ids = _schedules_parse_checked_quote_schedule_ids(payload)
         for item_data in delivery_items:
             source_quote_schedule = item_data.get('source_quote_schedule')
             if source_quote_schedule and source_quote_schedule.id not in source_quote_schedule_ids:
@@ -13086,6 +13123,7 @@ def schedules_delivery_items_update_api(request, schedule_id):
                 schedule,
                 request.user,
                 source_quote_schedule_ids,
+                force_complete_source_quote_schedule_ids=checked_quote_schedule_ids,
             )
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)

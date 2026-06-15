@@ -2118,6 +2118,7 @@ export type ScheduleDeliveryItemPayload = {
 export type ScheduleDeliveryItemsUpdateOptions = {
   usePrepayment?: boolean;
   prepayments?: SchedulePrepaymentSelectionPayload[];
+  checkedQuoteScheduleIds?: number[];
 };
 
 export type FollowupQuoteItem = {
@@ -9916,6 +9917,7 @@ export async function updateScheduleDeliveryItems(
     items: ScheduleDeliveryItemPayload[];
     quoteGroupNotes: Record<string, string>;
     sourceQuoteScheduleIds?: number[];
+    checkedQuoteScheduleIds?: number[];
     usePrepayment?: boolean;
     prepayments?: SchedulePrepaymentSelectionPayload[];
   } = {
@@ -9926,6 +9928,9 @@ export async function updateScheduleDeliveryItems(
     payload.sourceQuoteScheduleIds = sourceQuoteScheduleIds;
   }
   if (options) {
+    if (options.checkedQuoteScheduleIds?.length) {
+      payload.checkedQuoteScheduleIds = options.checkedQuoteScheduleIds;
+    }
     payload.usePrepayment = Boolean(options.usePrepayment);
     payload.prepayments = options.usePrepayment ? options.prepayments ?? [] : [];
   }

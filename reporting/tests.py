@@ -11468,6 +11468,59 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(quote_schedule.status, 'completed')
         self.assertEqual(DeliveryItem.objects.get(schedule=schedule).item_name, 'Quoted PCR Kit')
 
+    def test_schedule_delivery_items_update_api_marks_checked_quote_completed_without_imported_items(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = self._create_schedule(self.user, '견적체크수동납품', activity_type='delivery')
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=schedule.followup,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Checked Quote Kit',
+            quantity=5,
+            unit='EA',
+            unit_price=50000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'checkedQuoteScheduleIds': [quote_schedule.id],
+                'items': [
+                    {
+                        'itemName': 'Manual Delivered Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '70000',
+                        'taxInvoiceIssued': False,
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['completedQuoteScheduleIds'], [quote_schedule.id])
+        quote_schedule.refresh_from_db()
+        self.assertEqual(quote_schedule.status, 'completed')
+        delivery_item = DeliveryItem.objects.get(schedule=schedule)
+        self.assertEqual(delivery_item.item_name, 'Manual Delivered Kit')
+        self.assertIsNone(delivery_item.source_quote_schedule_id)
+        self.assertIsNone(delivery_item.source_quote_item_id)
+
     def test_schedule_delivery_items_update_api_keeps_partial_imported_quote_scheduled(self):
         import datetime
         import json

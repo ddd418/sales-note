@@ -12251,6 +12251,12 @@ function ScheduleDetailPage({
         .map((row) => Number(row.sourceQuoteScheduleId))
         .filter((sourceId) => Number.isInteger(sourceId) && sourceId > 0),
     ));
+    const checkedQuoteScheduleIds = Array.from(new Set(
+      (quoteImportData?.quotes ?? [])
+        .filter((quote) => selectedQuoteImportIds.includes(quote.optionId))
+        .map((quote) => Number(quote.scheduleId))
+        .filter((sourceId) => Number.isInteger(sourceId) && sourceId > 0),
+    ));
     const quoteGroupNotesPayload = scheduleQuoteGroupsFromRows(rowsWithInput).reduce<ScheduleQuoteGroupNoteState>((acc, group) => {
       acc[group] = (quoteGroupNotes[group] || '').trim();
       return acc;
@@ -12307,8 +12313,11 @@ function ScheduleDetailPage({
         prepayments: useDeliveryPrepayment
           ? deliveryPrepaymentSelections.map<SchedulePrepaymentSelectionPayload>((row) => ({ id: row.id, amount: row.amountInput.trim() }))
           : [],
+        checkedQuoteScheduleIds,
       }
-      : undefined;
+      : checkedQuoteScheduleIds.length
+        ? { checkedQuoteScheduleIds }
+        : undefined;
 
     setDeliverySaving(true);
     setDeliveryError('');

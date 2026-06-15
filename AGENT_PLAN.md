@@ -1,5 +1,46 @@
 # AGENT_PLAN.md
 
+## 2026-06-15 Quote-linked delivery completion by checked quote plan
+
+**Background**:
+
+- User reported that delivery schedule `930` should complete quote schedule `919` when the delivery is saved as that quote's delivery, even if the user does not import the quote items exactly.
+- Current delivery-item save logic completes quote schedules only when imported/linked quote item quantities are fully exhausted.
+- React currently sends row-level quote links through `sourceQuoteScheduleIds`; that must remain quantity/progress based so partial deliveries do not become completed accidentally.
+
+**DB change required**: No schema migration.
+
+- Existing `Schedule` and `DeliveryItem` quote linkage fields are sufficient.
+- Add no model fields or migrations.
+
+**Implementation scope**:
+
+- Backend:
+  - Keep existing source quote progress checks for imported quote rows and existing link cleanup.
+  - Add a separate checked/force-complete quote schedule id payload path for “this delivery belongs to this quote” selections.
+  - Reuse the same ownership and customer/department target validation before completing the quote.
+  - Preserve partial-import behavior and reopen behavior when old links are removed.
+- Frontend:
+  - Include currently checked quote-import cards as checked quote schedule ids when saving delivery items.
+  - Keep `선택 적용` behavior unchanged for users who want to copy quote item rows.
+- Tests:
+  - Add a focused API test for manual delivery rows plus checked quote schedule completion.
+  - Keep existing partial import, full import, and removed-link tests passing.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused schedule delivery item API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy affected Railway services, and smoke `/schedules/930/` plus protected schedule API behavior.
+
+**Status**: Implemented and locally validated; Railway deployment pending.
+
 ## 2026-06-09 Mail sync/send responsiveness plan
 
 **Background**:

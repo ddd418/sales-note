@@ -1,5 +1,86 @@
 # AGENT_REPORT.md
 
+## 2026-06-15 — 납품 저장 시 체크한 원본 견적 일정 완료 처리
+
+### 요약
+
+- 납품 품목을 견적 그대로 불러오지 않아도, React 견적 불러오기 패널에서 체크한 견적 일정은 납품 저장 시 완료 처리되도록 분리했습니다.
+- 기존 `sourceQuoteScheduleIds`는 계속 품목 연결/수량 진행률 기반으로만 처리합니다.
+- 새 `checkedQuoteScheduleIds` payload는 “이 납품이 해당 견적 건임”을 사용자가 체크한 경우에만 사용하며, 기존과 같은 작성자/고객 또는 부서 일치 검증을 통과해야 완료됩니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/legacy.ts`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 견적 일정과 실제 납품 품목이 완전히 같지 않아도, 사용자가 해당 견적 건 납품임을 체크하고 저장하면 원본 견적 일정이 완료로 넘어갑니다.
+- 부분 납품처럼 견적 품목 일부만 실제 연결한 경우는 기존대로 남은 수량을 보고 견적 일정을 미완료/예정 상태로 유지합니다.
+
+### 기존 기능 보존
+
+- 견적 품목 불러오기, 부분 납품 수량 검증, 초과 납품 차단, 기존 견적 링크 제거 시 견적 일정 재오픈 흐름을 유지했습니다.
+- 로그인, 편집 권한, 본인 작성 견적 제한, 다른 고객/부서 견적 완료 차단 로직을 유지했습니다.
+- 모델 변경과 migration은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_checked_quote_completed_without_imported_items reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_imported_quote_completed reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_keeps_partial_imported_quote_scheduled reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_reopens_quote_when_import_link_removed --keepdb --verbosity=1
+→ OK, 4 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend && npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend && node --check server.mjs
+→ OK
+
+cd frontend && npm run build
+→ OK
+→ Existing Vite large App chunk warning remains
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 체크만 완료 처리하려면 견적 불러오기 패널에서 해당 견적 카드가 선택된 상태로 납품 저장을 눌러야 합니다.
+- 이미 완료 상태인 견적을 다시 체크해 저장하면 상태는 유지되지만 응답의 `completedQuoteScheduleIds`에는 새로 변경된 일정만 포함됩니다.
+
+### 추천 다음 작업
+
+- 견적 불러오기 패널에서 “품목 불러오기”와 “이 견적 건 납품 처리” 선택 의미가 더 명확해지도록 UI 문구/버튼 구조를 한 번 더 다듬는 것이 좋습니다.
+
+### 운영 배포 상태
+
+- 배포 예정: 코드 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 서비스 배포와 운영 스모크를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/schedules/930/` 납품 일정에 접속합니다.
+2. `견적 품목 불러오기`를 열고 `/schedules/919/`에 해당하는 견적 카드를 체크합니다.
+3. `선택 적용`으로 품목을 그대로 복사하지 않고, 현재 납품 품목을 수동으로 입력하거나 수정한 뒤 저장합니다.
+4. 저장 성공 메시지 후 `/schedules/919/` 견적 일정에 접속합니다.
+5. 견적 일정 상태가 완료로 바뀌었는지 확인합니다.
+6. 부분 납품을 테스트할 때는 견적 품목 일부만 실제로 불러와 저장하고, 남은 품목이 있으면 견적 일정이 예정 상태로 남는지 확인합니다.
+
 ## 2026-06-09 — 메일 동기화/발송 응답속도 개선
 
 ### 요약
