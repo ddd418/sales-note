@@ -11570,6 +11570,123 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertIsNone(delivery_item.source_quote_schedule_id)
         self.assertIsNone(delivery_item.source_quote_item_id)
 
+    def test_schedule_delivery_items_update_api_marks_checked_department_only_quote_completed(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        department = self._create_department_only(self.user, '부서전용견적납품')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=None,
+            department=department,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(11, 0),
+            activity_type='delivery',
+            status='scheduled',
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=None,
+            department=department,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Department Only Quote Kit',
+            quantity=3,
+            unit='EA',
+            unit_price=50000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'checkedQuoteScheduleIds': [quote_schedule.id],
+                'items': [
+                    {
+                        'itemName': 'Manual Department Delivery Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '70000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['completedQuoteScheduleIds'], [quote_schedule.id])
+        quote_schedule.refresh_from_db()
+        self.assertEqual(quote_schedule.status, 'completed')
+
+    def test_schedule_delivery_items_update_api_rejects_checked_quote_from_different_department(self):
+        import datetime
+        import json
+        from django.utils import timezone
+        from reporting.models import DeliveryItem, Schedule
+
+        delivery_department = self._create_department_only(self.user, '납품부서')
+        quote_department = self._create_department_only(self.user, '다른견적부서')
+        schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=None,
+            department=delivery_department,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(11, 0),
+            activity_type='delivery',
+            status='scheduled',
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=None,
+            department=quote_department,
+            visit_date=timezone.localdate(),
+            visit_time=datetime.time(10, 0),
+            activity_type='quote',
+            status='scheduled',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule,
+            item_name='Wrong Department Quote Kit',
+            quantity=1,
+            unit='EA',
+            unit_price=50000,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'checkedQuoteScheduleIds': [quote_schedule.id],
+                'items': [
+                    {
+                        'itemName': 'Manual Delivery Kit',
+                        'quantity': 1,
+                        'unit': 'EA',
+                        'unitPrice': '70000',
+                    },
+                ],
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('다른 고객/부서', response.json()['error'])
+        quote_schedule.refresh_from_db()
+        self.assertEqual(quote_schedule.status, 'scheduled')
+
     def test_schedule_delivery_items_update_api_keeps_partial_imported_quote_scheduled(self):
         import datetime
         import json

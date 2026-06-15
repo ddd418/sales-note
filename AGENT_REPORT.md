@@ -1,5 +1,71 @@
 # AGENT_REPORT.md
 
+## 2026-06-15 — 부서-only 견적 체크 후 납품 저장 500 오류 수정
+
+### 요약
+
+- 견적 불러오기에서 견적 카드를 체크하고 납품 품목 저장 시 `500`이 나던 오류를 수정했습니다.
+- 고객 담당자 없이 부서/연구실만 연결된 견적/납품 일정에서 `followup=None`인 상태를 안전하게 처리하도록 바꿨습니다.
+- 같은 고객 담당자 비교는 실제 followup id가 양쪽에 있을 때만 인정하고, 그 외에는 일정의 `department` 또는 followup의 department를 비교합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 고객 담당자가 없는 부서-only 견적 일정도 납품 일정에서 체크 후 저장하면 정상적으로 원본 견적 완료 처리됩니다.
+- 다른 부서의 견적을 잘못 체크한 경우는 500이 아니라 권한/대상 불일치 오류로 막습니다.
+
+### 기존 기능 보존
+
+- 기존 고객 담당자 기준 견적 완료 처리, 부분납품 미완료 유지, 견적 링크 제거 시 재오픈 동작을 유지했습니다.
+- 모델 변경과 migration은 없습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_checked_department_only_quote_completed reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_rejects_checked_quote_from_different_department reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_marks_checked_quote_completed_without_imported_items reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_keeps_partial_imported_quote_scheduled reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_reopens_quote_when_import_link_removed --keepdb --verbosity=1
+→ OK, 5 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영에서 실제 로그인 세션으로 저장 버튼을 누르는 최종 확인은 사용자 수동 확인이 필요합니다.
+
+### 추천 다음 작업
+
+- 견적 불러오기 체크 UI에서 현재 체크한 견적이 “완료 처리 대상”이라는 문구를 더 명확히 표시하면 혼동을 줄일 수 있습니다.
+
+### 운영 배포 상태
+
+- 배포 예정: 코드 커밋/푸시 후 Railway `web` 배포와 운영 스모크를 진행합니다.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/schedules/930/`에 접속합니다.
+2. 견적 불러오기 패널에서 원본 견적을 체크합니다.
+3. 납품 품목을 저장합니다.
+4. 더 이상 `납품 품목 저장 중 오류가 발생했습니다` 500이 뜨지 않는지 확인합니다.
+5. 원본 견적 일정이 완료 처리되는지 확인합니다.
+
 ## 2026-06-15 — 메일 바로 발송/링크 테스트/예약메일 즉시 발송 개선
 
 ### 요약

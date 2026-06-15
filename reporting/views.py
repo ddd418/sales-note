@@ -11596,15 +11596,29 @@ def _schedules_parse_checked_quote_schedule_ids(payload):
     return _schedules_normalize_source_quote_schedule_ids(raw_values)
 
 
+def _schedules_schedule_target_department_id(schedule):
+    if getattr(schedule, 'department_id', None):
+        return schedule.department_id
+    followup = getattr(schedule, 'followup', None)
+    if followup and getattr(followup, 'department_id', None):
+        return followup.department_id
+    return None
+
+
 def _schedules_quote_matches_delivery_target(quote_schedule, delivery_schedule):
-    if quote_schedule.followup_id == delivery_schedule.followup_id:
+    if (
+        quote_schedule.followup_id
+        and delivery_schedule.followup_id
+        and quote_schedule.followup_id == delivery_schedule.followup_id
+    ):
         return True
-    quote_followup = quote_schedule.followup
-    delivery_followup = delivery_schedule.followup
+
+    quote_department_id = _schedules_schedule_target_department_id(quote_schedule)
+    delivery_department_id = _schedules_schedule_target_department_id(delivery_schedule)
     return bool(
-        delivery_followup.department_id
-        and quote_followup.department_id
-        and quote_followup.department_id == delivery_followup.department_id
+        delivery_department_id
+        and quote_department_id
+        and quote_department_id == delivery_department_id
     )
 
 

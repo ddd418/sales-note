@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-15 Department-only checked quote delivery 500 fix plan
+
+**Background**:
+
+- User reported that checking a quote import and saving delivery items returns `납품 품목 저장 중 오류가 발생했습니다` with HTTP 500.
+- The checked quote completion path added on 2026-06-15 validates quote/delivery target through `_schedules_quote_matches_delivery_target`.
+- Department-only schedules can have `followup=None` and `department` set, so dereferencing `delivery_schedule.followup.department_id` can raise an exception.
+
+**DB change required**: No schema migration.
+
+- Existing `Schedule.department` and `FollowUp.department` are sufficient.
+
+**Implementation scope**:
+
+- Make quote/delivery target matching null-safe.
+- Treat same followup as a match only when both schedules actually have a followup id.
+- Fall back to comparing department ids from either `Schedule.department_id` or the linked followup's department id.
+- Add focused tests for department-only checked quote completion and wrong department rejection.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused schedule delivery item checked quote tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Commit, push, deploy backend, and smoke `/schedules/930/` plus protected schedule API behavior.
+
+**Status**: In progress.
+
 ## 2026-06-15 Mail immediate send and scheduled send-now UX plan
 
 **Background**:
