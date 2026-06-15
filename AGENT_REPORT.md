@@ -70,7 +70,17 @@ git diff --check
 
 ### 운영 배포 상태
 
-- 배포 예정: 코드 커밋/푸시 후 Railway `web` 및 `sales-note-frontend` 서비스 배포와 운영 스모크를 진행합니다.
+- 코드 커밋/푸시 완료: `d3a2f9b` (`Complete checked quote schedules from deliveries`)
+- Railway `web` 배포 완료: `e3d7d1dd-2241-485e-9abe-ba0ace7983be` → `SUCCESS`
+- Railway `sales-note-frontend` 배포 완료: `cdd8c1b2-22c1-49f5-b8c6-1fd26ae60d57` → `SUCCESS`
+- 운영 스모크:
+  - backend `/healthz/` → `200`
+  - backend `/readyz/` → `200`
+  - frontend `/healthz/` → `200`
+  - frontend `/schedules/930/` → `200`
+  - 비로그인 `/reporting/api/schedules/930/` → `401`, API 인증 보호 유지
+  - 비로그인 `/reporting/api/schedules/930/delivery-items/update/` GET → `405`, POST 전용 mutation 보호 유지
+  - 공통 post-deploy smoke 전체 통과
 
 ### 수동 서버 테스트 절차
 

@@ -39,7 +39,7 @@
 - `git diff --check`
 - Commit, push, deploy affected Railway services, and smoke `/schedules/930/` plus protected schedule API behavior.
 
-**Status**: Implemented and locally validated; Railway deployment pending.
+**Status**: Implemented, locally validated, pushed, and deployed to Railway.
 
 ## 2026-06-09 Mail sync/send responsiveness plan
 
