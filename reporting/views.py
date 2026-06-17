@@ -10099,6 +10099,24 @@ def _advance_quote_schedule_pipeline(schedule):
         return False
 
 
+def _sync_quote_schedule_pipeline(schedule):
+    """Synchronize the linked customer card with quote schedule state."""
+    if not schedule or schedule.activity_type != 'quote' or not schedule.followup_id:
+        return False
+
+    if schedule.status != 'cancelled':
+        return _advance_quote_schedule_pipeline(schedule)
+
+    followup = schedule.followup
+    current_stage = followup.pipeline_stage or 'potential'
+    if current_stage in {'won', 'lost'}:
+        return False
+
+    followup.pipeline_stage = 'lost'
+    followup.save(update_fields=['pipeline_stage'])
+    return True
+
+
 def _ai_json_dict(value):
     return value if isinstance(value, dict) else {}
 
@@ -10892,7 +10910,7 @@ def schedules_create_api(request):
         expected_revenue=expected_revenue,
         probability=probability,
     )
-    _advance_quote_schedule_pipeline(schedule)
+    _sync_quote_schedule_pipeline(schedule)
 
     return JsonResponse({
         'success': True,
@@ -13161,7 +13179,7 @@ def schedules_update_api(request, schedule_id):
                 else:
                     _schedules_restore_prepayments(schedule)
             sync_schedule_delivery_payment_type(schedule)
-        _advance_quote_schedule_pipeline(schedule)
+        _sync_quote_schedule_pipeline(schedule)
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -21903,7 +21921,7 @@ def schedule_create_view(request):
                 except PermissionError as exc:
                     messages.error(request, str(exc))
                 sync_schedule_delivery_payment_type(schedule)
-            _advance_quote_schedule_pipeline(schedule)
+            _sync_quote_schedule_pipeline(schedule)
             
             messages.success(request, '일정이 성공적으로 생성되었습니다.')
             
@@ -22219,7 +22237,7 @@ def schedule_edit_view(request, pk):
                     messages.error(request, str(exc))
                 sync_schedule_delivery_payment_type(updated_schedule)
 
-            _advance_quote_schedule_pipeline(updated_schedule)
+            _sync_quote_schedule_pipeline(updated_schedule)
             
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
             return redirect('reporting:schedule_detail', pk=schedule.pk)
@@ -25875,7 +25893,7 @@ def schedule_status_update_api(request, schedule_id):
         
         schedule.status = new_status
         schedule.save()
-        _advance_quote_schedule_pipeline(schedule)
+        _sync_quote_schedule_pipeline(schedule)
         
         status_display = {
             'scheduled': '예정됨',

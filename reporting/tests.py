@@ -11088,6 +11088,59 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(deal['value'], 2500000)
         self.assertEqual(deal['probability'], 80)
 
+    def test_schedules_update_api_quote_cancel_moves_pipeline_card_to_lost(self):
+        import json
+
+        schedule = self._create_schedule(self.user, '견적취소실주', activity_type='quote')
+        schedule.followup.pipeline_stage = 'quote'
+        schedule.followup.save(update_fields=['pipeline_stage'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'quote',
+                'status': 'cancelled',
+                'visitDate': '2026-05-12',
+                'visitTime': '16:15',
+                'expectedRevenue': '2500000',
+                'probability': '75',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        schedule.refresh_from_db()
+        schedule.followup.refresh_from_db()
+        self.assertEqual(schedule.status, 'cancelled')
+        self.assertEqual(schedule.followup.pipeline_stage, 'lost')
+
+        pipeline_response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+        self.assertEqual(pipeline_response.status_code, 200)
+        deal = next(item for item in pipeline_response.json()['deals'] if item['id'] == schedule.followup_id)
+        self.assertEqual(deal['stage'], 'lost')
+        self.assertEqual(deal['stageLabel'], '실주')
+        self.assertEqual(deal['value'], 2500000)
+
+    def test_schedule_status_update_api_quote_cancel_moves_pipeline_card_to_lost(self):
+        schedule = self._create_schedule(self.user, '상태버튼견적취소', activity_type='quote')
+        schedule.followup.pipeline_stage = 'quote'
+        schedule.followup.save(update_fields=['pipeline_stage'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedule_status_update', args=[schedule.id]),
+            data={'status': 'cancelled'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        schedule.refresh_from_db()
+        schedule.followup.refresh_from_db()
+        self.assertEqual(schedule.status, 'cancelled')
+        self.assertEqual(schedule.followup.pipeline_stage, 'lost')
+
     def test_prepayment_api_list_includes_same_department_and_existing_usage(self):
         from django.utils import timezone
         from reporting.models import FollowUp, Prepayment, PrepaymentUsage

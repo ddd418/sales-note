@@ -1,5 +1,71 @@
 # AGENT_REPORT.md
 
+## 2026-06-17 — 견적 일정 취소 시 실주 자동 이동
+
+### 요약
+
+- 견적 일정이 `취소됨`으로 저장되면 연결된 고객 파이프라인 카드가 자동으로 `실주`로 이동하도록 했습니다.
+- 기존 견적 일정 등록/활성화 시 `견적 제출`로 이동하는 흐름은 유지했습니다.
+- 이미 `수주` 또는 `실주`인 고객 카드는 취소된 견적 일정 저장으로 덮어쓰지 않습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 견적 일정에서 취소 처리한 영업 건이 React 파이프라인의 `실주` 컬럼에 자동 반영됩니다.
+- React 일정 상세 수정 API와 legacy 일정 상태 변경 API 모두 같은 동기화 규칙을 사용합니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- `/reporting/*` 일정, 파이프라인 API, 기존 견적 제출 자동 이동을 유지했습니다.
+- 매니저 읽기 전용 및 본인 일정 수정 권한 검사는 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_quote_advances_pipeline_card reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_quote_cancel_moves_pipeline_card_to_lost reporting.tests.SchedulesSummaryApiTests.test_schedule_status_update_api_quote_cancel_moves_pipeline_card_to_lost --keepdb --verbosity=1
+→ OK, 3 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 이번 작업은 견적 일정 취소 시 `실주` 이동만 다룹니다. 이미 수동으로 `수주` 처리된 카드는 취소된 견적 일정이 있어도 자동으로 실주로 되돌리지 않습니다.
+
+### 추천 다음 작업
+
+- 취소 사유 입력과 실주 사유 기록을 파이프라인 카드에 함께 노출하는 UX를 검토할 수 있습니다.
+
+### 운영 배포 상태
+
+- Pending. 로컬 검증 완료, commit/push/Railway 배포는 아직 진행 전입니다.
+
+### 수동 서버 테스트 절차
+
+1. `/schedules/` 또는 `/schedules/calendar/`에서 견적 일정을 엽니다.
+2. 일정 상태를 `취소됨`으로 변경하고 저장합니다.
+3. `/pipeline/`으로 이동해 해당 고객 카드가 `실주` 컬럼에 있는지 확인합니다.
+4. 같은 카드의 견적 금액/품목 정보가 실주 카드에서도 표시되는지 확인합니다.
+
 ## 2026-06-15 — 영업노트 후속일 자동 미팅 일정 생성
 
 ### 요약

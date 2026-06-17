@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-06-17 Quote schedule cancellation to lost pipeline plan
+
+**Background**:
+
+- User reported that lost deals should behave like the existing quote pipeline automation: when a quote schedule is cancelled, the related customer card should automatically move to `실주`.
+- Existing models are sufficient: `Schedule.status='cancelled'`, `Schedule.activity_type='quote'`, and `FollowUp.pipeline_stage='lost'`.
+- Legacy `OpportunityTracking` already has quote-cancel handling, but the React CRM pipeline uses `FollowUp.pipeline_stage`.
+
+**DB change required**: No schema migration.
+
+- Use existing `Schedule` and `FollowUp` fields.
+
+**Implementation scope**:
+
+- Extend the quote schedule pipeline sync helper to handle cancelled quote schedules.
+- Keep active quote schedule behavior moving cards forward to `견적 제출`.
+- Do not overwrite already-won customer cards when a quote schedule is cancelled.
+- Apply the shared helper from React schedule create/update APIs and legacy schedule status/edit paths.
+- Add focused regression tests for quote schedule cancellation moving the React pipeline card to `실주`.
+
+**Validation plan**:
+
+- Focused schedule API tests.
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
+
+**Status**: Implemented and locally validated. Commit/push/deploy pending.
+
 ## 2026-06-15 Sales note next-action auto meeting schedule plan
 
 **Background**:
