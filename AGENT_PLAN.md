@@ -28,7 +28,7 @@
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
 
-**Status**: Implemented and locally validated. Commit/push/deploy pending.
+**Status**: Implemented, pushed, deployed to Railway, and smoke-tested.
 
 ## 2026-06-15 Sales note next-action auto meeting schedule plan
 

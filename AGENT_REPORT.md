@@ -45,6 +45,12 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --environment production --limit 3 --json
+→ Backend deployment edcb3909-a96d-4052-b53b-b58f2f661b22 reached SUCCESS for commit c077a53
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
 ```
 
 ### 알려진 제한
@@ -57,7 +63,11 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending. 로컬 검증 완료, commit/push/Railway 배포는 아직 진행 전입니다.
+- Completed.
+- Commit `c077a53 Sync quote cancellations to lost pipeline` is present on `origin/main`.
+- Railway backend `web` deployment `edcb3909-a96d-4052-b53b-b58f2f661b22` succeeded for commit `c077a53`.
+- Frontend code was not changed, so only backend deployment was required.
+- Production smoke passed for backend health/readiness, login page, frontend shell, and protected API behavior.
 
 ### 수동 서버 테스트 절차
 
