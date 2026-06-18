@@ -1,5 +1,91 @@
 # AGENT_REPORT.md
 
+## 2026-06-18 — 분석 탭 최근 견적 품목 표시
+
+### 요약
+
+- React `/reports/` 분석 탭의 `계정별 운영 현황표`에 `최근 견적 품목` 컬럼을 추가했습니다.
+- 기존 `최근 납품 품목`과 같은 품목 요약 로직을 견적서/견적 일정에도 적용했습니다.
+- 고객 운영 현황 Excel export에도 `최근견적품목` 컬럼을 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/api/reports.ts`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+- `reporting/api/reports.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 분석 탭에서 계정별 최근 납품 품목과 최근 견적 품목을 함께 볼 수 있습니다.
+- 견적 품목 칩에는 품목 요약, 견적번호 또는 견적 일정 구분, 상태, 금액이 표시됩니다.
+- Excel 다운로드에서도 화면과 같은 견적 품목 정보를 확인할 수 있습니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- `/reporting/api/reports/`, `/reports/`, customer operations Excel export 경로를 유지했습니다.
+- 기존 납품 품목 표시, 드릴다운, 권한/인증 필터는 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\api\reports.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_customer_operations_with_structured_payment_split --keepdb --verbosity=2
+→ OK, 1 test
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_customer_operations_xlsx_export_downloads_table --keepdb --verbosity=2
+→ OK, 1 test
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --keepdb --verbosity=1
+→ OK, 24 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK
+→ Vite reported the existing large chunk warning for App bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 실제 운영 데이터의 견적 품목 노출은 로그인 후 `/reports/`에서 사용자가 직접 확인해야 합니다.
+
+### 추천 다음 작업
+
+- 제품별 견적/납품 흐름을 더 자세히 보려면 `/reports/`에 제품별 집계 탭 또는 계정 드릴다운 내 제품 필터를 추가하는 작업을 추천합니다.
+
+### 운영 배포 상태
+
+- Pending until commit, push, and Railway deployment verification complete.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/reports/`에 접속합니다.
+2. 날짜 범위를 최근 견적 기록이 있는 기간으로 맞춥니다.
+3. `계정별 운영 현황표`에서 `최근 납품 품목` 옆에 `최근 견적 품목` 컬럼이 보이는지 확인합니다.
+4. 견적 품목 칩에 품목명/제품코드, 견적번호 또는 `견적 일정`, 상태, 금액이 표시되는지 확인합니다.
+5. `계정별 운영 현황` Excel을 다운로드해 `최근견적품목` 컬럼이 포함되는지 확인합니다.
+
 ## 2026-06-18 — 분석 탭 제품명 검색 지원
 
 ### 요약

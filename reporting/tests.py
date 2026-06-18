@@ -35,6 +35,7 @@ from reporting.models import (
     PrepaymentUsage,
     Product,
     Quote,
+    QuoteItem,
     Schedule,
     ScheduledEmail,
     ScheduledEmailAttachment,
@@ -1440,7 +1441,7 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
             activity_type='quote',
             status='completed',
         )
-        Quote.objects.create(
+        quote = Quote.objects.create(
             quote_number='Q-REPORT-001',
             schedule=quote_schedule,
             followup=self.followup,
@@ -1448,6 +1449,20 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
             valid_until=today + timedelta(days=30),
             subtotal=2000,
             stage='sent',
+        )
+        quote_product = Product.objects.create(
+            product_code='QUOTE-RECENT-ITEM',
+            unit='EA',
+            specification='최근 견적 품목 테스트 규격',
+            standard_price=1000,
+            description='최근 견적 품목 테스트 제품',
+            created_by=self.user,
+        )
+        QuoteItem.objects.create(
+            quote=quote,
+            product=quote_product,
+            quantity=2,
+            unit_price=1000,
         )
         asset = CustomerAsset.objects.create(
             company=self.customer_company,
@@ -1487,6 +1502,10 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertIn('normal', {item['paymentSource'] for item in row['recentDeliveryItems']})
         self.assertIn('선결제 차감 납품', {item['paymentStatusLabel'] for item in row['recentDeliveryItems']})
         self.assertIn('일반 납품', {item['paymentStatusLabel'] for item in row['recentDeliveryItems']})
+        recent_quote_text = json.dumps(row['recentQuoteItems'], ensure_ascii=False)
+        self.assertIn('QUOTE-RECENT-ITEM', recent_quote_text)
+        self.assertIn('Q-REPORT-001', recent_quote_text)
+        self.assertIn('발송완료', recent_quote_text)
         self.assertTrue(row['drilldown']['contacts'])
         self.assertTrue(row['drilldown']['deliveries'])
         self.assertTrue(row['drilldown']['quotes'])
@@ -2323,6 +2342,8 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         sheet = workbook['계정별 운영 현황']
         rows = list(sheet.iter_rows(values_only=True))
         self.assertEqual(rows[0][0], '계정')
+        self.assertEqual(rows[0][30], '최근견적품목')
+        self.assertEqual(rows[0][31], '최근납품품목')
         row = next(item for item in rows[1:] if item[0] == '연구실 A')
         self.assertEqual(row[1], '고객사 A')
         self.assertEqual(row[3], 1)
@@ -2338,8 +2359,9 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(row[18], 5000)
         self.assertEqual(row[19], 2600)
         self.assertEqual(row[28], 0)
-        self.assertIn('현황 선결제 품목', row[30])
-        self.assertIn('/accounts/', row[31])
+        self.assertIn('Q-OPS-XLSX', row[30])
+        self.assertIn('현황 선결제 품목', row[31])
+        self.assertIn('/accounts/', row[32])
 
     def test_reports_customer_operations_xlsx_export_blocks_salesman(self):
         self.client.force_login(self.user)

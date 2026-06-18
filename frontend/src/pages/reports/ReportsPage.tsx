@@ -697,6 +697,7 @@ export function ReportsPage({
                 <th>선결제</th>
                 <th>서비스</th>
                 <th>최근 납품 품목</th>
+                <th>최근 견적 품목</th>
                 <th>최근일</th>
               </tr>
             </thead>
@@ -766,6 +767,20 @@ export function ReportsPage({
                       <span className="reports-empty-cell">납품 없음</span>
                     )}
                   </td>
+                  <td className="reports-delivery-items-cell">
+                    {customer.recentQuoteItems.length > 0 ? (
+                      <div className="reports-delivery-chip-list">
+                        {customer.recentQuoteItems.map((item, index) => (
+                          <a href={item.href || customer.href} key={`${customer.id}-quote-${item.date || index}-${index}`}>
+                            <strong>{item.label}</strong>
+                            <small>{[lastDateLabel(item.date), item.quoteLabel || item.source, item.statusLabel, item.amount ? formatWon(item.amount) : ''].filter(Boolean).join(' · ')}</small>
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="reports-empty-cell">견적 없음</span>
+                    )}
+                  </td>
                   <td className="reports-stack-cell">
                     <strong>{lastDateLabel(customer.lastActivityDate)}</strong>
                     <a className="customer-row-action" href={customer.href}>
@@ -782,14 +797,14 @@ export function ReportsPage({
                 </tr>
                 {expandedAccountKey === customer.accountKey ? (
                   <tr className="reports-drilldown-row">
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <ReportsAccountDrilldown customer={customer} />
                     </td>
                   </tr>
                 ) : null}
                 </Fragment>
               )) : (
-                <tr><td colSpan={10}>표시할 고객 운영 기록이 없습니다.</td></tr>
+                <tr><td colSpan={11}>표시할 고객 운영 기록이 없습니다.</td></tr>
               )}
             </tbody>
           </table>

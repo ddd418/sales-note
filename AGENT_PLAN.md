@@ -11385,3 +11385,39 @@ python pre_deployment_check.py
 - `cd frontend && npx tsc --noEmit --pretty false`
 - `cd frontend && npm run build`
 - `git diff --check`
+
+## 2026-06-18 Reports recent quote items plan
+
+**Background**:
+
+- User asked for the React `/reports/` analysis tab to show recent quoted items too.
+- Current operations rows already show `recentDeliveryItems`, while quote records are only available in drilldown and metrics.
+- The account operational ledger already includes `quoteRecords`, so this can be added without schema changes.
+
+**DB change required**: No.
+
+- Use existing quote and quote-schedule ledger payloads.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Backend:
+  - Add `recentQuoteItems` to customer operation rows.
+  - Summarize quote record items with the same item summary helper used by delivery records.
+  - Include recent quote item details in the customer operations XLSX export.
+- Frontend:
+  - Add the `recentQuoteItems` type and response normalization.
+  - Display a `최근 견적 품목` column next to recent delivery items in the reports operations table.
+- Tests:
+  - Extend the reports customer operations API regression coverage so quote item payloads are verified.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\api\reports.py reporting\tests.py`
+- Focused Django reports API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`

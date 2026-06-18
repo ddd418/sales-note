@@ -346,6 +346,7 @@ def _reports_customer_row_base(followup):
         'lastPrepaymentDate': None,
         'lastActivityDate': None,
         'recentDeliveryItems': [],
+        'recentQuoteItems': [],
         'cleanupCandidateCount': 0,
         'cleanupRiskLabel': '',
         'cleanupTypes': [],
@@ -389,7 +390,7 @@ def _reports_append_drilldown(row, section, item, limit=6):
         items.append(item)
 
 
-def _reports_delivery_item_summary(record):
+def _reports_record_item_summary(record):
     labels = []
     for item in record.get('items', [])[:3]:
         name = (
@@ -416,6 +417,10 @@ def _reports_delivery_item_summary(record):
     if hidden_count:
         summary += f' 외 {hidden_count}개'
     return summary
+
+
+def _reports_quote_record_label(record):
+    return record.get('quoteNumber') or ('견적 일정' if record.get('recordType') == 'quote_schedule' else '견적')
 
 
 def _reports_customer_operations_payload(followups_qs, filter_users, date_from, date_to, actor):
@@ -502,7 +507,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             row['recentDeliveryItems'].append({
                 'id': record.get('id'),
                 'date': record.get('date'),
-                'label': _reports_delivery_item_summary(record),
+                'label': _reports_record_item_summary(record),
                 'amount': total_amount,
                 'paymentSource': record.get('paymentSource') or 'normal',
                 'paymentSourceLabel': record.get('paymentSourceLabel') or '일반 납품',
@@ -515,7 +520,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             _reports_append_drilldown(row, 'deliveries', {
                 'id': record.get('id'),
                 'date': record.get('date'),
-                'label': _reports_delivery_item_summary(record),
+                'label': _reports_record_item_summary(record),
                 'amount': total_amount,
                 'customerName': record.get('customerName') or '',
                 'ownerName': record.get('ownerName') or '',
@@ -524,11 +529,22 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
                 'paymentStatusLabel': record.get('paymentStatusLabel') or record.get('paymentSourceLabel') or '일반 납품',
                 'href': record.get('href') or '',
             })
+        for record in (ledger.get('quoteRecords') or [])[:5]:
+            row['recentQuoteItems'].append({
+                'id': record.get('id'),
+                'date': record.get('date'),
+                'label': _reports_record_item_summary(record),
+                'amount': record.get('totalAmount') or 0,
+                'quoteLabel': _reports_quote_record_label(record),
+                'statusLabel': record.get('statusLabel') or '',
+                'source': record.get('source') or ('견적 일정' if record.get('recordType') == 'quote_schedule' else '견적'),
+                'href': record.get('href') or '',
+            })
         for record in (ledger.get('quoteRecords') or [])[:6]:
             _reports_append_drilldown(row, 'quotes', {
                 'id': record.get('id'),
                 'date': record.get('date'),
-                'label': record.get('quoteNumber') or ('견적 일정' if record.get('recordType') == 'quote_schedule' else '견적'),
+                'label': _reports_quote_record_label(record),
                 'amount': record.get('totalAmount') or 0,
                 'customerName': record.get('customerName') or '',
                 'ownerName': record.get('ownerName') or '',
@@ -1842,7 +1858,7 @@ def reports_customer_operations_xlsx_export_api(request):
         '일반납품건수', '일반납품금액', '견적건수', '견적금액',
         '선결제건수', '선결제총액', '선결제잔액', '선결제사용액',
         '서비스건수', '진행서비스', '최근납품일', '최근견적일', '최근선결제일',
-        '최근서비스일', '최근활동일', '정리후보', '정리유형', '최근납품품목', '계정링크',
+        '최근서비스일', '최근활동일', '정리후보', '정리유형', '최근견적품목', '최근납품품목', '계정링크',
     ]
     ws.append(headers)
 
@@ -1861,6 +1877,18 @@ def reports_customer_operations_xlsx_export_api(request):
         cell.border = border
 
     for row in rows:
+        recent_quote_items = []
+        for item in row.get('recentQuoteItems') or []:
+            parts = [
+                str(item.get('date') or ''),
+                item.get('quoteLabel') or item.get('source') or '',
+                item.get('statusLabel') or '',
+                item.get('label') or '',
+            ]
+            amount = item.get('amount') or 0
+            if amount:
+                parts.append(f'{int(amount):,}원')
+            recent_quote_items.append(' · '.join([part for part in parts if part]))
         recent_items = []
         for item in row.get('recentDeliveryItems') or []:
             parts = [
@@ -1904,6 +1932,7 @@ def reports_customer_operations_xlsx_export_api(request):
             row.get('lastActivityDate') or '',
             row.get('cleanupCandidateCount') or 0,
             ', '.join(row.get('cleanupTypes') or []),
+            '\n'.join(recent_quote_items),
             '\n'.join(recent_items),
             request.build_absolute_uri(row.get('href') or '') if row.get('href') else '',
         ])
@@ -1922,7 +1951,7 @@ def reports_customer_operations_xlsx_export_api(request):
         14, 16, 10, 14,
         12, 14, 14, 14,
         12, 12, 12, 12, 12,
-        12, 12, 10, 20, 46, 46,
+        12, 12, 10, 20, 46, 46, 46,
     ]
     for col_idx, width in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = width

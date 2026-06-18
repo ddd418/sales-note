@@ -12,6 +12,17 @@ export type ReportsCustomerRecentDelivery = {
   href?: string;
 };
 
+export type ReportsCustomerRecentQuote = {
+  id?: number | null;
+  date: string | null;
+  label: string;
+  amount: number;
+  quoteLabel?: string;
+  statusLabel?: string;
+  source?: string;
+  href?: string;
+};
+
 export type ReportsOperationDrilldownContact = {
   id: number;
   name: string;
@@ -78,6 +89,7 @@ export type ReportsCustomerOperationRow = {
   lastPrepaymentDate: string | null;
   lastActivityDate: string | null;
   recentDeliveryItems: ReportsCustomerRecentDelivery[];
+  recentQuoteItems: ReportsCustomerRecentQuote[];
   cleanupCandidateCount: number;
   cleanupRiskLabel: string;
   cleanupTypes: string[];
@@ -511,6 +523,10 @@ export async function loadReportsData(params: {
               services: (customer.drilldown?.services ?? []).map((record) => normalizeHrefFields(record, ['href'])),
             },
             recentDeliveryItems: (customer.recentDeliveryItems ?? []).map((item) => ({
+              ...item,
+              href: normalizeCoreCrmHref(item.href ?? ''),
+            })),
+            recentQuoteItems: (customer.recentQuoteItems ?? []).map((item) => ({
               ...item,
               href: normalizeCoreCrmHref(item.href ?? ''),
             })),
