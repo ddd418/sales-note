@@ -11350,3 +11350,38 @@ python pre_deployment_check.py
 - `cd frontend && npm run build`
 - Browser/local smoke for `/assets/` when feasible
 - `git diff --check`
+
+## 2026-06-18 Reports product-name search plan
+
+**Background**:
+
+- User asked for the React `/reports/` analysis tab search to find accounts by products sold.
+- Current `/reporting/api/reports/` keyword search filters account/contact fields only.
+- The reports operations table already displays recent delivery items, so the missing part is query matching against product/item fields before rows are built.
+
+**DB change required**: No.
+
+- Use existing `Schedule`, `DeliveryItem`, `Quote`, `QuoteItem`, and `Product` relations.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Backend:
+  - Extend reports keyword filtering so `q` matches delivery schedule item names and linked product code/description/specification.
+  - Include quote/quote-schedule item product fields as supporting commercial record matches.
+  - Respect the existing selected date range and salesperson/company permission scope when matching product records.
+  - Preserve existing account/company/department/contact keyword behavior.
+- Frontend:
+  - Update the reports search label and placeholder to mention product search.
+- Tests:
+  - Add a focused reports API regression test proving a product/item keyword returns the account that sold the product.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\api\reports.py reporting\tests.py`
+- Focused Django reports API tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `git diff --check`

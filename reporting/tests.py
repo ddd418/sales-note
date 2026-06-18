@@ -2023,6 +2023,80 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertEqual(rows[0]['prepaymentBalance'], 7000)
         self.assertEqual(rows[0]['deliveryCount'], 0)
 
+    def test_reports_api_keyword_search_finds_accounts_by_sold_product(self):
+        today = timezone.localdate()
+        product = Product.objects.create(
+            product_code='RPT-PRODUCT-SEARCH-001',
+            description='분석탭 제품명 검색 전용 키트',
+            specification='report search spec',
+            standard_price=1000,
+            created_by=self.user,
+        )
+        delivery_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today,
+            visit_time=time(10, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule,
+            product=product,
+            item_name=product.product_code,
+            quantity=2,
+            unit='EA',
+            unit_price=1000,
+            total_price=2200,
+        )
+        other_department = Department.objects.create(
+            company=self.customer_company,
+            name='검색 제외 연구실',
+            created_by=self.user,
+        )
+        other_followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=other_department,
+            customer_name='검색 제외 담당자',
+        )
+        other_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=other_followup,
+            visit_date=today,
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=other_schedule,
+            item_name='다른 납품 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=500,
+            total_price=550,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'), {
+            'date_from': today.isoformat(),
+            'date_to': today.isoformat(),
+            'q': '제품명 검색 전용',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['filters']['query'], '제품명 검색 전용')
+        rows = payload['customerOperations']['rows']
+        self.assertEqual([row['id'] for row in rows], [self.department.id])
+        self.assertEqual(payload['customerOperations']['metrics']['deliveryCount'], 1)
+        recent_text = json.dumps(rows[0]['recentDeliveryItems'], ensure_ascii=False)
+        self.assertIn(product.product_code, recent_text)
+        self.assertNotIn('검색 제외 연구실', json.dumps(rows, ensure_ascii=False))
+
     def test_account_cleanup_account_search_api_finds_by_company_department_pi_contact_and_email(self):
         self.followup.manager = '김PI'
         self.followup.email = 'pi-search@example.com'

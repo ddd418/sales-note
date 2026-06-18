@@ -317,12 +317,12 @@ export function ReportsPage({
       <div className="reports-control-band">
         <div className="reports-filter-bar">
           <label className="reports-filter-wide">
-            <span>업체/부서/담당자</span>
+            <span>업체/부서/담당자/제품</span>
             <input
               type="search"
               value={selectedQuery}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="계정, 업체, 담당자 검색"
+              placeholder="계정, 업체, 담당자, 제품명 검색"
             />
           </label>
           <label>

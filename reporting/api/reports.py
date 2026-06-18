@@ -41,6 +41,7 @@ from reporting.models import (
     Department,
     FollowUp,
     History,
+    Quote,
     Schedule,
     ServiceCase,
 )
@@ -144,10 +145,73 @@ def _reports_filter_params(request):
     }
 
 
-def _reports_apply_account_filters(followups_qs, filters):
+def _reports_product_match_account_filter(query, filter_users=None, date_from=None, date_to=None):
+    if not query or filter_users is None:
+        return None
+
+    item_match = (
+        Q(delivery_items_set__item_name__icontains=query)
+        | Q(delivery_items_set__notes__icontains=query)
+        | Q(delivery_items_set__option_description__icontains=query)
+        | Q(delivery_items_set__product__product_code__icontains=query)
+        | Q(delivery_items_set__product__description__icontains=query)
+        | Q(delivery_items_set__product__specification__icontains=query)
+    )
+    schedule_rows = (
+        Schedule.objects.filter(
+            user__in=filter_users,
+            followup__isnull=False,
+            activity_type__in=['delivery', 'quote'],
+            **_reports_date_filter_kwargs('visit_date', date_from, date_to),
+        )
+        .filter(item_match)
+        .exclude(status='cancelled')
+        .values('followup_id', 'followup__department_id')
+        .distinct()
+    )
+
+    quote_item_match = (
+        Q(items__product__product_code__icontains=query)
+        | Q(items__product__description__icontains=query)
+        | Q(items__product__specification__icontains=query)
+        | Q(items__description__icontains=query)
+    )
+    quote_rows = (
+        Quote.objects.filter(
+            user__in=filter_users,
+            followup__isnull=False,
+            **_reports_date_filter_kwargs('quote_date', date_from, date_to),
+        )
+        .filter(quote_item_match)
+        .values('followup_id', 'followup__department_id')
+        .distinct()
+    )
+
+    followup_ids = set()
+    department_ids = set()
+    for row in list(schedule_rows) + list(quote_rows):
+        followup_id = row.get('followup_id')
+        department_id = row.get('followup__department_id')
+        if followup_id:
+            followup_ids.add(followup_id)
+        if department_id:
+            department_ids.add(department_id)
+
+    if not followup_ids and not department_ids:
+        return None
+
+    account_filter = Q()
+    if followup_ids:
+        account_filter |= Q(id__in=followup_ids)
+    if department_ids:
+        account_filter |= Q(department_id__in=department_ids)
+    return account_filter
+
+
+def _reports_apply_account_filters(followups_qs, filters, filter_users=None, date_from=None, date_to=None):
     query = filters.get('query') or ''
     if query:
-        followups_qs = followups_qs.filter(
+        account_filter = (
             Q(company__name__icontains=query)
             | Q(department__name__icontains=query)
             | Q(customer_name__icontains=query)
@@ -155,6 +219,17 @@ def _reports_apply_account_filters(followups_qs, filters):
             | Q(email__icontains=query)
             | Q(phone_number__icontains=query)
         )
+        product_filter = _reports_product_match_account_filter(
+            query,
+            filter_users=filter_users,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        if product_filter is not None:
+            account_filter |= product_filter
+        followups_qs = followups_qs.filter(
+            account_filter
+        ).distinct()
     company_id = filters.get('companyId')
     if company_id:
         followups_qs = followups_qs.filter(company_id=company_id)
@@ -195,6 +270,15 @@ def _reports_filter_options(followups_qs):
             for row in department_rows
         ],
     }
+
+
+def _reports_date_filter_kwargs(field_name, date_from=None, date_to=None):
+    filters = {}
+    if date_from:
+        filters[f'{field_name}__gte'] = date_from
+    if date_to:
+        filters[f'{field_name}__lte'] = date_to
+    return filters
 
 
 def _reports_previous_date_range(date_from, date_to):
@@ -1457,7 +1541,13 @@ def reports_summary_api(request):
     )
     base_followups_qs = FollowUp.objects.filter(user__in=filter_users)
     filter_options = _reports_filter_options(base_followups_qs)
-    followups_qs = _reports_apply_account_filters(base_followups_qs, report_filters)
+    followups_qs = _reports_apply_account_filters(
+        base_followups_qs,
+        report_filters,
+        filter_users=filter_users,
+        date_from=date_from,
+        date_to=date_to,
+    )
     customer_operations = _reports_customer_operations_payload(
         followups_qs,
         filter_users,
@@ -1716,7 +1806,13 @@ def reports_customer_operations_xlsx_export_api(request):
     filter_users, _salesperson_list, selected_user = _analytics_api_scope_users(request, user_profile)
     report_filters = _reports_filter_params(request)
     base_followups_qs = FollowUp.objects.filter(user__in=filter_users)
-    followups_qs = _reports_apply_account_filters(base_followups_qs, report_filters)
+    followups_qs = _reports_apply_account_filters(
+        base_followups_qs,
+        report_filters,
+        filter_users=filter_users,
+        date_from=date_from,
+        date_to=date_to,
+    )
     data_quality = _reports_data_quality_payload(followups_qs, filter_users)
     cleanup_markers = _reports_cleanup_marker_map(data_quality)
     operations = _reports_customer_operations_payload(

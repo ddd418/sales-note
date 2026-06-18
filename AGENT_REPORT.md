@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-06-18 — 분석 탭 제품명 검색 지원
+
+### 요약
+
+- React `/reports/` 분석 탭 검색어가 업체/부서/담당자뿐 아니라 납품/견적 품목의 제품명 계열 필드도 찾도록 확장했습니다.
+- 제품 코드, 제품 설명, 규격, 수기 납품 품목명, 품목 비고/옵션 설명이 검색 범위에 포함됩니다.
+- 검색창 라벨과 placeholder를 제품명 검색이 가능하다는 문구로 업데이트했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+- `reporting/api/reports.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 분석 탭에서 특정 제품을 판매/납품한 계정을 바로 찾을 수 있습니다.
+- 기존 날짜 범위와 담당자 권한 범위를 유지한 채 제품 품목 검색을 적용합니다.
+- 보고서 엑셀 export도 같은 검색 규칙을 사용합니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 기존 업체/부서/담당자/이메일/전화 검색은 유지했습니다.
+- `/reporting/api/reports/`, `/reports/`, customer operations Excel export 경로는 유지했습니다.
+- 인증, 사용자 범위, manager/admin 필터 동작은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\api\reports.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_keyword_search_finds_accounts_by_sold_product reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_filters_account_rows_and_prepayment_balance --keepdb --verbosity=1
+→ OK, 2 tests
+
+python manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --keepdb --verbosity=1
+→ OK, 24 tests
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK
+→ Vite reported the existing large chunk warning for App bundle
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 검색은 계정 행을 찾는 용도입니다. 제품명으로 검색했을 때 해당 계정의 기간 내 운영 현황 전체가 표시되며, 제품별 매출 집계 화면으로 분리한 것은 아닙니다.
+
+### 추천 다음 작업
+
+- 제품별 판매 현황이 더 필요하면 `/reports/`에 제품별 집계 탭 또는 제품 드릴다운을 추가하는 작업을 추천합니다.
+
+### 운영 배포 상태
+
+- Pending deployment.
+
+### 수동 서버 테스트 절차
+
+1. 운영 `/reports/`에 접속합니다.
+2. 날짜 범위를 제품 납품 기록이 있는 기간으로 맞춥니다.
+3. 검색창에 제품 코드 또는 제품 설명 일부를 입력합니다.
+4. `계정별 운영 현황표`에 해당 제품을 납품한 계정만 남는지 확인합니다.
+5. `최근 납품 품목` 칩에 검색한 제품 코드/품목이 보이는지 확인합니다.
+
 ## 2026-06-17 — 견적 일정 취소 시 실주 자동 이동
 
 ### 요약
