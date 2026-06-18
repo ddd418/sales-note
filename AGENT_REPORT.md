@@ -64,6 +64,18 @@ cd frontend; npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git push origin main
+→ Commit 8a999c8 pushed to origin/main
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment e60ec428-8794-403f-b40d-f7247aa3c47e reached SUCCESS for commit 8a999c8
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ Frontend deployment 5dfacffd-a6b0-42a4-937c-b080953c7b38 reached SUCCESS for commit 8a999c8
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
 ```
 
 ### 알려진 제한
@@ -76,7 +88,11 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending until commit, push, and Railway deployment verification complete.
+- Completed.
+- Commit `8a999c8 Show recent quote items in reports` is present on `origin/main`.
+- Railway backend `web` deployment `e60ec428-8794-403f-b40d-f7247aa3c47e` succeeded for commit `8a999c8`.
+- Railway frontend `sales-note-frontend` deployment `5dfacffd-a6b0-42a4-937c-b080953c7b38` succeeded for commit `8a999c8`.
+- Production smoke passed for backend health/readiness, login page, frontend shell, React routes, and protected API behavior.
 
 ### 수동 서버 테스트 절차
 
