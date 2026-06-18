@@ -61,6 +61,18 @@ cd frontend; node --check server.mjs
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+railway deployment list --service web --environment production --limit 2 --json
+→ Backend deployment dd289bb7-4d45-4c90-ae66-abcbc812cffb reached SUCCESS for commit ee97b9f
+
+railway deployment list --service sales-note-frontend --environment production --limit 2 --json
+→ Frontend deployment f99cd980-fb05-4b56-9944-2951b75a1bff reached SUCCESS for commit ee97b9f
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/reports/?q=__smoke_product_search__
+→ 401 login_required, protected API behavior preserved
 ```
 
 ### 알려진 제한
@@ -73,7 +85,11 @@ git diff --check
 
 ### 운영 배포 상태
 
-- Pending deployment.
+- Completed.
+- Commit `ee97b9f Add product search to reports` is present on `origin/main`.
+- Railway backend `web` deployment `dd289bb7-4d45-4c90-ae66-abcbc812cffb` succeeded for commit `ee97b9f`.
+- Railway frontend `sales-note-frontend` deployment `f99cd980-fb05-4b56-9944-2951b75a1bff` succeeded for commit `ee97b9f`.
+- Production smoke passed for backend health/readiness, login page, frontend shell, React routes, and protected API behavior.
 
 ### 수동 서버 테스트 절차
 
