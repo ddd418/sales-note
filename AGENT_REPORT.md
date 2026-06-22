@@ -1,5 +1,63 @@
 # AGENT_REPORT.md
 
+## 2026-06-22 — schedule 927 상태 완료 보정
+
+### 요약
+
+- 사용자가 schedule `927`을 실수로 취소했다고 보고했고, 운영에서 완료 상태로 보정해 달라고 요청했습니다.
+- 운영 DB 확인 시 schedule `927`은 이미 `취소됨`이 아니라 `예정됨(scheduled)` 상태였고, 일정 유형은 `견적(quote)`이었습니다.
+- 요청대로 schedule `927` 상태를 `완료됨(completed)`으로 변경했습니다.
+
+### 변경된 파일
+
+- `AGENT_REPORT.md`
+
+### CRM 개선
+
+- React 화면에서 되돌릴 수 없던 개별 일정 상태를 운영 데이터 기준으로 정상화했습니다.
+
+### 기존 기능 보존
+
+- 코드 변경과 모델 변경은 없습니다.
+- schedule `927`의 품목 금액 `184,800원`과 연결 followup `485`의 파이프라인 `견적 제출(quote)` 상태는 유지했습니다.
+- 구매 확정이 아닌 견적 일정이므로 `수주`로 임의 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+railway connect Postgres --environment production
+→ schedule 927 확인: status=scheduled, activity_type=quote, item amount=184,800원, pipeline_stage=quote
+
+railway connect Postgres --environment production
+→ schedule 927 constrained update: status scheduled → completed
+
+railway connect Postgres --environment production
+→ verification: status=completed, activity_type=quote, item amount=184,800원, pipeline_stage=quote
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+```
+
+### 알려진 제한
+
+- 이번 보정은 schedule `927` 하나에만 적용했습니다.
+- 견적 일정의 `완료됨`은 구매 확정/수주와 별개입니다. 수주 처리가 필요하면 일정에서 구매 확정 또는 납품 일정 흐름으로 처리해야 합니다.
+
+### 권장 다음 작업
+
+- React 일정 상세에서 취소된 일정을 다시 예정/완료로 되돌리는 UI 동작을 추가할지 검토합니다.
+
+### 프로덕션 배포 상태
+
+- 코드 변경이 없어 Railway 재배포 대상이 아닙니다.
+- 운영 스모크 테스트는 `ok`입니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. [일정 927](https://sales-note-frontend-production.up.railway.app/schedules/927/)에 로그인해 들어갑니다.
+2. 상태가 `완료됨`으로 표시되는지 확인합니다.
+3. 품목 금액이 기존 `184,800원`으로 유지되는지 확인합니다.
+
 ## 2026-06-22 — 일정 936 수주 금액 0원 원인 및 백필 도구
 
 ### 요약
