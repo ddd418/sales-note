@@ -18906,6 +18906,105 @@ class PipelineApiTests(TestCase):
         self.assertEqual(followup.pipeline_stage, 'potential')
 
 
+class SchedulePipelineBackfillCommandTests(TestCase):
+    """Existing schedule rows can be synced into the pipeline after deployment."""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='일정파이프라인백필회사')
+        self.user = make_user('schedule_pipeline_backfill', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='백필거래처', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company,
+            name='백필연구실',
+            created_by=self.user,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=customer_company,
+            department=department,
+            customer_name='백필담당자',
+            pipeline_stage='potential',
+            pipeline_manually_set=True,
+        )
+        self.schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(14, 0),
+            status='completed',
+            activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=self.schedule,
+            item_name='BACKFILL-WON',
+            quantity=1,
+            unit='EA',
+            unit_price=168000,
+        )
+
+    def test_sync_schedule_pipeline_command_dry_run_reports_delivery_won_without_saving(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        output = StringIO()
+
+        call_command(
+            'sync_schedule_pipeline',
+            '--schedule-id',
+            str(self.schedule.id),
+            '--json',
+            stdout=output,
+        )
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload['mode'], 'dry_run')
+        self.assertEqual(payload['changed'], 1)
+        self.assertEqual(payload['changes'][0]['fromStage'], 'potential')
+        self.assertEqual(payload['changes'][0]['toStage'], 'won')
+        self.assertFalse(payload['changes'][0]['applied'])
+        self.followup.refresh_from_db()
+        self.assertEqual(self.followup.pipeline_stage, 'potential')
+        self.assertTrue(self.followup.pipeline_manually_set)
+
+    def test_sync_schedule_pipeline_command_apply_updates_won_value_for_pipeline_api(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        output = StringIO()
+
+        call_command(
+            'sync_schedule_pipeline',
+            '--schedule-id',
+            str(self.schedule.id),
+            '--apply',
+            '--json',
+            stdout=output,
+        )
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload['mode'], 'apply')
+        self.assertEqual(payload['changed'], 1)
+        self.assertTrue(payload['changes'][0]['applied'])
+        self.followup.refresh_from_db()
+        self.assertEqual(self.followup.pipeline_stage, 'won')
+        self.assertFalse(self.followup.pipeline_manually_set)
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+
+        self.assertEqual(response.status_code, 200)
+        deal = next(item for item in response.json()['deals'] if item['id'] == self.followup.id)
+        self.assertEqual(deal['stage'], 'won')
+        self.assertEqual(deal['stageLabel'], '수주')
+        self.assertEqual(deal['value'], 184800)
+        self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 7: 권한 격리 테스트 (can_access_user_data)
 # ─────────────────────────────────────────────────────────────────────────────

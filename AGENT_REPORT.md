@@ -1,5 +1,83 @@
 # AGENT_REPORT.md
 
+## 2026-06-22 — 일정 936 수주 금액 0원 원인 및 백필 도구
+
+### 요약
+
+- 운영 일정 `936`은 `납품 일정` + `완료됨`이고 품목/납품 히스토리 금액이 `184,800원`으로 존재했습니다.
+- 다만 연결된 followup `489`의 `pipeline_stage`가 아직 `potential`로 남아 있어 파이프라인 API가 `수주` 금액 계산 경로를 타지 못했습니다.
+- 원인은 신규 일정 저장/상태 변경 동기화 배포 전에 이미 완료되어 있던 기존 일정이 자동 백필되지 않은 것입니다.
+- 기존 완료 일정을 파이프라인으로 동기화할 수 있는 dry-run 기본 management command를 추가했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/management/commands/sync_schedule_pipeline.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 기존 완료 납품 일정도 필요 시 `수주` 파이프라인 단계로 재동기화할 수 있습니다.
+- `--schedule-id`로 특정 일정만 좁게 보정할 수 있어 운영 데이터 변경 범위를 통제할 수 있습니다.
+- 적용 후 파이프라인 API가 완료 납품 품목 금액을 카드 금액으로 표시하는지 테스트로 보장했습니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 기본 실행은 dry-run이며, `--apply`를 명시해야만 저장합니다.
+- 파이프라인 수동 이동과 기존 일정 저장 API 동작은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+railway connect Postgres --environment production
+→ schedule 936 read-only 확인: delivery completed, item/history amount 184,800원, followup 489 pipeline_stage=potential
+
+python -m py_compile reporting\management\commands\sync_schedule_pipeline.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulePipelineBackfillCommandTests --keepdb --verbosity=1
+→ OK, 2 tests
+
+python manage.py test reporting.tests.SchedulePipelineBackfillCommandTests reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_delivery_completed_forces_pipeline_card_to_won reporting.tests.SchedulesSummaryApiTests.test_schedule_status_update_api_delivery_completed_moves_pipeline_card_to_won reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_quote_cancel_moves_pipeline_card_to_lost reporting.tests.SchedulesSummaryApiTests.test_schedule_status_update_api_quote_cancel_moves_pipeline_card_to_lost reporting.tests.PipelineApiTests.test_pipeline_move_updates_accessible_followup_stage --keepdb --verbosity=1
+→ OK, 7 tests
+
+python manage.py test reporting.tests.PipelineApiTests reporting.tests.SchedulePipelineBackfillCommandTests --keepdb --verbosity=1
+→ OK, 17 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 보정은 이번에 보고된 schedule `936`만 좁게 적용할 예정입니다.
+- 전체 과거 일정 일괄 백필은 영향 범위가 더 커서 별도 확인 후 실행하는 편이 안전합니다.
+
+### 권장 다음 작업
+
+- 운영 파이프라인에서 schedule `936` 관련 카드가 `수주`와 `184,800원`으로 보이는지 확인합니다.
+
+### 프로덕션 배포 상태
+
+- 대기 중: 로컬 검증 완료 후 커밋/푸시 및 Railway 배포, schedule `936` 운영 보정 예정입니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. [파이프라인](https://sales-note-frontend-production.up.railway.app/pipeline/)에 로그인합니다.
+2. schedule `936`의 고객 카드를 찾습니다.
+3. 카드가 `수주` 단계에 있고 금액이 `184,800원`으로 표시되는지 확인합니다.
+4. [일정 936](https://sales-note-frontend-production.up.railway.app/schedules/936/) 상세에서 납품 완료 상태와 품목 금액이 그대로인지 확인합니다.
+
 ## 2026-06-22 — 일정 기준 파이프라인 단방향 동기화
 
 ### 요약

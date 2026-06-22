@@ -11464,3 +11464,47 @@ python pre_deployment_check.py
 - `cd frontend && npm run build`
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
+
+## 2026-06-22 Pipeline won value backfill plan
+
+**Background**:
+
+- User reported that schedule `936` is completed as a delivery/won case, but the React pipeline shows `0원`.
+- Production read-only DB check showed schedule `936` has:
+  - `activity_type=delivery`
+  - `status=completed`
+  - one delivery item totaling `184,800원`
+  - delivery history amount `184,800원`
+  - linked followup `489` still at `pipeline_stage=potential`
+- Therefore the amount exists, but the pipeline card never entered the `won` pricing path because this was an already-completed schedule that predated the schedule-to-pipeline sync deployment.
+
+**DB change required**: No.
+
+- Existing `Schedule`, `DeliveryItem`, `History`, and `FollowUp.pipeline_stage` fields are sufficient.
+- No migration is planned.
+
+**Implementation scope**:
+
+- Backend management command:
+  - Add a dry-run-first command to sync existing schedules into pipeline stages.
+  - Support `--apply`, `--schedule-id`, `--followup-id`, `--limit`, and `--json` options.
+  - Pick the latest schedule signal per followup by `updated_at`, `visit_date`, and `id`.
+  - Apply the same schedule-driven mapping as the live schedule save/update flow.
+  - Set `pipeline_manually_set=False` when applying a schedule-derived stage.
+- Tests:
+  - Add dry-run coverage proving a completed delivery schedule would move a stale `potential` pipeline card to `won`.
+  - Add apply coverage proving the pipeline API then reports the completed delivery amount.
+
+**Operational fix**:
+
+- After deployment, repair schedule `936` with the command where remote execution is available, or the equivalent constrained SQL through `railway connect Postgres`.
+- Check `/reporting/api/pipeline/` behavior with production smoke and provide manual verification steps.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\management\commands\sync_schedule_pipeline.py reporting\tests.py`
+- Focused management-command regression tests.
+- Existing schedule/pipeline sync regression tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `git diff --check`
