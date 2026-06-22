@@ -60,6 +60,18 @@ cd frontend; npm run build
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git push origin main
+→ Commit e84b2e1 pushed to origin/main
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment 63b7b87c-23b0-4cdf-9fa3-4ac9aed8f19a reached SUCCESS for commit e84b2e1
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ Frontend deployment b379d765-d2cf-44d2-99a9-1409c4cc686c was SKIPPED for commit e84b2e1 because no frontend watched files changed
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
 ```
 
 ### 알려진 제한
@@ -73,7 +85,9 @@ git diff --check
 
 ### 프로덕션 배포 상태
 
-- 대기 중: 로컬 검증 완료 후 커밋/푸시 및 Railway 배포 확인 예정입니다.
+- 완료: 백엔드 Railway 배포 `63b7b87c-23b0-4cdf-9fa3-4ac9aed8f19a`가 commit `e84b2e1`로 `SUCCESS`에 도달했습니다.
+- 프론트 Railway 배포 `b379d765-d2cf-44d2-99a9-1409c4cc686c`는 프론트 변경이 없어 `SKIPPED` 처리되었습니다.
+- 운영 스모크 테스트는 `ok`입니다.
 
 ### 운영 서버 수동 테스트 절차
 
