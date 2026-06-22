@@ -1,5 +1,88 @@
 # AGENT_REPORT.md
 
+## 2026-06-22 — 일정 기준 파이프라인 단방향 동기화
+
+### 요약
+
+- 일정에서 유형/상태가 변경되면 연결된 고객 파이프라인 단계가 즉시 맞춰지도록 백엔드 동기화를 확장했습니다.
+- 납품 일정은 예정/완료 시 `수주`, 취소 시 `실주`로 이동합니다.
+- 견적 일정은 진행 중이면 `견적 제출`, 취소 시 `실주`, 구매 확정 시 `수주`로 이동합니다.
+- 파이프라인에서 수동으로 카드를 옮기는 동작은 계속 허용하며, 일정으로 역방향 동기화하지 않습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 캘린더에서 납품 완료 처리한 고객이 파이프라인 `견적 제출` 컬럼에 남는 문제를 수정했습니다.
+- 일정 저장 API, 일정 상태 버튼, 레거시 Django 일정 생성/수정 화면이 같은 파이프라인 동기화 규칙을 사용합니다.
+- 일정에서 갱신된 상태가 수동 파이프라인 이동 플래그보다 우선 적용되어, 일정과 파이프라인의 현재 영업 단계가 어긋나지 않게 했습니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- `/reporting/*` 기존 라우트, React 일정/파이프라인 API, 권한 체크를 유지했습니다.
+- 파이프라인 수동 이동은 계속 가능하며, 수동 이동 API는 일정 유형/상태를 변경하지 않습니다.
+
+### 실행한 명령과 결과
+
+```text
+python -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_delivery_completed_forces_pipeline_card_to_won reporting.tests.SchedulesSummaryApiTests.test_schedule_status_update_api_delivery_completed_moves_pipeline_card_to_won reporting.tests.SchedulesSummaryApiTests.test_schedules_update_api_quote_cancel_moves_pipeline_card_to_lost reporting.tests.SchedulesSummaryApiTests.test_schedule_status_update_api_quote_cancel_moves_pipeline_card_to_lost reporting.tests.PipelineApiTests.test_pipeline_move_updates_accessible_followup_stage --keepdb --verbosity=1
+→ OK, 5 tests
+
+python manage.py test reporting.tests.SchedulesSummaryApiTests --keepdb --verbosity=1
+→ OK, 80 tests
+
+python manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+python manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npx tsc --noEmit --pretty false
+→ OK
+
+cd frontend; node --check server.mjs
+→ OK
+
+cd frontend; npm run build
+→ OK
+→ Vite reported the existing large chunk warning for App bundle
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 서비스 일정은 파이프라인 단계와 직접 매핑하지 않았습니다.
+- 일정에서 상태를 바꾸면 파이프라인 수동 이동보다 일정 상태가 우선합니다. 이는 이번 요청의 단방향 동기화 규칙입니다.
+
+### 권장 다음 작업
+
+- 운영 서버에서 캘린더 납품 완료/견적 취소와 파이프라인 컬럼 이동을 직접 확인한 뒤, 다음 CRM 개선 작업으로 넘어갑니다.
+
+### 프로덕션 배포 상태
+
+- 대기 중: 로컬 검증 완료 후 커밋/푸시 및 Railway 배포 확인 예정입니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. React 캘린더 `https://sales-note-frontend-production.up.railway.app/schedules/calendar/`에 로그인합니다.
+2. 테스트 고객의 일정을 `납품 일정` + `완료됨`으로 저장합니다.
+3. 파이프라인 화면에서 해당 고객 카드가 `수주` 컬럼으로 이동했는지 확인합니다.
+4. 같은 고객의 견적 일정을 `취소됨`으로 저장하면 `실주` 컬럼으로 이동하는지 확인합니다.
+5. 파이프라인에서 카드를 수동으로 다른 컬럼에 옮겨도 일정 유형/상태가 바뀌지 않는지 확인합니다.
+
 ## 2026-06-18 — 분석 탭 최근 견적 품목 표시
 
 ### 요약

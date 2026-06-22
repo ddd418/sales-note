@@ -10087,34 +10087,53 @@ def _parse_schedule_probability(activity_type, value):
     return probability
 
 
-def _advance_quote_schedule_pipeline(schedule):
-    """Move the linked customer card into the quote pipeline when a quote schedule is active."""
-    if not schedule or schedule.activity_type != 'quote' or schedule.status == 'cancelled' or not schedule.followup_id:
-        return False
+def _schedule_pipeline_target_stage(schedule):
+    if not schedule or not schedule.followup_id:
+        return None
+
+    if schedule.activity_type == 'customer_meeting':
+        if schedule.status == 'cancelled':
+            return None
+        return 'contact'
+
+    if schedule.activity_type == 'quote':
+        if schedule.status == 'cancelled':
+            return 'lost'
+        if schedule.purchase_confirmed:
+            return 'won'
+        return 'quote'
+
+    if schedule.activity_type == 'delivery':
+        if schedule.status == 'cancelled':
+            return 'lost'
+        return 'won'
+
+    return None
+
+
+def _sync_schedule_pipeline(schedule):
+    """Synchronize a customer pipeline card from the schedule state only."""
     try:
-        from .funnel_views import _try_advance_pipeline
-        return _try_advance_pipeline(schedule.followup, 'quote')
+        target_stage = _schedule_pipeline_target_stage(schedule)
+        if not target_stage:
+            return False
+
+        followup = schedule.followup
+        if followup.pipeline_stage == target_stage and not followup.pipeline_manually_set:
+            return False
+
+        followup.pipeline_stage = target_stage
+        followup.pipeline_manually_set = False
+        followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
+        return True
     except Exception:
-        logger.exception('Failed to advance quote schedule pipeline for schedule %s', getattr(schedule, 'id', None))
+        logger.exception('Failed to sync schedule pipeline for schedule %s', getattr(schedule, 'id', None))
         return False
 
 
 def _sync_quote_schedule_pipeline(schedule):
-    """Synchronize the linked customer card with quote schedule state."""
-    if not schedule or schedule.activity_type != 'quote' or not schedule.followup_id:
-        return False
-
-    if schedule.status != 'cancelled':
-        return _advance_quote_schedule_pipeline(schedule)
-
-    followup = schedule.followup
-    current_stage = followup.pipeline_stage or 'potential'
-    if current_stage in {'won', 'lost'}:
-        return False
-
-    followup.pipeline_stage = 'lost'
-    followup.save(update_fields=['pipeline_stage'])
-    return True
+    """Backward-compatible wrapper for schedule-driven pipeline synchronization."""
+    return _sync_schedule_pipeline(schedule)
 
 
 def _ai_json_dict(value):
@@ -10910,7 +10929,7 @@ def schedules_create_api(request):
         expected_revenue=expected_revenue,
         probability=probability,
     )
-    _sync_quote_schedule_pipeline(schedule)
+    _sync_schedule_pipeline(schedule)
 
     return JsonResponse({
         'success': True,
@@ -13179,7 +13198,7 @@ def schedules_update_api(request, schedule_id):
                 else:
                     _schedules_restore_prepayments(schedule)
             sync_schedule_delivery_payment_type(schedule)
-        _sync_quote_schedule_pipeline(schedule)
+        _sync_schedule_pipeline(schedule)
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -21921,7 +21940,7 @@ def schedule_create_view(request):
                 except PermissionError as exc:
                     messages.error(request, str(exc))
                 sync_schedule_delivery_payment_type(schedule)
-            _sync_quote_schedule_pipeline(schedule)
+            _sync_schedule_pipeline(schedule)
             
             messages.success(request, '일정이 성공적으로 생성되었습니다.')
             
@@ -22237,7 +22256,7 @@ def schedule_edit_view(request, pk):
                     messages.error(request, str(exc))
                 sync_schedule_delivery_payment_type(updated_schedule)
 
-            _sync_quote_schedule_pipeline(updated_schedule)
+            _sync_schedule_pipeline(updated_schedule)
             
             messages.success(request, '일정이 성공적으로 수정되었습니다.')
             return redirect('reporting:schedule_detail', pk=schedule.pk)
@@ -25893,7 +25912,7 @@ def schedule_status_update_api(request, schedule_id):
         
         schedule.status = new_status
         schedule.save()
-        _sync_quote_schedule_pipeline(schedule)
+        _sync_schedule_pipeline(schedule)
         
         status_display = {
             'scheduled': '예정됨',

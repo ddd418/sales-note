@@ -11126,6 +11126,45 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['schedule']['id'], schedule.id)
         self.assertEqual(payload['message'], '일정을 수정했습니다.')
 
+    def test_schedules_update_api_delivery_completed_forces_pipeline_card_to_won(self):
+        import json
+
+        schedule = self._create_schedule(self.user, '납품완료수주', activity_type='quote')
+        schedule.followup.pipeline_stage = 'quote'
+        schedule.followup.pipeline_manually_set = True
+        schedule.followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedules_update_api', args=[schedule.id]),
+            data=json.dumps({
+                'followupId': schedule.followup_id,
+                'activityType': 'delivery',
+                'status': 'completed',
+                'visitDate': '2026-05-11',
+                'visitTime': '15:45',
+                'location': '납품 회의실',
+                'notes': '납품 완료',
+                'expectedRevenue': '2500000',
+                'probability': '100',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        schedule.refresh_from_db()
+        schedule.followup.refresh_from_db()
+        self.assertEqual(schedule.activity_type, 'delivery')
+        self.assertEqual(schedule.status, 'completed')
+        self.assertEqual(schedule.followup.pipeline_stage, 'won')
+        self.assertFalse(schedule.followup.pipeline_manually_set)
+
+        pipeline_response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+        self.assertEqual(pipeline_response.status_code, 200)
+        deal = next(item for item in pipeline_response.json()['deals'] if item['id'] == schedule.followup_id)
+        self.assertEqual(deal['stage'], 'won')
+        self.assertEqual(deal['stageLabel'], '수주')
+
     def test_schedules_update_api_requires_quote_probability(self):
         import json
 
@@ -11236,6 +11275,26 @@ class SchedulesSummaryApiTests(TestCase):
         schedule.followup.refresh_from_db()
         self.assertEqual(schedule.status, 'cancelled')
         self.assertEqual(schedule.followup.pipeline_stage, 'lost')
+
+    def test_schedule_status_update_api_delivery_completed_moves_pipeline_card_to_won(self):
+        schedule = self._create_schedule(self.user, '상태버튼납품완료', activity_type='delivery')
+        schedule.followup.pipeline_stage = 'quote'
+        schedule.followup.pipeline_manually_set = True
+        schedule.followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('reporting:schedule_status_update', args=[schedule.id]),
+            data={'status': 'completed'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        schedule.refresh_from_db()
+        schedule.followup.refresh_from_db()
+        self.assertEqual(schedule.status, 'completed')
+        self.assertEqual(schedule.followup.pipeline_stage, 'won')
+        self.assertFalse(schedule.followup.pipeline_manually_set)
 
     def test_prepayment_api_list_includes_same_department_and_existing_usage(self):
         from django.utils import timezone
@@ -18798,6 +18857,7 @@ class PipelineApiTests(TestCase):
 
     def test_pipeline_move_updates_accessible_followup_stage(self):
         followup = self._create_pipeline_customer(self.user, '이동고객', stage='potential')
+        schedule = followup.schedules.first()
         self.client.force_login(self.user)
 
         response = self.client.post(
@@ -18811,6 +18871,9 @@ class PipelineApiTests(TestCase):
         followup.refresh_from_db()
         self.assertEqual(followup.pipeline_stage, 'quote')
         self.assertTrue(followup.pipeline_manually_set)
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.activity_type, 'quote')
+        self.assertEqual(schedule.status, 'scheduled')
 
     def test_pipeline_move_rejects_invalid_stage(self):
         followup = self._create_pipeline_customer(self.user, '잘못된단계', stage='potential')

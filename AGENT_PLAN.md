@@ -11421,3 +11421,46 @@ python pre_deployment_check.py
 - `cd frontend && npm run build`
 - `cd frontend && node --check server.mjs`
 - `git diff --check`
+
+## 2026-06-22 Schedule-to-pipeline synchronization plan
+
+**Background**:
+
+- User reported that a delivery schedule can be completed while the related customer remains in the `견적 제출` pipeline column.
+- The desired rule is one-way synchronization: schedule changes must update pipeline state, while manual pipeline moves must remain possible and must not write back to schedules.
+- Existing code already syncs quote schedules partially, but only quote active/cancel states are covered.
+
+**DB change required**: No.
+
+- Existing `FollowUp.pipeline_stage` and `FollowUp.pipeline_manually_set` fields are sufficient.
+- No model fields or migrations are planned.
+
+**Implementation scope**:
+
+- Backend:
+  - Generalize the existing quote schedule pipeline sync helper into a schedule pipeline sync helper.
+  - Apply exact schedule-driven stage targets:
+    - Customer meeting scheduled/completed -> `contact`
+    - Quote scheduled/current -> `quote`
+    - Quote cancelled -> `lost`
+    - Delivery scheduled/completed -> `won`
+    - Delivery cancelled -> `lost`
+  - Clear `pipeline_manually_set` when a schedule change applies a pipeline stage, so future schedule changes remain authoritative.
+  - Preserve manual pipeline moves as a pipeline-only operation; do not update schedules from pipeline moves.
+- Tests:
+  - Add focused API regression tests for delivery completion moving a manually moved quote card to `won`.
+  - Add status-button coverage for delivery completion moving a quote-stage card to `won`.
+  - Preserve existing quote cancellation to `lost` coverage.
+  - Confirm manual pipeline moves do not rewrite schedule type or status.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused Django schedule/pipeline sync tests.
+- `python manage.py test reporting.tests.ReactSchedulesNotesApiTests --keepdb --verbosity=1`
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `cd frontend && npx tsc --noEmit --pretty false`
+- `cd frontend && npm run build`
+- `cd frontend && node --check server.mjs`
+- `git diff --check`
