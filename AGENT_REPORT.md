@@ -56,6 +56,22 @@ python manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git push origin main
+→ Commit 8a1e08c pushed to origin/main
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment eb9e762a-3cdb-478a-8b80-3be1399dda59 reached SUCCESS for commit 8a1e08c
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ Frontend deployment 90c43c4e-39ab-4094-a347-ab144fb2eddc was SKIPPED for commit 8a1e08c because no frontend watched files changed
+
+railway connect Postgres --environment production
+→ schedule 936 constrained update: followup 489 pipeline_stage potential → won, pipeline_manually_set false
+→ verification: pipelineStage=won, expectedPipelineValue=184,800원
+
+python scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
 ```
 
 ### 알려진 제한
@@ -69,7 +85,11 @@ git diff --check
 
 ### 프로덕션 배포 상태
 
-- 대기 중: 로컬 검증 완료 후 커밋/푸시 및 Railway 배포, schedule `936` 운영 보정 예정입니다.
+- 완료: 백엔드 Railway 배포 `eb9e762a-3cdb-478a-8b80-3be1399dda59`가 commit `8a1e08c`로 `SUCCESS`에 도달했습니다.
+- 프론트 Railway 배포 `90c43c4e-39ab-4094-a347-ab144fb2eddc`는 프론트 변경이 없어 `SKIPPED` 처리되었습니다.
+- schedule `936`의 연결 followup `489`는 운영 DB에서 `potential` → `won`으로 보정되었습니다.
+- 운영 검증 쿼리 기준 예상 파이프라인 금액은 `184,800원`입니다.
+- 운영 스모크 테스트는 `ok`입니다.
 
 ### 운영 서버 수동 테스트 절차
 
