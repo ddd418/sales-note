@@ -49,6 +49,15 @@ py -3.13 manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git push origin main
+→ OK, commit 77ed75f14db5e515fc96589dd90b36c6f078a2df pushed
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment da1a4d45-3c2f-4ba4-819f-8cbf5ccb22bf SUCCESS
+
+py -3.13 scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
 ```
 
 ### 알려진 제한
@@ -62,7 +71,9 @@ git diff --check
 
 ### 프로덕션 배포 상태
 
-- 대기 중: 로컬 검증 완료 후 백엔드 Railway 배포 예정입니다.
+- 완료: backend Railway deployment `da1a4d45-3c2f-4ba4-819f-8cbf5ccb22bf`가 `SUCCESS` 상태입니다.
+- 프론트엔드 deployment `210feb02-232d-4fca-8895-9951abf06b32`는 프론트 파일 변경이 없어 `SKIPPED` 처리되었습니다.
+- 운영 스모크 테스트 통과: backend/frontend health, 보호 API 401, 주요 React route 확인 완료.
 
 ### 운영 서버 수동 테스트 절차
 
