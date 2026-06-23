@@ -1,5 +1,76 @@
 # AGENT_REPORT.md
 
+## 2026-06-23 — 거래명세서 할인단가 출력 보정
+
+### 요약
+
+- schedule `936` 거래명세서에서 할인단가 `84,000원` 대신 기준단가 `110,000원`이 단가로 보이는 문제를 분석했습니다.
+- 문서 변수는 `품목1_단가=84,000`, `품목1_기준단가=110,000`으로 분리되어 있었지만, 거래명세서 템플릿의 단가 셀이 `{{품목1_기준단가}}`를 사용할 경우 기준단가가 노출될 수 있었습니다.
+- 거래명세서와 납품서에서는 `{{품목N_기준단가}}` 토큰을 쓰더라도 청구/할인 적용 단가가 나오도록 백엔드 문서 변수 매핑을 보정했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 거래명세서/납품서 단가 칸에 실청구 단가가 안정적으로 들어갑니다.
+- 기존 거래명세서 템플릿이 `{{품목N_단가}}` 대신 `{{품목N_기준단가}}`를 사용하고 있어도 할인단가가 반영됩니다.
+- 견적서는 기존대로 기준단가와 할인단가를 분리해서 보여줍니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 견적서의 `기준단가 가리기` 옵션은 기존처럼 견적서에만 적용됩니다.
+- 품목 공급가액, 부가세, 총액 계산은 기존 effective unit price 기준을 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+py -3.13 -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+py -3.13 manage.py test reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_includes_quote_discount_and_note_variables reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_hides_quotation_base_unit_price_when_requested reporting.tests.DocumentTemplatesReactApiTests.test_document_template_data_uses_billable_unit_price_for_transaction_statement_base_token reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_xlsx_hides_base_unit_price_column_when_requested reporting.tests.DocumentTemplatesReactApiTests.test_document_generate_transaction_statement_uses_discount_unit_price_for_base_token --keepdb --verbosity=1
+→ OK, 5 tests
+
+py -3.13 manage.py test reporting.tests.DocumentTemplatesReactApiTests --keepdb --verbosity=1
+→ OK, 23 tests
+
+py -3.13 manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+py -3.13 manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 프론트 코드는 변경하지 않았습니다.
+- schedule `936`의 실제 거래명세서는 배포 후 새로 생성해야 수정된 단가 매핑이 반영됩니다.
+
+### 권장 다음 작업
+
+- schedule `936`에서 거래명세서를 새로 생성해 단가 칸이 `84,000원`, 공급가액이 `168,000원`, 총액이 `184,800원`인지 확인합니다.
+
+### 프로덕션 배포 상태
+
+- 대기 중: 로컬 검증 완료 후 백엔드 Railway 배포 예정입니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. [일정 936](https://sales-note-frontend-production.up.railway.app/schedules/936/)에 로그인해 들어갑니다.
+2. 거래명세서 XLSX를 새로 생성합니다.
+3. 품목 단가 칸이 `84,000원`으로 표시되는지 확인합니다.
+4. 공급가액 `168,000원`, 부가세 `16,800원`, 총액 `184,800원`이 맞는지 확인합니다.
+
 ## 2026-06-22 — schedule 927 상태 완료 보정
 
 ### 요약

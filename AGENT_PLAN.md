@@ -11508,3 +11508,39 @@ python pre_deployment_check.py
 - `python manage.py check`
 - `python manage.py makemigrations --check --dry-run`
 - `git diff --check`
+
+## 2026-06-23 Transaction statement discounted unit price plan
+
+**Background**:
+
+- User reported schedule `936` 거래명세서 shows unit price `110,000원` even though the item was discounted to `84,000원`.
+- Document preview variables already expose both:
+  - `품목1_기준단가 = 110,000`
+  - `품목1_할인단가 = 84,000`
+  - `품목1_단가 = 84,000`
+- The likely production failure path is that the transaction statement template's visible unit-price cell uses `{{품목1_기준단가}}` instead of `{{품목1_단가}}`.
+- For transaction statements and delivery notes, visible unit prices should represent the billable/effective unit price, not the product base/list price.
+
+**DB change required**: No.
+
+- Existing `DeliveryItem.unit_price`, `discount_rate`, and `discount_unit_price` already contain all required pricing data.
+- No migration is planned.
+
+**Implementation scope**:
+
+- Backend:
+  - Keep quotation documents unchanged: `품목N_기준단가` remains the product/base unit price.
+  - For `transaction_statement` and `delivery_note`, render `품목N_기준단가` as the effective/billable unit price so legacy templates using that token in the unit price cell do not show the list price.
+  - Keep `품목N_단가`, `품목N_할인단가`, amounts, VAT, and totals based on effective unit price.
+- Tests:
+  - Update document preview test expectations for transaction statements.
+  - Add/generated-XLSX coverage where a transaction statement template contains `{{품목1_기준단가}}` in a visible price cell and must output the discounted unit price.
+
+**Validation plan**:
+
+- `python -m py_compile reporting\views.py reporting\tests.py`
+- Focused document template data/generation tests.
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- Frontend type/build checks if frontend files change. Otherwise skip build and note no frontend runtime changes.
+- `git diff --check`

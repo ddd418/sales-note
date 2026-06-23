@@ -13292,7 +13292,7 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(payload['items'][0]['unitPrice'], 90000)
         self.assertEqual(payload['items'][0]['discountUnitPrice'], 90000)
 
-    def test_document_template_data_keeps_transaction_statement_base_unit_price(self):
+    def test_document_template_data_uses_billable_unit_price_for_transaction_statement_base_token(self):
         from reporting.models import DeliveryItem
 
         self._create_template(self.company, '거래명세서기본', document_type='transaction_statement', is_default=True)
@@ -13315,7 +13315,8 @@ class DocumentTemplatesReactApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertFalse(payload['hide_base_unit_price'])
-        self.assertEqual(payload['variables']['품목1_기준단가'], '100,000')
+        self.assertEqual(payload['variables']['품목1_기준단가'], '90,000')
+        self.assertEqual(payload['variables']['품목1_단가'], '90,000')
         self.assertEqual(payload['items'][0]['baseUnitPrice'], 100000)
         self.assertFalse(payload['items'][0]['baseUnitPriceHidden'])
 
@@ -13499,6 +13500,58 @@ class DocumentTemplatesReactApiTests(TestCase):
             if col.get('hidden') == '1'
         ]
         self.assertEqual([(col.get('min'), col.get('max')) for col in hidden_cols], [('2', '2')])
+
+    def test_document_generate_transaction_statement_uses_discount_unit_price_for_base_token(self):
+        import io
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook, load_workbook
+        from reporting.models import DeliveryItem
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '품목'
+        sheet['B1'] = '단가'
+        sheet['C1'] = '공급가액'
+        sheet['A2'] = '{{품목1_이름}}'
+        sheet['B2'] = '{{품목1_기준단가}}'
+        sheet['C2'] = '{{품목1_금액}}'
+        output = io.BytesIO()
+        workbook.save(output)
+        template = DocumentTemplate.objects.create(
+            company=self.company,
+            document_type='transaction_statement',
+            name='거래명세서단가',
+            file=SimpleUploadedFile(
+                'transaction-statement-unit-price.xlsx',
+                output.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ),
+            file_type='xlsx',
+            is_default=True,
+            created_by=self.manager,
+        )
+        self.addCleanup(template.file.delete, False)
+        schedule = self._create_schedule(self.manager, name='거래명세서단가', activity_type='delivery')
+        DeliveryItem.objects.create(
+            schedule=schedule,
+            item_name='Discounted Statement Kit',
+            quantity=2,
+            unit='EA',
+            unit_price=110000,
+            discount_unit_price=84000,
+        )
+        self.client.force_login(self.salesman)
+
+        response = self.client.post(
+            reverse('reporting:generate_document_pdf_format', args=['transaction_statement', schedule.id, 'xlsx']),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        generated = load_workbook(io.BytesIO(response.content))
+        generated_sheet = generated.active
+        self.assertEqual(generated_sheet['A2'].value, 'Discounted Statement Kit')
+        self.assertEqual(generated_sheet['B2'].value, '84,000')
+        self.assertEqual(generated_sheet['C2'].value, '168,000')
 
     def test_document_generate_xlsx_inserts_quote_item_option_rows(self):
         import io
