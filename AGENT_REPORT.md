@@ -53,6 +53,18 @@ py -3.13 manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git push origin main
+→ OK, commit 286975a679672f930633cf63cee8887e13292ec9 pushed
+
+railway deployment list --service web --environment production --limit 3 --json
+→ Backend deployment 7a8ced6f-9d17-4b7a-b2a3-7df887713987 SUCCESS
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ Frontend deployment 26e18a36-5f29-4963-8d01-5cb8d8dbf146 SKIPPED, no watched frontend files changed
+
+py -3.13 scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
 ```
 
 ### 알려진 제한
@@ -66,7 +78,9 @@ git diff --check
 
 ### 프로덕션 배포 상태
 
-- 대기 중: 로컬 검증 완료 후 백엔드 Railway 배포 예정입니다.
+- 완료: backend Railway deployment `7a8ced6f-9d17-4b7a-b2a3-7df887713987`가 `SUCCESS` 상태입니다.
+- 프론트엔드 deployment `26e18a36-5f29-4963-8d01-5cb8d8dbf146`는 프론트 파일 변경이 없어 `SKIPPED` 처리되었습니다.
+- 운영 스모크 테스트 통과: backend/frontend health, 보호 API 401, 주요 React route 확인 완료.
 
 ### 운영 서버 수동 테스트 절차
 

@@ -29,6 +29,8 @@
 - `git diff --check`
 - Commit, push, deploy backend/frontend as needed, and smoke production routes.
 
+**Status**: Implemented, pushed, deployed to Railway, and smoke-tested.
+
 ## 2026-06-17 Quote schedule cancellation to lost pipeline plan
 
 **Background**:
