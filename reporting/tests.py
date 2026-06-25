@@ -11760,6 +11760,58 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(int(schedule.prepayment_amount), 0)
         self.assertFalse(PrepaymentUsage.objects.filter(schedule=schedule).exists())
 
+    def test_schedule_delivery_items_update_api_locks_only_prepayment_rows_when_applying_prepayment(self):
+        import json
+        from unittest.mock import patch
+        from django.db.models.query import QuerySet
+        from django.utils import timezone
+        from reporting.models import Prepayment
+
+        schedule = self._create_schedule(self.user, '납품선결제잠금', activity_type='delivery')
+        prepayment = Prepayment.objects.create(
+            customer=schedule.followup,
+            company=schedule.followup.company,
+            amount=100000,
+            balance=100000,
+            payment_date=timezone.localdate(),
+            payer_name='잠금입금자',
+            created_by=self.user,
+        )
+        update_url = reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id])
+        prepayment_lock_calls = []
+        original_select_for_update = QuerySet.select_for_update
+
+        def spy_select_for_update(queryset, *args, **kwargs):
+            if queryset.model is Prepayment:
+                prepayment_lock_calls.append(dict(kwargs))
+            return original_select_for_update(queryset, *args, **kwargs)
+
+        self.client.force_login(self.user)
+        with patch.object(QuerySet, 'select_for_update', spy_select_for_update):
+            response = self.client.post(
+                update_url,
+                data=json.dumps({
+                    'usePrepayment': True,
+                    'prepayments': [{'id': prepayment.id, 'amount': '60000'}],
+                    'items': [
+                        {
+                            'itemName': 'Lock Kit',
+                            'quantity': 2,
+                            'unit': 'EA',
+                            'unitPrice': '50000',
+                        },
+                    ],
+                }),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertTrue(response.json()['success'])
+        self.assertTrue(
+            any(call.get('of') == ('self',) for call in prepayment_lock_calls),
+            prepayment_lock_calls,
+        )
+
     def test_schedule_delivery_items_update_api_treats_zero_discount_unit_price_without_rate_as_blank(self):
         import json
         from reporting.models import DeliveryItem

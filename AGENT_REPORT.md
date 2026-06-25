@@ -1,5 +1,81 @@
 # AGENT_REPORT.md
 
+## 2026-06-25 — schedule 947 납품 선결제 저장 오류 수정
+
+### 요약
+
+- schedule `947`에서 납품 품목을 입력하고 선결제 차감을 선택하면 저장되지 않는 문제를 확인했습니다.
+- 운영 로그에서 `FOR UPDATE cannot be applied to the nullable side of an outer join` 예외가 확인되었습니다.
+- 원인은 선결제 차감 저장 중 `Prepayment`를 잠그는 쿼리가 `department/customer` 조인까지 포함한 상태로 `select_for_update()`를 호출해 PostgreSQL이 nullable joined table까지 잠그려 한 것입니다.
+- `Prepayment` 자기 테이블만 row lock 하도록 `select_for_update(of=('self',))`로 제한했습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- React 일정 상세에서 납품 품목 저장과 선결제 차감을 동시에 처리할 때 PostgreSQL row lock 오류가 발생하지 않습니다.
+- 기존 선결제 잔액 검증, 차감, 재적용, 복구 로직은 유지했습니다.
+- 납품 품목 저장, 견적 불러오기, 원본 견적 완료 처리 흐름은 기존 동작을 보존했습니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 인증, 소유자 수정 권한, 같은 회사 접근 범위는 유지했습니다.
+- 프론트엔드 코드는 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+railway logs --service web --environment production --since 1d --lines 200 --filter "React 일정 납품 품목 저장" --json
+→ ERROR 확인: FOR UPDATE cannot be applied to the nullable side of an outer join
+
+py -3.13 -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+py -3.13 manage.py test reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_locks_only_prepayment_rows_when_applying_prepayment reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_applies_reapplies_and_restores_prepayment reporting.tests.SchedulesSummaryApiTests.test_schedule_delivery_items_update_api_blocks_over_balance_prepayment_without_saving_items --keepdb --verbosity=2
+→ OK, 3 tests
+
+py -3.13 manage.py test reporting.tests.SchedulesSummaryApiTests --keepdb --verbosity=1
+→ OK, 81 tests
+
+py -3.13 manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+py -3.13 manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 운영 DB 내부 주소는 로컬에서 직접 조회할 수 없어 `railway run` 직접 DB 조회는 실패했습니다.
+- 대신 Railway 애플리케이션 로그의 실제 예외와 로컬 회귀 테스트로 원인을 확인했습니다.
+
+### 권장 다음 작업
+
+- schedule `947`에서 실제로 납품 품목 저장 + 선결제 차감을 다시 시도해 저장 성공과 잔액 차감을 확인합니다.
+
+### 프로덕션 배포 상태
+
+- 대기 중: 로컬 검증 완료 후 백엔드 Railway 배포 예정입니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. [일정 947](https://sales-note-frontend-production.up.railway.app/schedules/947/)에 로그인해 들어갑니다.
+2. 납품 품목 편집을 열고 품목/수량/단가를 입력합니다.
+3. `납품 저장 시 선결제 차감`을 체크하고 사용할 선결제와 차감 금액을 선택합니다.
+4. 저장을 누릅니다.
+5. 저장 성공 메시지, 납품 품목 반영, 선결제 차감 내역/잔액 반영을 확인합니다.
+
 ## 2026-06-23 — 거래명세서 할인단가 출력 보정
 
 ### 요약

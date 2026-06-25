@@ -1,5 +1,34 @@
 # AGENT_PLAN.md
 
+## 2026-06-25 Schedule 947 delivery prepayment save plan
+
+**Background**:
+
+- User reported that `/schedules/947/` does not save when entering delivery items and deducting prepayment.
+- The React schedule detail page saves delivery items and prepayment selections through `/reporting/api/schedules/<id>/delivery-items/update/`.
+- Production logs show `FOR UPDATE cannot be applied to the nullable side of an outer join` while saving React delivery items with prepayment deduction.
+- Root cause: the prepayment lock query used `select_for_update()` after account/customer `select_related()` joins, so PostgreSQL tried to lock nullable joined tables.
+
+**DB change required**: No schema migration.
+
+- Existing `Schedule.department`, `Prepayment.department`, `PrepaymentUsage`, and delivery item fields are sufficient.
+
+**Implementation scope**:
+
+- Limit the prepayment lock query to the `Prepayment` table with `select_for_update(of=('self',))`.
+- Keep same-department/account prepayment lookup behavior unchanged.
+- Preserve authentication, ownership, same-company access checks, delivery item validation, quote import completion, and prepayment balance restoration behavior.
+- Add a focused regression test that confirms the React delivery item save path applies a self-only prepayment row lock.
+
+**Validation plan**:
+
+- Focused schedule delivery/prepayment API tests.
+- `py -3.13 -m py_compile reporting\views.py reporting\tests.py`
+- `py -3.13 manage.py check`
+- `py -3.13 manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Commit, push, deploy backend/frontend as needed, and smoke production routes.
+
 ## 2026-06-17 Quote schedule cancellation to lost pipeline plan
 
 **Background**:

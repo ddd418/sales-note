@@ -11405,7 +11405,7 @@ def _schedules_apply_prepayments(schedule, actor, raw_items, enforce_delivery_to
     accessible_prepayments = {
         prepayment.id: prepayment
         for prepayment in _schedules_allowed_prepayments_queryset(actor, schedule.followup)
-        .select_for_update()
+        .select_for_update(of=('self',))
         .filter(Q(status='active', balance__gt=0) | Q(id__in=existing_ids), id__in=selected_ids)
     }
     for prepayment_id, amount in selected_items:
