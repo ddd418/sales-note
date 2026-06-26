@@ -32,7 +32,7 @@
 - `git diff --check`
 - Commit, push, deploy backend, and smoke production routes.
 
-**Status**: In progress.
+**Status**: Implemented, pushed, deployed to Railway, and smoke-tested.
 
 ## 2026-06-25 Schedule 947 delivery prepayment save plan
 
