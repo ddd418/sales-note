@@ -6,6 +6,7 @@
 
 - `/schedules/927/` 김혜란 교수 견적건과 `/schedules/936/` 김종환 연구원 납품건이 같은 연구실 계정인데 React `/pipeline/`에서 서로 다른 카드로 보이는 원인을 확인했습니다.
 - 원인은 파이프라인 API가 계정/연구실(`Department`)이 아니라 개별 담당자(`FollowUp`)마다 카드를 생성하던 구조였습니다.
+- 운영 DB 확인 결과 schedule `927`과 `936`은 모두 `department_id=410`, `식물세포및유전공학연구실 / 강원대학교`로 같은 계정에 연결되어 있었습니다.
 - React 파이프라인 API를 같은 `Department` 기준으로 묶도록 변경했고, 같은 연구실 안에 견적 담당자와 납품 담당자가 나뉘어 있어도 하나의 계정 카드로 계산되게 했습니다.
 - 같은 계정에 `수주(won)`가 있으면 견적/접촉 단계보다 우선 표시되며, 금액도 같은 계정의 납품/견적 일정과 히스토리를 합쳐 계산합니다.
 
@@ -73,6 +74,11 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/pipeline
 
 Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/pipeline/
 → 401 login required
+
+railway connect Postgres --environment production
+→ schedule 927: quote/completed, followup 485, customer 김혜란, pipeline_stage quote, department_id 410
+→ schedule 936: delivery/completed, followup 489, customer 김종환, pipeline_stage won, department_id 410
+→ 둘 다 강원대학교 / 식물세포및유전공학연구실 계정으로 확인
 ```
 
 ### 알려진 제한
@@ -82,7 +88,7 @@ Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reportin
 
 ### 권장 다음 작업
 
-- 운영에서 schedule `927`과 `936`이 실제로 같은 `Department`로 연결되어 있는지 확인하고, 만약 부서 자체가 둘로 나뉘어 있으면 계정 정리 기능으로 병합합니다.
+- 운영 파이프라인에서 schedule `927`/`936` 계정 카드가 하나로 합쳐져 `수주`와 `184,800원`으로 보이는지 수동 확인합니다.
 
 ### 프로덕션 배포 상태
 
