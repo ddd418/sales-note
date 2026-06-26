@@ -967,12 +967,186 @@ PIPELINE_QUOTE_PRIORITY = {
 PIPELINE_ACTIVE_QUOTE_STAGES = {'draft', 'sent', 'review', 'negotiation', 'approved', 'converted'}
 PIPELINE_WON_QUOTE_STAGES = {'approved', 'converted'}
 PIPELINE_NULL_PROBABILITY_STAGES = {'potential', 'contact'}
+PIPELINE_ACCOUNT_STAGE_PRIORITY = ('won', 'negotiation', 'quote', 'contact', 'lost', 'potential')
 
 
 def _pipeline_default_probability(stage):
     if stage in PIPELINE_NULL_PROBABILITY_STAGES:
         return None
     return STAGE_PROBABILITY.get(stage, 30)
+
+
+def _pipeline_account_key(followup):
+    if followup.department_id:
+        return ('department', followup.department_id)
+    return ('followup', followup.id)
+
+
+def _pipeline_account_stage(followups):
+    stage_values = {
+        followup.pipeline_stage if followup.pipeline_stage in STAGE_PROBABILITY else 'potential'
+        for followup in followups
+    }
+    for stage in PIPELINE_ACCOUNT_STAGE_PRIORITY:
+        if stage in stage_values:
+            return stage
+    return 'potential'
+
+
+def _pipeline_local_created_date(value):
+    if not value:
+        return None
+    return timezone.localtime(value).date()
+
+
+def _pipeline_followup_latest_date(followup):
+    dates = []
+    for schedule in getattr(followup, 'pricing_schedules', []):
+        if schedule.visit_date:
+            dates.append(schedule.visit_date)
+    for schedule in getattr(followup, 'upcoming_schedules', []):
+        if schedule.visit_date:
+            dates.append(schedule.visit_date)
+    for schedule in getattr(followup, 'recent_schedules', []):
+        if schedule.visit_date:
+            dates.append(schedule.visit_date)
+    for history in getattr(followup, 'all_histories', []):
+        history_date = _history_pricing_date(history)
+        if history_date:
+            dates.append(history_date)
+    for quote in getattr(followup, 'all_quotes', []):
+        quote_date = quote.quote_date or _pipeline_local_created_date(quote.created_at)
+        if quote_date:
+            dates.append(quote_date)
+    return max(dates) if dates else date.min
+
+
+def _pipeline_primary_followup(followups, account_stage):
+    return max(
+        followups,
+        key=lambda followup: (
+            followup.pipeline_stage == account_stage,
+            _pipeline_followup_latest_date(followup),
+            followup.id or 0,
+        ),
+    )
+
+
+def _pipeline_unique_objects(items):
+    result = []
+    seen = set()
+    for item in items:
+        identity = (item.__class__, item.pk)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(item)
+    return result
+
+
+def _pipeline_collect_attr(followups, attr):
+    return _pipeline_unique_objects(
+        item
+        for followup in followups
+        for item in getattr(followup, attr, [])
+    )
+
+
+def _pipeline_schedule_desc_key(schedule):
+    created_at = schedule.created_at.isoformat() if schedule.created_at else ''
+    return (schedule.visit_date or date.min, created_at, schedule.id or 0)
+
+
+def _pipeline_schedule_asc_key(schedule):
+    visit_time = schedule.visit_time.isoformat() if schedule.visit_time else ''
+    return (schedule.visit_date or date.max, visit_time, schedule.id or 0)
+
+
+def _pipeline_created_desc_key(obj):
+    created_at = obj.created_at.isoformat() if obj.created_at else ''
+    return (created_at, obj.id or 0)
+
+
+def _pipeline_account_followup(followups, account_stage):
+    followups = list(followups)
+    primary = _pipeline_primary_followup(followups, account_stage)
+    ordered_followups = [primary] + [followup for followup in followups if followup.id != primary.id]
+
+    primary.account_followups = ordered_followups
+    primary.pricing_schedules = sorted(
+        _pipeline_collect_attr(followups, 'pricing_schedules'),
+        key=_pipeline_schedule_desc_key,
+        reverse=True,
+    )
+    primary.upcoming_schedules = sorted(
+        _pipeline_collect_attr(followups, 'upcoming_schedules'),
+        key=_pipeline_schedule_asc_key,
+    )
+    primary.recent_schedules = sorted(
+        _pipeline_collect_attr(followups, 'recent_schedules'),
+        key=_pipeline_schedule_desc_key,
+        reverse=True,
+    )
+    primary.all_histories = sorted(
+        _pipeline_collect_attr(followups, 'all_histories'),
+        key=_pipeline_created_desc_key,
+        reverse=True,
+    )
+    primary.pricing_histories = sorted(
+        _pipeline_collect_attr(followups, 'pricing_histories'),
+        key=_pipeline_created_desc_key,
+        reverse=True,
+    )
+    primary.recent_histories_for_stage = sorted(
+        _pipeline_collect_attr(followups, 'recent_histories_for_stage'),
+        key=_pipeline_created_desc_key,
+        reverse=True,
+    )
+    primary.all_quotes = sorted(
+        _pipeline_collect_attr(followups, 'all_quotes'),
+        key=_pipeline_created_desc_key,
+        reverse=True,
+    )
+    return primary
+
+
+def _pipeline_account_groups(followups):
+    groups = {}
+    for followup in followups:
+        groups.setdefault(_pipeline_account_key(followup), []).append(followup)
+    return groups.values()
+
+
+def _pipeline_contact_label(followup):
+    names = []
+    seen = set()
+    for contact in getattr(followup, 'account_followups', [followup]):
+        name = (contact.customer_name or contact.manager or '').strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    if not names:
+        return '담당자 미정'
+    if len(names) == 1:
+        return names[0]
+    return f'{names[0]} 외 {len(names) - 1}명'
+
+
+def _pipeline_account_metadata(followup):
+    account_followups = getattr(followup, 'account_followups', [followup])
+    if followup.department_id:
+        account_key = f'department:{followup.department_id}'
+    else:
+        account_key = f'followup:{followup.id}'
+    return {
+        'accountKey': account_key,
+        'accountType': 'department' if followup.department_id else 'followup',
+        'accountId': followup.department_id or followup.id,
+        'primaryContactId': followup.id,
+        'contactIds': [contact.id for contact in account_followups],
+        'contactCount': len(account_followups),
+    }
 
 
 def _quote_amount(quote):
@@ -1727,8 +1901,9 @@ def pipeline_command_center_api(request):
     deals = []
     user_profile = _get_user_profile(request.user)
 
-    for fu in followups:
-        stage = fu.pipeline_stage if fu.pipeline_stage in stage_map else 'potential'
+    for account_followups in _pipeline_account_groups(followups):
+        stage = _pipeline_account_stage(account_followups)
+        fu = _pipeline_account_followup(account_followups, stage)
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
         last_history = fu.all_histories[0] if fu.all_histories else None
         pricing = _select_pipeline_pricing(fu, stage)
@@ -1798,8 +1973,9 @@ def pipeline_command_center_api(request):
 
         deal = {
             'id': fu.id,
+            **_pipeline_account_metadata(fu),
             'company': str(fu.company) if fu.company else fu.customer_name or '고객명 미정',
-            'contact': fu.customer_name or fu.manager or '담당자 미정',
+            'contact': _pipeline_contact_label(fu),
             'department': str(fu.department) if fu.department else '',
             'owner': fu.user.get_full_name() or fu.user.username,
             'stage': stage,
@@ -1900,10 +2076,17 @@ def funnel_pipeline_move(request):
         if not fu:
             return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
 
-        fu.pipeline_stage = new_stage
-        fu.pipeline_manually_set = True  # 수동 이동 플래그: 자동 sync 보호
-        fu.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
-        return JsonResponse({'success': True})
+        if fu.department_id:
+            targets = accessible.filter(department_id=fu.department_id)
+        else:
+            targets = accessible.filter(pk=fu.pk)
+
+        updated_count = targets.update(
+            pipeline_stage=new_stage,
+            pipeline_manually_set=True,
+            updated_at=timezone.now(),
+        )
+        return JsonResponse({'success': True, 'updatedCount': updated_count})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 

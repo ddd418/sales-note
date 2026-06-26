@@ -1,5 +1,39 @@
 # AGENT_PLAN.md
 
+## 2026-06-26 Department-level pipeline account merge plan
+
+**Background**:
+
+- User reported that schedule `927` (김혜란 교수 quote) and schedule `936` (김종환 연구원 delivery) belong to the same account/lab, but React `/pipeline/` shows them as two separate pipeline cards.
+- Repository business rules state that customer/account history should be treated by `Department` where possible, not by individual `FollowUp` contacts.
+- Current `/reporting/api/pipeline/` emits one deal per `FollowUp`, so contact changes inside the same lab split quote and delivery state.
+
+**DB change required**: No schema migration.
+
+- Existing `FollowUp.department`, `Schedule.followup`, `Schedule.department`, and `FollowUp.pipeline_stage` fields are sufficient.
+
+**Implementation scope**:
+
+- Keep schedule-to-followup synchronization intact.
+- Group React pipeline API deals by `Department` when available, falling back to individual `FollowUp` only when no department exists.
+- Pick the account-level stage from all contacts in the department, with completed delivery / `won` taking precedence over quote/contact stages and active quote stages taking precedence over lost-only state.
+- Combine pricing schedules, histories, quotes, recent activities, and upcoming schedules across contacts in the same account before calculating card value.
+- Preserve the existing API shape while adding account/contact metadata for future React use.
+- Make manual pipeline moves apply to all accessible contacts in the same department so a grouped account card stays coherent after drag/drop or sidebar stage changes.
+- Add focused regression tests for same-department quote + delivery collapse and same-department manual move propagation.
+
+**Validation plan**:
+
+- Focused pipeline API and move tests.
+- `py -3.13 -m py_compile reporting\funnel_views.py reporting\tests.py`
+- `py -3.13 manage.py test reporting.tests.PipelineApiTests --keepdb --verbosity=1`
+- `py -3.13 manage.py check`
+- `py -3.13 manage.py makemigrations --check --dry-run`
+- `git diff --check`
+- Commit, push, deploy backend, and smoke production routes.
+
+**Status**: In progress.
+
 ## 2026-06-25 Schedule 947 delivery prepayment save plan
 
 **Background**:

@@ -1,5 +1,81 @@
 # AGENT_REPORT.md
 
+## 2026-06-26 — 파이프라인 동일 연구실 담당자 분리 표시 수정
+
+### 요약
+
+- `/schedules/927/` 김혜란 교수 견적건과 `/schedules/936/` 김종환 연구원 납품건이 같은 연구실 계정인데 React `/pipeline/`에서 서로 다른 카드로 보이는 원인을 확인했습니다.
+- 원인은 파이프라인 API가 계정/연구실(`Department`)이 아니라 개별 담당자(`FollowUp`)마다 카드를 생성하던 구조였습니다.
+- React 파이프라인 API를 같은 `Department` 기준으로 묶도록 변경했고, 같은 연구실 안에 견적 담당자와 납품 담당자가 나뉘어 있어도 하나의 계정 카드로 계산되게 했습니다.
+- 같은 계정에 `수주(won)`가 있으면 견적/접촉 단계보다 우선 표시되며, 금액도 같은 계정의 납품/견적 일정과 히스토리를 합쳐 계산합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `reporting/funnel_views.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 담당자가 바뀌어도 같은 부서/연구실 계정의 파이프라인 카드는 하나로 보입니다.
+- 일정에서 납품 완료로 바뀐 내용이 같은 계정 파이프라인 카드의 `수주` 상태와 실제 납품 매출에 반영됩니다.
+- 파이프라인에서 수동으로 단계를 변경하면 같은 연구실의 접근 가능한 담당자 레코드도 함께 변경되어 다시 카드가 갈라지는 문제를 줄였습니다.
+- API 응답에 `accountKey`, `accountType`, `accountId`, `contactIds`, `contactCount`를 추가해 React가 향후 계정 단위 UI를 더 명확하게 표시할 수 있게 했습니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- `/reporting/*` 라우트와 기존 인증/권한 범위는 유지했습니다.
+- 기존 견적/납품 금액 계산 함수는 유지하고, 같은 계정의 일정/품목/히스토리/견적 목록만 합쳐서 계산하도록 했습니다.
+- Manager는 기존처럼 파이프라인 수동 이동이 불가합니다.
+
+### 실행한 명령과 결과
+
+```text
+py -3.13 -m py_compile reporting\funnel_views.py reporting\tests.py
+→ OK
+
+py -3.13 manage.py test reporting.tests.PipelineApiTests --keepdb --verbosity=2
+→ 테스트 17개 OK 출력 후 초기 test DB migration 시간이 길어 명령 제한에 걸림
+
+py -3.13 manage.py test reporting.tests.PipelineApiTests --keepdb --verbosity=1
+→ OK, 17 tests
+
+py -3.13 manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+py -3.13 manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 기존 데이터에서 서로 다른 `Department`로 잘못 나뉜 계정은 이번 API 집계만으로는 자동 병합되지 않습니다. 그런 경우 계정 정리/부서 병합 작업이 별도로 필요합니다.
+- React 화면 문구는 기존 `contact` 필드에 `대표 담당자 외 N명` 형태로 표시됩니다. 더 세밀한 담당자 목록 UI는 별도 프론트 개선 대상입니다.
+
+### 권장 다음 작업
+
+- 운영에서 schedule `927`과 `936`이 실제로 같은 `Department`로 연결되어 있는지 확인하고, 만약 부서 자체가 둘로 나뉘어 있으면 계정 정리 기능으로 병합합니다.
+
+### 프로덕션 배포 상태
+
+- 배포 예정: backend Railway service 배포 후 deployment ID와 smoke 결과를 갱신합니다.
+- 프론트엔드 파일은 변경하지 않았습니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. [파이프라인](https://sales-note-frontend-production.up.railway.app/pipeline/)에 로그인해 들어갑니다.
+2. 강원대학교 / 식물세포및유전공학연구실 계정 카드를 찾습니다.
+3. 김혜란 교수 견적 카드와 김종환 연구원 납품 카드가 따로 보이지 않고 하나의 계정 카드로 보이는지 확인합니다.
+4. 카드 단계가 `수주`로 보이고, 금액이 schedule `936` 납품 금액 `184,800원` 기준으로 표시되는지 확인합니다.
+5. 같은 카드의 상세 패널에서 담당자가 `김종환 연구원 외 1명`처럼 복수 담당자임을 알 수 있는지 확인합니다.
+
 ## 2026-06-25 — schedule 947 납품 선결제 저장 오류 수정
 
 ### 요약

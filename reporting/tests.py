@@ -18651,12 +18651,18 @@ class PipelineApiTests(TestCase):
             department=department,
             pipeline_stage='potential',
         )
+        contact_company = Company.objects.create(name='접촉확률미입력회사', created_by=self.user)
+        contact_department = Department.objects.create(
+            company=contact_company,
+            name='접촉확률미입력연구실',
+            created_by=self.user,
+        )
         contact = FollowUp.objects.create(
             user=self.user,
             user_company=self.user.userprofile.company,
             customer_name='접촉 고객',
-            company=customer_company,
-            department=department,
+            company=contact_company,
+            department=contact_department,
             pipeline_stage='contact',
         )
         self.client.force_login(self.user)
@@ -18946,6 +18952,49 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['quoteComparison']['deltaRate'], 400.0)
         self.assertEqual(deal['quoteComparison']['status'], 'over')
 
+    def test_pipeline_api_groups_same_department_contacts_into_account_deal(self):
+        from reporting.models import FollowUp
+
+        professor = self._create_pipeline_customer(self.user, '같은연구실교수', stage='quote')
+        self._create_delivery_item(professor.schedules.first(), '교수견적품목', 84000, 2)
+        researcher = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.user.userprofile.company,
+            customer_name='김종환 연구원',
+            company=professor.company,
+            department=professor.department,
+            pipeline_stage='won',
+            customer_grade='A',
+        )
+        self._create_delivery_schedule(researcher, self.user, '연구원납품품목', 84000, 2)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        account_deals = [
+            deal
+            for deal in payload['deals']
+            if deal['accountType'] == 'department' and deal['accountId'] == professor.department_id
+        ]
+        self.assertEqual(len(account_deals), 1)
+        deal = account_deals[0]
+        self.assertEqual(deal['id'], researcher.id)
+        self.assertEqual(deal['stage'], 'won')
+        self.assertEqual(deal['value'], 184800)
+        self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출')
+        self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
+        self.assertEqual(deal['quoteComparison']['quotedAmount'], 184800)
+        self.assertEqual(deal['quoteComparison']['actualAmount'], 184800)
+        self.assertEqual(deal['contactCount'], 2)
+        self.assertCountEqual(deal['contactIds'], [professor.id, researcher.id])
+        self.assertIn('김종환 연구원', deal['contact'])
+        self.assertIn('외 1명', deal['contact'])
+        stages = {stage['id']: stage for stage in payload['stages']}
+        self.assertEqual(stages['won']['count'], 1)
+        self.assertEqual(payload['metrics']['activeCount'], 1)
+
     def test_pipeline_api_marks_potential_overflow_after_top_ten(self):
         for index in range(12):
             self._create_pipeline_customer(self.user, f'잠재{index}', stage='potential')
@@ -18979,6 +19028,36 @@ class PipelineApiTests(TestCase):
         schedule.refresh_from_db()
         self.assertEqual(schedule.activity_type, 'quote')
         self.assertEqual(schedule.status, 'scheduled')
+
+    def test_pipeline_move_updates_same_department_followup_stages(self):
+        from reporting.models import FollowUp
+
+        followup = self._create_pipeline_customer(self.user, '계정이동고객', stage='potential')
+        related = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.user.userprofile.company,
+            customer_name='계정이동실무자',
+            company=followup.company,
+            department=followup.department,
+            pipeline_stage='contact',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.move_url,
+            data=json.dumps({'followup_id': followup.id, 'stage': 'quote'}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(response.json()['updatedCount'], 2)
+        followup.refresh_from_db()
+        related.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'quote')
+        self.assertEqual(related.pipeline_stage, 'quote')
+        self.assertTrue(followup.pipeline_manually_set)
+        self.assertTrue(related.pipeline_manually_set)
 
     def test_pipeline_move_rejects_invalid_stage(self):
         followup = self._create_pipeline_customer(self.user, '잘못된단계', stage='potential')
