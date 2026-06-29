@@ -33,7 +33,7 @@
 - `git diff --check`
 - Commit, push, deploy backend/frontend, and smoke production dashboard.
 
-**Status**: In progress.
+**Status**: Implemented, pushed, deployed to Railway, and smoke-tested.
 
 ## 2026-06-29 Reports quote-item sort plan
 
