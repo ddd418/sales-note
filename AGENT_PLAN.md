@@ -31,7 +31,7 @@
 - `git diff --check`
 - Commit, push, deploy backend/frontend, and smoke production routes.
 
-**Status**: In progress.
+**Status**: Implemented, pushed, deployed to Railway, and smoke-tested.
 
 ## 2026-06-26 Department-level pipeline account merge plan
 

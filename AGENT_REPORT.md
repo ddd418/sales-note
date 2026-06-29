@@ -65,6 +65,28 @@ py -3.13 manage.py makemigrations --check --dry-run
 
 git diff --check
 → OK, CRLF normalization warnings only
+
+git push origin main
+→ OK, commit 9c03f60edb37389d799d9622722bece8826263ee pushed
+
+railway deployment list --service web --environment production --limit 5 --json
+→ Backend deployment a11d4f02-45a1-4570-be7a-57264e8d83f3 for commit 9c03f60 started
+
+railway deployment list --service sales-note-frontend --environment production --limit 5 --json
+→ Frontend deployment d307d7d1-cc44-41b2-8361-dc31f545bcba for commit 9c03f60 started
+
+railway deployment polling
+→ Backend deployment a11d4f02-45a1-4570-be7a-57264e8d83f3 SUCCESS
+→ Frontend deployment d307d7d1-cc44-41b2-8361-dc31f545bcba SUCCESS
+
+py -3.13 scripts\post_deploy_smoke.py --backend-url https://web-production-8a820.up.railway.app --frontend-url https://sales-note-frontend-production.up.railway.app
+→ Smoke status: ok
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reports/
+→ 200 text/html
+
+Invoke-WebRequest https://sales-note-frontend-production.up.railway.app/reporting/api/reports/?sort=quote_items
+→ 401 login required
 ```
 
 ### 알려진 제한
@@ -78,7 +100,9 @@ git diff --check
 
 ### 프로덕션 배포 상태
 
-- 배포 예정: backend/frontend Railway service 배포 후 deployment ID와 smoke 결과를 갱신합니다.
+- 배포 완료: backend `web` deployment `a11d4f02-45a1-4570-be7a-57264e8d83f3` SUCCESS.
+- 배포 완료: frontend `sales-note-frontend` deployment `d307d7d1-cc44-41b2-8361-dc31f545bcba` SUCCESS.
+- 운영 smoke 결과: OK. `/reports/` 200, 인증 필요 API `/reporting/api/reports/?sort=quote_items` 401 정상.
 
 ### 운영 서버 수동 테스트 절차
 
