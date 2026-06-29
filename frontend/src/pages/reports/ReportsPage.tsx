@@ -36,6 +36,7 @@ export function ReportsPage({
   loading,
   prepaymentBalanceFilter,
   query,
+  sort,
   userId,
   onDateFromChange,
   onDateToChange,
@@ -46,6 +47,7 @@ export function ReportsPage({
   onPrepaymentBalanceFilterChange,
   onQueryChange,
   onRefresh,
+  onSortChange,
   onUserChange,
 }: {
   companyId: string;
@@ -58,6 +60,7 @@ export function ReportsPage({
   loading: boolean;
   prepaymentBalanceFilter: string;
   query: string;
+  sort: string;
   userId: string;
   onDateFromChange: (value: string) => void;
   onDateToChange: (value: string) => void;
@@ -68,6 +71,7 @@ export function ReportsPage({
   onPrepaymentBalanceFilterChange: (value: string) => void;
   onQueryChange: (value: string) => void;
   onRefresh: () => void;
+  onSortChange: (value: string) => void;
   onUserChange: (value: string) => void;
 }) {
   const [expandedAccountKey, setExpandedAccountKey] = useState<string | null>(null);
@@ -243,6 +247,7 @@ export function ReportsPage({
   const selectedDeliveryFilter = deliveryFilter || data.filters.deliveryFilter || 'any';
   const selectedPrepaymentBalanceFilter = prepaymentBalanceFilter || data.filters.prepaymentBalanceFilter || 'any';
   const selectedExportScope = exportScope || data.filters.exportScope || 'filtered';
+  const selectedSort = sort || data.filters.sort || 'recent';
   const selectedQuery = query || data.filters.query || '';
   const departmentOptions = selectedCompanyId
     ? data.scope.departments.filter((department) => String(department.companyId ?? '') === selectedCompanyId)
@@ -370,6 +375,13 @@ export function ReportsPage({
               <option value="any">전체</option>
               <option value="with">납품 있음</option>
               <option value="without">납품 없음</option>
+            </select>
+          </label>
+          <label>
+            <span>정렬</span>
+            <select value={selectedSort} onChange={(event) => onSortChange(event.target.value)}>
+              <option value="recent">최근 활동순</option>
+              <option value="quote_items">견적품목 있음</option>
             </select>
           </label>
           <label>

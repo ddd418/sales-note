@@ -9,7 +9,7 @@ import html
 import json
 import re
 import unicodedata
-from datetime import timedelta
+from datetime import date, timedelta
 from urllib.parse import urlencode
 
 from django.contrib.auth.models import User
@@ -61,6 +61,7 @@ from reporting.views import (
 REPORTS_DELIVERY_FILTERS = {'any', 'with', 'without'}
 REPORTS_PREPAYMENT_BALANCE_FILTERS = {'any', 'with', 'without'}
 REPORTS_EXPORT_SCOPES = {'filtered', 'all', 'deliveries', 'prepayment_balance', 'cleanup_candidates'}
+REPORTS_SORT_OPTIONS = {'recent', 'quote_items'}
 
 
 def _account_cleanup_request_payload(request):
@@ -135,6 +136,20 @@ def _reports_filter_params(request):
     if export_scope not in REPORTS_EXPORT_SCOPES:
         export_scope = 'filtered'
 
+    sort = (
+        request.GET.get('sort')
+        or request.GET.get('ordering')
+        or 'recent'
+    ).strip()
+    sort_aliases = {
+        'quoteItems': 'quote_items',
+        'quote_item_count': 'quote_items',
+        'has_quote_items': 'quote_items',
+    }
+    sort = sort_aliases.get(sort, sort)
+    if sort not in REPORTS_SORT_OPTIONS:
+        sort = 'recent'
+
     return {
         'query': (request.GET.get('q') or request.GET.get('query') or '').strip(),
         'companyId': _reports_request_int(request.GET.get('company_id') or request.GET.get('company')),
@@ -142,6 +157,7 @@ def _reports_filter_params(request):
         'deliveryFilter': delivery_filter,
         'prepaymentBalanceFilter': prepayment_balance_filter,
         'exportScope': export_scope,
+        'sort': sort,
     }
 
 
@@ -335,6 +351,7 @@ def _reports_customer_row_base(followup):
         'lastDeliveryDate': None,
         'quoteCount': 0,
         'quoteAmount': 0,
+        'quoteItemCount': 0,
         'lastQuoteDate': None,
         'serviceCount': 0,
         'openServiceCount': 0,
@@ -460,6 +477,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
                 'prepaymentUsedAmount': 0,
                 'quoteCount': 0,
                 'quoteAmount': 0,
+                'quoteItemCount': 0,
                 'serviceCount': 0,
                 'openServiceCount': 0,
                 'prepaymentCount': 0,
@@ -501,6 +519,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
             row[field] = ledger_metrics.get(field) or 0
         for field in ['lastDeliveryDate', 'lastQuoteDate', 'lastPrepaymentDate', 'lastActivityDate']:
             row[field] = ledger_metrics.get(field)
+        row['quoteItemCount'] = int(ledger_metrics.get('quoteItemCount') or 0)
 
         for record in (ledger.get('deliveryRecords') or [])[:5]:
             total_amount = record.get('totalAmount') or 0
@@ -530,11 +549,13 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
                 'href': record.get('href') or '',
             })
         for record in (ledger.get('quoteRecords') or [])[:5]:
+            item_count = int(record.get('itemCount') or 0)
             row['recentQuoteItems'].append({
                 'id': record.get('id'),
                 'date': record.get('date'),
                 'label': _reports_record_item_summary(record),
                 'amount': record.get('totalAmount') or 0,
+                'itemCount': item_count,
                 'quoteLabel': _reports_quote_record_label(record),
                 'statusLabel': record.get('statusLabel') or '',
                 'source': record.get('source') or ('견적 일정' if record.get('recordType') == 'quote_schedule' else '견적'),
@@ -546,6 +567,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
                 'date': record.get('date'),
                 'label': _reports_quote_record_label(record),
                 'amount': record.get('totalAmount') or 0,
+                'itemCount': int(record.get('itemCount') or 0),
                 'customerName': record.get('customerName') or '',
                 'ownerName': record.get('ownerName') or '',
                 'statusLabel': record.get('statusLabel') or '',
@@ -644,6 +666,7 @@ def _reports_customer_operations_payload(followups_qs, filter_users, date_from, 
         'prepaymentUsedAmount': sum(row['prepaymentUsedAmount'] for row in rows),
         'quoteCount': sum(row['quoteCount'] for row in rows),
         'quoteAmount': sum(row['quoteAmount'] for row in rows),
+        'quoteItemCount': sum(row['quoteItemCount'] for row in rows),
         'serviceCount': sum(row['serviceCount'] for row in rows),
         'openServiceCount': sum(row['openServiceCount'] for row in rows),
         'prepaymentCount': sum(row['prepaymentCount'] for row in rows),
@@ -670,6 +693,7 @@ def _reports_operation_metrics(rows):
         'prepaymentUsedAmount': sum(row.get('prepaymentUsedAmount', 0) for row in rows),
         'quoteCount': sum(row.get('quoteCount', 0) for row in rows),
         'quoteAmount': sum(row.get('quoteAmount', 0) for row in rows),
+        'quoteItemCount': sum(row.get('quoteItemCount', 0) for row in rows),
         'serviceCount': sum(row.get('serviceCount', 0) for row in rows),
         'openServiceCount': sum(row.get('openServiceCount', 0) for row in rows),
         'prepaymentCount': sum(row.get('prepaymentCount', 0) for row in rows),
@@ -748,6 +772,31 @@ def _reports_row_matches_filters(row, filters):
     return True
 
 
+def _reports_desc_date_key(value):
+    try:
+        return -date.fromisoformat(str(value or '')[:10]).toordinal()
+    except (TypeError, ValueError):
+        return 0
+
+
+def _reports_sort_rows(rows, sort):
+    rows = list(rows)
+    if sort == 'quote_items':
+        return sorted(
+            rows,
+            key=lambda row: (
+                0 if int(row.get('quoteItemCount') or 0) > 0 else 1,
+                -int(row.get('quoteItemCount') or 0),
+                _reports_desc_date_key(row.get('lastQuoteDate')),
+                _reports_desc_date_key(row.get('lastActivityDate')),
+                row.get('company') or '',
+                row.get('department') or '',
+                row.get('customer') or '',
+            ),
+        )
+    return rows
+
+
 def _reports_apply_row_filters(operations, filters, export_scope='filtered'):
     rows = list(operations.get('rows') or [])
     if export_scope == 'all':
@@ -760,6 +809,7 @@ def _reports_apply_row_filters(operations, filters, export_scope='filtered'):
         filtered_rows = [row for row in rows if row.get('cleanupCandidateCount', 0) > 0]
     else:
         filtered_rows = [row for row in rows if _reports_row_matches_filters(row, filters)]
+    filtered_rows = _reports_sort_rows(filtered_rows, filters.get('sort') or 'recent')
     return {
         **operations,
         'metrics': _reports_operation_metrics(filtered_rows),
@@ -779,6 +829,7 @@ def _reports_operations_comparison(current_metrics, previous_metrics, previous_f
         'prepaymentUsedAmount',
         'quoteCount',
         'quoteAmount',
+        'quoteItemCount',
         'serviceCount',
         'openServiceCount',
         'prepaymentCount',
@@ -1748,6 +1799,8 @@ def reports_summary_api(request):
         query_payload['prepayment_balance_filter'] = report_filters['prepaymentBalanceFilter']
     if report_filters.get('exportScope') and report_filters['exportScope'] != 'filtered':
         query_payload['export_scope'] = report_filters['exportScope']
+    if report_filters.get('sort') and report_filters['sort'] != 'recent':
+        query_payload['sort'] = report_filters['sort']
     query = '?' + urlencode(query_payload)
     can_export = bool(user_profile.is_admin() or user_profile.is_manager())
     return JsonResponse({
@@ -1764,6 +1817,7 @@ def reports_summary_api(request):
             'deliveryFilter': report_filters.get('deliveryFilter') or 'any',
             'prepaymentBalanceFilter': report_filters.get('prepaymentBalanceFilter') or 'any',
             'exportScope': report_filters.get('exportScope') or 'filtered',
+            'sort': report_filters.get('sort') or 'recent',
         },
         'scope': {
             'canFilterUsers': bool(user_profile.is_admin() or user_profile.is_manager()),

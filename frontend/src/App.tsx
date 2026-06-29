@@ -21761,6 +21761,7 @@ export function App() {
   const [reportsDeliveryFilter, setReportsDeliveryFilter] = useState(() => new URLSearchParams(window.location.search).get('delivery_filter') || 'any');
   const [reportsPrepaymentBalanceFilter, setReportsPrepaymentBalanceFilter] = useState(() => new URLSearchParams(window.location.search).get('prepayment_balance_filter') || 'any');
   const [reportsExportScope, setReportsExportScope] = useState(() => new URLSearchParams(window.location.search).get('export_scope') || 'filtered');
+  const [reportsSort, setReportsSort] = useState(() => new URLSearchParams(window.location.search).get('sort') || 'recent');
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
@@ -22105,6 +22106,7 @@ export function App() {
       exportScope: reportsExportScope,
       prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
       query: reportsQuery,
+      sort: reportsSort,
       userId: reportsUserId,
     }).then((data) => {
       if (!alive) {
@@ -22132,6 +22134,7 @@ export function App() {
     reportsExportScope,
     reportsPrepaymentBalanceFilter,
     reportsQuery,
+    reportsSort,
     reportsUserId,
   ]);
 
@@ -23929,6 +23932,7 @@ export function App() {
       exportScope: reportsExportScope,
       prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
       query: reportsQuery,
+      sort: reportsSort,
       userId: reportsUserId,
     });
     setReportsData(data);
@@ -24583,6 +24587,7 @@ export function App() {
             companyId={reportsCompanyId}
             prepaymentBalanceFilter={reportsPrepaymentBalanceFilter}
             query={reportsQuery}
+            sort={reportsSort}
             userId={reportsUserId}
             onDateFromChange={setReportsDateFrom}
             onDateToChange={setReportsDateTo}
@@ -24596,6 +24601,7 @@ export function App() {
             onPrepaymentBalanceFilterChange={setReportsPrepaymentBalanceFilter}
             onQueryChange={setReportsQuery}
             onRefresh={() => { void refreshReportsData(); }}
+            onSortChange={setReportsSort}
             onUserChange={setReportsUserId}
           />
         </LazyPageBoundary>

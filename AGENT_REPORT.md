@@ -1,5 +1,93 @@
 # AGENT_REPORT.md
 
+## 2026-06-29 — reports 견적품목 있음 정렬 추가
+
+### 요약
+
+- `/reports/` 계정별 운영 현황표에서 실제 견적 품목 라인이 있는 계정을 먼저 볼 수 있도록 정렬 옵션을 추가했습니다.
+- React 화면의 필터 영역에 `정렬` 드롭다운을 추가하고, `최근 활동순`과 `견적품목 있음`을 선택할 수 있게 했습니다.
+- Django reports API는 `sort=quote_items`를 받으면 실제 `QuoteItem` 또는 견적 일정 품목 수가 있는 계정을 우선 정렬합니다.
+- 공통 계정 원장에 `quoteItemCount` metric을 추가해 표시용 최근 기록 제한과 상관없이 기간 전체의 견적 품목 수를 기준으로 정렬합니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/api/reports.ts`
+- `frontend/src/pages/reports/ReportsPage.tsx`
+- `reporting/account_ledger.py`
+- `reporting/api/reports.py`
+- `reporting/tests.py`
+
+### CRM 개선
+
+- 분석 탭에서 견적 품목이 있는 계정을 빠르게 위로 올려 확인할 수 있습니다.
+- 기존 제품명 검색, 날짜/담당자/업체/부서/납품/선결제 잔액 필터와 함께 사용할 수 있습니다.
+- 엑셀 링크에도 `sort=quote_items`가 유지되어 화면 정렬 기준과 다운로드 기준이 맞춰집니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- 기존 `/reporting/api/reports/` 인증/권한 범위는 유지했습니다.
+- 기본 정렬은 기존처럼 최근 활동순입니다.
+- 기존 납품/선결제 필터, 데이터 정리 후보 표시, 계정별 원장 계산은 유지했습니다.
+
+### 실행한 명령과 결과
+
+```text
+py -3.13 -m py_compile reporting\account_ledger.py reporting\api\reports.py reporting\tests.py
+→ OK
+
+py -3.13 manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_sorts_customer_operations_by_quote_items --keepdb --verbosity=2
+→ OK, 1 test
+
+py -3.13 manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_sorts_customer_operations_by_quote_items reporting.tests.ReactReportsProfileBusinessCardApiTests.test_reports_api_returns_customer_operations_with_structured_payment_split reporting.tests.ReactReportsProfileBusinessCardApiTests.test_common_account_ledger_feeds_reports_customer_detail_and_ai --keepdb --verbosity=1
+→ OK, 3 tests
+
+py -3.13 manage.py test reporting.tests.ReactReportsProfileBusinessCardApiTests --keepdb --verbosity=1
+→ OK, 25 tests
+
+cd frontend; npm run build
+→ OK, Vite build completed
+→ Existing warning only: some chunks are larger than 500 kB
+
+cd frontend; node --check server.mjs
+→ OK
+
+py -3.13 manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+py -3.13 manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- `견적품목 있음`은 정렬 옵션입니다. 계정 목록에서 품목 없는 계정을 완전히 숨기는 필터는 아직 별도 옵션으로 만들지 않았습니다.
+- URL query는 초기 진입 시 `sort=quote_items`를 읽지만, 기존 reports 화면처럼 필터 변경 시 브라우저 주소를 자동 갱신하지는 않습니다.
+
+### 권장 다음 작업
+
+- 운영에서 `/reports/` 정렬을 `견적품목 있음`으로 바꿔 실제 견적 품목이 있는 계정이 상단에 올라오는지 확인합니다.
+
+### 프로덕션 배포 상태
+
+- 배포 예정: backend/frontend Railway service 배포 후 deployment ID와 smoke 결과를 갱신합니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. [분석/보고서](https://sales-note-frontend-production.up.railway.app/reports/)에 로그인해 들어갑니다.
+2. 필터 영역에서 `정렬`을 `견적품목 있음`으로 변경합니다.
+3. 계정별 운영 현황표에서 `최근 견적 품목`이 있는 계정이 먼저 올라오는지 확인합니다.
+4. 제품명 검색, 날짜 범위, 업체/부서 필터를 같이 적용해도 정렬이 유지되는지 확인합니다.
+5. 엑셀 다운로드가 필요한 경우 `현황 엑셀` 링크로 내려받아 같은 기준의 행 순서를 확인합니다.
+
 ## 2026-06-26 — 파이프라인 동일 연구실 담당자 분리 표시 수정
 
 ### 요약

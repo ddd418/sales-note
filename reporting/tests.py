@@ -2116,6 +2116,87 @@ class ReactReportsProfileBusinessCardApiTests(TestCase):
         self.assertIn(product.product_code, recent_text)
         self.assertNotIn('검색 제외 연구실', json.dumps(rows, ensure_ascii=False))
 
+    def test_reports_api_sorts_customer_operations_by_quote_items(self):
+        today = timezone.localdate()
+        quote_product = Product.objects.create(
+            product_code='RPT-QUOTE-SORT-001',
+            description='견적품목 정렬 테스트 제품',
+            specification='quote sort spec',
+            standard_price=1000,
+            created_by=self.user,
+        )
+        quote_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            visit_date=today - timedelta(days=5),
+            visit_time=time(10, 0),
+            activity_type='quote',
+            status='completed',
+        )
+        quote = Quote.objects.create(
+            quote_number='Q-REPORT-SORT-001',
+            schedule=quote_schedule,
+            followup=self.followup,
+            user=self.user,
+            valid_until=today + timedelta(days=30),
+            subtotal=1000,
+            stage='sent',
+        )
+        QuoteItem.objects.create(
+            quote=quote,
+            product=quote_product,
+            quantity=1,
+            unit_price=1000,
+        )
+        recent_department = Department.objects.create(
+            company=self.customer_company,
+            name='최근 납품 연구실',
+            created_by=self.user,
+        )
+        recent_followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            company=self.customer_company,
+            department=recent_department,
+            customer_name='최근납품 담당자',
+        )
+        recent_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=recent_followup,
+            visit_date=today,
+            visit_time=time(11, 0),
+            activity_type='delivery',
+            status='completed',
+        )
+        DeliveryItem.objects.create(
+            schedule=recent_schedule,
+            item_name='최근 납품 품목',
+            quantity=1,
+            unit='EA',
+            unit_price=500,
+            total_price=550,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('reporting:reports_summary_api'), {
+            'date_from': (today - timedelta(days=10)).isoformat(),
+            'date_to': today.isoformat(),
+            'sort': 'quote_items',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['filters']['sort'], 'quote_items')
+        rows = payload['customerOperations']['rows']
+        self.assertEqual(rows[0]['id'], self.department.id)
+        self.assertGreater(rows[0]['quoteItemCount'], 0)
+        self.assertEqual(rows[1]['id'], recent_department.id)
+        self.assertEqual(rows[1]['quoteItemCount'], 0)
+        recent_quote_text = json.dumps(rows[0]['recentQuoteItems'], ensure_ascii=False)
+        self.assertIn('RPT-QUOTE-SORT-001', recent_quote_text)
+
     def test_account_cleanup_account_search_api_finds_by_company_department_pi_contact_and_email(self):
         self.followup.manager = '김PI'
         self.followup.email = 'pi-search@example.com'

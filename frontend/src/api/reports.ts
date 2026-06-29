@@ -17,6 +17,7 @@ export type ReportsCustomerRecentQuote = {
   date: string | null;
   label: string;
   amount: number;
+  itemCount?: number;
   quoteLabel?: string;
   statusLabel?: string;
   source?: string;
@@ -78,6 +79,7 @@ export type ReportsCustomerOperationRow = {
   lastDeliveryDate: string | null;
   quoteCount: number;
   quoteAmount: number;
+  quoteItemCount: number;
   lastQuoteDate: string | null;
   serviceCount: number;
   openServiceCount: number;
@@ -123,6 +125,7 @@ export type ReportsCustomerOperations = {
     prepaymentUsedAmount: number;
     quoteCount: number;
     quoteAmount: number;
+    quoteItemCount: number;
     serviceCount: number;
     openServiceCount: number;
     prepaymentCount: number;
@@ -284,6 +287,7 @@ export type ReportsData = {
     deliveryFilter: string;
     prepaymentBalanceFilter: string;
     exportScope: string;
+    sort: string;
   };
   scope: {
     canFilterUsers: boolean;
@@ -357,6 +361,7 @@ const emptyReportsData: ReportsData = {
     deliveryFilter: 'any',
     prepaymentBalanceFilter: 'any',
     exportScope: 'filtered',
+    sort: 'recent',
   },
   scope: {
     canFilterUsers: false,
@@ -394,6 +399,7 @@ const emptyReportsData: ReportsData = {
       prepaymentUsedAmount: 0,
       quoteCount: 0,
       quoteAmount: 0,
+      quoteItemCount: 0,
       serviceCount: 0,
       openServiceCount: 0,
       prepaymentCount: 0,
@@ -448,6 +454,7 @@ export async function loadReportsData(params: {
   exportScope?: string;
   prepaymentBalanceFilter?: string;
   query?: string;
+  sort?: string;
   cleanupLimit?: number;
   cleanupHistoryLimit?: number;
   userId?: string;
@@ -461,6 +468,7 @@ export async function loadReportsData(params: {
   if (params.exportScope && params.exportScope !== 'filtered') query.set('export_scope', params.exportScope);
   if (params.prepaymentBalanceFilter && params.prepaymentBalanceFilter !== 'any') query.set('prepayment_balance_filter', params.prepaymentBalanceFilter);
   if (params.query) query.set('q', params.query);
+  if (params.sort && params.sort !== 'recent') query.set('sort', params.sort);
   if (params.cleanupLimit) query.set('cleanup_limit', String(params.cleanupLimit));
   if (params.cleanupHistoryLimit) query.set('cleanup_history_limit', String(params.cleanupHistoryLimit));
   if (params.userId) query.set('user_id', params.userId);

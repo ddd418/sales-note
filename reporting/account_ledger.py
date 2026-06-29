@@ -497,6 +497,7 @@ def _empty_account_ledger():
             'quoteRecords': 0,
             'quoteCount': 0,
             'quoteAmount': 0,
+            'quoteItemCount': 0,
             'prepaymentRecords': 0,
             'prepaymentCount': 0,
             'prepaymentAmount': 0,
@@ -632,6 +633,7 @@ def account_operational_ledgers_for_followups(
         metrics['quoteRecords'] += 1
         metrics['quoteCount'] += 1
         metrics['quoteAmount'] += record.get('totalAmount') or 0
+        metrics['quoteItemCount'] += record.get('itemCount') or 0
         _update_latest(metrics, 'lastQuoteDate', quote.quote_date)
         _append_limited(ledger['quoteRecords'], record, record_limit)
 
@@ -659,6 +661,7 @@ def account_operational_ledgers_for_followups(
         metrics['quoteRecords'] += 1
         metrics['quoteCount'] += 1
         metrics['quoteAmount'] += record.get('totalAmount') or 0
+        metrics['quoteItemCount'] += record.get('itemCount') or 0
         _update_latest(metrics, 'lastQuoteDate', schedule.visit_date)
         _append_limited(ledger['quoteRecords'], record, record_limit)
 

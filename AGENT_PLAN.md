@@ -1,5 +1,38 @@
 # AGENT_PLAN.md
 
+## 2026-06-29 Reports quote-item sort plan
+
+**Background**:
+
+- User asked for `/reports/` to support sorting by accounts that have quote items (`견적품목 있음`).
+- The React reports page already shows recent quote items in the account operations table, and the Django reports API already builds quote records through the shared account ledger.
+- Current reports API ordering is fixed to latest activity, so users cannot bring accounts with actual quote item lines to the top.
+
+**DB change required**: No schema migration.
+
+- Existing `QuoteItem` and quote schedule `DeliveryItem` records already expose item counts through the account ledger payload.
+
+**Implementation scope**:
+
+- Add a reports `sort` filter value for quote items.
+- Track actual quote item count per account row.
+- Sort rows with actual quote items first when `sort=quote_items`.
+- Preserve existing date/user/company/department/delivery/prepayment filters and XLSX export query behavior.
+- Add a React select option labeled `견적품목 있음` on `/reports/`.
+- Add focused API regression coverage for quote-item sorting.
+
+**Validation plan**:
+
+- Focused reports API tests.
+- `py -3.13 -m py_compile reporting\api\reports.py reporting\tests.py`
+- `py -3.13 manage.py check`
+- `py -3.13 manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `git diff --check`
+- Commit, push, deploy backend/frontend, and smoke production routes.
+
+**Status**: In progress.
+
 ## 2026-06-26 Department-level pipeline account merge plan
 
 **Background**:
