@@ -4498,7 +4498,7 @@ class DashboardSummaryApiTests(TestCase):
     def test_dashboard_summary_api_includes_year_and_quarter_revenue(self):
         from datetime import date, time
         from decimal import Decimal
-        from reporting.models import DeliveryItem, Schedule
+        from reporting.models import DeliveryItem, Prepayment, Schedule
 
         today = timezone.localdate()
         quarter = ((today.month - 1) // 3) + 1
@@ -4534,6 +4534,19 @@ class DashboardSummaryApiTests(TestCase):
             )
             return int(Decimal(str(unit_price)) * Decimal('1.1'))
 
+        def create_prepayment(owner, target_followup, payment_date, amount, status='active'):
+            Prepayment.objects.create(
+                created_by=owner,
+                customer=target_followup,
+                department=target_followup.department,
+                company=target_followup.company,
+                amount=Decimal(str(amount)),
+                balance=Decimal(str(amount)),
+                payment_date=payment_date,
+                status=status,
+            )
+            return int(Decimal(str(amount)))
+
         expected_year = 0
         expected_quarter = 0
         expected_month = create_delivery(self.user, followup, today, 100000)
@@ -4561,6 +4574,27 @@ class DashboardSummaryApiTests(TestCase):
 
         create_delivery(self.user, followup, date(today.year - 1, 12, 15), 400000)
         create_delivery(self.coworker, coworker_followup, today, 500000)
+
+        monthly_prepayment = create_prepayment(self.user, followup, today, 70000)
+        expected_year += monthly_prepayment
+        expected_quarter += monthly_prepayment
+        expected_month += monthly_prepayment
+
+        quarter_prepayment = create_prepayment(
+            self.user,
+            followup,
+            date(today.year, quarter_start_month, 1),
+            80000,
+            status='depleted',
+        )
+        expected_year += quarter_prepayment
+        expected_quarter += quarter_prepayment
+        if today.month == quarter_start_month:
+            expected_month += quarter_prepayment
+
+        create_prepayment(self.user, followup, today, 90000, status='cancelled')
+        create_prepayment(self.user, followup, date(today.year - 1, 12, 15), 100000)
+        create_prepayment(self.coworker, coworker_followup, today, 500000)
         self.client.force_login(self.user)
 
         response = self.client.get(self.url)

@@ -1,5 +1,40 @@
 # AGENT_PLAN.md
 
+## 2026-06-29 Dashboard revenue includes prepayments plan
+
+**Background**:
+
+- User asked for dashboard revenue metrics to include prepayments (`선결제`) as revenue.
+- Current React `/dashboard/` revenue cards use Django `/reporting/api/dashboard/` metrics `yearRevenue`, `quarterRevenue`, and `monthlyRevenue`.
+- The API currently sums only delivery item totals from delivery schedules, so standalone prepayment deposits are not reflected.
+
+**DB change required**: No schema migration.
+
+- Existing `Prepayment.amount`, `Prepayment.payment_date`, `Prepayment.status`, and `Prepayment.created_by` fields are sufficient.
+
+**Implementation scope**:
+
+- Add non-cancelled prepayment deposit totals to dashboard year/quarter/month revenue metrics.
+- Preserve existing delivery revenue calculation and dashboard scope permissions.
+- Use `payment_date` for prepayment period assignment.
+- Keep cancelled prepayments excluded from dashboard revenue.
+- Update React dashboard card detail text from delivery-only wording to delivery + prepayment wording.
+- Add focused API regression coverage.
+
+**Validation plan**:
+
+- Focused dashboard API test.
+- `py -3.13 -m py_compile reporting\views.py reporting\tests.py`
+- `py -3.13 manage.py test reporting.tests.DashboardSummaryApiTests --keepdb --verbosity=1`
+- `py -3.13 manage.py check`
+- `py -3.13 manage.py makemigrations --check --dry-run`
+- `cd frontend; npm run build`
+- `cd frontend; node --check server.mjs`
+- `git diff --check`
+- Commit, push, deploy backend/frontend, and smoke production dashboard.
+
+**Status**: In progress.
+
 ## 2026-06-29 Reports quote-item sort plan
 
 **Background**:

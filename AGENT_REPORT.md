@@ -1,5 +1,89 @@
 # AGENT_REPORT.md
 
+## 2026-06-29 — 대시보드 매출 선결제 포함
+
+### 요약
+
+- React `/dashboard/` 매출 카드의 기준 금액에 선결제 입금액을 포함했습니다.
+- Django `/reporting/api/dashboard/`의 `yearRevenue`, `quarterRevenue`, `monthlyRevenue`가 기존 납품 품목 합계에 취소되지 않은 선결제 입금액을 더하도록 변경했습니다.
+- 선결제 기간 기준은 `Prepayment.payment_date`이며, 권한 범위는 기존 대시보드의 담당자 범위(`scope_users`)를 그대로 유지했습니다.
+- 프론트 카드 설명 문구를 `납품 일정 기준`에서 `납품·선결제 기준`으로 바꿨습니다.
+
+### 변경된 파일
+
+- `AGENT_PLAN.md`
+- `AGENT_REPORT.md`
+- `frontend/src/App.tsx`
+- `frontend/src/DashboardApp.tsx`
+- `reporting/tests.py`
+- `reporting/views.py`
+
+### CRM 개선
+
+- 대시보드의 당해년도/분기/월 매출이 실제 선결제 입금까지 반영합니다.
+- 선결제 잔액이 남아 있거나 이미 소진된 선결제 모두 취소되지 않은 입금이면 매출로 포함됩니다.
+- 취소된 선결제와 접근 권한 밖 담당자의 선결제는 매출에서 제외됩니다.
+
+### 기존 기능 보존
+
+- 모델 변경과 migration은 없습니다.
+- `/reporting/api/dashboard/` 인증과 사용자/팀 스코프는 유지했습니다.
+- 기존 납품 매출 계산은 유지하고 선결제 입금액만 추가했습니다.
+- 대시보드 나머지 KPI, 일정, 후속조치, 파이프라인 요약은 변경하지 않았습니다.
+
+### 실행한 명령과 결과
+
+```text
+py -3.13 -m py_compile reporting\views.py reporting\tests.py
+→ OK
+
+py -3.13 manage.py test reporting.tests.DashboardSummaryApiTests.test_dashboard_summary_api_includes_year_and_quarter_revenue --keepdb --verbosity=2
+→ OK, 1 test
+
+py -3.13 manage.py test reporting.tests.DashboardSummaryApiTests --keepdb --verbosity=1
+→ OK, 6 tests
+
+py -3.13 manage.py check
+→ System check identified no issues
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+py -3.13 manage.py makemigrations --check --dry-run
+→ No changes detected
+→ Local warning only: EMAIL_ENCRYPTION_KEY is not configured
+
+cd frontend; npm run build
+→ OK, Vite build completed
+→ Existing warning only: some chunks are larger than 500 kB
+
+cd frontend; node --check server.mjs
+→ OK
+
+git diff --check
+→ OK, CRLF normalization warnings only
+```
+
+### 알려진 제한
+
+- 대시보드 매출은 이제 `납품 품목 합계 + 선결제 입금액`입니다. 같은 선결제가 이후 납품 차감으로도 잡히는 경우, 사용자가 요청한 기준대로 입금과 납품 흐름을 모두 매출 카드에 반영합니다.
+- 매출 카드에는 아직 납품분/선결제분을 분리한 세부 breakdown을 표시하지 않습니다.
+
+### 권장 다음 작업
+
+- 운영에서 `/dashboard/` 매출 카드가 선결제 입금액을 포함해 상승했는지 확인합니다.
+- 필요하면 다음 단계에서 카드 hover/detail 또는 별도 리포트에서 `납품 매출`과 `선결제 입금`을 나눠 보여줄 수 있습니다.
+
+### 프로덕션 배포 상태
+
+- 배포 예정: backend/frontend Railway service 배포 후 deployment ID와 smoke 결과를 갱신합니다.
+
+### 운영 서버 수동 테스트 절차
+
+1. [대시보드](https://sales-note-frontend-production.up.railway.app/dashboard/)에 로그인합니다.
+2. 당해년도 전체 매출, 현재 분기 매출, 이번 달 매출 카드 금액을 확인합니다.
+3. 같은 기간에 선결제가 있는 담당자/팀 범위에서 선결제 입금액이 포함되어 표시되는지 확인합니다.
+4. 취소된 선결제는 포함되지 않는지 확인합니다.
+5. 카드 설명이 `납품·선결제 기준`으로 보이는지 확인합니다.
+
 ## 2026-06-29 — reports 견적품목 있음 정렬 추가
 
 ### 요약
