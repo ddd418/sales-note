@@ -159,8 +159,9 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
         # 견적 일정이 취소된 경우 OpportunityTracking을 '견적실패'로 변경
         elif (instance.status == 'cancelled' and 
               old_schedule.status != 'cancelled' and 
-              instance.activity_type == 'quote'):
-            
+              instance.activity_type == 'quote' and
+              opportunity.current_stage not in ('won', 'lost')):
+
             old_stage = opportunity.current_stage
             opportunity.current_stage = 'quote_lost'
             opportunity.stage_entry_date = date.today()

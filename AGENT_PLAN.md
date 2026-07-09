@@ -11677,3 +11677,35 @@ python pre_deployment_check.py
 - `python manage.py makemigrations --check --dry-run`
 - Frontend type/build checks if frontend files change. Otherwise skip build and note no frontend runtime changes.
 - `git diff --check`
+
+## 2026-07-10 Write MCP proxy — 설계 + Phase 0 하드닝 plan
+
+**Background**:
+
+- User wants Claude Code to fully control the CRM (read + write) via MCP. Only `salesnote-readonly` (GET-only bearer, `SALES_NOTE_READONLY_TOKEN`) exists today; there is no write path.
+- Decision: **full write proxy**, but authentication/authorization must NOT be weakened; high-risk actions gated behind confirmation/audit/rate-limit. Design-first.
+
+**Design deliverable**: `WRITE_PROXY_DESIGN.md`
+
+- Write-surface inventory (~190 mutating views, all POST + session + CSRF + role/scope), auth model, business-rule invariants, tiered exposure (A auto / B confirm / C excluded), and un-inventoried risk surfaces (Django admin, backup_api, cron mail, write-on-GET).
+
+**DB change required**: No. No model or migration changes in Phase 0.
+
+**Phase 0 scope (pre-exposure hardening — correct regardless of the proxy)**:
+
+- `reporting/signals.py`: guard the quote-cancel demotion so a `won`/`lost` `OpportunityTracking` is not downgraded to `quote_lost`.
+- `reporting/views.py` `department_memo_api`: add `_can_access_department_account` gate (was any-authenticated → cross-tenant overwrite).
+- `reporting/views.py` `department_assign_category`: add access gate when the department has no contacts.
+- `reporting/personal_schedule_views.py` `personal_schedule_add_comment`: add owner/`can_view_all_users` gate.
+- `todos/views.py` `todo_request_to_peer`/`todo_delegate`: restrict assignee to same-company peers.
+
+**Validation plan**:
+
+- `py -3.13 -m py_compile reporting/signals.py reporting/views.py reporting/personal_schedule_views.py reporting/tests.py todos/views.py`
+- `py -3.13 manage.py check`
+- `py -3.13 manage.py makemigrations --check --dry-run`
+- `py -3.13 manage.py test reporting.tests.WriteProxyPhase0HardeningTests --keepdb` + related (ManagerRole, Pipeline, SchedulePipeline, PermissionIsolation, todos).
+
+**Deploy**: Held — awaiting user go-ahead before commit/push/Railway deploy. No frontend runtime change.
+
+**Next phases** (not started): Phase 1 write-auth infra (`reporting/write_api.py` + `WriteBearerMiddleware` + `SALES_NOTE_WRITE_TOKEN`/`SALES_NOTE_WRITE_USER_ID` non-staff), Phase 2 Tier-A allowlist, Phase 3 Tier-B confirm/audit/rate-limit, Phase 4 hosted write MCP connector.

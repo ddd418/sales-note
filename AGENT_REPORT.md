@@ -1,5 +1,42 @@
 # AGENT_REPORT.md
 
+## 2026-07-10 — Write MCP proxy 설계 + Phase 0 하드닝 (배포 대기)
+
+### 요약
+
+- 목표: Claude Code가 CRM을 읽기+쓰기 전면 제어. 현재는 `salesnote-readonly`(GET 전용 bearer)만 존재.
+- 방향 확정: **전면 쓰기 프록시**(인증/권한 약화 금지, 고위험 액션 게이팅). 설계 문서 `WRITE_PROXY_DESIGN.md` 작성.
+- 노출 전 하드닝(Phase 0) 코드 수정 + 회귀 테스트 완료. **배포는 사용자 승인 대기.**
+
+### 변경된 파일
+
+- `WRITE_PROXY_DESIGN.md` (신규 설계 문서)
+- `reporting/signals.py` — 견적 취소 시 `won`/`lost` 기회 강등 방지 가드
+- `reporting/views.py` — `department_memo_api`, `department_assign_category` 권한 보강
+- `reporting/personal_schedule_views.py` — `personal_schedule_add_comment` 소유자/전체열람 권한 보강
+- `todos/views.py` — `todo_request_to_peer`/`todo_delegate` same-company 제한 + `_is_same_company_peer` 헬퍼
+- `reporting/tests.py` — `WriteProxyPhase0HardeningTests` (7건)
+
+### 기존 기능 보존
+
+- 모델/마이그레이션 변경 없음. 인증/권한은 약화가 아니라 강화(교차 테넌트·무검사 구멍 차단). readonly MCP 경로는 불변.
+
+### 실행한 명령과 결과
+
+```text
+py -3.13 -m py_compile reporting/signals.py reporting/views.py reporting/personal_schedule_views.py reporting/tests.py todos/views.py → PY_COMPILE_OK
+py -3.13 manage.py check → System check identified no issues (0 silenced)
+py -3.13 manage.py makemigrations --check --dry-run → No changes detected
+py -3.13 manage.py test reporting.tests.WriteProxyPhase0HardeningTests → Ran 7 tests OK
+py -3.13 manage.py test ManagerRolePermissionTests PipelineApiTests SchedulePipelineBackfillCommandTests PermissionIsolationTests todos → Ran 51 tests OK
+```
+
+### 프로덕션 배포 상태
+
+- **보류.** 사용자 승인 전까지 commit/push/Railway 배포를 수행하지 않음. 프론트 변경 없음(build 불필요).
+
+---
+
 ## 2026-07-03 — 인수인계서 작성
 
 ### 요약

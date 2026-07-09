@@ -433,7 +433,11 @@ def personal_schedule_add_comment(request, pk):
     """개인 일정에 댓글 추가"""
     personal_schedule = get_object_or_404(PersonalSchedule, pk=pk)
     user_profile = get_object_or_404(UserProfile, user=request.user)
-    
+
+    # 권한 확인: 본인 일정이거나 전체 열람 권한이 있어야 댓글 작성 가능
+    if personal_schedule.user != request.user and not user_profile.can_view_all_users():
+        return JsonResponse({'status': 'error', 'message': '권한이 없습니다.'}, status=403)
+
     content = request.POST.get('content', '').strip()
     if not content:
         return JsonResponse({'status': 'error', 'message': '내용을 입력하세요.'}, status=400)

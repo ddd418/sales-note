@@ -21727,3 +21727,121 @@ class ScheduleVatModeTests(TestCase):
         ).first()
         self.assertIsNotNone(created, 'vat_mode=none인 스케줄이 생성되어야 합니다.')
 
+
+class WriteProxyPhase0HardeningTests(TestCase):
+    """쓰기 프록시 노출 전 하드닝(Phase 0) 회귀 테스트.
+
+    - won 보호: 견적 일정 취소 시그널이 수주(won) 기회를 강등하지 않음
+    - department_memo_api: 교차 테넌트 접근 차단
+    - department_assign_category: 연락처 없는 부서의 무검사 갭 차단
+    - personal_schedule_add_comment: 비소유자 댓글 차단
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.user_company = UserCompany.objects.create(name='하드닝회사')
+        self.owner = make_user('phase0_owner', role='salesman', company=self.user_company)
+        self.other = make_user('phase0_other', role='salesman', company=self.user_company)
+        self.other_company = UserCompany.objects.create(name='다른회사')
+        self.outsider = make_user('phase0_outsider', role='salesman', company=self.other_company)
+
+        self.company = Company.objects.create(name='하드닝고객사', created_by=self.owner)
+        self.department = Department.objects.create(
+            name='하드닝부서', company=self.company, created_by=self.owner,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.owner, customer_name='하드닝고객',
+            company=self.company, department=self.department,
+        )
+
+    def _make_quote_schedule_with_opportunity(self, stage):
+        from reporting.models import OpportunityTracking
+        opportunity = OpportunityTracking.objects.create(
+            followup=self.followup, title='하드닝 기회', current_stage=stage,
+        )
+        schedule = Schedule.objects.create(
+            user=self.owner,
+            followup=self.followup,
+            visit_date=timezone.localdate(),
+            visit_time=time(10, 0),
+            status='scheduled',
+            activity_type='quote',
+            opportunity=opportunity,
+        )
+        return schedule, opportunity
+
+    # ── #1 won 보호 시그널 ──────────────────────────────────────────
+    def test_won_opportunity_not_demoted_when_quote_schedule_cancelled(self):
+        schedule, opportunity = self._make_quote_schedule_with_opportunity('won')
+        schedule.status = 'cancelled'
+        schedule.save()
+        opportunity.refresh_from_db()
+        self.assertEqual(
+            opportunity.current_stage, 'won',
+            '수주(won) 기회는 견적 취소로 강등되면 안 된다.',
+        )
+
+    def test_open_quote_opportunity_still_demoted_on_cancel(self):
+        # 양성 대조: 수주 전 견적 기회는 취소 시 정상적으로 quote_lost로 전환
+        schedule, opportunity = self._make_quote_schedule_with_opportunity('quote')
+        schedule.status = 'cancelled'
+        schedule.save()
+        opportunity.refresh_from_db()
+        self.assertEqual(opportunity.current_stage, 'quote_lost')
+
+    # ── #2 부서 메모 교차 테넌트 차단 ───────────────────────────────
+    def test_department_memo_api_blocks_outsider(self):
+        from reporting.models import DepartmentMemo
+        self.client.force_login(self.outsider)
+        url = reverse('reporting:department_memo_api', args=[self.department.id])
+        r = self.client.post(url, {'content': '침입 메모'})
+        self.assertEqual(r.status_code, 403)
+        self.assertFalse(
+            DepartmentMemo.objects.filter(department=self.department).exists()
+        )
+
+    def test_department_memo_api_allows_owner(self):
+        from reporting.models import DepartmentMemo
+        self.client.force_login(self.owner)
+        url = reverse('reporting:department_memo_api', args=[self.department.id])
+        r = self.client.post(url, {'content': '정상 메모'})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(
+            DepartmentMemo.objects.filter(
+                department=self.department, content='정상 메모',
+            ).exists()
+        )
+
+    # ── #3 연락처 없는 부서 카테고리 할당 갭 ─────────────────────────
+    def test_department_assign_category_blocks_outsider_on_empty_department(self):
+        empty_dept = Department.objects.create(
+            name='빈부서', company=self.company, created_by=self.owner,
+        )
+        self.client.force_login(self.outsider)
+        url = reverse('reporting:department_assign_category', args=[empty_dept.id])
+        r = self.client.post(url, {'category_id': ''})
+        self.assertFalse(r.json().get('success'))
+
+    # ── #4 개인 일정 댓글 권한 ──────────────────────────────────────
+    def test_personal_schedule_add_comment_blocks_non_owner(self):
+        from reporting.models import PersonalSchedule
+        ps = PersonalSchedule.objects.create(
+            user=self.owner, title='비공개 일정',
+            schedule_date=timezone.localdate(), schedule_time=time(9, 0),
+        )
+        self.client.force_login(self.other)  # 같은 회사지만 salesman(전체 열람 불가)
+        url = reverse('reporting:personal_schedule_add_comment', args=[ps.id])
+        r = self.client.post(url, {'content': '남의 일정 댓글'})
+        self.assertEqual(r.status_code, 403)
+
+    def test_personal_schedule_add_comment_allows_owner(self):
+        from reporting.models import PersonalSchedule
+        ps = PersonalSchedule.objects.create(
+            user=self.owner, title='내 일정',
+            schedule_date=timezone.localdate(), schedule_time=time(9, 0),
+        )
+        self.client.force_login(self.owner)
+        url = reverse('reporting:personal_schedule_add_comment', args=[ps.id])
+        r = self.client.post(url, {'content': '내 일정 댓글'})
+        self.assertEqual(r.status_code, 200)
+

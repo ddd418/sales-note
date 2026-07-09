@@ -35987,6 +35987,9 @@ def department_assign_category(request, department_id):
                 first_followup = followups.first()
                 if not can_modify_user_data(request.user, first_followup.user):
                     return JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'})
+            elif not _can_access_department_account(request.user, department):
+                # 연락처가 없는 부서는 계정 접근 권한으로 확인 (무검사 갭 차단)
+                return JsonResponse({'success': False, 'error': '수정 권한이 없습니다.'})
             
             category_id = request.POST.get('category_id', '').strip()
             
@@ -36052,9 +36055,13 @@ def category_delete(request, category_id):
 def department_memo_api(request, department_id):
     """부서 메모 조회/저장 API"""
     from reporting.models import DepartmentMemo, Department
-    
+
     department = get_object_or_404(Department, pk=department_id)
-    
+
+    # 권한 확인: 접근 가능한 계정(부서)만 조회/저장 가능 (교차 테넌트 차단)
+    if not _can_access_department_account(request.user, department):
+        return JsonResponse({'success': False, 'error': '권한이 없습니다.'}, status=403)
+
     if request.method == 'GET':
         memo = department.memos.order_by('-updated_at').first()
         if memo:

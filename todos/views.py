@@ -660,6 +660,16 @@ def todo_reject_request(request, pk):
 # 동료 요청
 # ============================================
 
+def _is_same_company_peer(request_user, target_user):
+    """요청/위임 대상이 요청자와 같은 회사 소속인지 확인.
+    요청자에게 회사 정보가 없으면(레거시) 제한하지 않는다."""
+    requester_company = getattr(getattr(request_user, 'userprofile', None), 'company', None)
+    if requester_company is None:
+        return True
+    target_company = getattr(getattr(target_user, 'userprofile', None), 'company', None)
+    return getattr(target_company, 'pk', None) == requester_company.pk
+
+
 @login_required
 def todo_request_to_peer(request):
     """동료에게 업무 요청"""
@@ -676,7 +686,11 @@ def todo_request_to_peer(request):
             return redirect('todos:request_to_peer')
         
         assigned_to = get_object_or_404(User, pk=assigned_to_id)
-        
+
+        if not _is_same_company_peer(request.user, assigned_to):
+            messages.error(request, '같은 회사 동료에게만 업무를 요청할 수 있습니다.')
+            return redirect('todos:request_to_peer')
+
         todo = Todo.objects.create(
             title=title,
             description=description,
@@ -738,7 +752,11 @@ def todo_delegate(request, pk):
         return redirect('todos:detail', pk=pk)
     
     assigned_to = get_object_or_404(User, pk=assigned_to_id)
-    
+
+    if not _is_same_company_peer(request.user, assigned_to):
+        messages.error(request, '같은 회사 동료에게만 업무를 위임할 수 있습니다.')
+        return redirect('todos:detail', pk=pk)
+
     # 자기 자신에게 위임 불가
     if assigned_to == request.user:
         messages.error(request, '자기 자신에게는 위임할 수 없습니다.')
