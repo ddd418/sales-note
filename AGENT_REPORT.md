@@ -1,6 +1,45 @@
 # AGENT_REPORT.md
 
-## 2026-07-10 — Write MCP proxy 설계 + Phase 0 하드닝 (배포 대기)
+## 2026-07-10 — Write MCP proxy Phase 1 (쓰기 인증 인프라)
+
+### 요약
+
+- 쓰기용 기계 인증 경로 추가 — `readonly_api.py`의 쓰기 버전.
+- **프로덕션에서 `SALES_NOTE_WRITE_TOKEN` 미설정 시 완전 비활성(dormant).** env 설정 전까지 어떤 쓰기도 불가하므로 배포 자체는 무해.
+
+### 변경된 파일
+
+- `reporting/write_api.py` (신규): `WRITE_ALLOWED_URL_NAMES`(초기 Tier A 3개), `authenticate_write_bearer`, `get_write_api_user`(비-staff·비-superuser·비-admin 강제), `WriteBearerMiddleware`, `write_bearer_or_login_required` 데코레이터.
+- `sales_project/settings.py`, `sales_project/settings_production.py`: `WriteBearerMiddleware` 등록 (AuthenticationMiddleware 뒤 / CompanyFilterMiddleware 앞).
+- `reporting/tests.py`: `WriteBearerAuthTests` (12건).
+
+### 동작/안전
+
+- 유효 토큰 + 화이트리스트 POST 일 때만 acting 유저로 인증 + **그 요청에 한해** CSRF 우회. 세션 요청 CSRF 불변(테스트로 강제).
+- acting 유저는 `SALES_NOTE_WRITE_USER_ID`로 해석, **비-staff·비-superuser·비-admin 강제**(권한 붕괴 방지, readonly admin 폴백 미복사).
+- 초기 화이트리스트: `notes_create_api`, `schedules_create_api`, `schedule_move_api` (Tier A). Tier 확장은 이후 단계.
+
+### 실행한 명령과 결과
+
+```text
+py -3.13 -m py_compile reporting/write_api.py reporting/tests.py sales_project/settings.py sales_project/settings_production.py → PY_COMPILE_OK
+py -3.13 manage.py check → 0 issues
+py -3.13 manage.py test WriteBearerAuthTests SalesNoteReadonlyBearerApiTests ManagerRolePermissionTests WriteProxyPhase0HardeningTests → Ran 32 tests OK
+```
+
+### 운영 설정 필요 (사용자가 Railway `web` 서비스에 설정 시 활성화)
+
+- `SALES_NOTE_WRITE_USER_ID` = 전용 영업(salesman) 유저 id (staff/admin 아님).
+- `SALES_NOTE_WRITE_TOKEN` = 강한 시크릿 (쓰기 MCP 커넥터가 보관).
+- 설정 전까지 쓰기 경로는 완전 비활성.
+
+### 프로덕션 배포 상태
+
+- 진행 예정 (아래 docs 커밋에서 deployment ID/smoke 기록).
+
+---
+
+## 2026-07-10 — Write MCP proxy 설계 + Phase 0 하드닝 (배포 완료)
 
 ### 요약
 

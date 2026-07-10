@@ -21845,3 +21845,144 @@ class WriteProxyPhase0HardeningTests(TestCase):
         r = self.client.post(url, {'content': '내 일정 댓글'})
         self.assertEqual(r.status_code, 200)
 
+
+class WriteBearerAuthTests(TestCase):
+    """Phase 1 쓰기 토큰 인증 인프라(`reporting/write_api.py` + WriteBearerMiddleware).
+
+    - 유효 토큰 + 화이트리스트 POST → acting 유저로 인증, CSRF 우회(이 요청만)
+    - 세션 요청은 CSRF 그대로 강제, 토큰 미설정/오류/비허용 url은 차단
+    - acting 유저는 비-staff·비-admin 이어야 함 (권한 붕괴 방지)
+    """
+
+    TOKEN = 'sekret-write-123'
+
+    def setUp(self):
+        self.user_company = UserCompany.objects.create(name='쓰기회사')
+        self.write_user = make_user('write_actor', role='salesman', company=self.user_company)
+        self.admin_user = make_user('write_admin', role='admin', company=self.user_company)
+        self.staff_user = make_user('write_staff', role='salesman', company=self.user_company)
+        self.staff_user.is_staff = True
+        self.staff_user.save(update_fields=['is_staff'])
+
+        self.company = Company.objects.create(name='쓰기고객사', created_by=self.write_user)
+        self.department = Department.objects.create(
+            name='쓰기부서', company=self.company, created_by=self.write_user,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.write_user, customer_name='쓰기고객',
+            company=self.company, department=self.department,
+        )
+
+    def _env(self, token=None, user_id=None):
+        return {
+            'SALES_NOTE_WRITE_TOKEN': self.TOKEN if token is None else token,
+            'SALES_NOTE_WRITE_USER_ID': str(self.write_user.id) if user_id is None else str(user_id),
+        }
+
+    def _make_schedule(self):
+        return Schedule.objects.create(
+            user=self.write_user, followup=self.followup,
+            visit_date=timezone.localdate(), visit_time=time(9, 0),
+            activity_type='customer_meeting',
+        )
+
+    def _post_request(self, url, token=None):
+        from django.test import RequestFactory
+        bearer = self.TOKEN if token is None else token
+        return RequestFactory().post(url, HTTP_AUTHORIZATION=f'Bearer {bearer}')
+
+    # ── authenticate_write_bearer 단위 검증 ────────────────────────────
+    def test_valid_token_on_allowlisted_url_authenticates(self):
+        from reporting.write_api import authenticate_write_bearer
+        req = self._post_request(reverse('reporting:schedules_create_api'))
+        with patch.dict(os.environ, self._env()):
+            self.assertTrue(authenticate_write_bearer(req))
+        self.assertEqual(req.user, self.write_user)
+        self.assertTrue(getattr(req, 'salesnote_write_api', False))
+
+    def test_non_allowlisted_url_rejected(self):
+        from reporting.write_api import authenticate_write_bearer
+        req = self._post_request(reverse('reporting:notes_update_api', args=[999999]))
+        with patch.dict(os.environ, self._env()):
+            self.assertFalse(authenticate_write_bearer(req))
+
+    def test_get_method_rejected(self):
+        from django.test import RequestFactory
+        from reporting.write_api import authenticate_write_bearer
+        req = RequestFactory().get(
+            reverse('reporting:schedules_create_api'),
+            HTTP_AUTHORIZATION=f'Bearer {self.TOKEN}',
+        )
+        with patch.dict(os.environ, self._env()):
+            self.assertFalse(authenticate_write_bearer(req))
+
+    def test_wrong_token_rejected(self):
+        from reporting.write_api import authenticate_write_bearer
+        req = self._post_request(reverse('reporting:schedules_create_api'), token='WRONG')
+        with patch.dict(os.environ, self._env()):
+            self.assertFalse(authenticate_write_bearer(req))
+
+    def test_unset_env_token_rejected(self):
+        from reporting.write_api import authenticate_write_bearer
+        req = self._post_request(reverse('reporting:schedules_create_api'))
+        with patch.dict(os.environ, self._env(token='')):
+            self.assertFalse(authenticate_write_bearer(req))
+
+    # ── get_write_api_user 안전 검증 ───────────────────────────────────
+    def test_write_user_resolves_salesman(self):
+        from reporting.write_api import get_write_api_user
+        with patch.dict(os.environ, self._env()):
+            self.assertEqual(get_write_api_user(), self.write_user)
+
+    def test_write_user_refuses_admin_role(self):
+        from reporting.write_api import get_write_api_user
+        with patch.dict(os.environ, self._env(user_id=self.admin_user.id)):
+            self.assertIsNone(get_write_api_user())
+
+    def test_write_user_refuses_staff(self):
+        from reporting.write_api import get_write_api_user
+        with patch.dict(os.environ, self._env(user_id=self.staff_user.id)):
+            self.assertIsNone(get_write_api_user())
+
+    # ── 미들웨어 + CSRF 통합 검증 ──────────────────────────────────────
+    def test_write_token_moves_schedule_without_session_or_csrf(self):
+        schedule = self._make_schedule()
+        client = Client(enforce_csrf_checks=True)
+        url = reverse('reporting:schedule_move_api', args=[schedule.pk])
+        with patch.dict(os.environ, self._env()):
+            r = client.post(url, {'new_date': '2026-08-15'},
+                            HTTP_AUTHORIZATION=f'Bearer {self.TOKEN}')
+        self.assertEqual(r.status_code, 200)
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.visit_date.isoformat(), '2026-08-15')
+
+    def test_session_post_still_requires_csrf(self):
+        # 세션 요청은 쓰기 토큰 우회를 받지 않고 CSRF 가 그대로 강제된다.
+        schedule = self._make_schedule()
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.write_user)
+        url = reverse('reporting:schedule_move_api', args=[schedule.pk])
+        r = client.post(url, {'new_date': '2026-08-15'})  # CSRF 토큰 없음, bearer 없음
+        self.assertEqual(r.status_code, 403)
+        schedule.refresh_from_db()
+        self.assertNotEqual(schedule.visit_date.isoformat(), '2026-08-15')
+
+    def test_unset_env_token_leaves_write_path_inert(self):
+        schedule = self._make_schedule()
+        client = Client(enforce_csrf_checks=True)
+        url = reverse('reporting:schedule_move_api', args=[schedule.pk])
+        with patch.dict(os.environ, self._env(token='')):
+            r = client.post(url, {'new_date': '2026-08-15'},
+                            HTTP_AUTHORIZATION='Bearer anything')
+        self.assertIn(r.status_code, (302, 401, 403))
+        schedule.refresh_from_db()
+        self.assertNotEqual(schedule.visit_date.isoformat(), '2026-08-15')
+
+    def test_write_token_cannot_reach_non_allowlisted_endpoint(self):
+        client = Client(enforce_csrf_checks=True)
+        url = reverse('reporting:notes_update_api', args=[999999])
+        with patch.dict(os.environ, self._env()):
+            r = client.post(url, {'content': 'x'},
+                            HTTP_AUTHORIZATION=f'Bearer {self.TOKEN}')
+        self.assertIn(r.status_code, (302, 401, 403, 404))
+

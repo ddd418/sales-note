@@ -11709,3 +11709,20 @@ python pre_deployment_check.py
 **Deploy**: Done. Commit `7d6193f` on `origin/main`. Railway `web` deploy `4ab0bacf-0c26-4199-bac4-a89bb788f00e` SUCCESS; frontend `3249648d-4b9f-47c9-84b5-55e3951993dd` SKIPPED (no frontend change). `post_deploy_smoke.py` → ok.
 
 **Next phases** (not started): Phase 1 write-auth infra (`reporting/write_api.py` + `WriteBearerMiddleware` + `SALES_NOTE_WRITE_TOKEN`/`SALES_NOTE_WRITE_USER_ID` non-staff), Phase 2 Tier-A allowlist, Phase 3 Tier-B confirm/audit/rate-limit, Phase 4 hosted write MCP connector.
+
+## 2026-07-10 Write MCP proxy — Phase 1 (쓰기 인증 인프라)
+
+**Scope**: machine write-auth path mirroring readonly_api.py. Dormant in prod until env vars are set.
+
+- `reporting/write_api.py`: `WRITE_ALLOWED_URL_NAMES` (initial Tier A: notes_create_api, schedules_create_api, schedule_move_api), `authenticate_write_bearer`, `get_write_api_user` (active + non-staff + non-superuser + non-admin only; NO admin fallback), `WriteBearerMiddleware` (sets `request._dont_enforce_csrf_checks` only for a validated write token), `write_bearer_or_login_required` decorator.
+- Middleware registered in both settings after AuthenticationMiddleware, before CompanyFilterMiddleware.
+
+**DB change required**: No.
+
+**Validation**: py_compile + `manage.py check` + `WriteBearerAuthTests` (12) + readonly/manager/phase0 regression → 32 tests OK.
+
+**Runtime activation (user, Railway `web`)**: set `SALES_NOTE_WRITE_USER_ID` (a dedicated salesman, not staff/admin) and `SALES_NOTE_WRITE_TOKEN` (strong secret held by the write MCP connector). Until then the write path is fully inert.
+
+**Deploy**: (recorded after deploy)
+
+**Next**: Phase 2 expand Tier-A allowlist; Phase 3 Tier-B confirm/audit/rate-limit; Phase 4 hosted write MCP connector.
