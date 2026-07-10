@@ -1,5 +1,31 @@
 # AGENT_REPORT.md
 
+## 2026-07-10 — 읽기+쓰기 MCP 서버 (Cowork/claude.ai 커스텀 커넥터)
+
+### 요약
+
+- 목표: Cowork/claude.ai에서 자연어로 "일정 저장/노트 작성" → 실제 반영. 이를 위해 **읽기+쓰기 통합 원격 MCP 서버**를 만들어 Railway 새 서비스로 배포.
+- 구조: `claude.ai(Cowork) → salesnote-mcp(/mcp, 커넥터 토큰) → Django(읽기/쓰기 토큰은 서버 내부)`.
+
+### 추가된 것
+
+- `salesnote-mcp/` (신규): `server.py`(FastMCP 3, streamable-http; 도구 `salesnote_read`/`salesnote_search`/`salesnote_write`; 커넥터 토큰 인증; 위험 액션 `confirm=True`→`X-Salesnote-Write-Confirm: yes`), `requirements.txt`, `Procfile`, `README.md`.
+- Railway 새 서비스 `salesnote-mcp` (id `8628f6c6-55c6-4456-96c5-eec6c3b24d3b`), 도메인 `https://salesnote-mcp-production.up.railway.app`, MCP URL `.../mcp`.
+- 서비스 env: `MCP_CONNECTOR_TOKEN`(커넥터 접근), `SALES_NOTE_READONLY_TOKEN`, `SALES_NOTE_WRITE_TOKEN`, `SALESNOTE_API_BASE`. (토큰 값은 저장소 밖.)
+
+### 검증 (공개 엔드포인트, deploy `5eecac45` SUCCESS)
+
+- `salesnote_read dashboard/` → 200 실데이터
+- `salesnote_write schedules/create/`(빈) → 400 뷰 도달(dkswogus95)
+- `salesnote_write customers/<x>/delete/`(확인 없음) → 428 confirmation_required
+- 잘못된 커넥터 토큰 → 거부
+
+### 남은 사용자 작업 (딱 1회, claude.ai UI)
+
+- Settings → Connectors → Add custom connector → URL `https://salesnote-mcp-production.up.railway.app/mcp` → Request headers 에 `Authorization` = `Bearer <MCP_CONNECTOR_TOKEN>` (Required) → Add. Cowork 는 동일 계정 커넥터 자동 사용.
+
+---
+
 ## 2026-07-10 — Write proxy: 전면 개방 + 확인 게이트 + 신원 전환
 
 ### 요약
