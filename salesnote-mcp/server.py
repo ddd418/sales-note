@@ -6,7 +6,8 @@
         --[쓰기: SALES_NOTE_WRITE_TOKEN]-----> Django POST API
 
 인증:
-- 들어오는 요청은 MCP_CONNECTOR_TOKEN(사용자가 커넥터 헤더에 넣는 값)으로 검증한다.
+- 엔드포인트는 /mcp/<MCP_CONNECTOR_TOKEN> 에만 존재한다(claude.ai 커스텀 커넥터 UI 에
+  헤더 입력칸이 없어 토큰을 URL 경로에 둔다). 그 외 경로는 404. access_log 는 끈다.
 - Django 읽기/쓰기 토큰은 이 서버 환경변수에만 있고 모델(Claude)엔 절대 노출되지 않는다.
 
 안전:
@@ -21,11 +22,9 @@
     PORT                      (Railway 주입)
 """
 import os
-import secrets
 
 import httpx
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
 
 API_BASE = os.environ.get(
     "SALESNOTE_API_BASE",
@@ -38,19 +37,6 @@ CONNECTOR_TOKEN = os.environ.get("MCP_CONNECTOR_TOKEN", "").strip()
 CONFIRM_HEADER = "X-Salesnote-Write-Confirm"
 
 mcp = FastMCP(name="Sales Note")
-
-
-def _check_auth():
-    """들어오는 요청의 Authorization 헤더를 MCP_CONNECTOR_TOKEN 과 대조한다."""
-    if not CONNECTOR_TOKEN:
-        raise ValueError("서버 설정 오류: MCP_CONNECTOR_TOKEN 미설정")
-    headers = get_http_headers(include=["authorization"])
-    auth = headers.get("authorization") or headers.get("Authorization") or ""
-    token = ""
-    if auth.lower().startswith("bearer "):
-        token = auth.split(None, 1)[1].strip()
-    if not (token and secrets.compare_digest(token, CONNECTOR_TOKEN)):
-        raise ValueError("인증 실패: 커넥터 토큰이 없거나 올바르지 않습니다.")
 
 
 def _fmt(r: httpx.Response) -> str:
@@ -67,7 +53,6 @@ def salesnote_read(path: str, query: dict | None = None) -> str:
       pipeline/ · followups/ · prepayments/ · reports/ · products/ · ai-workspace/
     query: 필터 dict (예: {"q":"김교수","page":1}).
     """
-    _check_auth()
     r = httpx.get(
         f"{API_BASE}/{path.lstrip('/')}",
         params=query or {},
@@ -80,7 +65,6 @@ def salesnote_read(path: str, query: dict | None = None) -> str:
 @mcp.tool
 def salesnote_search(q: str) -> str:
     """고객/부서/일정/노트/납품 통합 검색. (dashboard/search/ 래퍼)"""
-    _check_auth()
     r = httpx.get(
         f"{API_BASE}/dashboard/search/",
         params={"q": q},
@@ -109,7 +93,6 @@ def salesnote_write(
     form: True 면 form-encoded 로 전송(일부 레거시 엔드포인트, 예: schedules/<id>/move/ 는
       new_date 를 form 으로 받음). 기본은 JSON. JSON 으로 "필드 없음" 오류가 나면 form=True 로 재시도.
     """
-    _check_auth()
     url = f"{API_BASE}/{path.lstrip('/')}"
     headers = {"Authorization": f"Bearer {WRITE_TOKEN}"}
     if confirm:
@@ -122,10 +105,13 @@ def salesnote_write(
     return _fmt(r)
 
 
-# Streamable HTTP ASGI 앱. host_origin_protection 은 끄고(실제 인증은 커넥터 토큰),
-# stateless 로 두어 프록시 뒤에서 안정 동작.
+# claude.ai 커스텀 커넥터 UI 에는 헤더 입력칸이 없으므로(OAuth 만 제공), 접근 토큰을
+# URL 경로에 넣어 보호한다. 엔드포인트는 /mcp/<MCP_CONNECTOR_TOKEN> 에만 존재하고
+# 그 외 경로는 404. 시크릿이 로그에 남지 않도록 access_log 는 끈다.
+# host_origin_protection 은 끄고(프록시 뒤), stateless 로 안정 동작.
+_PATH_SECRET = CONNECTOR_TOKEN or "mcp"
 app = mcp.http_app(
-    path="/mcp",
+    path=f"/mcp/{_PATH_SECRET}",
     stateless_http=True,
     host_origin_protection=False,
 )
@@ -134,4 +120,9 @@ app = mcp.http_app(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", "8000")),
+        access_log=False,
+    )
