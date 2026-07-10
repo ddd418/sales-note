@@ -11723,6 +11723,6 @@ python pre_deployment_check.py
 
 **Runtime activation (user, Railway `web`)**: set `SALES_NOTE_WRITE_USER_ID` (a dedicated salesman, not staff/admin) and `SALES_NOTE_WRITE_TOKEN` (strong secret held by the write MCP connector). Until then the write path is fully inert.
 
-**Deploy**: (recorded after deploy)
+**Deploy**: Done. Commit `c3a0180` on `origin/main`. Railway `web` deploy `2ad8b75b-5f74-4950-935e-65a9e4f34a60` SUCCESS; frontend unchanged. `post_deploy_smoke.py` → ok. Dormancy verified in prod (bogus bearer POST to an allowlisted url → 403).
 
 **Next**: Phase 2 expand Tier-A allowlist; Phase 3 Tier-B confirm/audit/rate-limit; Phase 4 hosted write MCP connector.

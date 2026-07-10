@@ -35,7 +35,10 @@ py -3.13 manage.py test WriteBearerAuthTests SalesNoteReadonlyBearerApiTests Man
 
 ### 프로덕션 배포 상태
 
-- 진행 예정 (아래 docs 커밋에서 deployment ID/smoke 기록).
+- **완료.** commit `c3a0180` → `origin/main`.
+- Railway backend `web` 배포 `2ad8b75b-5f74-4950-935e-65a9e4f34a60` → SUCCESS (마이그레이션 없음). 프론트 변경 없음.
+- `post_deploy_smoke.py` → Smoke status: ok.
+- 쓰기 dormant 확인: 화이트리스트 `/reporting/api/schedules/create/` 에 가짜 bearer POST → 403 거부 (env 토큰 미설정이므로 인증 불가, CSRF 우회 미부여).
 
 ---
 
