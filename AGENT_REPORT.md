@@ -33,7 +33,16 @@ py -3.13 manage.py test ManagerRolePermissionTests PipelineApiTests SchedulePipe
 
 ### 프로덕션 배포 상태
 
-- **보류.** 사용자 승인 전까지 commit/push/Railway 배포를 수행하지 않음. 프론트 변경 없음(build 불필요).
+- **완료.** commit `7d6193f`를 `origin/main`에 푸시.
+- Railway backend `web` 배포 `4ab0bacf-0c26-4199-bac4-a89bb788f00e` → SUCCESS (마이그레이션 없음).
+- Railway frontend `sales-note-frontend` 배포 `3249648d-4b9f-47c9-84b5-55e3951993dd` → SKIPPED (프론트 변경 없음).
+- `scripts/post_deploy_smoke.py` → Smoke status: ok. 모든 보호 API가 `401 login_required` 유지(인증 무약화 확인).
+
+### 운영 수동 확인 대기
+
+- Phase 0는 대부분 비가시 하드닝이라 수동 확인 최소. 회귀 감시 항목:
+  1. 견적 일정을 취소해도 이미 수주(won)로 표시된 계정이 파이프라인에서 실패로 바뀌지 않는지.
+  2. 부서 메모/개인 일정 댓글/동료 위임이 본인·같은 회사 범위에서 정상 동작하는지.
 
 ---
 

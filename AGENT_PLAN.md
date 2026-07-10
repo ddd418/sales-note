@@ -11706,6 +11706,6 @@ python pre_deployment_check.py
 - `py -3.13 manage.py makemigrations --check --dry-run`
 - `py -3.13 manage.py test reporting.tests.WriteProxyPhase0HardeningTests --keepdb` + related (ManagerRole, Pipeline, SchedulePipeline, PermissionIsolation, todos).
 
-**Deploy**: Held — awaiting user go-ahead before commit/push/Railway deploy. No frontend runtime change.
+**Deploy**: Done. Commit `7d6193f` on `origin/main`. Railway `web` deploy `4ab0bacf-0c26-4199-bac4-a89bb788f00e` SUCCESS; frontend `3249648d-4b9f-47c9-84b5-55e3951993dd` SKIPPED (no frontend change). `post_deploy_smoke.py` → ok.
 
 **Next phases** (not started): Phase 1 write-auth infra (`reporting/write_api.py` + `WriteBearerMiddleware` + `SALES_NOTE_WRITE_TOKEN`/`SALES_NOTE_WRITE_USER_ID` non-staff), Phase 2 Tier-A allowlist, Phase 3 Tier-B confirm/audit/rate-limit, Phase 4 hosted write MCP connector.
