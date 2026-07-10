@@ -27,7 +27,8 @@ WriteBearerAuthTests → 15 OK
 
 ### 프로덕션 배포 상태
 
-- 진행 예정 (아래 docs 커밋에서 deployment ID 기록).
+- **완료.** commit `2687679` → `origin/main`. Railway `web` 배포 `cf273d86-1030-4221-a6ae-54f57f6476ee` SUCCESS.
+- 프로덕션 검증(신원=dkswogus95): 노트생성(확인불필요) → 400 뷰 도달; 고객삭제(확인없음) → 428 게이트; 고객삭제(확인헤더) → 404 게이트통과·삭제뷰 도달.
 
 ---
 
