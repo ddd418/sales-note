@@ -21900,11 +21900,19 @@ class WriteBearerAuthTests(TestCase):
         self.assertEqual(req.user, self.write_user)
         self.assertTrue(getattr(req, 'salesnote_write_api', False))
 
-    def test_non_allowlisted_url_rejected(self):
+    def test_denied_url_rejected(self):
+        # deny 세트(로그인)는 토큰으로도 인증되지 않는다.
+        from reporting.write_api import authenticate_write_bearer
+        req = self._post_request(reverse('reporting:login'))
+        with patch.dict(os.environ, self._env()):
+            self.assertFalse(authenticate_write_bearer(req))
+
+    def test_allowed_non_denied_url_authenticates(self):
+        # deny 가 아닌 임의 쓰기(notes_update_api)는 "전부 쓰기"라 인증된다.
         from reporting.write_api import authenticate_write_bearer
         req = self._post_request(reverse('reporting:notes_update_api', args=[999999]))
         with patch.dict(os.environ, self._env()):
-            self.assertFalse(authenticate_write_bearer(req))
+            self.assertTrue(authenticate_write_bearer(req))
 
     def test_get_method_rejected(self):
         from django.test import RequestFactory
@@ -21978,11 +21986,31 @@ class WriteBearerAuthTests(TestCase):
         schedule.refresh_from_db()
         self.assertNotEqual(schedule.visit_date.isoformat(), '2026-08-15')
 
-    def test_write_token_cannot_reach_non_allowlisted_endpoint(self):
+    def test_write_token_cannot_reach_denied_endpoint(self):
+        # deny 세트(로그인 POST)는 토큰이 무시되어 정상 처리되지 않는다.
         client = Client(enforce_csrf_checks=True)
-        url = reverse('reporting:notes_update_api', args=[999999])
+        url = reverse('reporting:login')
         with patch.dict(os.environ, self._env()):
-            r = client.post(url, {'content': 'x'},
+            r = client.post(url, {'username': 'x', 'password': 'y'},
                             HTTP_AUTHORIZATION=f'Bearer {self.TOKEN}')
-        self.assertIn(r.status_code, (302, 401, 403, 404))
+        self.assertNotEqual(r.status_code, 200)
+
+    def test_destructive_action_requires_confirm_header(self):
+        # 확인 필요 액션(납품품목 교체)에 확인 헤더 없이 토큰 → 428, 뷰 미실행.
+        client = Client(enforce_csrf_checks=True)
+        url = reverse('reporting:schedules_delivery_items_update_api', args=[999999])
+        with patch.dict(os.environ, self._env()):
+            r = client.post(url, '{}', content_type='application/json',
+                            HTTP_AUTHORIZATION=f'Bearer {self.TOKEN}')
+        self.assertEqual(r.status_code, 428)
+
+    def test_destructive_action_passes_gate_with_confirm_header(self):
+        # 확인 헤더가 있으면 게이트 통과 → 뷰 실행(없는 일정이라 428 은 아님).
+        client = Client(enforce_csrf_checks=True)
+        url = reverse('reporting:schedules_delivery_items_update_api', args=[999999])
+        with patch.dict(os.environ, self._env()):
+            r = client.post(url, '{}', content_type='application/json',
+                            HTTP_AUTHORIZATION=f'Bearer {self.TOKEN}',
+                            HTTP_X_SALESNOTE_WRITE_CONFIRM='yes')
+        self.assertNotEqual(r.status_code, 428)
 

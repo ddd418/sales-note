@@ -1,21 +1,24 @@
 """Sales Note 쓰기용 기계 인증 (write MCP proxy 대응).
 
-reporting/readonly_api.py 를 구조적으로 미러링하되, GET 읽기 대신 **작은
-POST 전용 화이트리스트**의 쓰기 엔드포인트에 대해, 기계 호출자(예: 쓰기 MCP
-프록시)를 **실재하는 비-특권 유저**로 인증한다. 브라우저/세션 호출자의 인증은
-절대 약화하지 않는다.
+reporting/readonly_api.py 의 쓰기 버전. 기계 호출자(쓰기 MCP 프록시 또는 이 세션의
+Claude)를 **실재하는 비-특권 유저**로 인증한다. 브라우저/세션 호출자의 인증은 절대
+약화하지 않는다.
 
-핵심 불변식:
-- ``Authorization: Bearer <SALES_NOTE_WRITE_TOKEN>`` 가 유효하고, url_name 이
-  화이트리스트에 있으며, 쓰기 메서드(POST)일 때만 이 경로가 동작한다.
-- 그런 요청에 한해서만 CSRF 검사를 건너뛴다(기계 호출자는 CSRF 쿠키를 얻을 수
-  없음). 세션/쿠키 요청은 CSRF 가 그대로 강제된다.
-- acting 유저는 SALES_NOTE_WRITE_USER_ID 로 해석하며, 반드시 활성·비-staff·
-  비-superuser·비-admin 이어야 한다. 그래야 뷰의 기존 역할/scope 검사
-  (can_modify_user_data, scope_users, per-object 권한)가 브라우저 세션과
-  동일하게 발동한다. (readonly 의 admin 폴백은 절대 재사용하지 않는다.)
+권한 모델 (사용자가 명시적으로 선택한 "전부 쓰기 + 위험액션 확인" 정책):
+- **전부 쓰기**: 아래 WRITE_DENY_URL_NAMES 에 없는 모든 POST 쓰기 엔드포인트에 도달 가능.
+  실제 데이터 보호는 acting 유저의 역할/scope 검사(뷰 계층)가 담당한다. acting 유저가
+  salesman 이면 자기 소유 데이터에만 쓰기가 되고, admin/manager 전용 액션은 뷰에서 403.
+- **deny**: 로그인/세션/백업/유저·권한관리/자격증명 연결은 토큰으로 절대 도달 불가.
+- **확인 필요(428)**: 되돌릴 수 없거나 외부로 나가는 액션(삭제/메일발송/금액취소/파괴적
+  대량변경)은 `X-Salesnote-Write-Confirm: yes` 헤더가 있어야 실행. 없으면 428 로 거부하고
+  아무것도 바꾸지 않는다(호출자가 사람에게 확인 후 재요청).
 
-배포/노출은 WRITE_PROXY_DESIGN.md 의 계층(Tier A/B/C)을 따른다.
+불변식:
+- acting 유저는 SALES_NOTE_WRITE_USER_ID 로 해석하며, 반드시 활성·비-staff·비-superuser·
+  비-admin (권한 붕괴 방지, readonly 의 admin 폴백 미복사).
+- 유효한 쓰기 토큰 요청에 한해서만 CSRF 를 건너뛴다. 세션/쿠키 요청은 CSRF 그대로.
+
+배포/노출 계층은 WRITE_PROXY_DESIGN.md 참고.
 """
 import os
 import secrets
@@ -26,27 +29,49 @@ from django.http import JsonResponse
 from django.urls import resolve, Resolver404
 
 
-# 쓰기 토큰이 도달할 수 있는 POST 전용 url_name. 반드시 작고 명시적으로 유지한다.
-# 와일드카드 금지. 계층(Tier A→B) 확장은 의도적으로만.
-WRITE_ALLOWED_URL_NAMES = {
-    # Tier A — 저위험, self-scoped, 되돌리기 쉬움
-    "notes_create_api",
-    "schedules_create_api",
-    "schedule_move_api",
+# 쓰기 토큰에 허용되는 HTTP 메서드 (이 코드베이스는 create/update/delete 모두 POST).
+WRITE_ALLOWED_METHODS = {"POST"}
+
+# 확인 헤더 (값이 'yes' 여야 위험 액션 실행).
+CONFIRM_HEADER = "X-Salesnote-Write-Confirm"
+
+# 토큰으로 절대 도달 불가한 url_name. (대부분 acting 이 salesman 이면 뷰에서 role-block
+# 되지만, 방어적으로 명시 차단한다. 자격증명/세션/시스템 표면.)
+WRITE_DENY_URL_NAMES = {
+    # 인증/세션/시스템
+    "login", "logout", "set_admin_filter",
+    "backup_database_api", "backup_status_api",
+    # 유저/권한 관리
+    "employees_management_api", "employees_create_api", "employees_update_api",
+    "employees_toggle_active_api", "user_create", "user_edit", "user_delete",
+    "user_toggle_active", "user_toggle_ai", "manager_user_create",
+    "manager_user_edit", "manager_user_list", "api_change_company_creator",
+    # 메일/자격증명 연결 (자격증명 쓰기)
+    "gmail_callback", "gmail_disconnect", "imap_connect", "imap_disconnect",
+    "profile_imap_connect_api", "profile_email_disconnect_api", "profile_api_password",
 }
 
-# 쓰기 토큰에 허용되는 HTTP 메서드. 이 코드베이스는 create/update/delete 모두
-# POST 를 쓰므로 POST 만 허용한다(PATCH/DELETE 라우트가 실제로 생기기 전엔 추가 금지).
-WRITE_ALLOWED_METHODS = {"POST"}
+# 되돌릴 수 없거나 외부로 나가는 액션 — 확인 헤더 필요.
+# (1) 키워드 매칭: 이름에 아래 조각이 들어가면 자동으로 확인 대상(누락 시 fail-safe).
+_CONFIRM_KEYWORDS = (
+    "delete", "cancel", "transfer", "remove", "trash", "send", "reply",
+)
+# (2) 키워드로 안 잡히는 고위험/파괴적 액션 명시.
+WRITE_CONFIRM_URL_NAMES = {
+    "schedules_delivery_items_update_api",  # 납품품목 전체 삭제+재생성, 선결제 소모
+    "schedule_status_update",               # cancelled 시 납품 히스토리 삭제
+    "account_update_api",                   # 계정 회사 이동(연락처 재부모)
+    "department_update_api",                # 부서 회사 이동 캐스케이드
+    "products_bulk_upsert_api",             # 제품 대량 변경
+    "products_excel_import_api",            # 파일 기반 대량 변경
+    "product_replace_reference_api",        # 과거 납품/견적 품목 FK 재작성
+    "data_quality_contact_assign_account_api",  # 연락처 계정 재배치
+    "receivable_item_status_api",           # 정산/카드수금(금액 관련) 플래그
+}
 
 
 def get_write_api_user():
-    """쓰기 토큰의 acting 유저를 해석한다.
-
-    get_readonly_api_user() 와 달리 admin/superuser 폴백이 **없다**. 쓰기 신원이
-    admin 으로 매핑되면 can_modify_user_data / scope 검사를 무조건 통과해 모든
-    per-user 권한이 붕괴한다. 따라서 반드시 명시적으로 설정된 비-특권 유저여야 한다.
-    """
+    """쓰기 토큰의 acting 유저. admin/superuser/staff 는 거부(scope 붕괴 방지)."""
     user_id = os.environ.get("SALES_NOTE_WRITE_USER_ID", "").strip()
     if not user_id:
         return None
@@ -61,7 +86,6 @@ def get_write_api_user():
     if not user:
         return None
 
-    # 쓰기 신원이 admin 역할이면 거부(scope 우회 방지).
     profile = getattr(user, "userprofile", None)
     if profile is not None and getattr(profile, "role", None) == "admin":
         return None
@@ -77,14 +101,23 @@ def _resolve_url_name(request):
     return match.url_name
 
 
+def requires_write_confirmation(url_name):
+    """되돌릴 수 없는/외부로 나가는 액션인지 (확인 헤더 필요)."""
+    if not url_name:
+        return False
+    if url_name in WRITE_CONFIRM_URL_NAMES:
+        return True
+    return any(kw in url_name for kw in _CONFIRM_KEYWORDS)
+
+
 def authenticate_write_bearer(request):
-    """유효한 쓰기 토큰 + 화이트리스트 POST 엔드포인트면 request.user 를 acting
-    유저로 세팅하고 True 를 반환한다. 그 외에는 False."""
+    """유효한 쓰기 토큰 + (deny 아닌) 쓰기 POST 면 request.user 를 acting 유저로
+    세팅하고 True 를 반환한다. 확인 게이트는 미들웨어가 별도로 처리한다."""
     if request.method not in WRITE_ALLOWED_METHODS:
         return False
 
     url_name = _resolve_url_name(request)
-    if url_name not in WRITE_ALLOWED_URL_NAMES:
+    if url_name is None or url_name in WRITE_DENY_URL_NAMES:
         return False
 
     expected_token = os.environ.get("SALES_NOTE_WRITE_TOKEN", "").strip()
@@ -105,48 +138,59 @@ def authenticate_write_bearer(request):
 
     request.user = user
     request.salesnote_write_api = True
+    request.salesnote_write_url_name = url_name
     return True
 
 
 class WriteBearerMiddleware:
     """URL 라우팅/CSRF 검사 전에 기계 쓰기 토큰을 인증하는 미들웨어.
 
-    배치: AuthenticationMiddleware **뒤**(유효 토큰일 때만 실제 세션 유저를
-    교체) + reporting.middleware.CompanyFilterMiddleware **앞**(request.is_admin
-    / admin_filter_* / user_company 가 acting 유저 기준으로 계산되도록).
-
-    이 요청-단계 코드는 모든 process_view 훅보다 먼저 실행되므로, 여기서 세팅한
-    request._dont_enforce_csrf_checks 를 CsrfViewMiddleware 가 존중한다.
+    배치: AuthenticationMiddleware 뒤 + CompanyFilterMiddleware 앞. 요청-단계에서
+    실행되므로 여기서 세팅한 request._dont_enforce_csrf_checks 를 CsrfViewMiddleware
+    가 존중한다. 위험 액션은 확인 헤더가 없으면 428 로 즉시 거부(뷰 미실행).
     """
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        # 값싼 사전 필터: bearer 를 단 POST 만 후보. 일반 트래픽엔 사실상 무비용.
         auth_header = request.headers.get("Authorization", "")
         if (
             request.method in WRITE_ALLOWED_METHODS
             and auth_header.lower().startswith("bearer ")
+            and authenticate_write_bearer(request)
         ):
-            if authenticate_write_bearer(request):
-                # 기계 호출자는 CSRF 쿠키를 얻을 수 없으므로 이 요청에 한해 CSRF 를
-                # 건너뛴다. 세션/쿠키 요청은 이 분기에 절대 들어오지 않는다.
-                request._dont_enforce_csrf_checks = True
+            url_name = getattr(request, "salesnote_write_url_name", None)
+            if requires_write_confirmation(url_name):
+                confirm = request.headers.get(CONFIRM_HEADER, "").strip().lower()
+                if confirm != "yes":
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": "confirmation_required",
+                            "message": (
+                                "되돌릴 수 없거나 외부로 나가는 작업입니다. 사용자 확인 후 "
+                                f"'{CONFIRM_HEADER}: yes' 헤더로 재요청하세요."
+                            ),
+                            "url_name": url_name,
+                        },
+                        status=428,
+                    )
+            # 여기까지 왔으면 실행. 기계 호출자는 CSRF 쿠키가 없으므로 이 요청만 우회.
+            request._dont_enforce_csrf_checks = True
         return self.get_response(request)
 
 
 def write_bearer_or_login_required(view_func):
-    """심층 방어 데코레이터: 토큰 인증된 요청이면 url_name 이 화이트리스트에 있는지
-    다시 확인해, 미들웨어 설정이 흘러도 표면이 조용히 넓어지지 않게 한다. 세션
-    유저는 그대로 통과."""
+    """심층 방어 데코레이터: 토큰 인증 요청이면 url_name 이 deny 가 아님을 재확인.
+    세션 유저는 그대로 통과."""
 
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if getattr(request, "salesnote_write_api", False):
             resolver_match = getattr(request, "resolver_match", None)
             url_name = getattr(resolver_match, "url_name", None)
-            if url_name not in WRITE_ALLOWED_URL_NAMES:
+            if url_name is None or url_name in WRITE_DENY_URL_NAMES:
                 return JsonResponse(
                     {"success": False, "error": "forbidden"}, status=403
                 )

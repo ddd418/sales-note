@@ -1,5 +1,36 @@
 # AGENT_REPORT.md
 
+## 2026-07-10 — Write proxy: 전면 개방 + 확인 게이트 + 신원 전환
+
+### 요약
+
+- 사용자 결정: **전부 쓰기**(되돌릴 수 없는 3종 — 삭제·메일발송·금액취소 — 만 실행 전 확인) + 쓰기 신원을 실계정 `dkswogus95`로.
+- `write_api` 권한 모델을 초기 3개 화이트리스트 → **allow-all-except-deny + 확인게이트(428)**로 전환.
+
+### 변경된 파일
+
+- `reporting/write_api.py`: 고정 allowlist 제거. `WRITE_DENY_URL_NAMES`(로그인/세션/백업/유저·권한관리/자격증명 연결) 외 모든 POST 쓰기 허용. 위험 액션(키워드 delete/cancel/transfer/remove/trash/send/reply + 명시 고위험 세트)은 `X-Salesnote-Write-Confirm: yes` 없으면 428. acting 유저 안전규칙(비-staff/비-superuser/비-admin) 유지.
+- `reporting/tests.py`: `WriteBearerAuthTests` 갱신(deny 차단 + 확인게이트 428).
+- Railway `web`: `SALES_NOTE_WRITE_USER_ID` 15 → **3** (`dkswogus95`, salesman, 고객 190).
+
+### 안전
+
+- 실제 데이터 보호는 acting 유저(salesman)의 역할/scope(뷰 계층)가 담당 → **자기 소유 데이터에만** 쓰기, admin/manager 전용 액션은 뷰에서 403.
+- 되돌릴 수 없는 액션은 **서버가 428로 강제** — 호출자(Claude/커넥터)가 사람 확인 후 헤더 붙여 재요청해야 실행.
+
+### 테스트/배포
+
+```text
+manage.py check → 0 issues
+WriteBearerAuthTests → 15 OK
+```
+
+### 프로덕션 배포 상태
+
+- 진행 예정 (아래 docs 커밋에서 deployment ID 기록).
+
+---
+
 ## 2026-07-10 — Write MCP proxy Phase 1 (쓰기 인증 인프라)
 
 ### 요약
