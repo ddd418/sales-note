@@ -27,11 +27,12 @@ py -3.13 manage.py check → 0 issues
 py -3.13 manage.py test WriteBearerAuthTests SalesNoteReadonlyBearerApiTests ManagerRolePermissionTests WriteProxyPhase0HardeningTests → Ran 32 tests OK
 ```
 
-### 운영 설정 필요 (사용자가 Railway `web` 서비스에 설정 시 활성화)
+### 운영 활성화 (완료, 2026-07-10)
 
-- `SALES_NOTE_WRITE_USER_ID` = 전용 영업(salesman) 유저 id (staff/admin 아님).
-- `SALES_NOTE_WRITE_TOKEN` = 강한 시크릿 (쓰기 MCP 커넥터가 보관).
-- 설정 전까지 쓰기 경로는 완전 비활성.
+- 전용 기계 유저 생성: `reporting/management/commands/ensure_write_api_user.py` (idempotent, non-staff salesman, 비밀번호 로그인 비활성). 프로덕션 실행 → **username=`ai-writer`, id=15**.
+- Railway `web` 환경변수 설정: `SALES_NOTE_WRITE_USER_ID=15`, `SALES_NOTE_WRITE_TOKEN=<시크릿, 저장소 밖>`. 변수 변경으로 web 재배포 `e84f6e9e` SUCCESS.
+- **활성화 검증**: 진짜 토큰으로 `POST /reporting/api/schedules/create/` (빈 payload) → `400 application/json` 뷰 검증 에러(인증·CSRF우회·유저15 실행 확인, 실데이터 미생성). 가짜 토큰 → `403 text/html` CSRF 차단.
+- 시크릿 토큰은 저장소/문서에 저장하지 않음(쓰기 MCP 커넥터가 보관). 로컬 DB 접근은 Postgres 공개 프록시(`DATABASE_PUBLIC_URL`) 경유 1회성.
 
 ### 프로덕션 배포 상태
 
