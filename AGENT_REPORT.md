@@ -14,7 +14,7 @@
 ### 검증
 
 - 백엔드 `PipelineHideCardTests` 3 OK, `check` OK, 마이그레이션 dry-run 정상. 프론트 `npm run build` OK.
-- 백엔드 deploy `920402f` SUCCESS(마이그레이션 0120 반영). 프론트 deploy 는 아래 커밋에서 기록.
+- 백엔드 deploy `920402f` SUCCESS(마이그레이션 0120 반영). 프론트 commit `49c3cb8` deploy `caa81b90-450b-4f76-a2a3-5d44aa971047` SUCCESS. `post_deploy_smoke.py` → ok.
 - Cowork/MCP 로도 가능: `salesnote_write("funnel/api/pipeline-hide/", {"followup_id": <id>})`.
 
 ---
