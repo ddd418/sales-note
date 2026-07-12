@@ -1872,6 +1872,7 @@ def pipeline_command_center_api(request):
 
     followups = (
         _get_accessible_followups(request.user, request)
+        .filter(pipeline_hidden=False)
         .select_related('company', 'department', 'user')
         .prefetch_related(
             Prefetch('schedules', queryset=Schedule.objects.filter(
@@ -2031,12 +2032,35 @@ def pipeline_command_center_api(request):
     overdue_count = sum(1 for deal in deals if deal['risk'] == 'high')
     contact_count = sum(1 for deal in deals if deal['stage'] == 'contact')
 
+    # 숨긴 카드(복원 패널용) — 계정(부서) 단위로 대표 하나씩.
+    hidden_seen = set()
+    hidden_deals = []
+    hidden_followups = (
+        _get_accessible_followups(request.user, request)
+        .filter(pipeline_hidden=True)
+        .select_related('company', 'department', 'user')
+        .order_by('company__name', 'customer_name')
+    )
+    for hf in hidden_followups:
+        key = f'dept:{hf.department_id}' if hf.department_id else f'fu:{hf.id}'
+        if key in hidden_seen:
+            continue
+        hidden_seen.add(key)
+        hidden_deals.append({
+            'id': hf.id,
+            'company': (hf.company.name if hf.company else '') or (hf.customer_name or ''),
+            'department': hf.department.name if hf.department else '',
+            'contact': hf.customer_name or '',
+            'owner': (hf.user.get_full_name() or hf.user.username) if hf.user else '',
+        })
+
     return JsonResponse({
         'success': True,
         'source': 'django',
         'generatedAt': timezone.now().isoformat(),
         'stages': stages_payload,
         'deals': deals,
+        'hiddenDeals': hidden_deals,
         'metrics': {
             'totalPipelineValue': int(total_value),
             'weightedPipelineValue': int(weighted_value),
@@ -2193,5 +2217,46 @@ def funnel_pipeline_sync(request):
 
     except Exception as e:
         logger.error(f"파이프라인 동기화 오류: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def funnel_pipeline_hide(request):
+    """카드를 파이프라인 보드에서 숨김(데이터 보존, 복원 가능). 부서 그룹 전체 적용."""
+    return _funnel_pipeline_set_hidden(request, True)
+
+
+@login_required
+@require_POST
+def funnel_pipeline_unhide(request):
+    """숨긴 카드를 파이프라인 보드에 복원. 부서 그룹 전체 적용."""
+    return _funnel_pipeline_set_hidden(request, False)
+
+
+def _funnel_pipeline_set_hidden(request, hidden):
+    try:
+        profile = _get_user_profile(request.user)
+        if profile.is_manager():
+            return JsonResponse(
+                {'success': False, 'error': '권한이 없습니다. Manager는 파이프라인 카드를 변경할 수 없습니다.'},
+                status=403,
+            )
+        data = json.loads(request.body)
+        followup_id = data.get('followup_id')
+
+        accessible = _get_accessible_followups(request.user, request)
+        fu = accessible.filter(pk=followup_id).first()
+        if not fu:
+            return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+        if fu.department_id:
+            targets = accessible.filter(department_id=fu.department_id)
+        else:
+            targets = accessible.filter(pk=fu.pk)
+
+        updated_count = targets.update(pipeline_hidden=hidden, updated_at=timezone.now())
+        return JsonResponse({'success': True, 'updatedCount': updated_count, 'hidden': hidden})
+    except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 

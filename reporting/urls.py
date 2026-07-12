@@ -817,6 +817,8 @@ urlpatterns = [
     path('funnel/api/search-departments/', funnel_views.funnel_search_departments, name='funnel_search_departments'),
     path('funnel/api/pipeline-move/', funnel_views.funnel_pipeline_move, name='funnel_pipeline_move'),
     path('funnel/api/pipeline-sync/', funnel_views.funnel_pipeline_sync, name='funnel_pipeline_sync'),
+    path('funnel/api/pipeline-hide/', funnel_views.funnel_pipeline_hide, name='funnel_pipeline_hide'),
+    path('funnel/api/pipeline-unhide/', funnel_views.funnel_pipeline_unhide, name='funnel_pipeline_unhide'),
 
     # ============================================
     # 주간보고 URL

@@ -436,6 +436,11 @@ class FollowUp(models.Model):
         verbose_name="파이프라인 수동 설정",
         help_text="True이면 자동 동기화에서 이 카드의 단계를 변경하지 않음"
     )
+    pipeline_hidden = models.BooleanField(
+        default=False,
+        verbose_name="파이프라인 숨김",
+        help_text="True이면 파이프라인 보드에서 카드를 숨김(데이터는 보존, 복원 가능)"
+    )
     
     # AI 기반 고객 등급 시스템
     customer_grade = models.CharField(

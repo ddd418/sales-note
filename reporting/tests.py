@@ -22014,3 +22014,67 @@ class WriteBearerAuthTests(TestCase):
                             HTTP_X_SALESNOTE_WRITE_CONFIRM='yes')
         self.assertNotEqual(r.status_code, 428)
 
+
+class PipelineHideCardTests(TestCase):
+    """파이프라인 카드 숨김/복원(보드에서만 제거, 데이터 보존)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.company_uc = UserCompany.objects.create(name='파이프회사')
+        self.owner = make_user('pipe_owner', role='salesman', company=self.company_uc)
+        self.manager = make_user('pipe_mgr', role='manager', company=self.company_uc)
+        self.company = Company.objects.create(name='파이프고객사', created_by=self.owner)
+        self.department = Department.objects.create(
+            name='파이프부서', company=self.company, created_by=self.owner,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.owner, customer_name='파이프고객',
+            company=self.company, department=self.department,
+        )
+
+    def _pipeline(self):
+        self.client.force_login(self.owner)
+        data = self.client.get(reverse('reporting:pipeline_command_center_api')).json()
+        return (
+            [d['id'] for d in data.get('deals', [])],
+            [h['id'] for h in data.get('hiddenDeals', [])],
+        )
+
+    def _post(self, name):
+        return self.client.post(
+            reverse(name),
+            data=json.dumps({'followup_id': self.followup.id}),
+            content_type='application/json',
+        )
+
+    def test_hide_removes_from_board_and_unhide_restores(self):
+        deals, hidden = self._pipeline()
+        self.assertIn(self.followup.id, deals)
+        self.assertNotIn(self.followup.id, hidden)
+
+        self.client.force_login(self.owner)
+        self.assertEqual(self._post('reporting:funnel_pipeline_hide').status_code, 200)
+        self.followup.refresh_from_db()
+        self.assertTrue(self.followup.pipeline_hidden)
+        deals, hidden = self._pipeline()
+        self.assertNotIn(self.followup.id, deals)
+        self.assertIn(self.followup.id, hidden)
+
+        self.client.force_login(self.owner)
+        self.assertEqual(self._post('reporting:funnel_pipeline_unhide').status_code, 200)
+        self.followup.refresh_from_db()
+        self.assertFalse(self.followup.pipeline_hidden)
+        deals, hidden = self._pipeline()
+        self.assertIn(self.followup.id, deals)
+        self.assertNotIn(self.followup.id, hidden)
+
+    def test_hide_preserves_customer_record(self):
+        self.client.force_login(self.owner)
+        self._post('reporting:funnel_pipeline_hide')
+        # 숨겨도 고객 레코드는 그대로 존재
+        self.assertTrue(FollowUp.objects.filter(pk=self.followup.id).exists())
+
+    def test_manager_cannot_hide(self):
+        self.client.force_login(self.manager)
+        self.assertEqual(self._post('reporting:funnel_pipeline_hide').status_code, 403)
+
