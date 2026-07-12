@@ -113,11 +113,20 @@ export type PriorityTask = {
   tone: 'danger' | 'warning' | 'info';
 };
 
+export type HiddenDeal = {
+  id: number;
+  company: string;
+  department: string;
+  contact: string;
+  owner: string;
+};
+
 export type PipelineData = {
   source: 'mock' | 'django' | 'unavailable';
   generatedAt?: string;
   stages: StageSummary[];
   deals: Deal[];
+  hiddenDeals?: HiddenDeal[];
   metrics: PipelineMetrics;
   priorityTasks: PriorityTask[];
 };

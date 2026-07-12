@@ -1,5 +1,24 @@
 # AGENT_REPORT.md
 
+## 2026-07-10 — 파이프라인 카드 제거/복원 (보드에서만, 데이터 보존)
+
+### 요약
+
+- `/pipeline/` 에서 카드를 보드에서 제거(숨김)하고 복원. 고객·일정·노트·견적 등 데이터는 **보존**(하드 삭제 아님). 사용자 선택: 보드 제거 + 복원 UI.
+
+### 변경
+
+- 백엔드(commit `920402f`): `FollowUp.pipeline_hidden`(마이그레이션 `0120`), 파이프라인 API 가 숨김 카드 제외 + `hiddenDeals` 반환, `funnel_pipeline_hide`/`funnel_pipeline_unhide`(부서 그룹 전체, Manager 차단, owner scope). 테스트 `PipelineHideCardTests`.
+- 프론트: `DetailPanel` 에 "보드에서 제거" 버튼(확인창: 데이터 보존·복원 안내) + "숨긴 카드 N건" 복원 패널(`HiddenCardsPanel`). `api/legacy` `hideDealCard`/`unhideDealCard`, `mockData` `PipelineData.hiddenDeals`/`HiddenDeal`.
+
+### 검증
+
+- 백엔드 `PipelineHideCardTests` 3 OK, `check` OK, 마이그레이션 dry-run 정상. 프론트 `npm run build` OK.
+- 백엔드 deploy `920402f` SUCCESS(마이그레이션 0120 반영). 프론트 deploy 는 아래 커밋에서 기록.
+- Cowork/MCP 로도 가능: `salesnote_write("funnel/api/pipeline-hide/", {"followup_id": <id>})`.
+
+---
+
 ## 2026-07-10 — 읽기+쓰기 MCP 서버 (Cowork/claude.ai 커스텀 커넥터)
 
 ### 요약

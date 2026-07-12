@@ -11082,6 +11082,7 @@ export async function loadPipelineData(): Promise<PipelineData> {
     return {
       ...payload,
       deals,
+      hiddenDeals: Array.isArray(payload.hiddenDeals) ? payload.hiddenDeals : [],
       source: 'django',
     };
   } catch {
@@ -11114,4 +11115,36 @@ export async function moveDealStage(dealId: number, stage: PipelineStage): Promi
   if (!response.ok || payload.success === false) {
     throw new Error(payload.error || `Pipeline move failed: ${response.status}`);
   }
+}
+
+async function setPipelineHidden(url: string, dealId: number): Promise<void> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ followup_id: dealId }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Pipeline API unavailable: ${response.status}`);
+  }
+  const payload = (await response.json()) as PipelineMoveResponse;
+  redirectIfLoginRequired(response, payload);
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || `요청 실패: ${response.status}`);
+  }
+}
+
+export async function hideDealCard(dealId: number): Promise<void> {
+  await setPipelineHidden('/reporting/funnel/api/pipeline-hide/', dealId);
+}
+
+export async function unhideDealCard(dealId: number): Promise<void> {
+  await setPipelineHidden('/reporting/funnel/api/pipeline-unhide/', dealId);
 }

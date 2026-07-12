@@ -186,6 +186,8 @@ import {
   loadWeeklyReportSchedules,
   loadPipelineData,
   moveDealStage,
+  hideDealCard,
+  unhideDealCard,
   runMailboxAction,
   runMailboxSync,
   sendMailboxEmail,
@@ -327,7 +329,7 @@ import {
 } from './api/ai';
 import type { ReportsData } from './api/reports';
 import { loadReportsData } from './api/reports';
-import { emptyPipelineData, type Deal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
+import { emptyPipelineData, type Deal, type HiddenDeal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
 import {
   CompanyManagementPage,
   ReceivablesPage,
@@ -21457,6 +21459,51 @@ function PipelineList({
   );
 }
 
+function HiddenCardsPanel({
+  hidden,
+  onRestore,
+  restoringId,
+  disabled,
+}: {
+  hidden: HiddenDeal[];
+  onRestore: (dealId: number) => void;
+  restoringId: number | null;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="list-panel" aria-label="숨긴 파이프라인 카드" style={{ marginTop: 12 }}>
+      <button type="button" className="show-stage-button" onClick={() => setOpen((value) => !value)}>
+        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />} 숨긴 카드 {hidden.length}건
+      </button>
+      {open ? (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+          {hidden.map((item) => (
+            <li
+              key={item.id}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0' }}
+            >
+              <span>
+                <strong>{item.company}</strong>
+                {item.department ? <span className="muted"> · {item.department}</span> : null}
+                {item.contact ? <span className="muted"> · {item.contact}</span> : null}
+              </span>
+              <button
+                type="button"
+                className="customer-row-action"
+                disabled={disabled || restoringId === item.id}
+                onClick={() => onRestore(item.id)}
+              >
+                복원
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function DetailPanel({
   deal,
   stages,
@@ -21465,6 +21512,10 @@ function DetailPanel({
   moveError,
   moveMessage,
   onMoveStage,
+  onRemoveDeal,
+  removing,
+  removeError,
+  removeMessage,
 }: {
   deal?: Deal;
   stages: StageSummary[];
@@ -21473,6 +21524,10 @@ function DetailPanel({
   moveError: string;
   moveMessage: string;
   onMoveStage: (deal: Deal, stage: PipelineStage) => void;
+  onRemoveDeal: (deal: Deal) => void;
+  removing: boolean;
+  removeError: string;
+  removeMessage: string;
 }) {
   if (!deal) {
     return (
@@ -21564,6 +21619,21 @@ function DetailPanel({
         {moveMessage ? <small className="move-status success">{moveMessage}</small> : null}
         {moveError ? <small className="move-status error">{moveError}</small> : null}
       </div>
+      {canMove ? (
+        <div className="stage-move-box">
+          <button
+            type="button"
+            className="customer-row-action danger"
+            disabled={removing}
+            onClick={() => onRemoveDeal(deal)}
+          >
+            <Trash2 size={14} /> 보드에서 제거
+          </button>
+          <small className="move-help">고객·일정·노트·견적 기록은 보존되며 아래 "숨긴 카드"에서 복원할 수 있습니다.</small>
+          {removeMessage ? <small className="move-status success">{removeMessage}</small> : null}
+          {removeError ? <small className="move-status error">{removeError}</small> : null}
+        </div>
+      ) : null}
       <div className="detail-value">
         <span>{deal.latestQuote?.basisType === 'delivery' ? '실제 납품 매출' : '예상 매출'}</span>
         <strong>{formatWon(deal.value)}</strong>
@@ -21989,6 +22059,10 @@ export function App() {
   const [movingDealId, setMovingDealId] = useState<number | null>(null);
   const [moveError, setMoveError] = useState('');
   const [moveMessage, setMoveMessage] = useState('');
+  const [removingDealId, setRemovingDealId] = useState<number | null>(null);
+  const [removeError, setRemoveError] = useState('');
+  const [removeMessage, setRemoveMessage] = useState('');
+  const [restoringDealId, setRestoringDealId] = useState<number | null>(null);
   const scheduleCalendarRange = useMemo(() => getScheduleCalendarRange(scheduleCalendarMonth), [scheduleCalendarMonth]);
 
   useEffect(() => {
@@ -23005,6 +23079,42 @@ export function App() {
       setMoveError(error instanceof Error ? error.message : '단계 변경에 실패했습니다.');
     } finally {
       setMovingDealId(null);
+    }
+  };
+  const handleRemoveDeal = async (deal: Deal) => {
+    if (pipelineData.source !== 'django') {
+      return;
+    }
+    if (!window.confirm(
+      `"${deal.company}" 카드를 파이프라인 보드에서 제거할까요?\n고객·일정·영업노트·견적 기록은 그대로 보존되며, 아래 "숨긴 카드"에서 다시 복원할 수 있습니다.`,
+    )) {
+      return;
+    }
+    setRemovingDealId(deal.id);
+    setRemoveError('');
+    setRemoveMessage('');
+    try {
+      await hideDealCard(deal.id);
+      await refreshPipelineData(null);
+      setRemoveMessage('카드를 보드에서 제거했습니다. (숨긴 카드에서 복원 가능)');
+    } catch (error) {
+      setRemoveError(error instanceof Error ? error.message : '카드 제거에 실패했습니다.');
+    } finally {
+      setRemovingDealId(null);
+    }
+  };
+  const handleRestoreDeal = async (dealId: number) => {
+    setRestoringDealId(dealId);
+    setRemoveError('');
+    setRemoveMessage('');
+    try {
+      await unhideDealCard(dealId);
+      await refreshPipelineData(dealId);
+      setRemoveMessage('카드를 보드에 복원했습니다.');
+    } catch (error) {
+      setRemoveError(error instanceof Error ? error.message : '카드 복원에 실패했습니다.');
+    } finally {
+      setRestoringDealId(null);
     }
   };
   const refreshCustomersData = async () => {
@@ -25338,6 +25448,14 @@ export function App() {
           ) : (
             <PipelineList onSelect={selectDeal} stages={pipelineData.stages} deals={visibleDeals} />
           )}
+          {pipelineData.hiddenDeals && pipelineData.hiddenDeals.length > 0 ? (
+            <HiddenCardsPanel
+              hidden={pipelineData.hiddenDeals}
+              onRestore={handleRestoreDeal}
+              restoringId={restoringDealId}
+              disabled={pipelineData.source !== 'django'}
+            />
+          ) : null}
         </section>
         {pipelineDetailCollapsed ? null : (
           <DetailPanel
@@ -25348,6 +25466,10 @@ export function App() {
             moveError={moveError}
             moveMessage={moveMessage}
             onMoveStage={handleMoveStage}
+            onRemoveDeal={handleRemoveDeal}
+            removing={Boolean(visibleSelectedDeal && removingDealId === visibleSelectedDeal.id)}
+            removeError={removeError}
+            removeMessage={removeMessage}
           />
         )}
       </div>
