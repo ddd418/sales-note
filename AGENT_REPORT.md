@@ -1,5 +1,23 @@
 # AGENT_REPORT.md
 
+## 2026-07-10 — 파이프라인: 비활성 연락처가 계정 단계 지배 안 하도록 수정
+
+### 배경/증상
+
+- 사용자가 MCP 로 기존 계정(강원대 dept 10)에 견적 일정을 추가했는데 파이프라인 견적 컬럼에 안 보임. 진단 결과 저장은 정상(dkswogus95, FU 462 stage=quote, 숨김 아님)이나, 같은 계정에 **비활성(active=False) 수주(won) 연락처 FU 199** 가 있어 계정 카드가 수주 컬럼에 고정됨.
+
+### 변경
+
+- `reporting/funnel_views.py` `_pipeline_account_stage`: 계정 대표 단계를 **활성 연락처만으로** 산정(활성이 없으면 전체로 폴백). 끝난 수주 연락처가 계정을 지배하지 않음. 카드 그룹핑/존재 여부는 불변. (`_pipeline_account_stage` 는 파이프라인 API 단일 호출처.)
+- 테스트: `PipelineHideCardTests.test_inactive_contact_does_not_dominate_account_stage` (비활성 won + 활성 quote → 계정 단계 quote).
+
+### 검증/배포
+
+- `PipelineHideCardTests` 4 OK, `check` OK, 마이그레이션 없음.
+- deploy `ba64ba7` SUCCESS. 프로덕션 확인: dept 10 계정 대표 카드(FU 462) stage=`quote`(수주 아님).
+
+---
+
 ## 2026-07-10 — 파이프라인 카드 제거/복원 (보드에서만, 데이터 보존)
 
 ### 요약
