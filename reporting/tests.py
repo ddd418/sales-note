@@ -22078,3 +22078,22 @@ class PipelineHideCardTests(TestCase):
         self.client.force_login(self.manager)
         self.assertEqual(self._post('reporting:funnel_pipeline_hide').status_code, 403)
 
+    def test_inactive_contact_does_not_dominate_account_stage(self):
+        # 같은 계정: 활성 견적 연락처 + 비활성 수주 연락처 → 계정 단계는 '견적'(수주가 지배 X).
+        dept = Department.objects.create(
+            name='단계부서', company=self.company, created_by=self.owner,
+        )
+        active_quote = FollowUp.objects.create(
+            user=self.owner, customer_name='활성견적', company=self.company, department=dept,
+            pipeline_stage='quote', is_active=True,
+        )
+        FollowUp.objects.create(
+            user=self.owner, customer_name='비활성수주', company=self.company, department=dept,
+            pipeline_stage='won', is_active=False,
+        )
+        self.client.force_login(self.owner)
+        data = self.client.get(reverse('reporting:pipeline_command_center_api')).json()
+        account_deal = next((d for d in data['deals'] if d['id'] == active_quote.id), None)
+        self.assertIsNotNone(account_deal, '활성 견적 연락처가 대표 카드여야 한다')
+        self.assertEqual(account_deal['stage'], 'quote')
+

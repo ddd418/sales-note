@@ -983,9 +983,14 @@ def _pipeline_account_key(followup):
 
 
 def _pipeline_account_stage(followups):
+    # 끝난(비활성) 연락처가 계정 단계를 지배하지 않도록 활성 연락처만으로 단계를 정한다.
+    # (예: 과거 수주 연락처가 비활성이면, 지금 진행 중인 견적 활동이 계정 단계에 드러나야 함)
+    # 활성 연락처가 하나도 없으면 전체를 사용해 카드가 사라지거나 단계가 비지 않게 한다.
+    active_followups = [f for f in followups if getattr(f, 'is_active', True)]
+    considered = active_followups or list(followups)
     stage_values = {
         followup.pipeline_stage if followup.pipeline_stage in STAGE_PROBABILITY else 'potential'
-        for followup in followups
+        for followup in considered
     }
     for stage in PIPELINE_ACCOUNT_STAGE_PRIORITY:
         if stage in stage_values:
