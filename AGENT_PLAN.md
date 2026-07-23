@@ -22,7 +22,7 @@
 - 로컬에서 빌드 산출물을 `node server.mjs`로 띄우고 브라우저로 검증: manifest 200 + 필드 확인, SW 등록 상태 `activated`, 프리캐시가 앱 셸 파일만 포함(API 없음), 아이콘 전부 200, UI 정상 렌더.
 - `sw.js` 소스 직접 확인: `registerRoute`가 NavigationRoute 하나뿐이고 denylist에 레거시 경로 포함, runtimeCaching 규칙 없음(API 캐시 안 됨).
 
-**Deploy**: (배포 후 기록)
+**Deploy**: Done. Commit `fecbae4` on `origin/main`. Railway frontend deploy `acddcb70-9785-40a3-ae86-0594cafc0ce0` SUCCESS. `post_deploy_smoke.py` → ok. Verified in prod: `/manifest.webmanifest` and `/sw.js` serve `no-cache`; icons serve long-cache immutable.
 
 
 ## 2026-06-29 Dashboard revenue includes prepayments plan

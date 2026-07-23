@@ -30,7 +30,8 @@
 
 ### 프로덕션 배포 상태
 
-- (아래 커밋에서 deployment ID/smoke 결과 기록)
+- **완료.** commit `fecbae4` → `origin/main`. Railway frontend `sales-note-frontend` 배포 `acddcb70-9785-40a3-ae86-0594cafc0ce0` SUCCESS. `post_deploy_smoke.py` → ok.
+- 프로덕션 직접 확인: `/manifest.webmanifest` 200(`application/manifest+json`, `no-cache`), `/sw.js` 200(`no-cache`), `/icons/icon-512.png` 200(`immutable` 장기캐시). manifest 내용이 로컬 빌드와 동일.
 
 ### 참고 (별건, 이번 작업과 무관)
 
