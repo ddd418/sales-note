@@ -1,5 +1,30 @@
 # AGENT_PLAN.md
 
+## 2026-07-13 Frontend PWA (설치형 앱 셸) plan
+
+**Background**:
+
+- 사용자가 React 프론트를 PWA(홈 화면 설치, 앱 셸 오프라인 로드)로 만들어달라고 요청.
+- 앱은 CRM(선결제/일정/고객 실데이터)이라 오프라인 캐싱 정책이 안전해야 함: API 응답은 절대 캐시하지 않는다.
+
+**DB change required**: No.
+
+**Implementation scope**:
+
+- `frontend/scripts/generate-pwa-icons.mjs`: 의존성 없이(zlib만) 브랜드 컬러(#2563eb) 파이프라인 글리프 아이콘 PNG 생성 (192/512 any + maskable, apple-touch-icon 180, favicon 16/32/48) → `frontend/public/`.
+- `frontend/vite.config.ts`: `vite-plugin-pwa` 추가. `registerType: 'autoUpdate'`, manifest(name/icons/theme_color/background_color/display=standalone/start_url=`/`), workbox `globPatterns`는 앱 셸 파일만(js/css/html/png/svg/ico), `navigateFallbackDenylist`로 `/reporting/`, `/todos/`, `/ai/`, `/static/`, `/media/` 제외(레거시 Django 프록시 경로는 SW가 가로채면 안 됨). API 캐싱 runtimeCaching 규칙 없음(의도적).
+- `frontend/index.html`: favicon/apple-touch-icon 링크, theme-color/mobile-web-app 메타 추가. manifest 링크+SW 등록 스크립트는 플러그인이 빌드시 자동 주입.
+- `frontend/server.mjs`: `.webmanifest` mime 타입 추가, `sw.js`/`registerSW.js`/`manifest.webmanifest`는 no-cache(그 외 정적 파일은 기존 immutable 장기 캐시 유지) — 그래야 배포 후 사용자가 옛 서비스워커에 갇히지 않음.
+
+**Validation plan**:
+
+- `npm run build` (tsc --noEmit 포함) 통과, `dist/sw.js`/`manifest.webmanifest`/아이콘 생성 확인.
+- 로컬에서 빌드 산출물을 `node server.mjs`로 띄우고 브라우저로 검증: manifest 200 + 필드 확인, SW 등록 상태 `activated`, 프리캐시가 앱 셸 파일만 포함(API 없음), 아이콘 전부 200, UI 정상 렌더.
+- `sw.js` 소스 직접 확인: `registerRoute`가 NavigationRoute 하나뿐이고 denylist에 레거시 경로 포함, runtimeCaching 규칙 없음(API 캐시 안 됨).
+
+**Deploy**: (배포 후 기록)
+
+
 ## 2026-06-29 Dashboard revenue includes prepayments plan
 
 **Background**:

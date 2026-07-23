@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { extname, join, normalize } from 'node:path';
+import { basename, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { constants as zlibConstants, createBrotliCompress, createGzip } from 'node:zlib';
 
@@ -22,10 +22,15 @@ const mimeTypes = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.webp': 'image/webp',
 };
 
-const compressibleStaticExtensions = new Set(['.css', '.html', '.js', '.json', '.map', '.svg', '.txt']);
+// 서비스워커/매니페스트는 브라우저가 즉시 최신 버전을 다시 받아가야 한다.
+// 여기에 immutable 장기 캐시를 걸면 배포 후에도 사용자가 옛 앱 셸에 갇힌다.
+const noCacheFileNames = new Set(['sw.js', 'registerSW.js', 'manifest.webmanifest']);
+
+const compressibleStaticExtensions = new Set(['.css', '.html', '.js', '.json', '.map', '.svg', '.txt', '.webmanifest']);
 
 const hopByHopHeaders = new Set([
   'connection',
@@ -120,8 +125,9 @@ function sendStatic(request, response, filePath) {
   const extension = extname(filePath);
   const fileStat = statSync(filePath);
   const contentEncoding = selectStaticEncoding(request, extension);
+  const noCache = extension === '.html' || noCacheFileNames.has(basename(filePath));
   const headers = {
-    'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    'Cache-Control': noCache ? 'no-cache' : 'public, max-age=31536000, immutable',
     'Content-Length': fileStat.size,
     'Content-Type': mimeTypes[extension] || 'application/octet-stream',
     'X-Content-Type-Options': 'nosniff',

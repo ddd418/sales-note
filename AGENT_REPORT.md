@@ -1,5 +1,42 @@
 # AGENT_REPORT.md
 
+## 2026-07-13 — 프론트엔드 PWA 전환
+
+### 요약
+
+- React 프론트를 PWA로 전환: 홈 화면 설치, 앱 셸(JS/CSS/HTML/아이콘) 오프라인 프리캐시. **CRM 데이터 API는 절대 캐싱하지 않음**(선결제/일정/고객 실데이터를 오프라인에서 오래된 값으로 보여주면 위험).
+
+### 변경된 파일
+
+- `frontend/scripts/generate-pwa-icons.mjs` (신규): 무의존성 PNG 인코더로 브랜드 컬러 아이콘 생성.
+- `frontend/public/`(신규): `icons/icon-192.png`, `icons/icon-512.png`, `icons/icon-maskable-192.png`, `icons/icon-maskable-512.png`, `apple-touch-icon.png`, `favicon-16/32/48.png`.
+- `frontend/vite.config.ts`: `vite-plugin-pwa` 추가 및 manifest/workbox 설정.
+- `frontend/index.html`: 아이콘 링크 + theme-color/mobile-web-app 메타 추가.
+- `frontend/server.mjs`: `.webmanifest` mime, `sw.js`/`registerSW.js`/`manifest.webmanifest` no-cache 처리.
+- `frontend/package.json`/`package-lock.json`: `vite-plugin-pwa` devDependency 추가.
+
+### 안전/캐싱 정책
+
+- Workbox `globPatterns`는 빌드된 정적 자원만 매칭(js/css/html/png/svg/ico) — API 응답은 애초에 프리캐시 후보가 될 수 없음(별도 origin/경로).
+- `runtimeCaching` 규칙을 추가하지 않아 `/reporting/api/*` 호출은 항상 네트워크로 직행. 캐시 실패 시 오프라인에서는 정상적으로 실패(오래된 데이터를 진짜처럼 보여주지 않음).
+- `navigateFallbackDenylist`로 `/reporting/`, `/todos/`, `/ai/`, `/static/`, `/media/`(레거시 Django 프록시 경로)를 SW 내비게이션 폴백에서 제외 — 이 경로들은 SW가 앱 셸로 대체 응답하면 안 됨.
+- `sw.js`/`manifest.webmanifest`를 no-cache로 서빙 — 배포 후 사용자가 즉시 최신 서비스워커를 받아가도록(immutable 장기캐시로 옛 버전에 갇히는 사고 방지).
+
+### 검증
+
+- `npm run build`(tsc --noEmit 포함) 통과. `dist/sw.js`, `workbox-*.js`, `manifest.webmanifest`, `registerSW.js`, 아이콘 전부 생성 확인.
+- `sw.js` 소스 직접 검사: precache 목록은 앱 셸 파일뿐(42개), `registerRoute`는 NavigationRoute 1개뿐이며 denylist에 레거시 경로 포함, API 캐싱 규칙 없음.
+- 빌드 산출물을 로컬 `node server.mjs`로 구동해 브라우저로 실검증: manifest 200(아이콘 4개, 이름 정상), SW 상태 `activated`, 프리캐시 34개(전부 앱 셸), 아이콘/favicon 전부 200, 콘솔 에러 없음, UI 정상 렌더(스크린샷 확인).
+
+### 프로덕션 배포 상태
+
+- (아래 커밋에서 deployment ID/smoke 결과 기록)
+
+### 참고 (별건, 이번 작업과 무관)
+
+- `npm install` 중 `npm audit`에서 `vite` 관련 high severity 1건 발견(dev 서버 전용 취약점: `server.fs.deny` bypass on Windows, `launch-editor` NTLM 해시 노출). 프로덕션은 `vite`의 dev 서버를 쓰지 않고 `server.mjs`(정적 서빙)로만 배포되므로 런타임 영향 없음. PWA 작업과 무관한 기존 이슈라 손대지 않음 — 필요하면 별도로 `npm audit fix` 검토 권장.
+
+
 ## 2026-07-10 — 파이프라인: 비활성 연락처가 계정 단계 지배 안 하도록 수정
 
 ### 배경/증상
