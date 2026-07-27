@@ -68,6 +68,12 @@
 
 **DB change required**: No (읽기 전용, 신규 모델 없음, `makemigrations --check` → No changes detected).
 
+**검증**: `py_compile` / `manage.py check` / `makemigrations --check --dry-run`("No changes detected") / `PipelineSheetApiTests` 11개 통과 / `tsc --noEmit` / `npm run build` 통과. 전체 백엔드 스윕 473개 — 실패 4건은 **clean worktree(HEAD `18e2517`)에서 동일하게 재현**되어 전부 기존 결함으로 확인(회귀 0건): `customer_delivery_records_xlsx_export_api` 익명 AttributeError, `SESSION_SAVE_EVERY_REQUEST` 기본값, `test_schedule_form_includes_vat_mode`, `ai_chat` 납품 source 라벨(원장 경로가 `'납품 활동'` 대신 `'공통 납품 원장'` 반환).
+
+**Deploy**: Done. Commit `4315afe` on `origin/main`. Railway `web` deploy `361daab4-4246-4439-9412-28a4b745556f` SUCCESS, `sales-note-frontend` deploy `46290c26-ba04-4b56-b3ef-4ed18049f68a` SUCCESS. `post_deploy_smoke.py` → **ok (27/27 PASS)**, 신규 항목 `/pipeline-sheet/` 200 + `/reporting/api/pipeline-sheet/weekly/` 401 login_required(프론트/백엔드 양쪽) 포함.
+
+**남은 확인(사용자 로그인 필요)**: 실제 데이터로 탭1 주간 활동 서술이 보고에 바로 쓸 수 있는 수준인지, 탭2 전환율이 체감과 맞는지, 엑셀 4개 시트가 의도대로 나오는지.
+
 ---
 
 ## 2026-07-27 Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
