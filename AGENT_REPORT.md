@@ -103,7 +103,7 @@ manage.py test reporting (전체 522개) → 실패 3건, Phase 1에서 이미 g
 
 ### 프로덕션 배포 상태
 
-- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+- **완료.** commit `8bca178` → `origin/main`. Railway backend `web` 배포 `bf326434-63f3-416f-aaaf-ce086dd2a3ae` SUCCESS, frontend `sales-note-frontend` 배포 `ac818667-57ad-47d1-82a5-da9ee6d9625f` SUCCESS. `post_deploy_smoke.py` → **ok**(20개 항목 전부 PASS, `/assets/`·`/services/` removed-route 404 확인 포함 — `server.mjs`의 확장자 인식 예외 처리가 실제 Vite JS/CSS 정적파일은 여전히 정상 서빙하면서 nav 라우트만 404시키는지 "frontend static cache headers" 체크가 실제 `/assets/*.js` 파일을 가져와 검증). Phase 3와 달리 이번엔 최초 smoke부터 통과 — Phase 3의 교훈(서버측 removed-route 처리 누락)을 미리 반영해 배포 전에 `server.mjs` 수정을 끝냈기 때문.
 
 ---
 
