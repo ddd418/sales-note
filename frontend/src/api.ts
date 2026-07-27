@@ -5,7 +5,6 @@
 // React CRM migration.
 
 export * from './api/accounts';
-export * from './api/assets';
 export * from './api/prepayments';
 export * from './api/ai';
 export * from './api/receivables';

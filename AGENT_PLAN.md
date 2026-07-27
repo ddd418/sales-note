@@ -31,6 +31,27 @@
 
 ---
 
+## 2026-07-27 Phase 4: 장비(Assets)/서비스(Services) 완전 제거
+
+**Scope**: 독립 메뉴 2개(장비 `/assets/`, 서비스 `/services/`)와 고객상세 페이지에 임베디드된 장비/서비스/교정 CRUD 패널까지 전부 제거. `reporting/api/assets.py` 삭제, `views.py`의 관련 뷰 17개 + 전용 헬퍼 30여개 삭제, `navigation_api`의 'assets'/'services' 항목 제거, `_download_registry`의 assets.serviceReport/calibrationCertificate 항목 제거, `admin.py`의 3개 모델 admin 등록 제거(모델 클래스는 보존), `readonly_api.py` allowlist 2개 제거. `urls.py` 17개 URL 패턴 + `sales_project/urls.py` catch-all에서 assets/services 토큰 제거하고 `removed_react_route`로 이동(단, `/assets/<file>.<ext>` 형태의 Vite 정적파일 서빙 패턴(`react_asset`, line 52)은 손대지 않음 — 순서상 먼저 매칭되어 안전).
+
+**"서비스 기록" 분리**: `_customer_operational_records_payload`가 ServiceCase 기반 절반과 Schedule(`activity_type='service'`) 기반 절반을 합쳐서 반환하던 것을 ServiceCase 절반만 제거(`_customer_service_case_record_payload` 헬퍼 통삭제), Schedule 절반(`_customer_service_schedule_record_payload`)은 그대로 보존.
+
+**사용자 확인 필요했던 2가지 결정**:
+1. 업체/부서 삭제 차단 로직 중 "장비" 체크(`_company_delete_blockers`/`_department_delete_blockers`의 CustomerAsset count) — 장비 화면이 없어지면 정리할 UI가 사라져 영구 삭제불가 상태가 될 위험이 있어 확인 요청 → **"차단 제거" 선택**. 장비/서비스/교정 기록이 있는 업체·부서도 이제 삭제 가능해지며, 연결된 CustomerAsset/ServiceCase/CalibrationRecord는 FK CASCADE로 조용히 함께 삭제됨(복구 불가) — 사용자가 이 트레이드오프를 인지하고 선택.
+2. AI 추천 큐(`_ai_workspace_build_action_queue`)가 미해결 ServiceCase/기한도래 CalibrationRecord 기반 카드를 계속 생성하는데 그 링크가 `/assets/...`로 가서 404가 될 상황 → **"해당 카드 생성 중단" 선택**. 생성 루프 + by-id 조회 분기 + 전용 헬퍼(`_ai_workspace_service_case_action_payload`/`_ai_workspace_calibration_due_action_payload`/`_ai_workspace_latest_calibration_record`/`_ai_workspace_asset_search_href`) 전부 제거. 이 제거로 `_service_case_open_q`/`_SERVICE_CASE_OPEN_STATUSES` 등 서비스케이스 상태 헬퍼 전체가 외부 호출자를 잃어 같이 삭제 가능해짐(연쇄 정리).
+
+**프론트**: `App.tsx`에서 독립 페이지 컴포넌트 블록(`CustomerAssetWorkQueue`~`ServicesPage`, ~1245줄), 임베디드 패널 state/refs/handler/JSX, 공유 폼 헬퍼(`makeCustomerAssetForm` 등) 전부 제거. `CrmShell.tsx`의 MainView/nav/route 정리, `api/assets.ts` 전체 삭제, `api/legacy.ts`의 관련 타입 15개+함수 7개+empty-data 상수 2개 제거(`CustomerDetailData.assetSummary` 필드까지 백엔드와 함께 정리). `server.mjs`의 `isRemovedFrontendRoute`에 `/services/`와 `/assets/`(단, Vite 빌드 결과물 해시 파일 경로는 확장자 유무로 구분해 절대 막지 않도록 부정 전방탐색 방식으로) 추가.
+
+**실행 중 발견한 버그 2건 (자체 발견 및 수정)**:
+- `_company_management_department_payload`/`_company_management_company_payload`가 `blockers` 튜플 리스트를 위치 인덱스로 읽고 있었는데, '장비' 항목을 배열 중간에서 제거하면서 이후 인덱스(`assetCount`/`prepaymentCount`/`memoCount`/`funnelTargetCount`)가 전부 한 칸씩 밀려 잘못된 값을 반환하게 됨 — 해당 딕셔너리 리터럴을 새 인덱스에 맞게 재작성하고 `assetCount` 필드 자체를 제거.
+- `App.tsx`에서 공유 폼 헬퍼를 삭제하는 큰 블록 삭제 시 경계를 잘못 잡아 무관한 데모(Demo) 폼 헬퍼 2개(`makeDemoRecordForm`/`demoRecordFormToPayload`)까지 같이 지워짐 — `tsc --noEmit`이 "Cannot find name"으로 즉시 검출, git diff로 원본 복원.
+- CSS 정리 중 `.customer-asset-editor-heading`을 장비 전용으로 오판해 삭제했으나 실제로는 고객상세의 담당자(계정 연락처) 수정 폼이 재사용 중이었음(className 조합 `dashboard-panel-heading customer-asset-editor-heading`) — 전체 프론트 소스에 className 문자열 grep 크로스체크로 발견, 규칙 복원.
+
+**DB change required**: No (`CustomerAsset`/`ServiceCase`/`CalibrationRecord` 모델 클래스는 `models.py`에 보존).
+
+---
+
 ## 2026-07-27 Phase 3: 현황(Reports/Analytics) 완전 제거
 
 **Scope**: `reporting/api/reports.py`(2048줄, 전체 삭제) — `reports_summary_api`, `reports_customer_operations_xlsx_export_api`, `account_cleanup_decision_api`, `data_quality_contact_assign_account_api`. `reporting/views.py`의 "Phase 6: 분석 보고서" 블록(파일 끝까지 이어져 있어 한 번의 `sed` 삭제로 `analytics_dashboard_view`/`analytics_activity_csv_export`/`analytics_pipeline_csv_export`/`analytics_activity_xlsx_export`/`analytics_pipeline_xlsx_export` 등 11개 함수 동시 제거) + 별도 위치의 `account_cleanup_account_search_api` + `navigation_api`의 'analytics' 항목 + `_download_registry`의 reports.* 항목 5개(활동/파이프라인 CSV·XLSX, 계정별 운영현황 XLSX — `reverse()`가 즉시 호출되는 구조라 URL 삭제 후 그대로 두면 import 시점에 크래시했을 것, 발견 후 같이 제거). `reporting/urls.py`에서 관련 URL 패턴 전부, `readonly_api.py`/`write_api.py`의 allowlist 항목, `admin.py`의 `AccountCleanupAuditLogAdmin`/`AccountCleanupDecisionAdmin` 등록(모델 클래스는 보존), `templates/reporting/analytics_dashboard.html` 삭제, `templates/reporting/base.html`의 레거시 `{% url 'reporting:analytics_dashboard' %}` nav 링크(NoReverseMatch 위험, 테스트로 실제 발견) 제거.

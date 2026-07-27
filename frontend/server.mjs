@@ -558,7 +558,14 @@ function isRemovedFrontendRoute(pathname) {
     pathname.startsWith('/reports/') ||
     pathname === '/analytics' ||
     pathname === '/analytics/' ||
-    pathname.startsWith('/analytics/')
+    pathname.startsWith('/analytics/') ||
+    pathname === '/services' ||
+    pathname === '/services/' ||
+    pathname.startsWith('/services/') ||
+    // '/assets/' doubles as the Vite build output directory (hashed .js/.css bundles) —
+    // only 404 the bare nav route, never a path that looks like a static file.
+    (pathname === '/assets' || pathname === '/assets/' ||
+      (pathname.startsWith('/assets/') && !/\.[A-Za-z0-9]+$/.test(pathname)))
   );
 }
 

@@ -46,6 +46,67 @@ manage.py test reporting (전체 670개) → 실패 3건, 전부 git stash로 �
 
 ---
 
+## 2026-07-27 — 메뉴 가지치기 Phase 4: 장비(Assets)/서비스(Services) 완전 제거
+
+### 요약
+
+- 사이드바 "장비"/"서비스" 독립 메뉴 완전 제거 + 고객상세 페이지에 임베디드되어 있던 장비/서비스/교정 CRUD 패널까지 제거. 실행 전 사용자에게 2가지 트레이드오프를 확인: (1) 업체/부서 삭제 차단 로직의 "장비" 체크 → **차단 제거**(연결 기록은 FK CASCADE로 조용히 함께 삭제, 복구 불가), (2) AI 추천 큐의 ServiceCase/CalibrationRecord 기반 카드(`/assets/...` 링크가 404될 상황) → **카드 생성 중단**.
+
+### 변경된 파일
+
+- 삭제: `reporting/api/assets.py`, `frontend/src/api/assets.ts`
+- `reporting/urls.py`: 장비/서비스/교정(독립 페이지 + 고객상세 임베디드) URL 패턴 17개 제거
+- `reporting/views.py`:
+  - 독립 페이지 뷰(`customer_assets_summary_api`/`service_cases_summary_api`/`customer_asset_directory_*` 등)와 임베디드 패널 뷰(`customer_asset_save_api`/`customer_service_case_save_api`/`customer_calibration_save_api`) + 전용 프라이빗 헬퍼 30여개를 하나의 연속 블록으로 제거
+  - `navigation_api`의 'assets'/'services' 항목 제거
+  - `_download_registry`의 `assets.serviceReport`/`assets.calibrationCertificate` 항목 제거
+  - `customer_detail_summary_api`/`_empty_department_account_detail_response`에서 `assetSummary` 키 제거
+  - `_customer_operational_records_payload`: "서비스 기록"의 ServiceCase 절반(`_customer_service_case_record_payload` 호출부 + 헬퍼)만 제거, Schedule(`activity_type='service'`) 절반은 보존
+  - `_company_delete_blockers`/`_department_delete_blockers`에서 '장비' 체크 제거(사용자 결정) + `_attach_company_management_counts`/`_attach_department_management_counts`/`companies_management_api`의 이제 죽은 `asset_count` annotation 정리
+  - **버그 자체 발견/수정**: `_company_management_department_payload`/`_company_management_company_payload`가 `blockers` 튜플 리스트를 위치 인덱스로 읽던 중, '장비' 항목 제거로 인덱스가 밀려 `assetCount`/`prepaymentCount`/`memoCount`/`funnelTargetCount`가 잘못된 값을 반환하던 것을 발견하여 딕셔너리 리터럴을 새 인덱스로 재작성 + `assetCount` 필드 제거
+  - AI 추천 큐(`_ai_workspace_build_action_queue`)에서 ServiceCase 생성 루프 + CalibrationRecord 생성 루프 + by-id 조회 분기(`service_case:`/`calibration_due:`) 제거, 이제 완전히 죽은 전용 헬퍼(`_ai_workspace_service_case_action_payload`/`_ai_workspace_calibration_due_action_payload`/`_ai_workspace_latest_calibration_record`/`_ai_workspace_asset_search_href`/`_ai_workspace_asset_followup`) 제거 → 이 연쇄로 `_service_case_open_q`/`_SERVICE_CASE_OPEN_STATUSES` 등 서비스케이스 상태 헬퍼 전체가 외부 호출자를 잃어 같이 삭제
+  - `ledgerScopeDescription` 문구에서 "장비" 단어 제거(2곳)
+- `reporting/admin.py`: `CustomerAssetAdmin`/`ServiceCaseAdmin`/`CalibrationRecordAdmin` 등록 제거(모델 클래스는 보존), import 정리
+- `reporting/readonly_api.py`: allowlist에서 `customer_assets_summary_api`/`service_cases_summary_api` 제거 (`write_api.py`는 원래 관련 항목 없어 변경 불필요)
+- `sales_project/urls.py`: react catch-all regex에서 `assets`/`services` 토큰 제거, `removed_react_route` regex에 추가(단 `/assets/<file>.<ext>` Vite 정적파일 서빙 패턴은 그대로 보존 — 순서상 먼저 매칭)
+- `frontend/src/App.tsx`: 독립 페이지 컴포넌트 블록(`CustomerAssetWorkQueue`~`ServicesPage`, ~1245줄) 전체 삭제, 임베디드 패널의 state/refs/`useGuidedPanelFocus`/reset-effect/handler 14개/JSX 렌더 블록 삭제, 공유 폼 헬퍼(`makeCustomerAssetForm` 등 11개) 삭제, `routeMeta`의 assets/services 항목 삭제 + customers 퀵액션에서 장비 링크 제거(파이프라인을 primary로 변경), `getCurrentView()` 분기 삭제, 미사용된 `Wrench`/`makeCustomerAssetAccountSelectOption` 제거
+- `frontend/src/components/shared/CrmShell.tsx`: MainView 타입/reactRoutePrefixes/fallbackNavItems/navIconMap/routeShellMeta에서 assets/services 제거, 미사용된 `Wrench` import 제거
+- `frontend/src/api.ts`, `frontend/src/api/legacy.ts`: `api/assets` export 배럴 제거, 관련 타입 15개 + 함수 7개(`saveCustomerAsset` 등) + empty-data 상수 2개 제거, `CustomerDetailData.assetSummary` 필드와 `emptyCustomerDetailData`/`loadCustomerDetailFromUrl`의 관련 병합 로직 제거(백엔드가 더 이상 보내지 않으므로 프론트 타입 계약에서도 정리)
+- `frontend/src/styles.css`: 장비/서비스 전용 CSS 룰 다수 제거(553줄). **공유 클래스는 신중히 보존**: `.customer-assets-metrics`/`.customer-assets-actions`/`.customer-asset-list`/`.customer-asset-card`(base)는 고객상세의 데모 패널이 재사용 중이라 보존, `.services-main-panel`/`.service-cases-table`/`.service-badge-row`/`.service-case-status`는 데모관리 화면이 재사용 중이라 보존
+- `frontend/server.mjs`: `isRemovedFrontendRoute()`에 `/services/`(전체)와 `/assets/`(단, 확장자 있는 경로는 Vite 빌드 정적파일이므로 부정 전방탐색으로 제외) 추가
+
+### 실행 중 발견/수정한 자체 버그 2건
+
+- **App.tsx 헬퍼 삭제 범위 오류**: 장비/서비스 공유 폼 헬퍼 블록을 지우면서 경계를 느슨하게 잡아 무관한 데모 폼 헬퍼 2개(`makeDemoRecordForm`/`demoRecordFormToPayload`)까지 같이 삭제됨 — `tsc --noEmit`이 즉시 "Cannot find name"으로 검출, `git diff`로 원본 코드 복원.
+- **CSS 공유 클래스 오판**: `.customer-asset-editor-heading`을 장비 전용으로 보고 삭제했으나, 실제로는 고객상세의 담당자(계정 연락처) 수정 폼이 `className="dashboard-panel-heading customer-asset-editor-heading"`로 재사용 중이었음 — 전체 소스 className 문자열 grep 크로스체크로 발견, 규칙 복원.
+
+둘 다 배포 전 로컬에서 발견/수정 완료. 이번 phase에서 CSS 삭제는 특히 신중하게(TypeScript처럼 컴파일러가 잡아주지 않으므로) 각 클래스마다 App.tsx 전체에 걸쳐 재사용 여부를 grep으로 재확인하는 절차를 추가함.
+
+### 안전
+
+- **DB 테이블 무변경**: `CustomerAsset`/`ServiceCase`/`CalibrationRecord` 모델 클래스는 `models.py`에 그대로 정의(고아 상태, 마이그레이션 드랍 없음).
+- 부서 이동 시 `CustomerAsset.company` 재부모 캐스케이드 로직(`department_update_api`)은 명시적으로 스코프 밖 확인 후 보존.
+
+### 검증
+
+```text
+py_compile / manage.py check / makemigrations --check --dry-run → 전부 OK, "No changes detected"
+manage.py test (targeted: ReactNavigationApiTests, SalesNoteReadonlyBearerApiTests, CustomersSummaryApiTests,
+  QuoteItemsApiTests, SchedulesSummaryApiTests) → 147개 중 1건 에러, 기존 결함(customer_delivery_records_xlsx_export_api
+  AnonymousUser AttributeError)과 동일 — 회귀 아님
+tsc --noEmit → 1차 실행에서 makeDemoRecordForm/demoRecordFormToPayload 삭제 사고 검출 → 복원 후 재실행 OK
+npm run build (vite) → OK, App 번들 510.95kB → 457.62kB
+manage.py test reporting (전체 522개) → 실패 3건, Phase 1에서 이미 git stash로 원본 대조 검증된 기존 결함과
+  정확히 동일(customer_delivery_records_xlsx_export_api AnonymousUser AttributeError, SESSION_SAVE_EVERY_REQUEST
+  기본값, test_schedule_form_includes_vat_mode) — 회귀 아님
+```
+
+### 프로덕션 배포 상태
+
+- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+
+---
+
 ## 2026-07-27 — 메뉴 가지치기 Phase 3: 현황(Reports/Analytics) 완전 제거
 
 ### 요약

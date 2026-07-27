@@ -16,7 +16,6 @@ import {
   Search,
   ShieldCheck,
   Users,
-  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { type MouseEvent, type ReactNode, useEffect, useState } from 'react';
@@ -28,8 +27,6 @@ export type MainView =
   | 'dashboard'
   | 'customers'
   | 'companies'
-  | 'assets'
-  | 'services'
   | 'demos'
   | 'pipeline'
   | 'notes'
@@ -52,8 +49,6 @@ const reactRoutePrefixes = [
   '/companies/',
   '/accounts/',
   '/customers/',
-  '/assets/',
-  '/services/',
   '/demos/',
   '/pipeline/',
   '/notes/',
@@ -73,8 +68,6 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard, href: '/dashboard/' },
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'companies', label: '업체/부서', icon: Building2, href: '/companies/' },
-  { id: 'assets', label: '장비', icon: Wrench, href: '/assets/' },
-  { id: 'services', label: '서비스', icon: Wrench, href: '/services/' },
   { id: 'demos', label: '데모관리', icon: Archive, href: '/demos/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
@@ -93,8 +86,6 @@ const navIconMap: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
   customers: Users,
   companies: Building2,
-  assets: Wrench,
-  services: Wrench,
   demos: Archive,
   pipeline: Columns3,
   notes: FileText,
@@ -115,8 +106,6 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   dashboard: { eyebrow: 'Sales CRM / Dashboard', title: '대시보드' },
   customers: { eyebrow: 'Sales CRM / Customers', title: '고객' },
   companies: { eyebrow: 'Sales CRM / Companies', title: '업체/부서' },
-  assets: { eyebrow: 'Sales CRM / Assets', title: '장비' },
-  services: { eyebrow: 'Sales CRM / Services', title: '서비스' },
   demos: { eyebrow: 'Sales CRM / Demos', title: '데모관리' },
   pipeline: { eyebrow: 'Sales CRM / Pipeline', title: '파이프라인' },
   notes: { eyebrow: 'Sales CRM / Notes', title: '영업노트' },
