@@ -282,13 +282,10 @@ import type {
 import {
   generateScheduleAICoach,
 } from './api/ai';
-import type { ReportsData } from './api/reports';
-import { loadReportsData } from './api/reports';
 import { emptyPipelineData, type Deal, type HiddenDeal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
 import {
   CompanyManagementPage,
   ReceivablesPage,
-  ReportsPage,
 } from './pages/lazyPages';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
 import { AttachmentManager, type AttachmentManagerFile } from './components/shared/AttachmentManager';
@@ -1871,18 +1868,6 @@ const routeMeta: Record<
       { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
-  analytics: {
-    eyebrow: 'Sales CRM / Analytics',
-    title: '분석',
-    summary: '영업 활동, 후속조치, 파이프라인 보고서를 확인합니다.',
-    primaryHref: '/reports/',
-    primaryLabel: '분석 보고서 열기',
-    actions: [
-      { label: '분석 보고서', href: '/reports/', primary: true },
-      { label: '활동 XLSX', href: '/reporting/analytics/export/activity.xlsx' },
-      { label: '파이프라인 XLSX', href: '/reporting/analytics/export/pipeline.xlsx' },
-    ],
-  },
   customers: {
     eyebrow: 'Sales CRM / Customers',
     title: '고객',
@@ -1903,7 +1888,6 @@ const routeMeta: Record<
     actions: [
       { label: '업체/부서 관리', href: '/companies/', primary: true },
       { label: '고객 목록', href: '/customers/' },
-      { label: '현황표', href: '/reports/' },
     ],
   },
   assets: {
@@ -2093,7 +2077,6 @@ const routeMeta: Record<
     actions: [
       { label: '대시보드', href: '/dashboard/', primary: true },
       { label: '고객', href: '/customers/' },
-      { label: '분석', href: '/reports/' },
     ],
   },
 };
@@ -2103,8 +2086,6 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/dashboard/')) return 'dashboard';
   if (pathname.startsWith('/data-cleanup/') || pathname.startsWith('/downloads/')) return 'notFound';
   if (/^\/accounts\/\d+\/cleanup-preview\/$/.test(pathname)) return 'notFound';
-  if (pathname.startsWith('/reports/')) return 'analytics';
-  if (pathname.startsWith('/analytics/')) return 'analytics';
   if (pathname.startsWith('/companies/')) return 'companies';
   if (pathname.startsWith('/accounts/')) return 'customers';
   if (pathname.startsWith('/customers/')) return 'customers';
@@ -2790,7 +2771,7 @@ function WorkspaceRoutePage({
   );
 }
 
-const legacyFallbackViews: MainView[] = ['analytics', 'businessCards'];
+const legacyFallbackViews: MainView[] = ['businessCards'];
 const pipelineDataViews: MainView[] = ['pipeline', 'weeklyReports', 'documents', 'products'];
 
 function routeUsesPipelineData(view: MainView): boolean {
@@ -18931,18 +18912,6 @@ export function App() {
   const [pipelineLoading, setPipelineLoading] = useState(routeUsesPipelineData(currentView));
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
-  const [reportsData, setReportsData] = useState<ReportsData | null>(null);
-  const [reportsLoading, setReportsLoading] = useState(currentView === 'analytics');
-  const [reportsDateFrom, setReportsDateFrom] = useState(() => new URLSearchParams(window.location.search).get('date_from') || '');
-  const [reportsDateTo, setReportsDateTo] = useState(() => new URLSearchParams(window.location.search).get('date_to') || '');
-  const [reportsUserId, setReportsUserId] = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
-  const [reportsQuery, setReportsQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
-  const [reportsCompanyId, setReportsCompanyId] = useState(() => new URLSearchParams(window.location.search).get('company_id') || '');
-  const [reportsDepartmentId, setReportsDepartmentId] = useState(() => new URLSearchParams(window.location.search).get('department_id') || '');
-  const [reportsDeliveryFilter, setReportsDeliveryFilter] = useState(() => new URLSearchParams(window.location.search).get('delivery_filter') || 'any');
-  const [reportsPrepaymentBalanceFilter, setReportsPrepaymentBalanceFilter] = useState(() => new URLSearchParams(window.location.search).get('prepayment_balance_filter') || 'any');
-  const [reportsExportScope, setReportsExportScope] = useState(() => new URLSearchParams(window.location.search).get('export_scope') || 'filtered');
-  const [reportsSort, setReportsSort] = useState(() => new URLSearchParams(window.location.search).get('sort') || 'recent');
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
@@ -19269,53 +19238,6 @@ export function App() {
     const queryString = params.toString();
     window.history.replaceState(null, '', `/employees/${queryString ? `?${queryString}` : ''}`);
   }, [currentView, employeeCompany, employeeQuery, employeeRole, employeeStatus]);
-
-  useEffect(() => {
-    if (currentView !== 'analytics') {
-      return;
-    }
-    let alive = true;
-    setReportsLoading(true);
-    loadReportsData({
-      companyId: reportsCompanyId,
-      dateFrom: reportsDateFrom,
-      dateTo: reportsDateTo,
-      deliveryFilter: reportsDeliveryFilter,
-      departmentId: reportsDepartmentId,
-      exportScope: reportsExportScope,
-      prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
-      query: reportsQuery,
-      sort: reportsSort,
-      userId: reportsUserId,
-    }).then((data) => {
-      if (!alive) {
-        return;
-      }
-      setReportsData(data);
-      if (!reportsDateFrom && data.filters.dateFrom) {
-        setReportsDateFrom(data.filters.dateFrom);
-      }
-      if (!reportsDateTo && data.filters.dateTo) {
-        setReportsDateTo(data.filters.dateTo);
-      }
-      setReportsLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [
-    currentView,
-    reportsCompanyId,
-    reportsDateFrom,
-    reportsDateTo,
-    reportsDeliveryFilter,
-    reportsDepartmentId,
-    reportsExportScope,
-    reportsPrepaymentBalanceFilter,
-    reportsQuery,
-    reportsSort,
-    reportsUserId,
-  ]);
 
   useEffect(() => {
     if (currentView !== 'customers' || customerDetailId || accountDetailId) {
@@ -21052,22 +20974,6 @@ export function App() {
     setMailboxThreadData(data);
     return data;
   };
-  const refreshReportsData = async () => {
-    const data = await loadReportsData({
-      companyId: reportsCompanyId,
-      dateFrom: reportsDateFrom,
-      dateTo: reportsDateTo,
-      deliveryFilter: reportsDeliveryFilter,
-      departmentId: reportsDepartmentId,
-      exportScope: reportsExportScope,
-      prepaymentBalanceFilter: reportsPrepaymentBalanceFilter,
-      query: reportsQuery,
-      sort: reportsSort,
-      userId: reportsUserId,
-    });
-    setReportsData(data);
-    return data;
-  };
   const refreshBusinessCardsData = async () => {
     const data = await loadBusinessCardsData();
     setBusinessCardsData(data);
@@ -21697,44 +21603,6 @@ export function App() {
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <DashboardPage data={dashboardData} loading={dashboardLoading} />
-      </AppShell>
-    );
-  }
-
-  if (currentView === 'analytics') {
-    return (
-      <AppShell activeView={currentView}>
-        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <LazyPageBoundary>
-          <ReportsPage
-            data={reportsData}
-            dateFrom={reportsDateFrom}
-            dateTo={reportsDateTo}
-            deliveryFilter={reportsDeliveryFilter}
-            departmentId={reportsDepartmentId}
-            exportScope={reportsExportScope}
-            loading={reportsLoading}
-            companyId={reportsCompanyId}
-            prepaymentBalanceFilter={reportsPrepaymentBalanceFilter}
-            query={reportsQuery}
-            sort={reportsSort}
-            userId={reportsUserId}
-            onDateFromChange={setReportsDateFrom}
-            onDateToChange={setReportsDateTo}
-            onDeliveryFilterChange={setReportsDeliveryFilter}
-            onDepartmentChange={setReportsDepartmentId}
-            onExportScopeChange={setReportsExportScope}
-            onCompanyChange={(value) => {
-              setReportsCompanyId(value);
-              setReportsDepartmentId('');
-            }}
-            onPrepaymentBalanceFilterChange={setReportsPrepaymentBalanceFilter}
-            onQueryChange={setReportsQuery}
-            onRefresh={() => { void refreshReportsData(); }}
-            onSortChange={setReportsSort}
-            onUserChange={setReportsUserId}
-          />
-        </LazyPageBoundary>
       </AppShell>
     );
   }

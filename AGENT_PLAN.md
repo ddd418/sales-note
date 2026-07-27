@@ -31,6 +31,18 @@
 
 ---
 
+## 2026-07-27 Phase 3: 현황(Reports/Analytics) 완전 제거
+
+**Scope**: `reporting/api/reports.py`(2048줄, 전체 삭제) — `reports_summary_api`, `reports_customer_operations_xlsx_export_api`, `account_cleanup_decision_api`, `data_quality_contact_assign_account_api`. `reporting/views.py`의 "Phase 6: 분석 보고서" 블록(파일 끝까지 이어져 있어 한 번의 `sed` 삭제로 `analytics_dashboard_view`/`analytics_activity_csv_export`/`analytics_pipeline_csv_export`/`analytics_activity_xlsx_export`/`analytics_pipeline_xlsx_export` 등 11개 함수 동시 제거) + 별도 위치의 `account_cleanup_account_search_api` + `navigation_api`의 'analytics' 항목 + `_download_registry`의 reports.* 항목 5개(활동/파이프라인 CSV·XLSX, 계정별 운영현황 XLSX — `reverse()`가 즉시 호출되는 구조라 URL 삭제 후 그대로 두면 import 시점에 크래시했을 것, 발견 후 같이 제거). `reporting/urls.py`에서 관련 URL 패턴 전부, `readonly_api.py`/`write_api.py`의 allowlist 항목, `admin.py`의 `AccountCleanupAuditLogAdmin`/`AccountCleanupDecisionAdmin` 등록(모델 클래스는 보존), `templates/reporting/analytics_dashboard.html` 삭제, `templates/reporting/base.html`의 레거시 `{% url 'reporting:analytics_dashboard' %}` nav 링크(NoReverseMatch 위험, 테스트로 실제 발견) 제거.
+
+프론트: `pages/reports/ReportsPage.tsx`, `api/reports.ts`, `api/accountCleanup.ts` 전체 삭제. `CrmShell.tsx`에서 'analytics' MainView/route prefix/fallback nav/icon/routeShellMeta 제거(미사용된 `Activity` 아이콘 import도 정리). `App.tsx`에서 ReportsData 타입, loadReportsData, ReportsPage lazy import, routeMeta.analytics, quick-action의 `/reports/` 링크 2곳, getCurrentView 분기, legacyFallbackViews, reports* useState 10개, 로딩 useEffect, refreshReportsData, 렌더 분기 전부 제거. `lazyPages.ts`/`api.ts`/`api/legacy.ts`의 export 배럴 정리. `server.mjs`의 `/reporting/analytics/` 레거시 리다이렉트 제거(`.reports-actions` CSS는 명함 화면과 공유라 보존). `sales_project/urls.py` catch-all regex에서 `reports`/`analytics` 토큰 제거.
+
+**테스트**: `ReactReportsProfileBusinessCardApiTests`에서 reports/account-cleanup 관련 메서드만 제거(Profile/BusinessCard 메서드는 보존), `test_common_account_ledger_feeds_reports_customer_detail_and_ai`는 reports API 호출 부분만 잘라내고 account_detail/AI ledger 검증은 유지, `CoreCrmLegacyRedirectTests`/`AnonymousAccessTests`의 `analytics_dashboard` reverse 참조 제거, `ExportPermissionTests`의 analytics export 권한 테스트 4개 + 이제 미사용인 `_check_export` 헬퍼 제거, `ReactNavigationApiTests`의 'analytics' 단언을 `assertNotIn`으로 교체.
+
+**DB change required**: No (AccountCleanupAuditLog/AccountCleanupDecision 모델 클래스는 `models.py`에 보존).
+
+---
+
 ## 2026-07-27 Phase 2: AI(ai-workspace) 완전 제거
 
 **Scope**: `ai_workspace_*` 뷰 11개(views.py) + private 헬퍼 다수, URL 12개, readonly allowlist 3개, navigation_api의 'ai' 항목, 프론트 `pages/ai/AIWorkspacePage.tsx`(전체 삭제) + `api/aiWorkspace.ts`(전체 삭제) + App.tsx 내 죽은 AI워크스페이스 중복 구현(~4000줄, 구조적으로 도달 불가능했던 레거시 코드) + `CustomerAiResultPanel`(죽은 코드) + 파이프라인 `aiDepartment` 필드(프론트 어디서도 렌더 안 됨, 백엔드 `_pipeline_ai_department_payload` 제거).

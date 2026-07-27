@@ -46,6 +46,55 @@ manage.py test reporting (전체 670개) → 실패 3건, 전부 git stash로 �
 
 ---
 
+## 2026-07-27 — 메뉴 가지치기 Phase 3: 현황(Reports/Analytics) 완전 제거
+
+### 요약
+
+- 사이드바 "현황" 메뉴(Reports/Analytics, `/reports/`) 완전 제거. 리포트 화면, 데이터 정리(계정 중복/재배치) 화면, 분석 CSV/XLSX 다운로드까지 전부 포함.
+
+### 변경된 파일
+
+- 삭제: `reporting/api/reports.py`(2048줄), `reporting/templates/reporting/analytics_dashboard.html`, `frontend/src/pages/reports/ReportsPage.tsx`, `frontend/src/api/reports.ts`, `frontend/src/api/accountCleanup.ts`
+- `reporting/views.py`: "Phase 6: 분석 보고서" 블록이 파일 끝까지 이어져 있어 한 번의 삭제로 `analytics_dashboard_view`/`_analytics_api_date_range`/`_analytics_api_scope_users`/`_analytics_user_payload`/`_get_activity_export_date_range`/`_build_activity_rows`/`_build_pipeline_rows`/`analytics_activity_csv_export`/`analytics_pipeline_csv_export`/`analytics_activity_xlsx_export`/`analytics_pipeline_xlsx_export` 11개 함수 동시 제거. 별도 위치의 `account_cleanup_account_search_api` 제거. `navigation_api`의 'analytics' 항목 제거. **`_download_registry`의 reports.* 항목 5개(`reports.activityCsv`/`reports.pipelineCsv`/`reports.activityXlsx`/`reports.pipelineXlsx`/`reports.customerOperationsXlsx`) 제거** — 이 항목들은 모듈 로드 시점에 `reverse()`를 즉시 호출하는 구조라, URL 삭제 후 방치했으면 `/downloads/` API가 import 크래시났을 것. 타깃 테스트로 실제 발견.
+- `reporting/urls.py`: analytics/reports/account_cleanup 관련 URL 패턴 전부 제거
+- `reporting/api/accounts.py`: `account_cleanup_account_search_api` import 제거
+- `reporting/readonly_api.py`: allowlist에서 `reports_summary_api` 제거
+- `reporting/write_api.py`: `WRITE_CONFIRM_URL_NAMES`에서 `data_quality_contact_assign_account_api` 제거
+- `reporting/admin.py`: `AccountCleanupAuditLogAdmin`/`AccountCleanupDecisionAdmin` 등록 제거(모델 클래스는 `models.py`에 보존)
+- `reporting/templates/reporting/base.html`: 레거시 `{% url 'reporting:analytics_dashboard' %}` nav 링크 제거 — **타깃 테스트 실행 중 `NoReverseMatch`로 실제 발견**(schedule_form.html이 이 base.html을 extend)
+- `frontend/src/components/shared/CrmShell.tsx`: 'analytics' MainView 타입/route prefix/fallback nav/icon/routeShellMeta 제거, 미사용된 `Activity` 아이콘 import 정리
+- `frontend/src/App.tsx`: `ReportsData` 타입/`loadReportsData`/`ReportsPage` import, `routeMeta.analytics` 전체 항목, `companies`/`notFound` quick-action의 `/reports/` 링크, `getCurrentView()`의 `/reports/`·`/analytics/` 분기, `legacyFallbackViews`의 'analytics', `reports*` useState 10개, 리포트 로딩 useEffect, `refreshReportsData` 함수, `currentView === 'analytics'` 렌더 분기 전부 제거
+- `frontend/src/pages/lazyPages.ts`, `frontend/src/api.ts`, `frontend/src/api/legacy.ts`: reports/accountCleanup export 배럴 제거
+- `frontend/server.mjs`: `/reporting/analytics/` → `/reports/` 레거시 리다이렉트 제거(`.reports-actions` CSS는 명함 화면과 공유라 **보존**)
+- `sales_project/urls.py`: react catch-all regex에서 `reports`/`analytics` 토큰 제거
+- `scripts/post_deploy_smoke.py`: `/reports/`를 `FRONTEND_REACT_ROUTES`에서 `REMOVED_FRONTEND_ROUTES`로 이동(+`/analytics/`), `PROTECTED_DOMAIN_APIS`에서 `/reporting/api/reports/` 제거, 하드코딩된 reports API 보호 체크 2곳을 `/reporting/api/customers/` 기준으로 교체
+- `reporting/tests.py`: `ReactReportsProfileBusinessCardApiTests`에서 reports/account-cleanup 테스트 메서드 다수 제거(Profile/BusinessCard 메서드는 보존), `test_common_account_ledger_feeds_reports_customer_detail_and_ai`는 reports API 호출/단언 부분만 제거하고 account_detail·AI ledger 검증은 유지, `CoreCrmLegacyRedirectTests`/`AnonymousAccessTests`의 `analytics_dashboard`·`analytics_activity_csv` 등 reverse 참조 제거, `ExportPermissionTests`의 analytics export 권한 테스트 4개 + 이제 미사용인 `_check_export` 헬퍼 제거, `ReactNavigationApiTests`의 'analytics' 단언을 `assertNotIn`으로 교체, `AuthenticationSmoke` 계열의 `next` 파라미터 샘플 URL을 `reports/...`에서 `customers/...`로 교체
+
+### 안전
+
+- **DB 테이블 무변경**: `AccountCleanupAuditLog`/`AccountCleanupDecision` 모델 클래스는 `models.py`에 그대로 정의(고아 상태, 마이그레이션 드랍 없음).
+- `_download_registry`의 즉시-`reverse()` 크래시 위험은 삭제 대상 뷰 목록에 없었던 항목이라 처음엔 놓쳤음 — 타깃 테스트(`CoreCrmLegacyRedirectTests` 등) 실행 중 `NoReverseMatch`로 잡아냄. 전체 백엔드 `reverse('reporting:...')` 호출부를 다시 grep해서 유사 누락이 더 없는지 확인 완료.
+
+### 검증
+
+```text
+py_compile / manage.py check / makemigrations --check --dry-run → 전부 OK, "No changes detected"
+manage.py test (CoreCrmLegacyRedirectTests, ReactNavigationApiTests, RemovedStandaloneMenuRouteTests,
+  ExportPermissionTests, ReactReportsProfileBusinessCardApiTests, BackendReactFrontendServingTests) → 29개 OK
+  (1차 실행에서 base.html의 죽은 analytics_dashboard 링크로 NoReverseMatch 발생 → 수정 후 재실행 OK)
+tsc --noEmit → OK
+npm run build (vite) → OK, ReportsPage 청크 완전히 사라짐 확인
+manage.py test reporting (전체 543개) → 실패 3건, 전부 Phase 1에서 이미 git stash로 원본 대조 검증된
+  기존 결함과 정확히 동일(customer_delivery_records_xlsx_export_api AnonymousUser AttributeError,
+  SESSION_SAVE_EVERY_REQUEST 기본값, test_schedule_form_includes_vat_mode) — 회귀 아님
+```
+
+### 프로덕션 배포 상태
+
+- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+
+---
+
 ## 2026-07-27 — 메뉴 가지치기 Phase 2: AI(ai-workspace) 완전 제거
 
 ### 요약

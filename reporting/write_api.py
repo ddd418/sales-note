@@ -65,7 +65,6 @@ WRITE_CONFIRM_URL_NAMES = {
     "products_bulk_upsert_api",             # 제품 대량 변경
     "products_excel_import_api",            # 파일 기반 대량 변경
     "product_replace_reference_api",        # 과거 납품/견적 품목 FK 재작성
-    "data_quality_contact_assign_account_api",  # 연락처 계정 재배치
     "receivable_item_status_api",           # 정산/카드수금(금액 관련) 플래그
 }
 

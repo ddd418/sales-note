@@ -15,17 +15,17 @@ DEFAULT_FRONTEND_URL = 'https://sales-note-frontend-production.up.railway.app'
 FRONTEND_REACT_ROUTES = (
     '/dashboard/',
     '/customers/',
-    '/reports/',
     '/prepayments/',
     '/assets/',
 )
 REMOVED_FRONTEND_ROUTES = (
     '/data-cleanup/',
     '/downloads/',
+    '/reports/',
+    '/analytics/',
 )
 PROTECTED_DOMAIN_APIS = (
     '/reporting/api/customers/',
-    '/reporting/api/reports/',
     '/reporting/api/prepayments/',
     '/reporting/api/customer-assets/',
 )
@@ -217,12 +217,12 @@ def main():
     expect_json_status(session, results, 'backend healthz', args.backend_url, '/healthz/', 200, 'ok', args.timeout)
     expect_json_status(session, results, 'backend readyz', args.backend_url, '/readyz/', 200, 'ok', args.timeout)
     expect_status(session, results, 'backend login page', args.backend_url, '/reporting/login/', (200,), args.timeout, contains='영업')
-    expect_protected(session, results, 'backend reports API protected', args.backend_url, '/reporting/api/reports/', args.timeout)
+    expect_protected(session, results, 'backend customers API protected', args.backend_url, '/reporting/api/customers/', args.timeout)
 
     expect_json_status(session, results, 'frontend healthz', args.frontend_url, '/healthz/', 200, 'ok', args.timeout)
     expect_status(session, results, 'frontend dashboard shell', args.frontend_url, '/dashboard/', (200,), args.timeout)
     expect_frontend_static_cache(session, results, args.frontend_url, args.timeout)
-    expect_protected(session, results, 'frontend reports API protected', args.frontend_url, '/reporting/api/reports/', args.timeout)
+    expect_protected(session, results, 'frontend customers API protected', args.frontend_url, '/reporting/api/customers/', args.timeout)
 
     for route in FRONTEND_REACT_ROUTES:
         expect_html_route(session, results, f'frontend React route {route}', args.frontend_url, route, args.timeout)

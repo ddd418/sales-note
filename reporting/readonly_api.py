@@ -11,7 +11,6 @@ READONLY_ALLOWED_URL_NAMES = {
     "navigation_api",
     "dashboard_summary_api",
     "dashboard_search_api",
-    "reports_summary_api",
     "customers_summary_api",
     "customer_detail_summary_api",
     "customer_assets_summary_api",

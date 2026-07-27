@@ -346,16 +346,6 @@ urlpatterns = [
     path('manager/', views.manager_dashboard, name='manager_dashboard'),
     path('manager/salesman/<int:user_id>/', views.salesman_detail, name='salesman_detail'),
 
-    # Phase 6: 분석 보고서 URL들
-    path('analytics/', react_page_redirect(
-        views.analytics_dashboard_view,
-        static_react_page('reports/'),
-    ), name='analytics_dashboard'),
-    path('analytics/export/activity.csv', views.analytics_activity_csv_export, name='analytics_activity_csv'),
-    path('analytics/export/pipeline.csv', views.analytics_pipeline_csv_export, name='analytics_pipeline_csv'),
-    path('analytics/export/activity.xlsx', views.analytics_activity_xlsx_export, name='analytics_activity_xlsx'),
-    path('analytics/export/pipeline.xlsx', views.analytics_pipeline_xlsx_export, name='analytics_pipeline_xlsx'),
-
     # 인증 및 기타 URL들
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),
@@ -380,8 +370,6 @@ urlpatterns = [
     
     # Admin 전용 API URL들
     path('api/users/', views.api_users_list, name='api_users_list'),
-    path('api/reports/', lazy_view('reporting.api.reports.reports_summary_api'), name='reports_summary_api'),
-    path('api/reports/customer-operations.xlsx', lazy_view('reporting.api.reports.reports_customer_operations_xlsx_export_api'), name='reports_customer_operations_xlsx'),
     path('api/profile/', views.profile_api, name='profile_api'),
     path('api/profile/update/', views.profile_update_api, name='profile_api_update'),
     path('api/profile/password/', views.profile_password_api, name='profile_api_password'),
@@ -400,9 +388,6 @@ urlpatterns = [
     path('api/customer-assets/<int:asset_id>/calibrations/<int:record_id>/update/', lazy_view('reporting.api.assets.customer_asset_directory_calibration_save_api'), name='customer_asset_directory_calibration_update_api'),
     path('api/customer-assets/service-cases/<int:case_id>/report/', lazy_view('reporting.api.assets.customer_asset_service_report_download_api'), name='customer_asset_service_report_download_api'),
     path('api/customer-assets/calibrations/<int:record_id>/certificate/', lazy_view('reporting.api.assets.customer_asset_calibration_certificate_download_api'), name='customer_asset_calibration_certificate_download_api'),
-    path('api/accounts/search/', lazy_view('reporting.api.accounts.account_cleanup_account_search_api'), name='account_cleanup_account_search_api'),
-    path('api/accounts/cleanup-decision/', lazy_view('reporting.api.reports.account_cleanup_decision_api'), name='account_cleanup_decision_api'),
-    path('api/data-quality/contacts/<int:followup_id>/assign-account/', lazy_view('reporting.api.reports.data_quality_contact_assign_account_api'), name='data_quality_contact_assign_account_api'),
     path('api/accounts/<int:department_id>/', lazy_view('reporting.api.accounts.account_detail_summary_api'), name='account_detail_summary_api'),
     path('api/accounts/<int:department_id>/update/', lazy_view('reporting.api.accounts.account_update_api'), name='account_update_api'),
     path('api/accounts/<int:department_id>/contacts/create/', lazy_view('reporting.api.accounts.account_contact_save_api'), name='account_contact_create_api'),
