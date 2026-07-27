@@ -91,7 +91,8 @@ manage.py test reporting (전체 543개) → 실패 3건, 전부 Phase 1에서 �
 
 ### 프로덕션 배포 상태
 
-- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+- **완료.** commit `747f824` → `origin/main`. Railway backend `web` 배포 `23d16018-4045-430f-ae20-312e3a93e351` SUCCESS, frontend `sales-note-frontend` 배포 `5c6c30d4-375d-4234-b34e-f3f40fdfd2f6` SUCCESS.
+- 1차 `post_deploy_smoke.py`가 `/reports/`, `/analytics/` removed-route 체크에서 FAIL(200 반환) — **회귀 아님, smoke 스크립트가 새로 잡은 실제 버그**: Django 쪽 catch-all regex에서는 토큰을 뺐지만, `frontend/server.mjs`(프론트 Node 런타임, `isRemovedFrontendRoute()`)에는 `/data-cleanup/`·`/downloads/`만 있고 `/reports/`·`/analytics/`가 없어서 프론트 SPA fallback이 그대로 200 index.html을 서빙하고 있었음. `isRemovedFrontendRoute()`에 두 경로 추가 → commit `75706f5` → 배포 → 재실행 smoke → **ok**(22개 항목 전부 PASS).
 
 ---
 
