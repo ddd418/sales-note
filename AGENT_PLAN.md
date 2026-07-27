@@ -27,7 +27,7 @@
 - `npm run build`(tsc --noEmit + vite) 통과, App 번들 568.81kB → 543.28kB로 축소(실제 코드 제거 확인).
 - 전체 Django 테스트 670개 실행 — 실패 3건 전부 **git stash로 원본 코드 대조 검증하여 Tasks와 무관한 기존 결함임을 확인**(`customer_delivery_records_xlsx_export_api`의 익명유저 AttributeError, `SESSION_SAVE_EVERY_REQUEST` 기본값, `test_schedule_form_includes_vat_mode`) — 회귀 아님.
 
-**Deploy**: (배포 후 기록)
+**Deploy**: Done. Commit `9b1e267` on `origin/main`. Railway `web` deploy `3c71915c-ccde-4eea-87b5-795d75e61c33` SUCCESS, `sales-note-frontend` deploy `345f6d06-78d1-440f-8eaa-e983367d5c69` SUCCESS. `post_deploy_smoke.py` → ok.
 
 
 ## 2026-07-13 Frontend PWA (설치형 앱 셸) plan

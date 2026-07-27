@@ -42,7 +42,7 @@ manage.py test reporting (전체 670개) → 실패 3건, 전부 git stash로 �
 
 ### 프로덕션 배포 상태
 
-- (아래 커밋에서 deployment ID/smoke 결과 기록)
+- **완료.** commit `9b1e267` → `origin/main`. Railway backend `web` 배포 `3c71915c-ccde-4eea-87b5-795d75e61c33` SUCCESS, frontend `sales-note-frontend` 배포 `345f6d06-78d1-440f-8eaa-e983367d5c69` SUCCESS. `post_deploy_smoke.py` → ok.
 
 
 ## 2026-07-13 — 프론트엔드 PWA 전환
