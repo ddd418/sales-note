@@ -18,7 +18,6 @@ FRONTEND_REACT_ROUTES = (
     '/reports/',
     '/prepayments/',
     '/assets/',
-    '/ai-workspace/',
 )
 REMOVED_FRONTEND_ROUTES = (
     '/data-cleanup/',
@@ -29,7 +28,6 @@ PROTECTED_DOMAIN_APIS = (
     '/reporting/api/reports/',
     '/reporting/api/prepayments/',
     '/reporting/api/customer-assets/',
-    '/reporting/api/ai-workspace/',
 )
 
 

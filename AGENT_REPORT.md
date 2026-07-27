@@ -90,7 +90,8 @@ manage.py test (확장 스윕: + PipelineHideCardTests, WeeklyReportTests, Manag
 
 ### 프로덕션 배포 상태
 
-- (아래 커밋에서 deployment ID/smoke 결과 기록)
+- **완료.** commit `bb334de` → `origin/main`. Railway backend `web` 배포 `0aaeabef-22da-40ca-bcf8-41d20d5cd5c6` SUCCESS, frontend `sales-note-frontend` 배포 `1532ce72-69da-41b5-9d13-a93a43f020ca` SUCCESS.
+- `scripts/post_deploy_smoke.py`가 구식(제거된 `/ai-workspace/`를 여전히 "보호된 API"로 체크)이라 최초 smoke가 FAIL — **회귀 아님**, 스크립트에서 `/ai-workspace/` 체크 제거 후 재실행 → ok. 프로덕션 직접 확인: `/reporting/api/ai-workspace/` 404(정상 제거), 프론트 `/ai-workspace/`는 SPA 특성상 200이지만 기본 뷰(파이프라인)로 정상 대체.
 
 
 ## 2026-07-13 — 프론트엔드 PWA 전환

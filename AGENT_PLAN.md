@@ -43,7 +43,7 @@
 
 **Validation**: py_compile/check/makemigrations --dry-run 전부 OK. `npm run build` 통과, App 번들 543.28kB → 513.59kB. 백엔드 타깃 테스트(ScheduleAiCoachApiTests/PipelineApiTests/ReactNavigationApiTests/SalesNoteReadonlyBearerApiTests) 25개 OK. 확장 회귀 스윕 진행 중.
 
-**Deploy**: (배포 후 기록)
+**Deploy**: Done. Commit `bb334de` on `origin/main`. Railway `web` deploy `0aaeabef-22da-40ca-bcf8-41d20d5cd5c6` SUCCESS, `sales-note-frontend` deploy `1532ce72-69da-41b5-9d13-a93a43f020ca` SUCCESS. `post_deploy_smoke.py` updated (removed defunct `/ai-workspace/` checks) → ok. Prod-verified: backend `/reporting/api/ai-workspace/` 404, frontend SPA falls back to pipeline view.
 
 
 ## 2026-07-13 Frontend PWA (설치형 앱 셸) plan
