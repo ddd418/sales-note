@@ -31,6 +31,33 @@
 
 ---
 
+## 2026-07-27 Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
+
+**Background**: 사용자가 새 메뉴 "파이프라인 시트"를 만들기로 확정. 그 시트의 탭1(주간 활동)이 기존 주간보고를 그대로 대체하므로, 죽은 코드 옆에서 유사한 새 코드를 짜는 혼선을 피하려고 **먼저 주간보고를 완전 제거**하고 시작. 원래 7개 가지치기 목록에는 없던 8번째 제거.
+
+**신규 메뉴 설계 (사용자와 아이디어 회의로 확정, 아직 미구현)**:
+- 메뉴 1개 `/pipeline-sheet/` + 탭 2개, 엑셀은 워크북 1개에 시트 2장
+- **탭1 주간 활동(보고용)**: 행=계정, 펼치면 그 주 활동. 기본 기간=저번 주. 컬럼 `날짜|유형|내용|[장애물]|다음액션|예정일`. 맨 위에 파이프라인 잔량 + **⚠이번 주 활동 없는 주요 계정**(다음 주 계획이 여기서 나옴)
+- **탭2 견적 전환(전략용, 누적)**: 행=계정, 펼치면 견적 1건씩. `견적건수|견적금액|전환건수|전환금액|전환율|미결|최근견적|경과일`. 정렬/필터 자유(전환율 0%, 미결 있음, 만료·거절 있음)
+- 사용자의 보고 방식이 "이번주 얼마·몇건" 집계 발표가 아니라 **"저번주에 누구를 방문해서 이러이러했습니다"** 서술이라, 집계 요약 블록은 설계에서 제외하고 활동 서술 중심으로 잡음
+- `meeting_researcher_quote`/`meeting_confirmed_facts` 2개 필드는 팀이 **미사용** 확인 → 펼침 2단계 없애고, 내용 열은 `meeting_situation` 있으면 그것, 없으면 `content`로 자동 적응. 장애물 열은 값이 하나도 없으면 열 자체를 숨김
+
+**SALVAGE (제거 전에 반드시 보존)** — 새 시트가 똑같이 필요한 로직을 스크래치패드로 먼저 추출:
+- `_weekly_report_default_dates` — **주 경계가 월~금(5영업일)**, 월~일 아님. 주 식별자는 오직 `week_start`(월요일 날짜), ISO 주차 개념 없음
+- 기간 스코프 활동 쿼리 — Schedule + linked histories/quotes/delivery_items 프리페치 (`visit_date` 범위)
+- **금액 해석 우선순위 체인**: 납품품목 합계 → `History.delivery_amount` → `Schedule.expected_revenue` (실제 업무 로직)
+- `_schedule_target_labels` — followup→schedule 폴백으로 고객/업체/부서 해석
+- 요일 라벨 배열, 기간 라벨 포맷
+- 주의: History는 `created_at__date`, Schedule은 `visit_date`로 필터 (의도된 비대칭)
+
+**Scope**: `views.py` 꼬리 블록(32297~EOF, 뷰 8개+헬퍼 15개), `urls.py` URL 13개+헬퍼, `readonly_api.py` allowlist 2개, `ai_chat/services.py`의 주간보고 AI 초안 생성(230줄), 프론트 페이지 컴포넌트 5개(~500줄)+state 8개+effect 3개+렌더 분기 4개, `legacy.ts` 타입 10개+함수 7개+empty 상수 6개, CSS 50개 규칙.
+
+**AI 워크스페이스 결합 제거 (Phase 4와 동일 판단)**: AI 액션큐가 `weekly_report_ai_draft`를 **요청 시점에 `reverse()`** 하는 곳이 2군데 있어 그냥 지우면 500. Phase 4의 "해당 카드 생성 중단" 선례를 따라 `weekly_report` 액션 종류 자체를 제거(생성 루프·by-id 조회 분기·draft 타입·라벨·카운트 전부).
+
+**DB change required**: No (`WeeklyReport` 모델 클래스 보존, 과거 주간보고 데이터는 DB에 남되 조회 화면은 없어짐 — 사용자에게 사전 고지함).
+
+---
+
 ## 2026-07-27 Phase 5: 메일(Mail)/명함(BusinessCards) 완전 제거 (7단계 중 마지막)
 
 **Scope**: 독립 메뉴 2개(메일함 `/mailbox/`, 명함 `/mailbox/business-cards/`) + 사용자 확인된 결합 기능 2개(일정상세 "메일 발송" 버튼, 프로필 Gmail/IMAP 연동 설정 패널) 완전 제거. Gmail OAuth, IMAP/SMTP 연동, 메일함 CRUD, 명함 CRUD, 예약 발송 큐까지 메일 엔진 전체를 삭제.

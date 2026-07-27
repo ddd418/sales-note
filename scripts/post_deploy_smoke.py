@@ -26,6 +26,7 @@ REMOVED_FRONTEND_ROUTES = (
     '/services/',
     '/mailbox/',
     '/business-cards/',
+    '/weekly-reports/',
 )
 PROTECTED_DOMAIN_APIS = (
     '/reporting/api/customers/',

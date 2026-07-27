@@ -46,6 +46,78 @@ manage.py test reporting (전체 670개) → 실패 3건, 전부 git stash로 �
 
 ---
 
+## 2026-07-27 — Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
+
+### 요약
+
+- 새 메뉴 "파이프라인 시트"의 탭1(주간 활동)이 기존 주간보고를 그대로 대체하므로, 죽은 코드 옆에서 유사한 새 코드를 짜는 혼선을 피하려고 **먼저 주간보고를 완전 제거**. 원래 7개 가지치기 목록에 없던 8번째 제거.
+- 사용자에게 **과거 주간보고 조회 화면이 사라진다는 점을 사전 고지**함(모델·데이터는 보존).
+
+### 제거 전 SALVAGE (새 시트가 그대로 쓸 로직)
+
+스크래치패드로 먼저 추출한 뒤 삭제:
+- `_weekly_report_default_dates` — **주 경계가 월~금(5영업일)**, 월~일이 아님. 주 식별자는 오직 `week_start`(월요일 날짜)이며 ISO 주차 개념은 코드베이스 어디에도 없음(`unique_together=['user','week_start']`가 사실상 주 키)
+- 기간 스코프 활동 쿼리 — Schedule + `linked_histories`/`linked_quotes`/`linked_delivery_items` 프리페치
+- **금액 해석 우선순위 체인**: 납품품목 합계 → `History.delivery_amount` → `Schedule.expected_revenue` (보일러플레이트가 아닌 실제 업무 로직)
+- `_schedule_target_labels` — followup→schedule 폴백으로 고객/업체/부서/책임자 해석
+- 요일 라벨 배열, 기간 라벨 포맷
+- **주의점 기록**: History는 `created_at__date`로, Schedule은 `visit_date`로 필터하는 비대칭이 의도된 것
+- 별도로 지운 현황 메뉴의 XLSX 익스포트(`git show 747f824^`)에서 **워크북 관례**(헤더 1F2937/흰글씨, 얇은 테두리 D1D5DB, `#,##0`, 틀고정 A2, 자동필터, 두번째 시트 '다운로드 정보', `filename*=UTF-8''` + `quote()`)도 추출해둠
+
+### 변경된 파일
+
+- `reporting/views.py`: 꼬리 블록 32297~EOF(뷰 8개 + 헬퍼 15개, 739줄) 삭제. `navigation_api`의 'weeklyReports' 항목 + 대시보드/노트/일정/일정캘린더 API의 `links.weeklyReports` 4개 제거. **미사용이 된 `WeeklyReport` import 정리**
+- `reporting/urls.py`: URL 13개 + `_weekly_report_delete_react_page` 헬퍼 제거
+- `reporting/readonly_api.py`: allowlist에서 `weekly_reports_api`/`weekly_report_detail_api` 제거
+- `ai_chat/services.py`: `WEEKLY_REPORT_SYSTEM_PROMPT` + `generate_weekly_report_draft`(230줄, 파일 꼬리) 제거 — 유일한 호출부가 이미 410 스텁 뒤의 도달불가 코드였음
+- `reporting/templates/reporting/base.html`: 주간보고 nav `<li>` 제거
+- `reporting/templates/reporting/weekly_report/`: 빈 디렉터리 제거
+- `frontend/src/App.tsx`: 페이지 컴포넌트 5개(`WeeklyReportsPage`/`DetailPage`/`HtmlSection`/`EditorPage`/`WeeklyScheduleGroup`, ~496줄) + `weeklyScheduleText` + state 8개 + effect 3개 + 렌더 분기 4개 + 라우트 헬퍼 3개 + `routeMeta.weeklyReports` + `getCurrentView` 분기 + `makeEmptyWeeklyReportForm` + 타 화면의 주간보고 링크 5곳 + import 12개 제거. `pipelineDataViews`에서 `'weeklyReports'`만 제거(나머지는 유지)
+- `frontend/src/components/shared/CrmShell.tsx`: 5개 지점 + 미사용이 된 `ListChecks` 아이콘 import 제거
+- `frontend/src/api/legacy.ts`: 타입 10개 + empty 상수 6개 + API 함수 7개 제거. 4개 kept 타입의 `links.weeklyReports` 필드와 그 기본값을 **짝으로** 제거(따로 지우면 TS 에러), `normalizeHrefFields` 키 3곳 정리
+- `frontend/src/api/dashboard.ts`: `links.weeklyReports` 타입/기본값/정규화 키 제거 (`weeklySchedules` 지표는 별개, 보존)
+- `frontend/server.mjs`: 레거시 리다이렉트 5개 제거 + `isRemovedFrontendRoute`에 `/weekly-reports/` **추가**
+- `sales_project/urls.py`: catch-all에서 `weekly-reports` 토큰 제거, `removed_react_route`로 이동
+- `frontend/src/styles.css`: `.weekly-*` 규칙 42개 삭제
+- `scripts/post_deploy_smoke.py`: `/weekly-reports/`를 removed-route에 추가
+- `reporting/tests.py`: 클래스 3개(`WeeklyReportTests`/`WeeklyReportReactApiTests`/`WeeklyReportLoadSchedulesExtendedTests`) 삭제 + 무관한 클래스 안의 참조 3곳 수술(`SalesNoteReadonlyBearerApiTests`의 reverse 1줄, `AnonymousAccessTests`의 메서드 1개, `AIPermissionTests`의 메서드 2개)
+
+### 500 유발 랜드마인 3건 (배포 전 차단)
+
+1. **`base.html`의 죽은 `{% url 'reporting:weekly_report_list' %}`** — base.html은 에러 페이지의 부모 템플릿이라, 방치했으면 모든 에러 페이지가 2차 500이 되어 복구 불가 상태가 됐을 것. 프로젝트에서 세 번째로 반복된 패턴.
+2. **AI 액션큐가 `reverse('reporting:weekly_report_ai_draft')`를 요청 시점에 호출** (`_ai_workspace_build_action_queue`, `_ai_workspace_find_action` 2군데) — Phase 4의 "해당 카드 생성 중단" 선례를 따라 `weekly_report` 액션 종류 자체를 제거(생성 루프 + by-id 조회 분기 + `AI_WORKSPACE_DRAFT_TYPES` + 라벨 + 카운트 키 + draft 분기).
+3. **CSS 공유 콤마 셀렉터 8개** — `.table-card`/`.muted-text`/`.secondary-button`/`.tasks-layout`/`.section-heading-row`/`.route-actions`/`.form-grid.two-columns` 등이 `.weekly-*`와 한 규칙에 묶여 있었음. 스크립트로 `.weekly-*`만 골라내고 나머지는 보존(규칙 전체가 weekly면 삭제 42건, 셀렉터만 정리 8건 — 조사 결과와 정확히 일치). 이전 단계에서 이미 고아가 된 클래스들은 이번 스코프가 아니라 손대지 않음.
+
+### 실행 중 발견/수정한 자체 버그 1건
+
+- `refreshWeeklyReportDetailData` 삭제 시 **한 줄 덜 잘라서 닫는 `};`가 고아로 남음** → `App()` 함수가 15957행에서 조기에 닫히고 파일 끝 `}`가 남아 TS1128. `tsc`가 검출했고, 중괄호 깊이를 추적하는 스크립트로 정확한 위치를 특정해 수정.
+
+### 안전
+
+- **DB 테이블 무변경**: `WeeklyReport` 모델 클래스와 마이그레이션(0087/0090) 보존. `makemigrations --check --dry-run` → "No changes detected".
+- 관련 모델 없음 확인(첨부/댓글 자식 모델 없이 매니저 검토 3개 필드가 본체에 인라인).
+- `reporting/utils_html.py`는 공용 모듈이라 보존(주간보고 전용 래퍼만 제거).
+
+### 검증
+
+```text
+py_compile / manage.py check / makemigrations --check --dry-run → 전부 OK, "No changes detected"
+repo-wide grep(weekly_report|weeklyReports|weekly-reports, py/html) → 모델 정의·404 라우트만 잔존
+manage.py test (targeted: ReactNavigationApiTests, SalesNoteReadonlyBearerApiTests, AnonymousAccessTests,
+  AIPermissionTests, RemovedStandaloneMenuRouteTests, BackendReactFrontendServingTests) → 25개 OK
+tsc --noEmit → TS1128 검출 → 고아 중괄호 수정 후 OK
+npm run build → OK, App 번들 394.79kB → 377.90kB, CSS 184.10kB → 179.83kB
+manage.py test reporting (전체 442개) → 실패 3건, 전부 Phase 1에서 git stash 대조로 검증된 기존 결함
+  (AnonymousUser AttributeError, SESSION_SAVE_EVERY_REQUEST 기본값, test_schedule_form_includes_vat_mode)
+  — 회귀 아님
+```
+
+### 프로덕션 배포 상태
+
+- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+
+---
+
 ## 2026-07-27 — 메뉴 가지치기 Phase 5: 메일(Mail)/명함(BusinessCards) 완전 제거 (7단계 중 마지막)
 
 ### 요약

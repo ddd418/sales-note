@@ -8,7 +8,6 @@ import {
   FileSpreadsheet,
   FileText,
   LayoutDashboard,
-  ListChecks,
   LogOut,
   Plus,
   Search,
@@ -30,7 +29,6 @@ export type MainView =
   | 'notes'
   | 'schedules'
   | 'employees'
-  | 'weeklyReports'
   | 'documents'
   | 'products'
   | 'receivables'
@@ -50,7 +48,6 @@ const reactRoutePrefixes = [
   '/notes/',
   '/schedules/',
   '/employees/',
-  '/weekly-reports/',
   '/documents/',
   '/products/',
   '/receivables/',
@@ -66,7 +63,6 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
-  { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
   { id: 'products', label: '제품', icon: Archive, href: '/products/' },
   { id: 'receivables', label: '외상고객', icon: CircleDollarSign, href: '/receivables/' },
@@ -84,7 +80,6 @@ const navIconMap: Record<string, LucideIcon> = {
   schedules: CalendarDays,
   employees: ShieldCheck,
   userAdmin: ShieldCheck,
-  weeklyReports: ListChecks,
   documents: FileSpreadsheet,
   products: Archive,
   receivables: CircleDollarSign,
@@ -101,7 +96,6 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   notes: { eyebrow: 'Sales CRM / Notes', title: '영업노트' },
   schedules: { eyebrow: 'Sales CRM / Schedule', title: '일정' },
   employees: { eyebrow: 'Sales CRM / Employees', title: '직원관리' },
-  weeklyReports: { eyebrow: 'Sales CRM / Weekly', title: '주간보고' },
   documents: { eyebrow: 'Sales CRM / Documents', title: '서류' },
   products: { eyebrow: 'Sales CRM / Products', title: '제품' },
   receivables: { eyebrow: 'Sales CRM / Receivables', title: '외상고객' },

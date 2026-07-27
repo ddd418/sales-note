@@ -342,24 +342,6 @@ function getCoreCrmReactLocation(requestUrl) {
   if (/^\/reporting\/funnel\/\d+\/?$/.test(pathname)) {
     return buildReactLocation('/pipeline/', params);
   }
-  if (pathname === '/reporting/weekly-reports/' || pathname === '/reporting/weekly-reports') {
-    return buildReactLocation('/weekly-reports/', params);
-  }
-  if (pathname === '/reporting/weekly-reports/create/' || pathname === '/reporting/weekly-reports/create') {
-    return buildReactLocation('/weekly-reports/new/', params);
-  }
-  match = pathname.match(/^\/reporting\/weekly-reports\/(\d+)\/edit\/?$/);
-  if (match) {
-    return buildReactLocation(`/weekly-reports/${match[1]}/edit/`, params);
-  }
-  match = pathname.match(/^\/reporting\/weekly-reports\/(\d+)\/delete\/?$/);
-  if (match) {
-    return buildReactLocation(`/weekly-reports/${match[1]}/`, params);
-  }
-  match = pathname.match(/^\/reporting\/weekly-reports\/(\d+)\/?$/);
-  if (match) {
-    return buildReactLocation(`/weekly-reports/${match[1]}/`, params);
-  }
   if (pathname === '/reporting/profile/' || pathname === '/reporting/profile') {
     return buildReactLocation('/profile/', params);
   }
@@ -504,6 +486,9 @@ function isRemovedFrontendRoute(pathname) {
     pathname === '/business-cards' ||
     pathname === '/business-cards/' ||
     pathname.startsWith('/business-cards/') ||
+    pathname === '/weekly-reports' ||
+    pathname === '/weekly-reports/' ||
+    pathname.startsWith('/weekly-reports/') ||
     // '/assets/' doubles as the Vite build output directory (hashed .js/.css bundles) —
     // only 404 the bare nav route, never a path that looks like a static file.
     (pathname === '/assets' || pathname === '/assets/' ||

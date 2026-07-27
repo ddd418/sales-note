@@ -51,12 +51,12 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     re_path(r'^assets/(?P<path>.+\.[A-Za-z0-9]+)$', frontend_views.react_asset, name='react_asset'),
     re_path(
-        r'^(?P<path>(?:data-cleanup|downloads|services|assets|mailbox|business-cards)(?:/.*)?|accounts/\d+/cleanup-preview(?:/.*)?)$',
+        r'^(?P<path>(?:data-cleanup|downloads|services|assets|mailbox|business-cards|weekly-reports)(?:/.*)?|accounts/\d+/cleanup-preview(?:/.*)?)$',
         frontend_views.removed_react_route,
         name='removed_react_route',
     ),
     re_path(
-        r'^(?P<path>(?:dashboard|customers|accounts|demos|notes|schedules|employees|weekly-reports|documents|products|receivables|prepayments|profile|pipeline|companies)(?:/.*)?)$',
+        r'^(?P<path>(?:dashboard|customers|accounts|demos|notes|schedules|employees|documents|products|receivables|prepayments|profile|pipeline|companies)(?:/.*)?)$',
         frontend_views.react_index,
         name='react_frontend',
     ),

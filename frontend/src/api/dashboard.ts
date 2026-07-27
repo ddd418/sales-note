@@ -111,7 +111,6 @@ export type DashboardData = {
     schedules: string;
     calendar: string;
     pipeline: string;
-    weeklyReports: string;
     pendingReviews: string;
   };
   today: {
@@ -216,7 +215,6 @@ const emptyDashboardData: DashboardData = {
     schedules: '/schedules/',
     calendar: '/schedules/calendar/',
     pipeline: '/pipeline/',
-    weeklyReports: '/weekly-reports/',
     pendingReviews: '/notes/?review=unreviewed',
   },
   today: {
@@ -324,7 +322,6 @@ export async function loadDashboardData(): Promise<DashboardData> {
         'schedules',
         'calendar',
         'pipeline',
-        'weeklyReports',
         'pendingReviews',
       ]),
       upcomingSchedules: (payload.upcomingSchedules ?? emptyDashboardData.upcomingSchedules).map(normalizeScheduleLinks),

@@ -53,9 +53,6 @@ def _products_react_page(request, product_id=None, action=None, **kwargs):
     return frontend_url('products/', query)
 
 
-def _weekly_report_delete_react_page(request, pk=None, **kwargs):
-    return frontend_url(f'weekly-reports/{pk}/', query_with(request))
-
 
 urlpatterns = [
     # 팔로우업 URL들
@@ -574,32 +571,5 @@ urlpatterns = [
     path('funnel/api/pipeline-sync/', funnel_views.funnel_pipeline_sync, name='funnel_pipeline_sync'),
     path('funnel/api/pipeline-hide/', funnel_views.funnel_pipeline_hide, name='funnel_pipeline_hide'),
     path('funnel/api/pipeline-unhide/', funnel_views.funnel_pipeline_unhide, name='funnel_pipeline_unhide'),
-
-    # ============================================
-    # 주간보고 URL
-    # ============================================
-    path('weekly-reports/', react_page_retired(
-        static_react_page('weekly-reports/'),
-    ), name='weekly_report_list'),
-    path('weekly-reports/create/', react_page_retired(
-        static_react_page('weekly-reports/new/'),
-    ), name='weekly_report_create'),
-    path('weekly-reports/<int:pk>/', react_page_retired(
-        id_react_page('weekly-reports/{pk}/'),
-    ), name='weekly_report_detail'),
-    path('weekly-reports/<int:pk>/edit/', react_page_retired(
-        id_react_page('weekly-reports/{pk}/edit/'),
-    ), name='weekly_report_edit'),
-    path('weekly-reports/<int:pk>/delete/', react_page_retired(
-        _weekly_report_delete_react_page,
-    ), name='weekly_report_delete'),
-    path('api/weekly-reports/', views.weekly_reports_api, name='weekly_reports_api'),
-    path('api/weekly-reports/create/', views.weekly_report_create_api, name='weekly_report_create_api'),
-    path('api/weekly-reports/<int:pk>/', views.weekly_report_detail_api, name='weekly_report_detail_api'),
-    path('api/weekly-reports/<int:pk>/update/', views.weekly_report_update_api, name='weekly_report_update_api'),
-    path('api/weekly-reports/<int:pk>/delete/', views.weekly_report_delete_api, name='weekly_report_delete_api'),
-    path('api/weekly-reports/schedules/', views.weekly_report_load_schedules, name='weekly_report_load_schedules'),
-    path('api/weekly-reports/ai-draft/', views.weekly_report_ai_draft, name='weekly_report_ai_draft'),
-    path('api/weekly-reports/<int:pk>/manager-comment/', views.weekly_report_manager_comment, name='weekly_report_manager_comment'),
 ]
 

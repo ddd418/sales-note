@@ -27,8 +27,6 @@ READONLY_ALLOWED_URL_NAMES = {
     "product_api_list",
     "products_management_api",
     "document_templates_api",
-    "weekly_reports_api",
-    "weekly_report_detail_api",
     "personal_schedules_detail_api",
 }
 

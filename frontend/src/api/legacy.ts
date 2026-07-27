@@ -130,7 +130,6 @@ export type DashboardData = {
     schedules: string;
     calendar: string;
     pipeline: string;
-    weeklyReports: string;
     pendingReviews: string;
   };
   today: {
@@ -1057,7 +1056,6 @@ export type NotesData = {
     createNote: string;
     notes: string;
     unreviewed: string;
-    weeklyReports: string;
   };
   create: {
     canCreate: boolean;
@@ -2384,7 +2382,6 @@ export type SchedulesData = {
     djangoSchedules?: string;
     calendar: string;
     djangoCalendar?: string;
-    weeklyReports: string;
   };
   create: {
     canCreate: boolean;
@@ -2474,7 +2471,6 @@ export type ScheduleCalendarData = {
     djangoCalendar: string;
     createSchedule: string;
     createPersonalSchedule: string;
-    weeklyReports: string;
   };
   create: {
     canCreate: boolean;
@@ -2717,173 +2713,6 @@ export type ScheduleAICoachResponse = {
   message?: string;
 };
 
-export type WeeklyReportUser = {
-  id: number;
-  name: string;
-  username: string;
-  role: string;
-  roleLabel: string;
-  company: string;
-};
-
-export type WeeklyReportItem = {
-  id: number;
-  title: string;
-  weekStart: string;
-  weekEnd: string;
-  user: WeeklyReportUser;
-  activityNotesHtml: string;
-  quoteDeliveryNotesHtml: string;
-  otherNotesHtml: string;
-  activityNotes?: string;
-  quoteDeliveryNotes?: string;
-  otherNotes?: string;
-  managerComment: string;
-  reviewed: boolean;
-  reviewedBy: string;
-  reviewedAt: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-  canEdit: boolean;
-  canDelete: boolean;
-  canComment: boolean;
-  href: string;
-  editHref: string;
-  deleteHref: string;
-  updateHref: string;
-  managerCommentHref: string;
-  djangoHref: string;
-  djangoEditHref: string;
-};
-
-export type WeeklyReportFormPayload = {
-  weekStart: string;
-  weekEnd: string;
-  title: string;
-  activityNotes: string;
-  quoteDeliveryNotes: string;
-  otherNotes: string;
-};
-
-export type WeeklyReportsData = {
-  success?: boolean;
-  source: 'django' | 'unavailable';
-  generatedAt?: string;
-  error?: string;
-  message?: string;
-  scope: {
-    label: string;
-    canViewAll: boolean;
-    userCount: number;
-  };
-  filters: {
-    year: string;
-    month: string;
-    userId: string;
-  };
-  options: {
-    years: number[];
-    months: number[];
-    users: WeeklyReportUser[];
-  };
-  metrics: {
-    filteredReports: number;
-    reviewedReports: number;
-    pendingReports: number;
-    thisMonthReports: number;
-  };
-  links: {
-    list: string;
-    create: string;
-    createApi: string;
-    schedulesApi: string;
-    djangoList: string;
-    djangoCreate: string;
-  };
-  reports: WeeklyReportItem[];
-};
-
-export type WeeklyReportCreateData = {
-  success?: boolean;
-  source: 'django' | 'unavailable';
-  generatedAt?: string;
-  error?: string;
-  canUseAi: boolean;
-  form: WeeklyReportFormPayload;
-  existingReport: WeeklyReportItem | null;
-  links: WeeklyReportsData['links'];
-};
-
-export type WeeklyReportDetailData = {
-  success?: boolean;
-  source: 'django' | 'unavailable';
-  generatedAt?: string;
-  error?: string;
-  canUseAi: boolean;
-  report: WeeklyReportItem;
-  form: WeeklyReportFormPayload | null;
-  links: WeeklyReportsData['links'];
-};
-
-export type WeeklyReportScheduleItem = {
-  id: number;
-  date: string;
-  weekday?: string;
-  customer: string;
-  company: string;
-  department: string;
-  manager?: string;
-  activity_type?: string;
-  activity_type_display?: string;
-  activityType?: string;
-  notes: string;
-  status?: string;
-  amount?: string;
-  amount_label?: string;
-  histories?: Array<{
-    id: number;
-    type: string;
-    snippet: string;
-    next_action: string;
-    next_action_date: string;
-    amount?: string;
-  }>;
-  quotes?: Array<{
-    number: string;
-    stage: string;
-    amount: string;
-    probability: number;
-  }>;
-};
-
-export type WeeklyReportSchedulesData = {
-  schedules: WeeklyReportScheduleItem[];
-  categorized: {
-    activity: WeeklyReportScheduleItem[];
-    quote_delivery: WeeklyReportScheduleItem[];
-  };
-  error?: string;
-};
-
-export type WeeklyReportSaveResponse = {
-  success?: boolean;
-  source?: 'django';
-  message?: string;
-  error?: string;
-  redirect?: string;
-  report?: WeeklyReportItem;
-  existingHref?: string;
-};
-
-export type WeeklyReportManagerCommentResponse = {
-  ok?: boolean;
-  success?: boolean;
-  error?: string;
-  reviewer?: string;
-  reviewed_at?: string;
-  comment?: string;
-};
-
 export type NavigationItem = {
   id: string;
   label: string;
@@ -3067,7 +2896,6 @@ const emptyDashboardData: DashboardData = {
     schedules: '/schedules/',
     calendar: '/schedules/calendar/',
     pipeline: '/pipeline/',
-    weeklyReports: '/weekly-reports/',
     pendingReviews: '/notes/?review=unreviewed',
   },
   today: {
@@ -3441,7 +3269,6 @@ const emptyNotesData: NotesData = {
     createNote: '/notes/?create=1',
     notes: '/notes/',
     unreviewed: '/notes/?review=unreviewed',
-    weeklyReports: '/weekly-reports/',
   },
   create: {
     canCreate: false,
@@ -3540,7 +3367,6 @@ const emptySchedulesData: SchedulesData = {
     djangoSchedules: '/schedules/',
     calendar: '/schedules/calendar/',
     djangoCalendar: '/schedules/calendar/',
-    weeklyReports: '/weekly-reports/',
   },
   create: {
     canCreate: false,
@@ -3603,7 +3429,6 @@ const emptyScheduleCalendarData: ScheduleCalendarData = {
     djangoCalendar: '/schedules/calendar/',
     createSchedule: '/schedules/?create=1',
     createPersonalSchedule: '/reporting/personal-schedules/create/',
-    weeklyReports: '/weekly-reports/',
   },
   create: {
     canCreate: false,
@@ -3978,107 +3803,6 @@ const emptyPrepaymentCustomerData: PrepaymentCustomerData = {
   ledgerEntries: [],
 };
 
-const emptyWeeklyReportLinks: WeeklyReportsData['links'] = {
-  list: '/weekly-reports/',
-  create: '/weekly-reports/new/',
-  createApi: '/reporting/api/weekly-reports/create/',
-  schedulesApi: '/reporting/api/weekly-reports/schedules/',
-  djangoList: '/reporting/weekly-reports/',
-  djangoCreate: '/reporting/weekly-reports/create/',
-};
-
-const emptyWeeklyReportForm: WeeklyReportFormPayload = {
-  weekStart: '',
-  weekEnd: '',
-  title: '',
-  activityNotes: '',
-  quoteDeliveryNotes: '',
-  otherNotes: '',
-};
-
-const emptyWeeklyReportItem: WeeklyReportItem = {
-  id: 0,
-  title: '',
-  weekStart: '',
-  weekEnd: '',
-  user: {
-    id: 0,
-    name: '',
-    username: '',
-    role: '',
-    roleLabel: '',
-    company: '',
-  },
-  activityNotesHtml: '',
-  quoteDeliveryNotesHtml: '',
-  otherNotesHtml: '',
-  managerComment: '',
-  reviewed: false,
-  reviewedBy: '',
-  reviewedAt: null,
-  createdAt: null,
-  updatedAt: null,
-  canEdit: false,
-  canDelete: false,
-  canComment: false,
-  href: '',
-  editHref: '',
-  deleteHref: '',
-  updateHref: '',
-  managerCommentHref: '',
-  djangoHref: '',
-  djangoEditHref: '',
-};
-
-const emptyWeeklyReportsData: WeeklyReportsData = {
-  success: false,
-  source: 'unavailable',
-  generatedAt: new Date().toISOString(),
-  scope: {
-    label: '',
-    canViewAll: false,
-    userCount: 0,
-  },
-  filters: {
-    year: '',
-    month: '',
-    userId: '',
-  },
-  options: {
-    years: [],
-    months: [],
-    users: [],
-  },
-  metrics: {
-    filteredReports: 0,
-    reviewedReports: 0,
-    pendingReports: 0,
-    thisMonthReports: 0,
-  },
-  links: emptyWeeklyReportLinks,
-  reports: [],
-};
-
-const emptyWeeklyReportCreateData: WeeklyReportCreateData = {
-  success: false,
-  source: 'unavailable',
-  generatedAt: new Date().toISOString(),
-  canUseAi: false,
-  form: emptyWeeklyReportForm,
-  existingReport: null,
-  links: emptyWeeklyReportLinks,
-};
-
-const emptyWeeklyReportDetailData: WeeklyReportDetailData = {
-  success: false,
-  source: 'unavailable',
-  generatedAt: new Date().toISOString(),
-  canUseAi: false,
-  report: emptyWeeklyReportItem,
-  form: null,
-  links: emptyWeeklyReportLinks,
-};
-
 const emptyNavigationData: NavigationData = {
   success: false,
   source: 'unavailable',
@@ -4253,7 +3977,6 @@ export async function loadDashboardData(): Promise<DashboardData> {
         'schedules',
         'calendar',
         'pipeline',
-        'weeklyReports',
         'pendingReviews',
       ]),
       upcomingSchedules: (payload.upcomingSchedules ?? emptyDashboardData.upcomingSchedules).map(normalizeScheduleLinks),
@@ -5063,7 +4786,7 @@ export async function loadNotesData(params: {
       links: normalizeHrefFields({
         ...emptyNotesData.links,
         ...(payload.links ?? {}),
-      }, ['createNote', 'notes', 'unreviewed', 'weeklyReports']),
+      }, ['createNote', 'notes', 'unreviewed']),
       create: {
         ...emptyNotesData.create,
         ...(payload.create ?? {}),
@@ -5392,7 +5115,7 @@ export async function loadSchedulesData(params: {
       links: normalizeHrefFields({
         ...emptySchedulesData.links,
         ...(payload.links ?? {}),
-      }, ['createSchedule', 'schedules', 'djangoSchedules', 'calendar', 'djangoCalendar', 'weeklyReports']),
+      }, ['createSchedule', 'schedules', 'djangoSchedules', 'calendar', 'djangoCalendar']),
       create: {
         ...emptySchedulesData.create,
         ...(payload.create ?? {}),
@@ -5476,7 +5199,7 @@ export async function loadScheduleCalendarData(params: {
       links: normalizeHrefFields({
         ...emptyScheduleCalendarData.links,
         ...(payload.links ?? {}),
-      }, ['schedules', 'djangoSchedules', 'calendar', 'djangoCalendar', 'createSchedule', 'weeklyReports']),
+      }, ['schedules', 'djangoSchedules', 'calendar', 'djangoCalendar', 'createSchedule']),
       create: {
         ...emptyScheduleCalendarData.create,
         ...(payload.create ?? {}),
@@ -7242,265 +6965,6 @@ export const updateEmployee = (submitUrl: string, payload: EmployeeMutationPaylo
 
 export const toggleEmployeeActive = (submitUrl: string, isActive?: boolean) =>
   postEmployeeJson<{ isActive?: boolean }>(submitUrl, typeof isActive === 'boolean' ? { isActive } : {});
-
-export async function loadWeeklyReportsData(params: {
-  year?: string;
-  month?: string;
-  userId?: string;
-} = {}): Promise<WeeklyReportsData> {
-  const query = new URLSearchParams();
-  if (params.year) query.set('year', params.year);
-  if (params.month) query.set('month', params.month);
-  if (params.userId) query.set('user_id', params.userId);
-
-  try {
-    const response = await fetch(`/reporting/api/weekly-reports/${query.toString() ? `?${query.toString()}` : ''}`, {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Weekly reports API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as Partial<WeeklyReportsData>;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Weekly reports API unavailable: ${response.status}`);
-    }
-    return {
-      ...emptyWeeklyReportsData,
-      ...payload,
-      scope: {
-        ...emptyWeeklyReportsData.scope,
-        ...(payload.scope ?? {}),
-      },
-      filters: {
-        ...emptyWeeklyReportsData.filters,
-        ...(payload.filters ?? {}),
-      },
-      options: {
-        ...emptyWeeklyReportsData.options,
-        ...(payload.options ?? {}),
-        years: payload.options?.years ?? emptyWeeklyReportsData.options.years,
-        months: payload.options?.months ?? emptyWeeklyReportsData.options.months,
-        users: payload.options?.users ?? emptyWeeklyReportsData.options.users,
-      },
-      metrics: {
-        ...emptyWeeklyReportsData.metrics,
-        ...(payload.metrics ?? {}),
-      },
-      links: {
-        ...emptyWeeklyReportLinks,
-        ...(payload.links ?? {}),
-      },
-      reports: payload.reports ?? [],
-    };
-  } catch (error) {
-    return {
-      ...emptyWeeklyReportsData,
-      generatedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Weekly reports API unavailable',
-    };
-  }
-}
-
-export async function loadWeeklyReportCreateData(): Promise<WeeklyReportCreateData> {
-  try {
-    const response = await fetch('/reporting/api/weekly-reports/create/', {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Weekly report create API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as Partial<WeeklyReportCreateData>;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || `Weekly report create API unavailable: ${response.status}`);
-    }
-    return {
-      ...emptyWeeklyReportCreateData,
-      ...payload,
-      form: {
-        ...emptyWeeklyReportForm,
-        ...(payload.form ?? {}),
-      },
-      links: {
-        ...emptyWeeklyReportLinks,
-        ...(payload.links ?? {}),
-      },
-      existingReport: payload.existingReport ?? null,
-    };
-  } catch (error) {
-    return {
-      ...emptyWeeklyReportCreateData,
-      generatedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Weekly report create API unavailable',
-    };
-  }
-}
-
-export async function loadWeeklyReportDetailData(reportId: number): Promise<WeeklyReportDetailData> {
-  try {
-    const response = await fetch(`/reporting/api/weekly-reports/${reportId}/`, {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Weekly report detail API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as Partial<WeeklyReportDetailData>;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || `Weekly report detail API unavailable: ${response.status}`);
-    }
-    return {
-      ...emptyWeeklyReportDetailData,
-      ...payload,
-      report: {
-        ...emptyWeeklyReportItem,
-        ...(payload.report ?? {}),
-      },
-      form: payload.form
-        ? {
-            ...emptyWeeklyReportForm,
-            ...payload.form,
-          }
-        : null,
-      links: {
-        ...emptyWeeklyReportLinks,
-        ...(payload.links ?? {}),
-      },
-    };
-  } catch (error) {
-    return {
-      ...emptyWeeklyReportDetailData,
-      generatedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Weekly report detail API unavailable',
-    };
-  }
-}
-
-export async function saveWeeklyReport(
-  submitUrl: string,
-  payload: WeeklyReportFormPayload,
-): Promise<WeeklyReportSaveResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch(submitUrl, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-    body: JSON.stringify(payload),
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Weekly report save API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as WeeklyReportSaveResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Weekly report save failed: ${response.status}`);
-  }
-  return data;
-}
-
-export async function deleteWeeklyReport(deleteUrl: string): Promise<WeeklyReportSaveResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch(deleteUrl, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Weekly report delete API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as WeeklyReportSaveResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Weekly report delete failed: ${response.status}`);
-  }
-  return data;
-}
-
-export async function loadWeeklyReportSchedules(weekStart: string, weekEnd: string): Promise<WeeklyReportSchedulesData> {
-  const query = new URLSearchParams();
-  query.set('week_start', weekStart);
-  query.set('week_end', weekEnd);
-  const response = await fetch(`/reporting/api/weekly-reports/schedules/?${query.toString()}`, {
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Weekly report schedules API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as WeeklyReportSchedulesData;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.error) {
-    throw new Error(data.error || `Weekly report schedules failed: ${response.status}`);
-  }
-  return {
-    schedules: data.schedules ?? [],
-    categorized: {
-      activity: data.categorized?.activity ?? [],
-      quote_delivery: data.categorized?.quote_delivery ?? [],
-    },
-  };
-}
-
-export async function saveWeeklyReportManagerComment(
-  submitUrl: string,
-  comment: string,
-): Promise<WeeklyReportManagerCommentResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const body = new URLSearchParams();
-  body.set('manager_comment', comment);
-  const response = await fetch(submitUrl, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-    body,
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Weekly report manager comment API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as WeeklyReportManagerCommentResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.error) {
-    throw new Error(data.error || `Weekly report manager comment failed: ${response.status}`);
-  }
-  return data;
-}
 
 export async function loadPipelineData(): Promise<PipelineData> {
   try {
