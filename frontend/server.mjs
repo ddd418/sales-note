@@ -552,7 +552,13 @@ function isRemovedFrontendRoute(pathname) {
     pathname.startsWith('/data-cleanup/') ||
     pathname === '/downloads' ||
     pathname === '/downloads/' ||
-    pathname.startsWith('/downloads/')
+    pathname.startsWith('/downloads/') ||
+    pathname === '/reports' ||
+    pathname === '/reports/' ||
+    pathname.startsWith('/reports/') ||
+    pathname === '/analytics' ||
+    pathname === '/analytics/' ||
+    pathname.startsWith('/analytics/')
   );
 }
 
