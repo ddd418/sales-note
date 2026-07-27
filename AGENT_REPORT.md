@@ -112,7 +112,8 @@ manage.py test reporting (전체 472개) → 1차 실행에서 mailCompose 단�
 
 ### 프로덕션 배포 상태
 
-- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+- **완료.** commit `8c44c0e` → `origin/main`. Railway backend `web` 배포 `26243b10-a0bb-4df7-8f26-646ad064535b` SUCCESS, frontend `sales-note-frontend` 배포 `119219eb-21b0-43fe-b1bc-4385c68d5229` SUCCESS. `post_deploy_smoke.py` → **ok**(22개 항목 전부 PASS, 첫 시도 성공 — `/mailbox/`·`/business-cards/` 404 확인 포함, Phase 3/4의 교훈을 배포 전에 미리 반영해 server.mjs 재배포가 필요 없었음).
+- **7개 메뉴 가지치기(업무/AI/현황/장비/서비스/메일/명함) 전체 완료.**
 
 ---
 
