@@ -7,3 +7,7 @@ export const CompanyManagementPage = lazy(() =>
 export const ReceivablesPage = lazy(() =>
   import('./receivables/ReceivablesPage').then((module) => ({ default: module.ReceivablesPage })),
 );
+
+export const PipelineSheetPage = lazy(() =>
+  import('./pipelineSheet/PipelineSheetPage').then((module) => ({ default: module.PipelineSheetPage })),
+);

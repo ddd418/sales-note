@@ -12,6 +12,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Table2,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ export type MainView =
   | 'companies'
   | 'demos'
   | 'pipeline'
+  | 'pipelineSheet'
   | 'notes'
   | 'schedules'
   | 'employees'
@@ -45,6 +47,7 @@ const reactRoutePrefixes = [
   '/customers/',
   '/demos/',
   '/pipeline/',
+  '/pipeline-sheet/',
   '/notes/',
   '/schedules/',
   '/employees/',
@@ -61,6 +64,7 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'companies', label: '업체/부서', icon: Building2, href: '/companies/' },
   { id: 'demos', label: '데모관리', icon: Archive, href: '/demos/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
+  { id: 'pipelineSheet', label: '파이프라인 시트', icon: Table2, href: '/pipeline-sheet/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
   { id: 'documents', label: '서류', icon: FileSpreadsheet, href: '/documents/' },
@@ -76,6 +80,7 @@ const navIconMap: Record<string, LucideIcon> = {
   companies: Building2,
   demos: Archive,
   pipeline: Columns3,
+  pipelineSheet: Table2,
   notes: FileText,
   schedules: CalendarDays,
   employees: ShieldCheck,
@@ -93,6 +98,7 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   companies: { eyebrow: 'Sales CRM / Companies', title: '업체/부서' },
   demos: { eyebrow: 'Sales CRM / Demos', title: '데모관리' },
   pipeline: { eyebrow: 'Sales CRM / Pipeline', title: '파이프라인' },
+  pipelineSheet: { eyebrow: 'Sales CRM / Pipeline Sheet', title: '파이프라인 시트' },
   notes: { eyebrow: 'Sales CRM / Notes', title: '영업노트' },
   schedules: { eyebrow: 'Sales CRM / Schedule', title: '일정' },
   employees: { eyebrow: 'Sales CRM / Employees', title: '직원관리' },

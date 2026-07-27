@@ -215,6 +215,7 @@ import {
 import { emptyPipelineData, type Deal, type HiddenDeal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
 import {
   CompanyManagementPage,
+  PipelineSheetPage,
   ReceivablesPage,
 } from './pages/lazyPages';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
@@ -1416,6 +1417,17 @@ const routeMeta: Record<
       { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
+  pipelineSheet: {
+    eyebrow: 'Sales CRM / Pipeline Sheet',
+    title: '파이프라인 시트',
+    summary: '계정별 주간 활동과 누적 견적 전환을 한 장에서 보고, 다음 주 계획을 세웁니다.',
+    primaryHref: '/pipeline-sheet/',
+    primaryLabel: '시트 보기',
+    actions: [
+      { label: '견적 전환', href: '/pipeline-sheet/?tab=quotes' },
+      { label: '파이프라인', href: '/pipeline/' },
+    ],
+  },
   notes: {
     eyebrow: 'Sales CRM / Notes',
     title: '영업노트',
@@ -1536,6 +1548,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/receivables/')) return 'receivables';
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/profile/')) return 'profile';
+  if (pathname.startsWith('/pipeline-sheet/')) return 'pipelineSheet';
   if (pathname.startsWith('/pipeline/')) return 'pipeline';
   return 'pipeline';
 }
@@ -16372,6 +16385,17 @@ export function App() {
           sort={productSort}
           status={productStatus}
         />
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'pipelineSheet') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <LazyPageBoundary>
+          <PipelineSheetPage />
+        </LazyPageBoundary>
       </AppShell>
     );
   }

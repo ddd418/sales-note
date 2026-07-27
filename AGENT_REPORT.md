@@ -114,7 +114,7 @@ manage.py test reporting (전체 442개) → 실패 3건, 전부 Phase 1에서 g
 
 ### 프로덕션 배포 상태
 
-- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+- **완료.** commit `18e2517` → `origin/main`. Railway backend `web` 배포 `c1e2b273-d50f-4e49-b3d8-5e0f718123b5` SUCCESS, frontend `sales-note-frontend` 배포 `30587d73-0530-4877-9fcc-ea0c675951d5` SUCCESS. `post_deploy_smoke.py` → **ok**(24개 항목 전부 PASS, 첫 시도 성공 — `/weekly-reports/` 404 확인 포함).
 
 ---
 

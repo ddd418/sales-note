@@ -1747,14 +1747,15 @@ def _attention_score(stage, latest_quote, next_schedule, last_history, has_overd
     return score, ' · '.join(reasons[:3]) if reasons else '추가 활동 필요'
 
 
-@readonly_bearer_or_login_required
-@require_GET
-@ensure_csrf_cookie
-def pipeline_command_center_api(request):
-    """React 파일럿용 읽기 전용 파이프라인 데이터 API."""
+def pipeline_followups_queryset(request, today=None):
+    """파이프라인 계정 집계에 필요한 FollowUp 큐리셋(프리페치 포함).
+
+    파이프라인 화면과 파이프라인 시트가 **같은 데이터**를 보도록 공유한다.
+    한쪽만 프리페치가 바뀌면 두 화면의 금액/단계가 갈라지므로 여기서만 고친다.
+    """
     from datetime import timedelta
 
-    today = timezone.localdate()
+    today = today or timezone.localdate()
     thirty_days_ago = today - timedelta(days=30)
 
     recent_histories_qs = History.objects.filter(
@@ -1774,7 +1775,7 @@ def pipeline_command_center_api(request):
         Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
     ).order_by('-visit_date', '-created_at')
 
-    followups = (
+    return (
         _get_accessible_followups(request.user, request)
         .filter(pipeline_hidden=False)
         .select_related('company', 'department', 'user')
@@ -1799,6 +1800,15 @@ def pipeline_command_center_api(request):
         )
         .order_by('pipeline_stage', 'company__name', 'customer_name')
     )
+
+
+@readonly_bearer_or_login_required
+@require_GET
+@ensure_csrf_cookie
+def pipeline_command_center_api(request):
+    """React 파일럿용 읽기 전용 파이프라인 데이터 API."""
+    today = timezone.localdate()
+    followups = pipeline_followups_queryset(request, today)
 
     stage_map = {stage_key: [] for stage_key, *_ in PIPELINE_STAGES}
     stage_amounts = {stage_key: Decimal('0') for stage_key, *_ in PIPELINE_STAGES}

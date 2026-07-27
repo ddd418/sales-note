@@ -485,6 +485,8 @@ class ReactNavigationApiTests(TestCase):
         self.assertEqual(items_by_id['demos']['label'], '데모관리')
         self.assertEqual(items_by_id['receivables']['href'], '/receivables/')
         self.assertEqual(items_by_id['receivables']['label'], '외상고객')
+        self.assertEqual(items_by_id['pipelineSheet']['href'], '/pipeline-sheet/')
+        self.assertEqual(items_by_id['pipelineSheet']['label'], '파이프라인 시트')
         self.assertEqual(items_by_id['profile']['href'], '/profile/')
         self.assertEqual(items_by_id['profile']['label'], '프로필')
         self.assertNotIn('employees', items_by_id)
@@ -13017,3 +13019,251 @@ class PipelineHideCardTests(TestCase):
         self.assertIsNotNone(account_deal, '활성 견적 연락처가 대표 카드여야 한다')
         self.assertEqual(account_deal['stage'], 'quote')
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 파이프라인 시트 API 테스트 (주간 활동 / 견적 전환)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PipelineSheetApiTests(TestCase):
+    """파이프라인 시트: 계정별 주간 활동 + 누적 견적 전환 검증"""
+
+    def setUp(self):
+        from datetime import timedelta
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='시트API회사')
+        self.user = make_user('sheet_api_me', role='salesman', company=self.company)
+        self.other = make_user('sheet_api_other', role='salesman', company=self.company)
+        self.weekly_url = reverse('reporting:pipeline_sheet_weekly_api')
+        self.quotes_url = reverse('reporting:pipeline_sheet_quotes_api')
+        # 지난 주(월~금)를 기준 주로 삼는다 — 시트 기본값과 동일.
+        today = timezone.localdate()
+        this_monday = today - timedelta(days=today.weekday())
+        self.week_start = this_monday - timedelta(days=7)
+        self.week_end = self.week_start + timedelta(days=4)
+
+    def _account(self, owner, name, stage='quote'):
+        from reporting.models import Company, Department, FollowUp
+        customer_company = Company.objects.create(name=name + '업체', created_by=owner)
+        department = Department.objects.create(
+            company=customer_company, name=name + '연구실', created_by=owner,
+        )
+        return FollowUp.objects.create(
+            user=owner,
+            user_company=owner.userprofile.company,
+            customer_name=name + '담당자',
+            company=customer_company,
+            department=department,
+            pipeline_stage=stage,
+        )
+
+    def _quote(self, followup, owner, suffix, stage='sent', amount=1000000,
+               converted=False, days_ago=3):
+        from datetime import time, timedelta
+        from reporting.models import Quote, Schedule
+        visit = timezone.localdate() - timedelta(days=days_ago)
+        schedule = Schedule.objects.create(
+            user=owner, company=owner.userprofile.company, followup=followup,
+            visit_date=visit, visit_time=time(10, 0),
+            status='completed', activity_type='quote',
+        )
+        return Quote.objects.create(
+            quote_number='Q-' + suffix, schedule=schedule, followup=followup, user=owner,
+            valid_until=timezone.localdate() + timedelta(days=30),
+            subtotal=amount, total_amount=amount, stage=stage,
+            converted_to_delivery=converted,
+        )
+
+    # ---------------------------------------------------------------- 탭1
+
+    def test_weekly_api_requires_login_json(self):
+        response = self.client.get(self.weekly_url)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_weekly_api_groups_activities_by_account_within_the_week(self):
+        from datetime import timedelta
+        from reporting.models import History
+
+        followup = self._account(self.user, '주간활동')
+        History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='customer_meeting', meeting_date=self.week_start,
+            meeting_situation='신규 장비 예산 확보 중',
+            meeting_obstacles='예산 3월 확정',
+            next_action='견적서 재발행',
+            next_action_date=self.week_end + timedelta(days=3),
+        )
+        History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='memo', meeting_date=self.week_end, content='경쟁사 방문했다고 함',
+        )
+        # 기준 주 밖의 활동 — 잡히면 안 됨
+        History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='memo', meeting_date=self.week_start - timedelta(days=10),
+            content='범위 밖 메모',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.weekly_url, {'week': self.week_start.isoformat()})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['week']['start'], self.week_start.isoformat())
+        self.assertEqual(payload['week']['end'], self.week_end.isoformat())
+        row = next(r for r in payload['rows'] if r['department'].startswith('주간활동'))
+        self.assertEqual(row['activityCount'], 2)
+        bodies = [a['body'] for a in row['activities']]
+        self.assertIn('신규 장비 예산 확보 중', bodies)
+        self.assertNotIn('범위 밖 메모', bodies)
+        # 오늘 상황이 있으면 그것을, 없으면 content를 본문으로 쓴다.
+        self.assertIn('경쟁사 방문했다고 함', bodies)
+        self.assertTrue(row['hasObstacle'])
+        self.assertEqual(row['nextAction'], '견적서 재발행')
+
+    def test_weekly_api_flags_high_value_accounts_with_no_activity(self):
+        """계획의 핵심 — 금액은 큰데 그 주에 손대지 못한 계정이 드러나야 한다."""
+        followup = self._account(self.user, '무활동')
+        # 기준 주(지난 주) 바깥에 견적을 둬야 그 주에 '활동 없음'이 된다.
+        self._quote(followup, self.user, 'IDLE', amount=5000000, days_ago=20)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.weekly_url, {'week': self.week_start.isoformat()})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        names = [u['department'] for u in payload['untouchedAccounts']]
+        self.assertTrue(any(n.startswith('무활동') for n in names))
+        self.assertGreater(payload['metrics']['untouchedAmount'], 0)
+
+    def test_weekly_api_scopes_to_own_accounts_for_salesman(self):
+        from reporting.models import History
+        mine = self._account(self.user, '내계정')
+        theirs = self._account(self.other, '남의계정')
+        for followup, owner in ((mine, self.user), (theirs, self.other)):
+            History.objects.create(
+                user=owner, company=self.company, followup=followup,
+                action_type='memo', meeting_date=self.week_start, content='주간 메모',
+            )
+        self.client.force_login(self.user)
+
+        payload = self.client.get(
+            self.weekly_url, {'week': self.week_start.isoformat()}
+        ).json()
+
+        departments = [r['department'] for r in payload['rows']]
+        self.assertTrue(any(d.startswith('내계정') for d in departments))
+        self.assertFalse(any(d.startswith('남의계정') for d in departments))
+
+    # ---------------------------------------------------------------- 탭2
+
+    def test_quotes_api_requires_login_json(self):
+        response = self.client.get(self.quotes_url)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['error'], 'login_required')
+
+    def test_quotes_api_computes_conversion_rate_per_account(self):
+        followup = self._account(self.user, '전환')
+        # Quote.save()가 subtotal에 부가세를 더해 total_amount를 재계산하므로,
+        # 기대값은 저장된 값에서 가져온다(시트는 원장과 같이 total_amount 기준).
+        won = self._quote(followup, self.user, 'C1', amount=1000000, converted=True)
+        lost = self._quote(followup, self.user, 'C2', amount=3000000, converted=False)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.quotes_url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(r for r in payload['rows'] if r['department'].startswith('전환'))
+        self.assertEqual(row['quoteCount'], 2)
+        self.assertEqual(row['quoteAmount'], int(won.total_amount) + int(lost.total_amount))
+        self.assertEqual(row['convertedCount'], 1)
+        self.assertEqual(row['convertedAmount'], int(won.total_amount))
+        self.assertEqual(row['conversionRate'], 50)
+        self.assertEqual(row['conversionAmountRate'], 25)
+        self.assertEqual(len(row['quotes']), 2)
+
+    def test_quotes_api_excludes_dead_quotes_from_pending(self):
+        """만료·거절된 견적은 아직 살아있는 미결로 세면 안 된다."""
+        followup = self._account(self.user, '만료')
+        self._quote(followup, self.user, 'D1', stage='rejected', amount=1000000)
+        alive = self._quote(followup, self.user, 'D2', stage='sent', amount=2000000)
+        self.client.force_login(self.user)
+
+        payload = self.client.get(self.quotes_url).json()
+
+        row = next(r for r in payload['rows'] if r['department'].startswith('만료'))
+        self.assertEqual(row['quoteCount'], 2)
+        self.assertEqual(row['pendingCount'], 1)
+        self.assertEqual(row['pendingAmount'], int(alive.total_amount))
+        self.assertEqual(row['deadCount'], 1)
+
+    def test_quotes_api_zero_conversion_filter_and_sorting(self):
+        good = self._account(self.user, '잘됨')
+        self._quote(good, self.user, 'G1', amount=1000000, converted=True)
+        bad = self._account(self.user, '안됨')
+        self._quote(bad, self.user, 'B1', amount=9000000, converted=False)
+        self.client.force_login(self.user)
+
+        payload = self.client.get(self.quotes_url, {'filter': 'zero'}).json()
+
+        departments = [r['department'] for r in payload['rows']]
+        self.assertTrue(any(d.startswith('안됨') for d in departments))
+        self.assertFalse(any(d.startswith('잘됨') for d in departments))
+
+        by_amount = self.client.get(self.quotes_url, {'sort': 'quoteAmount'}).json()
+        self.assertTrue(by_amount['rows'][0]['department'].startswith('안됨'))
+
+    def test_quotes_api_omits_accounts_without_quotes(self):
+        self._account(self.user, '견적없음', stage='potential')
+        self.client.force_login(self.user)
+
+        payload = self.client.get(self.quotes_url).json()
+
+        departments = [r['department'] for r in payload['rows']]
+        self.assertFalse(any(d.startswith('견적없음') for d in departments))
+
+    # ------------------------------------------------------------ 엑셀
+
+    def test_export_requires_login(self):
+        response = self.client.get(reverse('reporting:pipeline_sheet_export_api'))
+        self.assertEqual(response.status_code, 401)
+
+    def test_export_writes_one_row_per_activity_and_all_sheets(self):
+        """엑셀은 화면 payload를 그대로 쓴다 — 활동 1건이 한 행."""
+        import io as _io
+        from openpyxl import load_workbook
+        from reporting.models import History
+
+        followup = self._account(self.user, '엑셀')
+        History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='customer_meeting', meeting_date=self.week_start,
+            meeting_situation='데모 요청', meeting_obstacles='예산 미확정',
+        )
+        History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='memo', meeting_date=self.week_end, content='재방문 약속',
+        )
+        self._quote(followup, self.user, 'X1', amount=2000000, converted=True, days_ago=20)
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse('reporting:pipeline_sheet_export_api'),
+            {'week': self.week_start.isoformat()},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('attachment', response['Content-Disposition'])
+        wb = load_workbook(_io.BytesIO(response.content))
+        self.assertEqual(
+            wb.sheetnames, ['주간 활동', '미접촉 계정', '견적 전환', '다운로드 정보'],
+        )
+        weekly_ws = wb['주간 활동']
+        bodies = [row[8] for row in weekly_ws.iter_rows(min_row=2, values_only=True)]
+        self.assertIn('데모 요청', bodies)
+        self.assertIn('재방문 약속', bodies)
+        quotes_ws = wb['견적 전환']
+        departments = [row[1] for row in quotes_ws.iter_rows(min_row=2, values_only=True)]
+        self.assertTrue(any((d or '').startswith('엑셀') for d in departments))

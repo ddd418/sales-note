@@ -31,6 +31,45 @@
 
 ---
 
+## 2026-07-27 신규 메뉴: 파이프라인 시트 (`/pipeline-sheet/`) — 구현
+
+**Background**: 7개 메뉴 가지치기 + 주간보고 제거(Phase 6)를 끝내고 만든 신규 메뉴. 사용자가 밝힌 목적 2가지가 설계를 전부 결정함.
+- **제1목적(계획)**: 이걸 보고 큰 틀을 짜고 다음 목표를 세울 수 있어야 한다.
+- **제2목적(보고)**: 이걸로 전략을 세우고, 있었던 일을 보고할 수 있어야 한다.
+- 결정적 단서: 사용자의 보고는 **"이번 주 얼마·몇 건" 집계 발표가 아니라 "저번주에 누구를 방문해서 이러이러했습니다"** 서술. → 집계 요약 블록을 설계에서 빼고, **활동 1건이 한 줄**인 서술 중심 그리드로 잡음. 위에서 아래로 읽으면 그게 곧 보고.
+
+**구조**: 메뉴 1개 + 탭 2개, 엑셀은 워크북 1개.
+- **탭1 주간 활동(보고용)**: 계정(부서/연구실) 단위로 그 주의 활동을 묶고, 계정 헤더 아래 활동을 날짜순으로 편다. 컬럼 `날짜|활동|상황·내용|장애물|다음 액션|금액`. 기본 기간 = **저번 주**.
+- **탭1 상단 ⚠미접촉 계정**: 금액은 큰데(>0, 진행 단계) 그 주에 손대지 못한 계정 top 12. **제1목적(계획)의 산출물** — 다음 주에 뭘 할지가 여기서 나온다.
+- **탭2 견적 전환(전략용, 누적)**: 계정별 `견적건수|견적금액|전환건수|전환금액|전환율(건/금액)|미결|종료|최근견적|경과일`. 행을 펼치면 견적 1건씩. 필터 `전체/미결 있음/전환 0%/만료·거절 있음`, 정렬 6종.
+
+**숫자 일치를 강제한 방식** (이 기능의 핵심 설계 제약):
+- 계정 그룹핑·단계 판정·금액 산출을 파이프라인 화면과 **같은 헬퍼**로 처리. 그 프리페치 큐리셋을 `funnel_views.pipeline_followups_queryset()`으로 추출해 두 화면이 공유 — 한쪽만 바뀌어 금액/단계가 갈라지는 사고를 구조적으로 막음.
+- 엑셀은 화면이 쓰는 `_weekly_payload()`/`_quotes_payload()`를 **그대로 호출**. 별도 쿼리를 짜지 않으므로 화면과 엑셀이 어긋날 수 없음.
+- 견적 전환은 `account_operational_ledgers_for_followups`(Quote + 견적 Schedule 양쪽의 `converted_to_delivery`를 이미 채워주는 기존 원장)를 재사용 — 근사치가 아닌 실제 전환 추적.
+
+**기간 규칙(주간보고에서 승계)**: 한 주는 **월~금 5영업일**, 주 식별자는 오직 그 주의 월요일 날짜. ISO 주차 개념 없음. 활동 창은 History가 `meeting_date` 또는 `created_at__date`, Schedule은 `visit_date`(취소 제외).
+
+**미사용 필드 반영**: `meeting_researcher_quote`/`meeting_confirmed_facts`는 팀이 안 쓴다고 확인 → 펼침 2단계를 없애고, 내용 열은 `meeting_situation` 있으면 그것, 없으면 `content`로 자동 적응.
+
+**만료 견적 처리**: `rejected/expired/cancelled`는 이미 끝난 건이라 "미결"로 세지 않고 `종료` 열로 분리. 그냥 미전환으로 묶으면 미결금액이 부풀어 전략 판단이 틀어짐.
+
+**Scope**:
+- 신규 `reporting/api/pipeline_sheet.py` — 주간/견적/엑셀 3개 뷰 + 헬퍼. 읽기 전용.
+- `reporting/funnel_views.py` — `pipeline_followups_queryset()` 추출(파이프라인 화면과 공유), `pipeline_command_center_api` 단순화.
+- `reporting/urls.py` — API 3개. `reporting/views.py` `navigation_api` — nav 항목 1개.
+- `sales_project/urls.py` catch-all에 `pipeline-sheet` 추가.
+- 신규 `frontend/src/api/pipelineSheet.ts`, `frontend/src/pages/pipelineSheet/PipelineSheetPage.tsx`(lazy), `lazyPages.ts`, `CrmShell.tsx`(MainView/prefix/nav/icon/meta 5곳), `App.tsx`(import/routeMeta/뷰 판정/렌더 분기), `styles.css` `.pipeline-sheet-*`(sticky 헤더 + 계정 헤더 sticky + 견적표 첫 열 고정).
+- `scripts/post_deploy_smoke.py` — React 라우트 `/pipeline-sheet/`, 보호 API `/reporting/api/pipeline-sheet/weekly/` 추가.
+
+**엑셀 시트 구성**: `주간 활동`(활동 1건 = 1행) / `미접촉 계정` / `견적 전환` / `다운로드 정보`. 사용자에게 "시트 2장"이라 말했으나 미접촉 계정을 메타 시트에 묻어두면 제1목적이 죽어서 **3장 + 정보 시트**로 늘림.
+
+**권한**: 기존 리포트 익스포트와 달리 매니저/관리자 게이트를 두지 않고 `_dashboard_scope_users`로 자기 범위만 스코프 — 영업사원이 자기 주간분을 직접 내려받아야 하는 도구이므로.
+
+**DB change required**: No (읽기 전용, 신규 모델 없음, `makemigrations --check` → No changes detected).
+
+---
+
 ## 2026-07-27 Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
 
 **Background**: 사용자가 새 메뉴 "파이프라인 시트"를 만들기로 확정. 그 시트의 탭1(주간 활동)이 기존 주간보고를 그대로 대체하므로, 죽은 코드 옆에서 유사한 새 코드를 짜는 혼선을 피하려고 **먼저 주간보고를 완전 제거**하고 시작. 원래 7개 가지치기 목록에는 없던 8번째 제거.
