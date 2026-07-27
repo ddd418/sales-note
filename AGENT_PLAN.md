@@ -1,5 +1,35 @@
 # AGENT_PLAN.md
 
+## 2026-07-27 메뉴 가지치기 (7개 기능 완전 제거) — 전체 계획
+
+**Background**: 사용자가 대시보드형 UI 대신 "엑셀 파이프라인 한 장 시트" 스타일 신규 메뉴를 만들기로 함. 그 전에 사이드바 20개 메뉴 중 7개(현황/장비/서비스/업무/메일/명함/AI)를 프론트+백엔드 모두 완전히 제거하기로 확정(라우트/뷰/URL/네비/화면 전부 삭제). **DB 테이블은 끝까지 안 건드림** — `reporting` 앱 내 모델(AIWorkspace*/CustomerAsset·ServiceCase·CalibrationRecord/EmailLog·BusinessCard 등)은 클래스 정의만 남기고(고아 상태, 마이그레이션 드랍 없음) 뷰/URL/화면만 제거. 완전히 독립된 `todos` 앱은 통째로 삭제(마이그레이션 관리 대상에서 빠질 뿐 테이블은 안 지워짐).
+
+5개 조사 에이전트(Explore, 병렬)로 file:line 단위 정밀 인벤토리를 먼저 수행. 핵심 발견:
+- `ai_chat` Django 앱은 "AI" 메뉴와 무관한 별개 기능(레거시 페인포인트 분석)이며 파이프라인 카드 추천·일정 AI코치가 이 라이브러리를 계속 사용 — **절대 건드리지 않음**.
+- `schedule_ai_coach_api`, `weekly_report_ai_draft`는 "AI" 메뉴와 무관한 별도 AI-보조 기능 — 보존.
+- 파이프라인 카드의 `aiDepartment` 필드는 프론트 어디에도 렌더되지 않는 죽은 데이터 — 제거해도 UI 영향 없음.
+- 장비/서비스는 독립 메뉴 외에 고객상세 페이지 임베디드 CRUD 패널도 있음 — 사용자 확인 후 같이 제거.
+- 메일 제거 시 일정상세 "메일 발송" 버튼 + 프로필 Gmail/IMAP 연동 설정도 동일 엔진이라 분리 불가 — 사용자 확인 후 같이 제거.
+- `EmailLog`는 AI워크스페이스 액션큐/일정 상거래체크/레거시 템플릿에도 쓰이지만, AI워크스페이스 제거로 그중 상당수가 자동으로 정리됨.
+
+**실행 순서** (뒤 단계가 앞 단계 제거로 단순해지도록): **업무 → AI → 현황 → 장비/서비스 → 메일/명함**. 각 Phase마다: 코드 수정 → `py_compile`/`manage.py check`/`makemigrations --check --dry-run`(반드시 "No changes detected") → 관련 Django 테스트 → 전체 회귀 스윕 1회 → `npm run build`(tsc가 끊긴 참조 검출) → 커밋 → 배포 → smoke → 문서 기록.
+
+**DB change required**: No (모델 클래스는 보존, 마이그레이션 드랍 없음. `todos` 앱만 코드 전체 삭제하되 이것도 DB에 `DROP TABLE`을 실행하지 않음 — INSTALLED_APPS에서 빠지면 Django가 그 테이블을 더는 관리하지 않을 뿐).
+
+---
+
+## 2026-07-27 Phase 1: 업무(Tasks) 완전 제거
+
+**Scope**: `todos/` Django 앱 전체 삭제(models/views/urls/admin/migrations/templates/tests). 프론트 `App.tsx`의 TasksPage/PersonalTasksPage/TaskManagerPage/TaskDetailPage/TaskCard/TaskComposer 등 전체 컴포넌트 트리, `CrmShell.tsx` 나비/타입, `api/legacy.ts`·`api/dashboard.ts`의 Task 타입/함수/기본값, `server.mjs`의 `/todos/*` 레거시 리다이렉트 삭제. `reporting/views.py`의 `navigation_api`(nav 항목 2개 + `canManageTasks` capability), `_download_registry`의 tasks.attachment 항목, `reporting/urls.py`의 tasks_* URL 15개, `readonly_api.py`의 allowlist 5개 제거. `reporting/templates/reporting/base.html`의 죽은 `{% url 'todos:...' %}` 링크(NoReverseMatch 위험) 제거. `sales_project/settings*.py` INSTALLED_APPS, `sales_project/urls.py` include+catch-all regex 정리.
+
+**검증**:
+- `py_compile`/`check`/`makemigrations --dry-run` 전부 통과("No changes detected").
+- `npm run build`(tsc --noEmit + vite) 통과, App 번들 568.81kB → 543.28kB로 축소(실제 코드 제거 확인).
+- 전체 Django 테스트 670개 실행 — 실패 3건 전부 **git stash로 원본 코드 대조 검증하여 Tasks와 무관한 기존 결함임을 확인**(`customer_delivery_records_xlsx_export_api`의 익명유저 AttributeError, `SESSION_SAVE_EVERY_REQUEST` 기본값, `test_schedule_form_includes_vat_mode`) — 회귀 아님.
+
+**Deploy**: (배포 후 기록)
+
+
 ## 2026-07-13 Frontend PWA (설치형 앱 셸) plan
 
 **Background**:

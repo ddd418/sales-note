@@ -588,14 +588,11 @@ class ReactNavigationApiTests(TestCase):
         salesman_ids = {item['id'] for item in salesman_payload['items']}
         self.assertNotIn('dataCleanup', salesman_ids)
         self.assertNotIn('downloads', salesman_ids)
-        self.assertIn('tasks', salesman_ids)
         self.assertIn('demos', salesman_ids)
         self.assertIn('receivables', salesman_ids)
         self.assertIn('mail', salesman_ids)
-        self.assertNotIn('tasksManager', salesman_ids)
         self.assertNotIn('employees', salesman_ids)
         self.assertNotIn('userAdmin', salesman_ids)
-        self.assertFalse(salesman_payload['capabilities']['canManageTasks'])
         self.assertFalse(salesman_payload['capabilities']['canManageUsers'])
 
         self.client.force_login(manager)
@@ -603,14 +600,11 @@ class ReactNavigationApiTests(TestCase):
         manager_ids = {item['id'] for item in manager_payload['items']}
         self.assertNotIn('dataCleanup', manager_ids)
         self.assertNotIn('downloads', manager_ids)
-        self.assertIn('tasks', manager_ids)
-        self.assertIn('tasksManager', manager_ids)
         self.assertIn('demos', manager_ids)
         self.assertIn('receivables', manager_ids)
         self.assertIn('employees', manager_ids)
         self.assertNotIn('mail', manager_ids)
         self.assertNotIn('userAdmin', manager_ids)
-        self.assertTrue(manager_payload['capabilities']['canManageTasks'])
         self.assertTrue(manager_payload['capabilities']['canManageEmployees'])
         self.assertFalse(manager_payload['capabilities']['canUseMailbox'])
 
@@ -619,12 +613,10 @@ class ReactNavigationApiTests(TestCase):
         admin_ids = {item['id'] for item in admin_payload['items']}
         self.assertNotIn('dataCleanup', admin_ids)
         self.assertNotIn('downloads', admin_ids)
-        self.assertIn('tasks', admin_ids)
         self.assertIn('mail', admin_ids)
         self.assertIn('demos', admin_ids)
         self.assertIn('receivables', admin_ids)
         self.assertIn('userAdmin', admin_ids)
-        self.assertNotIn('tasksManager', admin_ids)
         self.assertNotIn('employees', admin_ids)
         self.assertTrue(admin_payload['capabilities']['canManageEmployees'])
         self.assertTrue(admin_payload['capabilities']['canManageUsers'])
@@ -1258,7 +1250,6 @@ class SalesNoteReadonlyBearerApiTests(TestCase):
             reverse('reporting:products_management_api'),
             reverse('reporting:document_templates_api'),
             reverse('reporting:weekly_reports_api'),
-            reverse('reporting:tasks_api'),
             reverse('reporting:business_card_api_list'),
             reverse('reporting:mailbox_api_list'),
         ]

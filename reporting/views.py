@@ -2399,21 +2399,6 @@ def _download_registry():
             timeout_seconds=timeout_seconds,
         ),
         _download_registry_item(
-            item_id='tasks.attachment',
-            group='attachments',
-            group_label='첨부파일',
-            label='업무 첨부파일 다운로드',
-            description='업무 상세의 첨부파일을 protected Django API로 내려받습니다.',
-            url_name='reporting:tasks_attachment_download_api',
-            href_template='/reporting/api/tasks/attachments/{attachment_id}/download/',
-            file_type='original',
-            filename_pattern='{filename}',
-            scope_label='업무 참여자 또는 같은 회사 관리자 조회 범위',
-            react_entry='/tasks/{task_id}/',
-            streaming=True,
-            timeout_seconds=timeout_seconds,
-        ),
-        _download_registry_item(
             item_id='reports.activityCsv',
             group='reports',
             group_label='분석/리포트',
@@ -2718,10 +2703,8 @@ def navigation_api(request):
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
         {'id': 'notes', 'label': '영업노트', 'href': '/notes/'},
         {'id': 'schedules', 'label': '일정', 'href': '/schedules/calendar/'},
-        {'id': 'tasks', 'label': '업무', 'href': '/tasks/'},
     ]
     if profile.role == 'manager':
-        items.append({'id': 'tasksManager', 'label': '업무하달', 'href': '/tasks/manager/'})
         items.append({'id': 'employees', 'label': '직원관리', 'href': '/employees/'})
     if profile.role == 'admin':
         items.append({'id': 'userAdmin', 'label': '사용자관리', 'href': '/employees/'})
@@ -2753,7 +2736,6 @@ def navigation_api(request):
             'canUseAi': bool(profile.can_use_ai),
         },
         'capabilities': {
-            'canManageTasks': profile.role == 'manager',
             'canManageEmployees': profile.role in ['admin', 'manager'],
             'canManageUsers': profile.role == 'admin',
             'canManageCompanies': profile.role != 'manager',

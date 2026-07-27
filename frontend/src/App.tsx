@@ -112,13 +112,6 @@ import {
   ProfileImapPayload,
   ProfilePasswordPayload,
   ProfileUpdatePayload,
-  TaskDetailData,
-  TaskFormPayload,
-  TaskItem,
-  TaskManagerAssignPayload,
-  TaskManagerData,
-  TaskRequestPayload,
-  TasksData,
   WeeklyReportCreateData,
   WeeklyReportDetailData,
   WeeklyReportFormPayload,
@@ -128,22 +121,17 @@ import {
   PersonalScheduleDetailData,
   PersonalSchedulePayload,
   addNoteReply,
-  assignManagerTask,
   bulkDeleteProducts,
   bulkUpsertProducts,
   changeProfilePassword,
   connectProfileImap,
-  commentTask,
   createDemoRecord,
   createEmployee,
   createNote as createSalesNote,
-  createTask,
   ScheduleCreatePayload,
   createDocumentTemplate,
   deleteNote as deleteSalesNote,
   createPersonalSchedule,
-  changeManagerTaskStatus,
-  changeTaskStatus,
   importProductsExcel,
   createSchedule as createCustomerSchedule,
   deleteNoteFile,
@@ -155,7 +143,6 @@ import {
   deleteBusinessCard,
   deleteDemoRecord,
   disconnectProfileEmail,
-  deleteTask,
   deleteWeeklyReport,
   downloadScheduleDocument,
   loadDashboardData,
@@ -176,10 +163,7 @@ import {
   loadScheduleDocumentPreview,
   loadScheduleDetailData,
   loadFollowupQuoteItems,
-  loadTaskDetailData,
   loadSchedulesData,
-  loadTaskManagerData,
-  loadTasksData,
   loadWeeklyReportCreateData,
   loadWeeklyReportDetailData,
   loadWeeklyReportsData,
@@ -204,7 +188,6 @@ import {
   uploadScheduleFiles,
   replyMailboxEmail,
   replaceProductReference,
-  requestTask,
   saveProduct,
   saveBusinessCard,
   saveWeeklyReport,
@@ -214,8 +197,6 @@ import {
   updateDocumentTemplate,
   updateDemoRecord,
   updateProfile,
-  updateTask,
-  uploadTaskAttachments,
 } from './api';
 import type {
   AccountContactPayload,
@@ -393,16 +374,6 @@ type PersonalScheduleFormState = {
   scheduleDate: string;
   scheduleTime: string;
 };
-
-type TaskFormState = {
-  title: string;
-  description: string;
-  dueDate: string;
-  expectedDuration: string;
-  assignedToId: string;
-};
-
-type TaskTab = 'my' | 'received' | 'requested';
 
 type EmployeeFormState = {
   username: string;
@@ -810,14 +781,6 @@ const makeEmptyWeeklyReportForm = (): WeeklyReportFormPayload => ({
   activityNotes: '',
   quoteDeliveryNotes: '',
   otherNotes: '',
-});
-
-const makeEmptyTaskForm = (): TaskFormState => ({
-  title: '',
-  description: '',
-  dueDate: '',
-  expectedDuration: '',
-  assignedToId: '',
 });
 
 const makeEmptyEmployeeForm = (data?: EmployeesData | null): EmployeeFormState => ({
@@ -2041,18 +2004,6 @@ const routeMeta: Record<
       { label: '이번 주 보고', href: '/weekly-reports/' },
     ],
   },
-  tasks: {
-    eyebrow: 'Sales CRM / Tasks',
-    title: '업무',
-    summary: '내 할 일, 받은 업무, 맡긴 업무와 매니저 하달 업무를 React CRM에서 처리합니다.',
-    primaryHref: '/tasks/',
-    primaryLabel: '업무 보기',
-    actions: [
-      { label: '업무 보기', href: '/tasks/', primary: true },
-      { label: '업무하달', href: '/tasks/manager/' },
-      { label: '고객 목록', href: '/customers/' },
-    ],
-  },
   employees: {
     eyebrow: 'Sales CRM / Employees',
     title: '사용자/직원관리',
@@ -2061,7 +2012,6 @@ const routeMeta: Record<
     primaryLabel: '사용자/직원관리 열기',
     actions: [
       { label: '사용자/직원관리', href: '/employees/', primary: true },
-      { label: '업무하달', href: '/tasks/manager/' },
     ],
   },
   mail: {
@@ -2201,7 +2151,6 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/demos/')) return 'demos';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
-  if (pathname.startsWith('/tasks/')) return 'tasks';
   if (pathname.startsWith('/employees/')) return 'employees';
   if (pathname.startsWith('/mailbox/business-cards/')) return 'businessCards';
   if (pathname.startsWith('/mailbox/')) return 'mail';
@@ -2215,19 +2164,6 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/ai-workspace/')) return 'ai';
   if (pathname.startsWith('/pipeline/')) return 'pipeline';
   return 'pipeline';
-}
-
-function isTaskManagerRoute(): boolean {
-  return /^\/tasks\/manager\/?$/.test(window.location.pathname);
-}
-
-function getTaskDetailId(): number | null {
-  const match = window.location.pathname.match(/^\/tasks\/(\d+)\/?$/);
-  if (!match) {
-    return null;
-  }
-  const id = Number(match[1]);
-  return Number.isFinite(id) && id > 0 ? id : null;
 }
 
 function getCustomerDetailId(): number | null {
@@ -2916,7 +2852,7 @@ function WorkspaceRoutePage({
 }
 
 const legacyFallbackViews: MainView[] = ['analytics', 'businessCards'];
-const pipelineDataViews: MainView[] = ['pipeline', 'tasks', 'weeklyReports', 'documents', 'products'];
+const pipelineDataViews: MainView[] = ['pipeline', 'weeklyReports', 'documents', 'products'];
 
 function routeUsesPipelineData(view: MainView): boolean {
   return pipelineDataViews.includes(view);
@@ -16381,152 +16317,6 @@ function MailboxThreadPage({
   );
 }
 
-function taskFormPayload(form: TaskFormState): TaskFormPayload {
-  return {
-    title: form.title.trim(),
-    description: form.description.trim() || undefined,
-    dueDate: form.dueDate || undefined,
-    expectedDuration: form.expectedDuration || undefined,
-  };
-}
-
-function makeTaskEditForm(task: TaskItem | null): TaskFormState {
-  return {
-    title: task?.title || '',
-    description: task?.description || '',
-    dueDate: task?.dueDate || '',
-    expectedDuration: task?.expectedDuration ? String(task.expectedDuration) : '',
-    assignedToId: '',
-  };
-}
-
-function taskStatusClass(status: string) {
-  if (status === 'done') return 'done';
-  if (status === 'pending') return 'pending';
-  if (status === 'rejected') return 'danger';
-  if (status === 'on_hold') return 'hold';
-  return 'active';
-}
-
-function tasksUserLabel(user: TaskItem['createdBy']) {
-  return user?.name || user?.username || '';
-}
-
-function TaskCard({
-  actioningId,
-  onStatus,
-  task,
-}: {
-  actioningId: number | null;
-  onStatus: (task: TaskItem, payload: { action?: string; status?: string; reason?: string }) => void;
-  task: TaskItem;
-}) {
-  const busy = actioningId === task.id;
-  const detailHref = task.detailHref || `/tasks/${task.id}/`;
-  return (
-    <article className={`task-card ${task.isOverdue ? 'overdue' : ''}`}>
-      <div className="task-card-main">
-        <div className="task-card-heading">
-          <span className={`task-status ${taskStatusClass(task.status)}`}>{task.statusLabel}</span>
-          <span className="task-source">{task.sourceLabel}</span>
-          {task.isOverdue ? <span className="task-overdue">지연</span> : null}
-        </div>
-        <h3><a href={detailHref}>{task.title}</a></h3>
-        {task.description ? <p>{task.description}</p> : null}
-        <div className="task-meta-row">
-          {task.dueDate ? <span>마감 {formatDateLabel(task.dueDate)}</span> : <span>마감 없음</span>}
-          {task.expectedDurationLabel ? <span>{task.expectedDurationLabel}</span> : null}
-          {task.attachmentCount ? <span>첨부 {task.attachmentCount}</span> : null}
-          {task.logCount ? <span>기록 {task.logCount}</span> : null}
-          {task.relatedClient ? <a href={task.relatedClient.href}>{[task.relatedClient.company, task.relatedClient.department, task.relatedClient.customer].filter(Boolean).join(' · ')}</a> : null}
-        </div>
-        <div className="task-people-row">
-          {task.createdBy ? <span>생성 {tasksUserLabel(task.createdBy)}</span> : null}
-          {task.assignedTo ? <span>담당 {tasksUserLabel(task.assignedTo)}</span> : null}
-          {task.requestedBy ? <span>요청 {tasksUserLabel(task.requestedBy)}</span> : null}
-        </div>
-      </div>
-      <div className="task-actions">
-        {task.canApprove ? <button type="button" disabled={busy} onClick={() => onStatus(task, { action: 'approve' })}>승인</button> : null}
-        {task.canReject ? <button type="button" disabled={busy} onClick={() => {
-          const reason = window.prompt('반려 사유를 입력하세요.', '');
-          if (reason !== null) onStatus(task, { action: 'reject', reason });
-        }}>반려</button> : null}
-        {task.canSetOngoing ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'ongoing' })}>진행</button> : null}
-        {task.canSetOnHold ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'on_hold' })}>보류</button> : null}
-        {task.canComplete ? <button type="button" disabled={busy} onClick={() => onStatus(task, { status: 'done' })}>완료</button> : null}
-        <a href={detailHref}>상세</a>
-      </div>
-    </article>
-  );
-}
-
-function TaskComposer({
-  assignees,
-  durations,
-  form,
-  mode,
-  saving,
-  onFormChange,
-  onModeChange,
-  onSubmit,
-}: {
-  assignees: TasksData['options']['assignees'];
-  durations: TasksData['options']['durations'];
-  form: TaskFormState;
-  mode: 'self' | 'request';
-  saving: boolean;
-  onFormChange: (field: keyof TaskFormState, value: string) => void;
-  onModeChange: (mode: 'self' | 'request') => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <form className="task-composer" onSubmit={onSubmit}>
-      <div className="task-composer-mode">
-        <button className={mode === 'self' ? 'active' : ''} type="button" onClick={() => onModeChange('self')}>내 업무</button>
-        <button className={mode === 'request' ? 'active' : ''} type="button" onClick={() => onModeChange('request')}>동료 요청</button>
-      </div>
-      <label>
-        <span>제목</span>
-        <input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} placeholder="처리할 업무" />
-      </label>
-      <label>
-        <span>상세</span>
-        <textarea value={form.description} onChange={(event) => onFormChange('description', event.target.value)} rows={4} />
-      </label>
-      <div className="form-grid two-columns">
-        <label>
-          <span>마감일</span>
-          <input type="date" value={form.dueDate} onChange={(event) => onFormChange('dueDate', event.target.value)} />
-        </label>
-        <label>
-          <span>예상 소요</span>
-          <select value={form.expectedDuration} onChange={(event) => onFormChange('expectedDuration', event.target.value)}>
-            <option value="">선택 안 함</option>
-            {durations.map((duration) => (
-              <option key={duration.value} value={duration.value}>{duration.label}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {mode === 'request' ? (
-        <label>
-          <span>담당자</span>
-          <select value={form.assignedToId} onChange={(event) => onFormChange('assignedToId', event.target.value)}>
-            <option value="">선택</option>
-            {assignees.map((assignee) => (
-              <option key={assignee.id} value={assignee.id}>{assignee.name}</option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      <button className="primary-button" type="submit" disabled={saving}>
-        {saving ? '저장 중' : mode === 'self' ? '업무 생성' : '업무 요청'}
-      </button>
-    </form>
-  );
-}
-
 function EmployeesPage({
   data,
   loading,
@@ -16953,743 +16743,6 @@ function EmployeesPage({
         )}
       </section>
     </section>
-  );
-}
-
-function TasksPage({ managerRoute, routeData }: { managerRoute: boolean; routeData: PipelineData }) {
-  return managerRoute ? <TaskManagerPage routeData={routeData} /> : <PersonalTasksPage routeData={routeData} />;
-}
-
-function PersonalTasksPage({ routeData }: { routeData: PipelineData }) {
-  const [data, setData] = useState<TasksData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState('active');
-  const [tab, setTab] = useState<TaskTab>(() => {
-    const value = new URLSearchParams(window.location.search).get('tab');
-    return value === 'received' || value === 'requested' ? value : 'my';
-  });
-  const [mode, setMode] = useState<'self' | 'request'>(() => (
-    new URLSearchParams(window.location.search).get('mode') === 'request' ? 'request' : 'self'
-  ));
-  const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
-  const [saving, setSaving] = useState(false);
-  const [actioningId, setActioningId] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-
-  const refresh = async () => {
-    setLoading(true);
-    const result = await loadTasksData({ status });
-    setData(result);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    refresh();
-  }, [status]);
-
-  const handleFormChange = (field: keyof TaskFormState, value: string) => {
-    setForm((previous) => ({ ...previous, [field]: value }));
-    setError('');
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!data || saving) return;
-    if (!form.title.trim()) {
-      setError('제목을 입력하세요.');
-      return;
-    }
-    if (mode === 'request' && !form.assignedToId) {
-      setError('담당자를 선택하세요.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    setMessage('');
-    try {
-      if (mode === 'request') {
-        await requestTask(data.links.requestApi, { ...taskFormPayload(form), assignedToId: form.assignedToId });
-      } else {
-        await createTask(data.links.createApi, taskFormPayload(form));
-      }
-      setForm(makeEmptyTaskForm());
-      setMessage(mode === 'request' ? '업무를 요청했습니다.' : '업무를 생성했습니다.');
-      await refresh();
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '업무 저장에 실패했습니다.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleStatus = async (task: TaskItem, payload: { action?: string; status?: string; reason?: string }) => {
-    setActioningId(task.id);
-    setError('');
-    setMessage('');
-    try {
-      await changeTaskStatus(task.statusHref, payload);
-      setMessage('업무 상태를 변경했습니다.');
-      await refresh();
-    } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : '상태 변경에 실패했습니다.');
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const source = data ?? undefined;
-  const tasks = source?.tasks[tab] ?? [];
-  const routeActions = source?.scope.canManage
-    ? routeMeta.tasks.actions
-    : routeMeta.tasks.actions.filter((action) => action.href !== '/tasks/manager/');
-  return (
-    <div className="tasks-page">
-      <WorkspaceRoutePage actions={routeActions} data={routeData} view="tasks" />
-      <section className="dashboard-metric-grid task-metrics">
-        <DashboardMetricCard label="내 업무" value={`${formatNumber(source?.metrics.myActive ?? 0)}건`} detail="진행/대기" icon={CheckCircle2} tone="blue" />
-        <DashboardMetricCard label="받은 업무" value={`${formatNumber(source?.metrics.receivedActive ?? 0)}건`} detail="승인/처리 필요" icon={Inbox} tone="amber" />
-        <DashboardMetricCard label="맡긴 업무" value={`${formatNumber(source?.metrics.requestedActive ?? 0)}건`} detail="동료 요청" icon={Send} tone="teal" />
-        <DashboardMetricCard label="지연" value={`${formatNumber(source?.metrics.overdue ?? 0)}건`} detail="마감일 초과" icon={AlertTriangle} tone="red" />
-      </section>
-      <section className="tasks-layout">
-        <div className="table-card task-list-panel">
-          <div className="section-heading-row">
-            <div>
-              <p className="eyebrow">Tasks</p>
-              <h2>업무 목록</h2>
-            </div>
-            <div className="route-actions">
-              {source?.scope.canManage ? <a className="route-secondary-action" href="/tasks/manager/">업무하달</a> : null}
-            </div>
-          </div>
-          <div className="task-toolbar">
-            <div className="segmented-control" role="tablist">
-              <button className={tab === 'my' ? 'active' : ''} type="button" onClick={() => setTab('my')}>내 할 일</button>
-              <button className={tab === 'received' ? 'active' : ''} type="button" onClick={() => setTab('received')}>받은 일</button>
-              <button className={tab === 'requested' ? 'active' : ''} type="button" onClick={() => setTab('requested')}>맡긴 일</button>
-            </div>
-            <select value={status} onChange={(event) => setStatus(event.target.value)}>
-              {(source?.options.statusFilters ?? []).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-          {loading ? (
-            <div className="empty-state">업무를 불러오는 중입니다.</div>
-          ) : source?.error ? (
-            <div className="empty-state error">{source.error}</div>
-          ) : tasks.length ? (
-            <div className="task-card-list">
-              {tasks.map((task) => (
-                <TaskCard actioningId={actioningId} key={task.id} task={task} onStatus={handleStatus} />
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">조건에 맞는 업무가 없습니다.</div>
-          )}
-        </div>
-        <aside className="task-side-panel">
-          <div className="side-card">
-            <h3>업무 등록</h3>
-            <TaskComposer
-              assignees={source?.options.assignees ?? []}
-              durations={source?.options.durations ?? []}
-              form={form}
-              mode={mode}
-              saving={saving}
-              onFormChange={handleFormChange}
-              onModeChange={setMode}
-              onSubmit={handleSubmit}
-            />
-            {error ? <p className="form-error">{error}</p> : null}
-            {message ? <p className="form-success">{message}</p> : null}
-          </div>
-        </aside>
-      </section>
-    </div>
-  );
-}
-
-function TaskManagerPage({ routeData }: { routeData: PipelineData }) {
-  const [data, setData] = useState<TaskManagerData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState('active');
-  const [assignee, setAssignee] = useState('');
-  const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [actioningId, setActioningId] = useState<number | null>(null);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-
-  const refresh = async () => {
-    setLoading(true);
-    const result = await loadTaskManagerData({ status, assignee });
-    setData(result);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    refresh();
-  }, [status, assignee]);
-
-  const handleAssign = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!data || saving) return;
-    if (!form.title.trim()) {
-      setError('업무 제목을 입력하세요.');
-      return;
-    }
-    if (!selectedIds.length) {
-      setError('담당자를 선택하세요.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    setMessage('');
-    try {
-      await assignManagerTask(data.links.assignApi, { ...taskFormPayload(form), assignedToIds: selectedIds });
-      setForm(makeEmptyTaskForm());
-      setSelectedIds([]);
-      setMessage('업무를 하달했습니다.');
-      await refresh();
-    } catch (assignError) {
-      setError(assignError instanceof Error ? assignError.message : '업무 하달에 실패했습니다.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleManagerStatus = async (task: TaskItem, payload: { action?: string; status?: string }) => {
-    if (!payload.status) return;
-    setActioningId(task.id);
-    setError('');
-    setMessage('');
-    try {
-      await changeManagerTaskStatus(`/reporting/api/tasks/manager/${task.id}/status/`, { status: payload.status });
-      setMessage('업무 상태를 변경했습니다.');
-      await refresh();
-    } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : '상태 변경에 실패했습니다.');
-    } finally {
-      setActioningId(null);
-    }
-  };
-
-  const source = data ?? undefined;
-  return (
-    <div className="tasks-page">
-      <WorkspaceRoutePage actions={routeMeta.tasks.actions} data={routeData} view="tasks" />
-      <section className="dashboard-metric-grid task-metrics">
-        <DashboardMetricCard label="하달 업무" value={`${formatNumber(source?.metrics.total ?? 0)}건`} detail={source?.scope.label || '팀'} icon={Users} tone="blue" />
-        <DashboardMetricCard label="진행/대기" value={`${formatNumber(source?.metrics.active ?? 0)}건`} detail="처리 중" icon={Clock} tone="amber" />
-        <DashboardMetricCard label="완료" value={`${formatNumber(source?.metrics.done ?? 0)}건`} detail="완료 처리" icon={CheckCircle2} tone="green" />
-        <DashboardMetricCard label="지연" value={`${formatNumber(source?.metrics.overdue ?? 0)}건`} detail="마감일 초과" icon={AlertTriangle} tone="red" />
-      </section>
-      <section className="tasks-layout">
-        <div className="table-card task-list-panel">
-          <div className="section-heading-row">
-            <div>
-              <p className="eyebrow">Manager Tasks</p>
-              <h2>업무 하달 현황</h2>
-            </div>
-            <div className="route-actions">
-              <a className="route-secondary-action" href="/tasks/">개인 업무</a>
-            </div>
-          </div>
-          <div className="task-toolbar">
-            <select value={status} onChange={(event) => setStatus(event.target.value)}>
-              {(source?.options.statusFilters ?? []).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
-              <option value="">담당자 전체</option>
-              {(source?.options.teamMembers ?? []).map((member) => (
-                <option key={member.id} value={member.id}>{member.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="task-team-summary">
-            {(source?.teamSummary ?? []).map((summary) => (
-              <div key={summary.user.id}>
-                <strong>{summary.user.name}</strong>
-                <span>진행 {summary.active} · 완료 {summary.done} · 지연 {summary.overdue}</span>
-              </div>
-            ))}
-          </div>
-          {loading ? (
-            <div className="empty-state">업무 하달 현황을 불러오는 중입니다.</div>
-          ) : source?.error ? (
-            <div className="empty-state error">{source.error}</div>
-          ) : source?.tasks.length ? (
-            <div className="task-card-list">
-              {source.tasks.map((task) => (
-                <TaskCard actioningId={actioningId} key={task.id} task={task} onStatus={handleManagerStatus} />
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">조건에 맞는 하달 업무가 없습니다.</div>
-          )}
-        </div>
-        <aside className="task-side-panel">
-          <form className="side-card task-composer" onSubmit={handleAssign}>
-            <h3>업무 하달</h3>
-            <label>
-              <span>제목</span>
-              <input value={form.title} onChange={(event) => setForm((previous) => ({ ...previous, title: event.target.value }))} />
-            </label>
-            <label>
-              <span>상세</span>
-              <textarea rows={4} value={form.description} onChange={(event) => setForm((previous) => ({ ...previous, description: event.target.value }))} />
-            </label>
-            <div className="form-grid two-columns">
-              <label>
-                <span>마감일</span>
-                <input type="date" value={form.dueDate} onChange={(event) => setForm((previous) => ({ ...previous, dueDate: event.target.value }))} />
-              </label>
-              <label>
-                <span>예상 소요</span>
-                <select value={form.expectedDuration} onChange={(event) => setForm((previous) => ({ ...previous, expectedDuration: event.target.value }))}>
-                  <option value="">선택 안 함</option>
-                  {(source?.options.durations ?? []).map((duration) => (
-                    <option key={duration.value} value={duration.value}>{duration.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="task-assignee-list">
-              {(source?.options.teamMembers ?? []).map((member) => (
-                <label key={member.id}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(String(member.id))}
-                    onChange={(event) => setSelectedIds((previous) => (
-                      event.target.checked
-                        ? [...previous, String(member.id)]
-                        : previous.filter((id) => id !== String(member.id))
-                    ))}
-                  />
-                  <span>{member.name}</span>
-                </label>
-              ))}
-            </div>
-            {error ? <p className="form-error">{error}</p> : null}
-            {message ? <p className="form-success">{message}</p> : null}
-            <button className="primary-button" type="submit" disabled={saving}>{saving ? '하달 중' : '업무 하달'}</button>
-          </form>
-        </aside>
-      </section>
-    </div>
-  );
-}
-
-function TaskDetailPage({ routeData, taskId }: { routeData: PipelineData; taskId: number }) {
-  const [data, setData] = useState<TaskDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [editOpen, setEditOpen] = useState(() => new URLSearchParams(window.location.search).get('edit') === '1');
-  const [form, setForm] = useState<TaskFormState>(() => makeEmptyTaskForm());
-  const [saving, setSaving] = useState(false);
-  const [actioning, setActioning] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [comment, setComment] = useState('');
-  const [commentSaving, setCommentSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const taskEditPanelRef = useRef<HTMLFormElement | null>(null);
-
-  useGuidedPanelFocus(editOpen, taskEditPanelRef, `task-edit-${taskId}`);
-
-  const applyDetailData = (result: TaskDetailData) => {
-    setData(result);
-    setForm(makeTaskEditForm(result.task));
-  };
-
-  const refresh = async () => {
-    setLoading(true);
-    const result = await loadTaskDetailData(taskId);
-    applyDetailData(result);
-    setLoading(false);
-    return result;
-  };
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setError('');
-    setMessage('');
-    loadTaskDetailData(taskId).then((result) => {
-      if (!alive) {
-        return;
-      }
-      applyDetailData(result);
-      setLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [taskId]);
-
-  const task = data?.task ?? null;
-  const attachments = data?.attachments ?? [];
-  const logs = data?.logs ?? [];
-  const comments = logs.filter((log) => log.actionType === 'commented');
-  const auditLogs = logs.filter((log) => log.actionType !== 'commented');
-  const durations = data?.options.durations ?? [];
-  const routeActions = [
-    { label: '업무 목록', href: data?.links.list || '/tasks/', primary: true },
-  ];
-
-  const handleEditFieldChange = (field: keyof TaskFormState, value: string) => {
-    setForm((previous) => ({ ...previous, [field]: value }));
-    setError('');
-    setMessage('');
-  };
-
-  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!task || saving) return;
-    if (!task.canUpdate || !task.updateHref) {
-      setError('업무 수정 권한이 없습니다.');
-      setMessage('');
-      return;
-    }
-    if (!form.title.trim()) {
-      setError('업무 제목을 입력하세요.');
-      setMessage('');
-      return;
-    }
-
-    setSaving(true);
-    setError('');
-    setMessage('');
-    try {
-      const updated = await updateTask(task.updateHref, taskFormPayload(form));
-      applyDetailData(updated);
-      setEditOpen(false);
-      setMessage(updated.message || '업무를 수정했습니다.');
-    } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : '업무 수정에 실패했습니다.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleStatus = async (payload: { action?: string; status?: string; reason?: string }) => {
-    if (!task || actioning) return;
-    setActioning(true);
-    setError('');
-    setMessage('');
-    try {
-      await changeTaskStatus(task.statusHref, payload);
-      const result = await refresh();
-      setMessage(result.message || '업무 상태를 변경했습니다.');
-    } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : '상태 변경에 실패했습니다.');
-    } finally {
-      setActioning(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!task || deleting) return;
-    if (!task.canDelete || !task.deleteHref) {
-      setError('업무 삭제 권한이 없습니다.');
-      setMessage('');
-      return;
-    }
-    if (!window.confirm('이 업무를 삭제하시겠습니까?')) {
-      return;
-    }
-    setDeleting(true);
-    setError('');
-    setMessage('');
-    try {
-      const result = await deleteTask(task.deleteHref);
-      window.location.href = result.href || data?.links.list || '/tasks/';
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : '업무 삭제에 실패했습니다.');
-      setDeleting(false);
-    }
-  };
-
-  const handleUploadClick = () => {
-    if (!task?.canUploadAttachment || !task.uploadHref) {
-      setError('첨부파일 업로드 권한이 없습니다.');
-      setMessage('');
-      return;
-    }
-    fileInputRef.current?.click();
-  };
-
-  const handleFilesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? []);
-    if (!selectedFiles.length) return;
-    if (!task?.canUploadAttachment || !task.uploadHref) {
-      setError('첨부파일 업로드 권한이 없습니다.');
-      setMessage('');
-      event.target.value = '';
-      return;
-    }
-    setUploading(true);
-    setError('');
-    setMessage('');
-    try {
-      const updated = await uploadTaskAttachments(task.uploadHref, selectedFiles);
-      applyDetailData(updated);
-      setMessage('첨부파일을 업로드했습니다.');
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : '첨부파일 업로드에 실패했습니다.');
-    } finally {
-      setUploading(false);
-      event.target.value = '';
-    }
-  };
-
-  const handleCommentSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!task || commentSaving) return;
-    if (!task.canComment || !task.commentHref) {
-      setError('댓글 작성 권한이 없습니다.');
-      setMessage('');
-      return;
-    }
-    if (!comment.trim()) {
-      setError('댓글 내용을 입력하세요.');
-      setMessage('');
-      return;
-    }
-    setCommentSaving(true);
-    setError('');
-    setMessage('');
-    try {
-      const updated = await commentTask(task.commentHref, comment.trim());
-      applyDetailData(updated);
-      setComment('');
-      setMessage(updated.message || '댓글을 추가했습니다.');
-    } catch (commentError) {
-      setError(commentError instanceof Error ? commentError.message : '댓글 작성에 실패했습니다.');
-    } finally {
-      setCommentSaving(false);
-    }
-  };
-
-  return (
-    <div className="tasks-page task-detail-page">
-      <WorkspaceRoutePage actions={routeActions} data={routeData} view="tasks" />
-      {loading ? (
-        <section className="table-card">
-          <div className="empty-state">업무 상세를 불러오는 중입니다.</div>
-        </section>
-      ) : data?.error ? (
-        <section className="table-card">
-          <div className="empty-state error">{data.error}</div>
-        </section>
-      ) : task ? (
-        <>
-          <section className="dashboard-metric-grid task-metrics">
-            <DashboardMetricCard label="상태" value={task.statusLabel || '-'} detail={task.sourceLabel || '업무'} icon={CheckCircle2} tone="blue" />
-            <DashboardMetricCard label="마감" value={task.dueDate ? formatDateLabel(task.dueDate) : '없음'} detail={task.isOverdue ? '지연' : '일정'} icon={Clock} tone={task.isOverdue ? 'red' : 'green'} />
-            <DashboardMetricCard label="첨부" value={`${formatNumber(attachments.length)}개`} detail="업무 파일" icon={Upload} tone="teal" />
-            <DashboardMetricCard label="기록" value={`${formatNumber(logs.length)}건`} detail="변경 로그" icon={MessageSquareText} tone="amber" />
-          </section>
-
-          <section className="task-detail-layout">
-            <article className="table-card task-detail-main">
-              <div className="section-heading-row">
-                <div>
-                  <p className="eyebrow">Task Detail</p>
-                  <h2>{task.title}</h2>
-                </div>
-                <div className="task-card-heading">
-                  <span className={`task-status ${taskStatusClass(task.status)}`}>{task.statusLabel}</span>
-                  <span className="task-source">{task.sourceLabel}</span>
-                  {task.isOverdue ? <span className="task-overdue">지연</span> : null}
-                </div>
-              </div>
-
-              <div className="task-detail-description">
-                {task.description ? task.description : '상세 내용이 없습니다.'}
-              </div>
-
-              <div className="task-detail-meta">
-                <div>
-                  <span>마감일</span>
-                  <strong>{task.dueDate ? formatDateLabel(task.dueDate) : '없음'}</strong>
-                </div>
-                <div>
-                  <span>예상 소요</span>
-                  <strong>{task.expectedDurationLabel || '-'}</strong>
-                </div>
-                <div>
-                  <span>생성일</span>
-                  <strong>{formatDateTimeLabel(task.createdAt) || '-'}</strong>
-                </div>
-                <div>
-                  <span>완료일</span>
-                  <strong>{formatDateTimeLabel(task.completedAt) || '-'}</strong>
-                </div>
-              </div>
-
-              {task.relatedClient ? (
-                <div className="task-detail-customer">
-                  <span>연결 고객</span>
-                  <a href={task.relatedClient.href}>
-                    {[task.relatedClient.company, task.relatedClient.department, task.relatedClient.customer].filter(Boolean).join(' · ')}
-                  </a>
-                </div>
-              ) : null}
-
-              <div className="task-actions task-detail-actions">
-                {task.canApprove ? <button type="button" disabled={actioning} onClick={() => handleStatus({ action: 'approve' })}>승인</button> : null}
-                {task.canReject ? <button type="button" disabled={actioning} onClick={() => {
-                  const reason = window.prompt('반려 사유를 입력하세요.', '');
-                  if (reason !== null) handleStatus({ action: 'reject', reason });
-                }}>반려</button> : null}
-                {task.canSetOngoing ? <button type="button" disabled={actioning} onClick={() => handleStatus({ status: 'ongoing' })}>진행</button> : null}
-                {task.canSetOnHold ? <button type="button" disabled={actioning} onClick={() => handleStatus({ status: 'on_hold' })}>보류</button> : null}
-                {task.canComplete ? <button type="button" disabled={actioning} onClick={() => handleStatus({ status: 'done' })}>완료</button> : null}
-                {task.canUpdate ? <button type="button" onClick={() => setEditOpen((open) => !open)}><Pencil size={14} />수정</button> : null}
-                {task.canDelete ? <button className="task-danger-button" type="button" disabled={deleting} onClick={handleDelete}><Trash2 size={14} />{deleting ? '삭제 중' : '삭제'}</button> : null}
-              </div>
-
-              {editOpen ? (
-                <form className="task-composer task-detail-edit-form" onSubmit={handleEditSubmit} ref={taskEditPanelRef}>
-                  <label>
-                    <span>제목</span>
-                    <input value={form.title} onChange={(event) => handleEditFieldChange('title', event.target.value)} />
-                  </label>
-                  <label>
-                    <span>상세</span>
-                    <textarea rows={5} value={form.description} onChange={(event) => handleEditFieldChange('description', event.target.value)} />
-                  </label>
-                  <div className="form-grid two-columns">
-                    <label>
-                      <span>마감일</span>
-                      <input type="date" value={form.dueDate} onChange={(event) => handleEditFieldChange('dueDate', event.target.value)} />
-                    </label>
-                    <label>
-                      <span>예상 소요</span>
-                      <select value={form.expectedDuration} onChange={(event) => handleEditFieldChange('expectedDuration', event.target.value)}>
-                        <option value="">선택 안 함</option>
-                        {durations.map((duration) => (
-                          <option key={duration.value} value={duration.value}>{duration.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="route-actions">
-                    <button className="primary-button" type="submit" disabled={saving}>{saving ? '저장 중' : '저장'}</button>
-                    <button className="route-secondary-action" type="button" onClick={() => {
-                      setForm(makeTaskEditForm(task));
-                      setEditOpen(false);
-                      setError('');
-                      setMessage('');
-                    }}>취소</button>
-                  </div>
-                </form>
-              ) : null}
-
-              {error ? <p className="form-error">{error}</p> : null}
-              {message ? <p className="form-success">{message}</p> : null}
-            </article>
-
-            <aside className="task-detail-aside">
-              <div className="side-card task-detail-people">
-                <h3>담당 정보</h3>
-                <dl>
-                  <div>
-                    <dt>생성</dt>
-                    <dd>{task.createdBy ? tasksUserLabel(task.createdBy) : '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>담당</dt>
-                    <dd>{task.assignedTo ? tasksUserLabel(task.assignedTo) : '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>요청</dt>
-                    <dd>{task.requestedBy ? tasksUserLabel(task.requestedBy) : '-'}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              <AttachmentManager
-                canUpload={Boolean(task.canUploadAttachment && task.uploadHref)}
-                className="side-card task-detail-attachments"
-                emptyLabel="등록된 첨부파일이 없습니다."
-                files={attachments}
-                inputRef={fileInputRef}
-                title="첨부파일"
-                uploadAriaLabel="업무 첨부파일 선택"
-                uploading={uploading}
-                onFilesSelected={handleFilesSelected}
-                onUploadClick={handleUploadClick}
-              />
-
-              <div className="side-card task-detail-comments">
-                <h3>댓글</h3>
-                {task.canComment ? (
-                  <form className="task-comment-form" onSubmit={handleCommentSubmit}>
-                    <textarea
-                      aria-label="업무 댓글"
-                      onChange={(event) => {
-                        setComment(event.target.value);
-                        setError('');
-                        setMessage('');
-                      }}
-                      placeholder="업무 진행 상황이나 요청 사항을 남기세요"
-                      rows={4}
-                      value={comment}
-                    />
-                    <button className="primary-button" type="submit" disabled={commentSaving}>
-                      {commentSaving ? '등록 중' : '댓글 등록'}
-                    </button>
-                  </form>
-                ) : (
-                  <div className="empty-state small">댓글 작성 권한이 없습니다.</div>
-                )}
-                {comments.length ? (
-                  <div className="task-comment-list">
-                    {comments.map((log) => (
-                      <div className="task-comment-item" key={log.id}>
-                        <span>{log.message}</span>
-                        <small>{[log.actor ? tasksUserLabel(log.actor) : '', formatDateTimeLabel(log.createdAt)].filter(Boolean).join(' · ')}</small>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state small">등록된 댓글이 없습니다.</div>
-                )}
-              </div>
-
-              <div className="side-card task-detail-logs">
-                <h3>변경 기록</h3>
-                {auditLogs.length ? (
-                  <div className="task-log-list">
-                    {auditLogs.map((log) => (
-                      <div className="task-log-item" key={log.id}>
-                        <strong>{log.actionLabel || log.actionType}</strong>
-                        <span>{log.message || [log.prevStatus, log.newStatus].filter(Boolean).join(' → ')}</span>
-                        <small>{[log.actor ? tasksUserLabel(log.actor) : '', formatDateTimeLabel(log.createdAt)].filter(Boolean).join(' · ')}</small>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state small">표시할 기록이 없습니다.</div>
-                )}
-              </div>
-            </aside>
-          </section>
-        </>
-      ) : (
-        <section className="table-card">
-          <div className="empty-state">업무를 찾을 수 없습니다.</div>
-        </section>
-      )}
-    </div>
   );
 }
 
@@ -21791,7 +20844,6 @@ export function App() {
   const accountDetailId = currentView === 'customers' ? getAccountDetailId() : null;
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
-  const taskDetailId = currentView === 'tasks' ? getTaskDetailId() : null;
   const scheduleCalendarRoute = currentView === 'schedules' && isScheduleCalendarRoute();
   const mailboxThreadId = currentView === 'mail' ? getMailboxThreadId() : '';
   const mailboxScheduledId = currentView === 'mail' ? getMailboxScheduledId() : null;
@@ -24996,24 +24048,6 @@ export function App() {
           onRangeChange={setScheduleRange}
           onStatusChange={setScheduleStatus}
         />
-      </AppShell>
-    );
-  }
-
-  if (currentView === 'tasks') {
-    if (taskDetailId) {
-      return (
-        <AppShell activeView={currentView}>
-          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-          <TaskDetailPage routeData={pipelineData} taskId={taskDetailId} />
-        </AppShell>
-      );
-    }
-
-    return (
-      <AppShell activeView={currentView}>
-        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <TasksPage managerRoute={isTaskManagerRoute()} routeData={pipelineData} />
       </AppShell>
     );
   }

@@ -1,5 +1,50 @@
 # AGENT_REPORT.md
 
+## 2026-07-27 — 메뉴 가지치기 Phase 1: 업무(Tasks) 완전 제거
+
+### 요약
+
+- 사이드바 20개 메뉴 중 7개(현황/장비/서비스/업무/메일/명함/AI) 완전 제거 작업의 첫 단계. `todos` Django 앱 전체 삭제 + 프론트 Tasks 관련 코드 전체 제거.
+
+### 변경된 파일
+
+- 삭제: `todos/` 앱 전체(models/views/urls/admin/migrations/templates/tests, ~4900줄)
+- `reporting/views.py`: `navigation_api`(tasks/tasksManager 항목, canManageTasks capability), `_download_registry`(tasks.attachment 항목)
+- `reporting/urls.py`: tasks_* URL 15개
+- `reporting/readonly_api.py`: READONLY_ALLOWED_URL_NAMES에서 tasks_* 5개
+- `reporting/templates/reporting/base.html`: 죽은 `{% url 'todos:...' %}` 링크(NoReverseMatch 위험) 2개
+- `reporting/tests.py`: tasks_api reverse 참조, 네비게이션 테스트의 tasks/tasksManager/canManageTasks 단언
+- `sales_project/settings.py`, `settings_production.py`: INSTALLED_APPS에서 'todos' 제거
+- `sales_project/urls.py`: todos include 제거, react catch-all regex에서 tasks 토큰 제거
+- `frontend/src/App.tsx`: TasksPage/PersonalTasksPage/TaskManagerPage/TaskDetailPage/TaskCard/TaskComposer 등 전체 컴포넌트(~800줄), 라우팅 로직, import
+- `frontend/src/components/shared/CrmShell.tsx`: tasks/tasksManager 나비 항목, 타입, isActiveNavItem 단순화
+- `frontend/src/api/legacy.ts`: Task* 타입 12개, empty fixture, API 함수 12개
+- `frontend/src/api/dashboard.ts`: canManageTasks 필드
+- `frontend/server.mjs`: `/todos/*` → `/tasks/*` 레거시 리다이렉트 45줄, isDjangoLegacyNamespace에서 `/todos/` 제거
+
+### 안전
+
+- **DB 테이블 무변경**: `todos` 앱을 INSTALLED_APPS에서 뺐을 뿐 `DROP TABLE`은 실행 안 함 — Postgres의 Todo/TodoLog/TodoAttachment/TodoCategory 테이블은 고아 상태로 그대로 보존, 복구 가능.
+- 사전 조사(Explore 에이전트)로 `todos` 앱이 다른 어떤 코드에서도 import되지 않는 완전 독립 앱임을 확인 후 진행.
+- 파이프라인 `priorityTasks` 필드(이름만 유사, 실제로는 무관)는 손대지 않음.
+
+### 검증
+
+```text
+py_compile / manage.py check / makemigrations --check --dry-run → 전부 OK, "No changes detected"
+npm run build (tsc --noEmit + vite) → 통과, App 번들 568.81kB → 543.28kB (실제 제거 확인)
+manage.py test reporting (전체 670개) → 실패 3건, 전부 git stash로 원본 대조 검증하여 기존 결함(무관)으로 확인:
+  - test_customer_delivery_records_xlsx_export_requires_login (익명유저 AttributeError, customer_delivery_records_xlsx_export_api)
+  - test_session_save_every_request_disabled_by_default (SESSION_SAVE_EVERY_REQUEST 기본값)
+  - test_schedule_form_includes_vat_mode (일정 생성 VAT 모드)
+  → 원본 코드에서도 동일하게 실패 재현됨. Tasks 제거와 무관, 회귀 아님.
+```
+
+### 프로덕션 배포 상태
+
+- (아래 커밋에서 deployment ID/smoke 결과 기록)
+
+
 ## 2026-07-13 — 프론트엔드 PWA 전환
 
 ### 요약

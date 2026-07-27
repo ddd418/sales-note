@@ -4,7 +4,6 @@ import {
   Bell,
   Building2,
   CalendarDays,
-  CheckCircle2,
   CircleDollarSign,
   Columns3,
   FileSpreadsheet,
@@ -38,7 +37,6 @@ export type MainView =
   | 'pipeline'
   | 'notes'
   | 'schedules'
-  | 'tasks'
   | 'employees'
   | 'mail'
   | 'businessCards'
@@ -66,7 +64,6 @@ const reactRoutePrefixes = [
   '/pipeline/',
   '/notes/',
   '/schedules/',
-  '/tasks/',
   '/employees/',
   '/mailbox/',
   '/business-cards/',
@@ -90,7 +87,6 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
   { id: 'notes', label: '영업노트', icon: FileText, href: '/notes/' },
   { id: 'schedules', label: '일정', icon: CalendarDays, href: '/schedules/calendar/' },
-  { id: 'tasks', label: '업무', icon: CheckCircle2, href: '/tasks/' },
   { id: 'mail', label: '메일', icon: Mail, href: '/mailbox/' },
   { id: 'businessCards', label: '명함', icon: ImagePlus, href: '/mailbox/business-cards/' },
   { id: 'weeklyReports', label: '주간보고', icon: ListChecks, href: '/weekly-reports/' },
@@ -113,8 +109,6 @@ const navIconMap: Record<string, LucideIcon> = {
   pipeline: Columns3,
   notes: FileText,
   schedules: CalendarDays,
-  tasks: CheckCircle2,
-  tasksManager: Users,
   employees: ShieldCheck,
   userAdmin: ShieldCheck,
   mail: Mail,
@@ -139,7 +133,6 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   pipeline: { eyebrow: 'Sales CRM / Pipeline', title: '파이프라인' },
   notes: { eyebrow: 'Sales CRM / Notes', title: '영업노트' },
   schedules: { eyebrow: 'Sales CRM / Schedule', title: '일정' },
-  tasks: { eyebrow: 'Sales CRM / Tasks', title: '업무' },
   employees: { eyebrow: 'Sales CRM / Employees', title: '직원관리' },
   mail: { eyebrow: 'Sales CRM / Mail', title: '메일' },
   businessCards: { eyebrow: 'Sales CRM / Signature', title: '명함' },
@@ -171,14 +164,8 @@ async function handleLogout() {
   }
 }
 
-function isActiveNavItem(item: NavigationItem, activeView: MainView, pathname: string, hasTaskManagerItem: boolean) {
-  if (activeView !== 'tasks') {
-    return item.id === activeView;
-  }
-  if (pathname.startsWith('/tasks/manager/')) {
-    return item.id === (hasTaskManagerItem ? 'tasksManager' : 'tasks');
-  }
-  return item.id === 'tasks';
+function isActiveNavItem(item: NavigationItem, activeView: MainView) {
+  return item.id === activeView;
 }
 
 function isReactClientRoute(pathname: string) {
@@ -233,9 +220,6 @@ export function AppShell({ activeView, children }: { activeView: MainView; child
   const items = navigation?.items?.length
     ? navigation.items.map((item) => ({ ...item, icon: navIconMap[item.id] || LayoutDashboard }))
     : fallbackNavItems;
-  const pathname = window.location.pathname;
-  const hasTaskManagerItem = items.some((item) => item.id === 'tasksManager');
-
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -251,7 +235,7 @@ export function AppShell({ activeView, children }: { activeView: MainView; child
             const Icon = item.icon || navIconMap[item.id] || LayoutDashboard;
             return (
               <a
-                className={`nav-item ${isActiveNavItem(item, activeView, pathname, hasTaskManagerItem) ? 'active' : ''}`}
+                className={`nav-item ${isActiveNavItem(item, activeView) ? 'active' : ''}`}
                 href={item.href}
                 key={`${item.id}-${item.href}`}
                 onClick={(event) => handleClientNavigation(event, item.href)}

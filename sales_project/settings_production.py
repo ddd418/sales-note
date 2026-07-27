@@ -100,7 +100,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'reporting',
-    'todos',
     'ai_chat',
 ]
 

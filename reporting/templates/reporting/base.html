@@ -1622,21 +1622,6 @@
             <span>고객</span>
           </a>
         </li>
-        {% if user.userprofile.role == 'manager' %}
-        <li class="nav-item">
-          <a href="{% url 'todos:manager_dashboard' %}" class="nav-link {% if request.resolver_match.app_name == 'todos' %}active{% endif %}">
-            <i class="fas fa-bullhorn"></i>
-            <span>업무 하달</span>
-          </a>
-        </li>
-        {% else %}
-        <li class="nav-item">
-          <a href="{% url 'todos:list' %}" class="nav-link {% if request.resolver_match.app_name == 'todos' %}active{% endif %}">
-            <i class="fas fa-tasks"></i>
-            <span>TODOLIST</span>
-          </a>
-        </li>
-        {% endif %}
         {% if user.userprofile.can_use_ai %}
         <li class="nav-item">
           <a href="{% url 'ai_chat:department_list' %}" class="nav-link {% if request.resolver_match.app_name == 'ai_chat' %}active{% endif %}">

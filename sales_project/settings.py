@@ -27,7 +27,6 @@ else:
         "cloudinary",
         "django.contrib.humanize",
         "reporting",
-        "todos",
         "ai_chat",
         "tailwind",
         "theme",
