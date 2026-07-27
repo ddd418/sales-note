@@ -30,7 +30,6 @@ def manager_filter_context(request):
         "frontend_customers_url": _frontend_url(frontend_base_url, "customers/"),
         "frontend_notes_url": _frontend_url(frontend_base_url, "notes/"),
         "frontend_schedules_url": _frontend_url(frontend_base_url, "schedules/"),
-        "frontend_ai_url": _frontend_url(frontend_base_url, "ai-workspace/"),
     }
     
     if request.user.is_authenticated:

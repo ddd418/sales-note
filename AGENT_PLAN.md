@@ -29,6 +29,22 @@
 
 **Deploy**: Done. Commit `9b1e267` on `origin/main`. Railway `web` deploy `3c71915c-ccde-4eea-87b5-795d75e61c33` SUCCESS, `sales-note-frontend` deploy `345f6d06-78d1-440f-8eaa-e983367d5c69` SUCCESS. `post_deploy_smoke.py` → ok.
 
+---
+
+## 2026-07-27 Phase 2: AI(ai-workspace) 완전 제거
+
+**Scope**: `ai_workspace_*` 뷰 11개(views.py) + private 헬퍼 다수, URL 12개, readonly allowlist 3개, navigation_api의 'ai' 항목, 프론트 `pages/ai/AIWorkspacePage.tsx`(전체 삭제) + `api/aiWorkspace.ts`(전체 삭제) + App.tsx 내 죽은 AI워크스페이스 중복 구현(~4000줄, 구조적으로 도달 불가능했던 레거시 코드) + `CustomerAiResultPanel`(죽은 코드) + 파이프라인 `aiDepartment` 필드(프론트 어디서도 렌더 안 됨, 백엔드 `_pipeline_ai_department_payload` 제거).
+
+**절대 건드리지 않은 것**: `ai_chat` Django 앱(별개 레거시 기능, 파이프라인·스케줄AI코치가 공유 라이브러리로 계속 사용), `schedule_ai_coach_api`+헬퍼(`_schedule_ai_coach_context`/`_generate_schedule_ai_coach`/`_ai_workspace_json_from_text`/`_ai_workspace_question_model_label`/`AI_WORKSPACE_DEFAULT_QUESTION_MODEL`), `weekly_report_ai_draft`(이미 스텁), 프론트 `ScheduleAICoachPanel`/`AIEvidenceList`(스케줄상세에서 계속 사용) 및 그 타입 의존성(`AIWorkspaceActionEvidence`/`ScheduleAICoach`/`ScheduleAICoachResponse`/`generateScheduleAICoach` — `api/ai.ts`/`api/legacy.ts`에 최소 보존).
+
+**테스트 구조 변경**: `AIWorkspaceSummaryApiTests`(4648줄) 전체 삭제 전, 그 안에 섞여 있던 스케줄AI코치 테스트 3개를 새 `ScheduleAiCoachApiTests` 클래스로 추출 이관.
+
+**DB change required**: No. `AIWorkspaceActionFeedback`/`AIWorkspaceQuestionFeedback`/`AIWorkspaceQuestionLog`/`AIWorkspaceMemory`/`AIWorkspaceAnswerDirection` 모델 클래스는 `models.py`에 그대로 정의 유지(고아 상태, 테이블 보존) — admin.py 등록만 제거.
+
+**Validation**: py_compile/check/makemigrations --dry-run 전부 OK. `npm run build` 통과, App 번들 543.28kB → 513.59kB. 백엔드 타깃 테스트(ScheduleAiCoachApiTests/PipelineApiTests/ReactNavigationApiTests/SalesNoteReadonlyBearerApiTests) 25개 OK. 확장 회귀 스윕 진행 중.
+
+**Deploy**: (배포 후 기록)
+
 
 ## 2026-07-13 Frontend PWA (설치형 앱 셸) plan
 

@@ -5,7 +5,6 @@ from django import forms
 from .models import (
     AccountCleanupAuditLog,
     AccountCleanupDecision,
-    AIWorkspaceActionFeedback, AIWorkspaceAnswerDirection, AIWorkspaceMemory, AIWorkspaceQuestionFeedback, AIWorkspaceQuestionLog,
     CalibrationRecord, CustomerAsset,
     DemoRecord, FollowUp, Schedule, History, UserProfile, HistoryFile, ScheduleFile, DeliveryItem,
     Product, Quote, QuoteItem, FunnelStage, OpportunityTracking, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, ServiceCase,
@@ -228,61 +227,6 @@ class HistoryFileAdmin(admin.ModelAdmin):
     def file_size_display(self, obj):
         return obj.get_file_size_display()
     file_size_display.short_description = '파일 크기'
-
-
-@admin.register(AIWorkspaceActionFeedback)
-class AIWorkspaceActionFeedbackAdmin(admin.ModelAdmin):
-    list_display = ('action_id', 'user', 'followup', 'action_kind', 'status', 'updated_at')
-    list_filter = ('status', 'action_kind', 'updated_at')
-    search_fields = ('action_id', 'feedback', 'user__username', 'followup__customer_name')
-    autocomplete_fields = ['user', 'followup', 'history']
-    readonly_fields = ('created_at', 'updated_at')
-    date_hierarchy = 'updated_at'
-    list_per_page = 20
-
-
-@admin.register(AIWorkspaceQuestionFeedback)
-class AIWorkspaceQuestionFeedbackAdmin(admin.ModelAdmin):
-    list_display = ('user', 'department', 'scope_type', 'rating', 'source', 'updated_at')
-    list_filter = ('rating', 'scope_type', 'source', 'updated_at')
-    search_fields = ('question', 'comment', 'user__username', 'department__name', 'department__company__name')
-    autocomplete_fields = ['user', 'department']
-    readonly_fields = ('created_at', 'updated_at')
-    date_hierarchy = 'updated_at'
-    list_per_page = 20
-
-
-@admin.register(AIWorkspaceQuestionLog)
-class AIWorkspaceQuestionLogAdmin(admin.ModelAdmin):
-    list_display = ('user', 'department', 'scope_type', 'source', 'model', 'web_search_used', 'created_at')
-    list_filter = ('scope_type', 'source', 'model', 'web_search_used', 'created_at')
-    search_fields = ('question', 'user__username', 'department__name', 'department__company__name')
-    autocomplete_fields = ['user', 'department']
-    readonly_fields = ('created_at', 'updated_at')
-    date_hierarchy = 'created_at'
-    list_per_page = 20
-
-
-@admin.register(AIWorkspaceMemory)
-class AIWorkspaceMemoryAdmin(admin.ModelAdmin):
-    list_display = ('user', 'department', 'scope_type', 'memory_type', 'title', 'is_active', 'updated_at')
-    list_filter = ('scope_type', 'memory_type', 'is_active', 'updated_at')
-    search_fields = ('title', 'content', 'user__username', 'department__name', 'department__company__name')
-    autocomplete_fields = ['user', 'department', 'source_question_log', 'source_feedback']
-    readonly_fields = ('created_at', 'updated_at')
-    date_hierarchy = 'updated_at'
-    list_per_page = 20
-
-
-@admin.register(AIWorkspaceAnswerDirection)
-class AIWorkspaceAnswerDirectionAdmin(admin.ModelAdmin):
-    list_display = ('user', 'department', 'scope_type', 'updated_at')
-    list_filter = ('scope_type', 'updated_at')
-    search_fields = ('direction', 'user__username', 'department__name', 'department__company__name')
-    autocomplete_fields = ['user', 'department']
-    readonly_fields = ('created_at', 'updated_at')
-    date_hierarchy = 'updated_at'
-    list_per_page = 20
 
 
 # ScheduleFile 모델 관리자 설정

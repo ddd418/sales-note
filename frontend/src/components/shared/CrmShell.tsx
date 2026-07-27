@@ -16,7 +16,6 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
   Users,
   Wrench,
   type LucideIcon,
@@ -46,7 +45,6 @@ export type MainView =
   | 'receivables'
   | 'prepayments'
   | 'profile'
-  | 'ai'
   | 'notFound';
 
 type ShellNavigationItem = NavigationItem & { icon?: LucideIcon };
@@ -73,7 +71,6 @@ const reactRoutePrefixes = [
   '/receivables/',
   '/prepayments/',
   '/profile/',
-  '/ai-workspace/',
 ];
 
 const fallbackNavItems: ShellNavigationItem[] = [
@@ -95,7 +92,6 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'receivables', label: '외상고객', icon: CircleDollarSign, href: '/receivables/' },
   { id: 'prepayments', label: '선결제', icon: CircleDollarSign, href: '/prepayments/' },
   { id: 'profile', label: '프로필', icon: Users, href: '/profile/' },
-  { id: 'ai', label: 'AI', icon: Sparkles, href: '/ai-workspace/' },
 ];
 
 const navIconMap: Record<string, LucideIcon> = {
@@ -119,7 +115,6 @@ const navIconMap: Record<string, LucideIcon> = {
   receivables: CircleDollarSign,
   prepayments: CircleDollarSign,
   profile: Users,
-  ai: Sparkles,
 };
 
 const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
@@ -142,7 +137,6 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   receivables: { eyebrow: 'Sales CRM / Receivables', title: '외상고객' },
   prepayments: { eyebrow: 'Sales CRM / Prepayment', title: '선결제' },
   profile: { eyebrow: 'Sales CRM / Profile', title: '프로필' },
-  ai: { eyebrow: 'Sales CRM / AI', title: 'AI 브리핑' },
   notFound: { eyebrow: 'Sales CRM', title: '페이지 없음' },
 };
 

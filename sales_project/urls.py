@@ -56,7 +56,7 @@ urlpatterns = [
         name='removed_react_route',
     ),
     re_path(
-        r'^(?P<path>(?:dashboard|customers|accounts|assets|services|demos|notes|schedules|employees|mailbox|business-cards|weekly-reports|documents|products|receivables|prepayments|profile|ai-workspace|pipeline|reports|analytics|companies)(?:/.*)?)$',
+        r'^(?P<path>(?:dashboard|customers|accounts|assets|services|demos|notes|schedules|employees|mailbox|business-cards|weekly-reports|documents|products|receivables|prepayments|profile|pipeline|reports|analytics|companies)(?:/.*)?)$',
         frontend_views.react_index,
         name='react_frontend',
     ),

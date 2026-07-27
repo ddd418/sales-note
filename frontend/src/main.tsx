@@ -8,9 +8,6 @@ const root = ReactDOM.createRoot(document.getElementById('root')!);
 const DashboardApp = React.lazy(async () => ({
   default: (await import('./DashboardApp')).DashboardApp,
 }));
-const AIWorkspaceApp = React.lazy(async () => ({
-  default: (await import('./pages/ai/AIWorkspacePage')).AIWorkspaceApp,
-}));
 const CrmApp = React.lazy(async () => ({
   default: (await import('./App')).App,
 }));
@@ -18,11 +15,6 @@ const CrmApp = React.lazy(async () => ({
 function isDashboardRoute() {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   return pathname.startsWith('/dashboard/');
-}
-
-function isAIWorkspaceRoute() {
-  const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
-  return pathname.startsWith('/ai-workspace/');
 }
 
 function RootRouter() {
@@ -38,7 +30,7 @@ function RootRouter() {
     };
   }, []);
 
-  const RootComponent = isDashboardRoute() ? DashboardApp : isAIWorkspaceRoute() ? AIWorkspaceApp : CrmApp;
+  const RootComponent = isDashboardRoute() ? DashboardApp : CrmApp;
   return (
     <Suspense fallback={null}>
       <RootComponent />

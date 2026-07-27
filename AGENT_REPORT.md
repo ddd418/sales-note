@@ -44,6 +44,54 @@ manage.py test reporting (전체 670개) → 실패 3건, 전부 git stash로 �
 
 - **완료.** commit `9b1e267` → `origin/main`. Railway backend `web` 배포 `3c71915c-ccde-4eea-87b5-795d75e61c33` SUCCESS, frontend `sales-note-frontend` 배포 `345f6d06-78d1-440f-8eaa-e983367d5c69` SUCCESS. `post_deploy_smoke.py` → ok.
 
+---
+
+## 2026-07-27 — 메뉴 가지치기 Phase 2: AI(ai-workspace) 완전 제거
+
+### 요약
+
+- "AI" 메뉴(페이지+백엔드) 완전 제거. **`ai_chat` 앱은 완전히 다른 기능이라 전혀 안 건드림** — 파이프라인 카드 추천·일정 AI코치가 계속 이 라이브러리를 씀. 조사 결과 파이프라인의 `aiDepartment` 필드는 프론트 어디서도 렌더 안 되는 죽은 데이터였고, App.tsx 안에 구조적으로 도달 불가능했던 AI워크스페이스 중복 구현(~4000줄)까지 같이 정리됨(보너스 클린업).
+
+### 변경된 파일
+
+- 삭제: `frontend/src/pages/ai/AIWorkspacePage.tsx`(1099줄), `frontend/src/api/aiWorkspace.ts`(535줄)
+- `reporting/views.py`: `ai_workspace_*` 공개 뷰 11개(~1200줄) + `navigation_api`의 'ai' 항목 제거. **비공개 `_ai_workspace_*` 헬퍼(~150개)는 라우트가 사라져 죽은 코드가 됐지만 의도적으로 남겨둠** — 스케줄AI코치(보존 대상)와 얽힌 의존성이 많아, 150개 전부 검증 없이 지우면 살려야 할 기능을 실수로 깨뜨릴 위험이 커서 뷰/URL/화면 제거(실제 API 표면)에 집중. 후속 정리 과제로 플래그.
+- `reporting/funnel_views.py`: `_pipeline_ai_department_payload` 함수 + 호출부 제거, 미사용된 `reverse`/`user_profile` 정리
+- `reporting/urls.py`: `ai_workspace_*` URL 12개 제거(schedule_ai_coach_api는 보존)
+- `reporting/readonly_api.py`: allowlist에서 `ai_workspace_*` 3개 제거
+- `reporting/api/ai.py`: `ai_workspace_*` import 12개 제거, `schedule_ai_coach_api`만 유지
+- `reporting/admin.py`: AIWorkspace* 관리자 등록 5개 제거(모델 클래스는 models.py에 보존, DB 무변경)
+- `sales_project/urls.py`: react catch-all regex에서 `ai-workspace` 토큰 제거
+- `frontend/src/main.tsx`: AIWorkspaceApp lazy import + 라우팅 분기 제거
+- `frontend/src/components/shared/CrmShell.tsx`: 'ai' 나비/타입/아이콘 제거
+- `frontend/src/App.tsx`: 죽은 AI워크스페이스 중복 구현 전체(~4000줄, `formatAIActionDate`~`AIWorkspacePage` 내부 컴포넌트, `AIWorkspaceDepartmentList`, `CustomerAiResultPanel`, 상태/이펙트/핸들러/렌더분기), import 정리. **`ScheduleAICoachPanel`/`AIEvidenceList`는 그대로 유지**(일정상세에서 계속 씀)
+- `frontend/src/mockData.ts`: `Deal.aiDepartment` 필드 제거(프론트 어디서도 안 쓰였음)
+- `frontend/src/api/legacy.ts`: AIWorkspace*/CustomerAi*/AiDepartmentRun*/AiPainpointVerify* 타입·함수·fixture 전체 제거(3개 세그먼트로 나눠 `AIWorkspaceActionEvidence`/`ScheduleAICoach`/`ScheduleAICoachResponse`/`generateScheduleAICoach`만 보존), 파이프라인 로더의 `aiDepartment` 정규화 코드 제거
+- `frontend/src/api/ai.ts`: 배럴을 스케줄AI코치 4개 심볼만 재export하도록 축소
+- `reporting/tests.py`: `AIWorkspaceSummaryApiTests`(4648줄) 삭제 전 스케줄AI코치 테스트 3개를 새 `ScheduleAiCoachApiTests`로 추출, `test_pipeline_api_includes_department_ai_summary` 제거, 관련 assertion 정리
+
+### 안전
+
+- **DB 테이블 무변경**: AIWorkspace* 5개 모델 클래스는 `models.py`에 그대로 정의(고아 상태, 마이그레이션 드랍 없음).
+- `ai_chat` 앱, `schedule_ai_coach_api`, `weekly_report_ai_draft`는 명시적으로 스코프 밖 확인 후 전혀 안 건드림.
+
+### 검증
+
+```text
+py_compile / manage.py check / makemigrations --check --dry-run → 전부 OK, "No changes detected"
+npm run build (tsc --noEmit + vite) → 통과, App 번들 543.28kB → 513.59kB
+manage.py test (ScheduleAiCoachApiTests, PipelineApiTests, ReactNavigationApiTests, SalesNoteReadonlyBearerApiTests) → 25개 OK
+manage.py test (확장 스윕: + PipelineHideCardTests, WeeklyReportTests, ManagerRolePermissionTests, PermissionIsolationTests) → 진행/기록
+```
+
+### 후속 과제 (플래그, 이번 범위 아님)
+
+- `reporting/views.py`의 `_ai_workspace_*` 비공개 헬퍼(~150개, 이제 죽은 코드)는 정밀한 호출그래프 검증 후 별도로 정리 가능.
+
+### 프로덕션 배포 상태
+
+- (아래 커밋에서 deployment ID/smoke 결과 기록)
+
 
 ## 2026-07-13 — 프론트엔드 PWA 전환
 
