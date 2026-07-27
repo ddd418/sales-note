@@ -105,14 +105,6 @@
           {% endif %}
         </h1>
         <div>
-          {% if followup.email and user.is_authenticated and user.userprofile.gmail_email %}
-          <a
-            href="{% url 'reporting:send_email_from_mailbox_with_followup' followup.pk %}"
-            class="btn btn-success me-2"
-          >
-            <i class="fas fa-envelope me-1"></i>메일 보내기
-          </a>
-          {% endif %}
           {% if user.userprofile.can_use_ai %}
           <a
             href="{% url 'ai_chat:followup_analysis' followup_id=followup.pk %}"
@@ -191,12 +183,6 @@
                     >{{ followup.email }}</a
                   >
                 </div>
-                {% if user.userprofile.gmail_email %}
-                <a href="{% url 'reporting:send_email_from_mailbox_with_followup' followup.pk %}" 
-                   class="btn btn-sm btn-success mt-2" style="color: white !important;">
-                  <i class="fas fa-paper-plane me-1"></i>메일 보내기
-                </a>
-                {% endif %}
               </div>
               </div>
               {% endif %} {% if followup.manager %}

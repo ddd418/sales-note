@@ -160,7 +160,6 @@ export type NavigationData = {
     canManageEmployees: boolean;
     canManageUsers: boolean;
     canUseAi: boolean;
-    canUseMailbox: boolean;
     canViewAllUsers: boolean;
   };
   items: NavigationItem[];
@@ -250,7 +249,6 @@ const emptyNavigationData: NavigationData = {
     canManageEmployees: false,
     canManageUsers: false,
     canUseAi: false,
-    canUseMailbox: true,
     canViewAllUsers: false,
   },
   items: [],

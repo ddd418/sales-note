@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Archive,
   Bell,
-  Bold,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -23,11 +22,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Loader2,
-  Inbox,
-  ImagePlus,
-  Italic,
   Link2,
-  Mail,
   MessageSquareText,
   MoveUpRight,
   ArrowRightLeft,
@@ -37,16 +32,12 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Reply,
   Search,
-  Send,
   ShieldCheck,
   Sparkles,
   Star,
   Target,
   Trash2,
-  Type,
-  Underline,
   Upload,
   Users,
   X,
@@ -69,13 +60,6 @@ import {
   FollowupQuoteItem,
   FollowupQuoteItemsData,
   FollowupQuoteOption,
-  MailAutoAttachment,
-  MailInternalCcContact,
-  MailboxData,
-  MailboxEmailItem,
-  MailboxSendPayload,
-  MailboxThreadData,
-  MailboxType,
   NotesData,
   NoteDetailData,
   NoteDetailItem,
@@ -104,11 +88,7 @@ import {
   ScheduleFileItem,
   ScheduleEditPayload,
   ScheduleItem,
-  BusinessCardItem,
-  BusinessCardPayload,
-  BusinessCardsData,
   ProfileData,
-  ProfileImapPayload,
   ProfilePasswordPayload,
   ProfileUpdatePayload,
   WeeklyReportCreateData,
@@ -123,7 +103,6 @@ import {
   bulkDeleteProducts,
   bulkUpsertProducts,
   changeProfilePassword,
-  connectProfileImap,
   createDemoRecord,
   createEmployee,
   createNote as createSalesNote,
@@ -139,19 +118,13 @@ import {
   deleteScheduleFile,
   deleteGeneratedDocument,
   deleteDocumentTemplate,
-  deleteBusinessCard,
   deleteDemoRecord,
-  disconnectProfileEmail,
   deleteWeeklyReport,
   downloadScheduleDocument,
   loadDashboardData,
-  loadBusinessCardsData,
   loadDemoRecordsData,
   loadDocumentTemplatesData,
   loadEmployeesData,
-  loadMailboxData,
-  loadMailboxScheduledEmailData,
-  loadMailboxThreadData,
   loadNoteDetailData,
   loadNotesData,
   loadProductManagementData,
@@ -171,9 +144,6 @@ import {
   moveDealStage,
   hideDealCard,
   unhideDealCard,
-  runMailboxAction,
-  runMailboxSync,
-  sendMailboxEmail,
   toggleEmployeeActive,
   toggleNoteReviewed,
   updateEmployee,
@@ -182,17 +152,13 @@ import {
   updateSchedule as updateCustomerSchedule,
   updateScheduleDeliveryItems,
   updateScheduleStatus,
-  uploadMailboxEditorImage,
   uploadNoteFiles,
   uploadScheduleFiles,
-  replyMailboxEmail,
   replaceProductReference,
   saveProduct,
-  saveBusinessCard,
   saveWeeklyReport,
   saveWeeklyReportManagerComment,
   toggleDocumentTemplateDefault,
-  setDefaultBusinessCard,
   updateDocumentTemplate,
   updateDemoRecord,
   updateProfile,
@@ -376,28 +342,6 @@ type ScheduleDeliveryEditField = 'productId' | 'productQuery' | 'itemName' | 'qu
 
 type ScheduleQuoteGroupNoteState = Record<string, string>;
 
-type MailComposeFormState = {
-  attachments: File[];
-  autoAttachments: MailAutoAttachment[];
-  autoAttachmentSeed: string;
-  bodyHtml: string;
-  bodyText: string;
-  businessCardId: string;
-  ccEmails: string;
-  bccEmails: string;
-  excludedAutoAttachmentKeys: string[];
-  followupId: string;
-  includeInternalCc: boolean;
-  internalCcEmails: string[];
-  scheduleId: string;
-  scheduledAt: string;
-  sendMode: 'now' | 'scheduled';
-  subject: string;
-  toEmail: string;
-};
-
-type MailComposeTextField = Exclude<keyof MailComposeFormState, 'attachments' | 'autoAttachments' | 'autoAttachmentSeed' | 'excludedAutoAttachmentKeys' | 'includeInternalCc' | 'internalCcEmails'>;
-
 type ProfileFormState = {
   username: string;
   firstName: string;
@@ -409,42 +353,6 @@ type ProfilePasswordFormState = {
   oldPassword: string;
   newPassword1: string;
   newPassword2: string;
-};
-
-type ProfileImapProvider = 'gmail' | 'outlook' | 'imap';
-
-type ProfileImapFormState = {
-  provider: ProfileImapProvider;
-  imapEmail: string;
-  imapHost: string;
-  imapPort: string;
-  imapUsername: string;
-  imapPassword: string;
-  imapUseSsl: boolean;
-  smtpHost: string;
-  smtpPort: string;
-  smtpUsername: string;
-  smtpPassword: string;
-  smtpUseTls: boolean;
-};
-
-type BusinessCardFormState = {
-  name: string;
-  fullName: string;
-  title: string;
-  companyName: string;
-  department: string;
-  phone: string;
-  mobile: string;
-  email: string;
-  address: string;
-  website: string;
-  fax: string;
-  logoUrl: string;
-  logoLinkUrl: string;
-  signatureHtml: string;
-  isDefault: boolean;
-  logo: File | null;
 };
 
 type DocumentTemplateFormState = {
@@ -1172,41 +1080,6 @@ const scheduleDeliveryRowsHaveUserInput = (rows: ScheduleDeliveryEditRow[]) => r
   row.optionDescription.trim()
 ));
 
-const makeEmptyMailComposeForm = (): MailComposeFormState => ({
-  attachments: [],
-  autoAttachments: [],
-  autoAttachmentSeed: '',
-  bodyHtml: '',
-  bodyText: '',
-  businessCardId: '',
-  ccEmails: '',
-  bccEmails: '',
-  excludedAutoAttachmentKeys: [],
-  followupId: '',
-  includeInternalCc: false,
-  internalCcEmails: [],
-  scheduleId: '',
-  scheduledAt: '',
-  sendMode: 'now',
-  subject: '',
-  toEmail: '',
-});
-
-const makeInitialMailComposeForm = (): MailComposeFormState => {
-  const form = makeEmptyMailComposeForm();
-  const params = new URLSearchParams(window.location.search);
-  form.followupId = params.get('followup_id') || params.get('followupId') || '';
-  form.scheduleId = params.get('schedule_id') || params.get('scheduleId') || '';
-  form.toEmail = params.get('to') || params.get('to_email') || '';
-  form.subject = params.get('subject') || '';
-  return form;
-};
-
-const getReplyTargetEmail = (email?: MailboxEmailItem | null) => {
-  if (!email) return '';
-  return email.type === 'sent' ? email.recipientEmail : email.senderEmail;
-};
-
 const makeProfileForm = (data?: ProfileData | null): ProfileFormState => ({
   username: data?.user.username || '',
   firstName: data?.user.firstName || '',
@@ -1219,122 +1092,6 @@ const makeEmptyProfilePasswordForm = (): ProfilePasswordFormState => ({
   newPassword1: '',
   newPassword2: '',
 });
-
-const profileImapPresets: Record<ProfileImapProvider, Pick<ProfileImapFormState, 'imapHost' | 'imapPort' | 'imapUseSsl' | 'smtpHost' | 'smtpPort' | 'smtpUseTls'>> = {
-  gmail: {
-    imapHost: 'imap.gmail.com',
-    imapPort: '993',
-    imapUseSsl: true,
-    smtpHost: 'smtp.gmail.com',
-    smtpPort: '587',
-    smtpUseTls: true,
-  },
-  outlook: {
-    imapHost: 'outlook.office365.com',
-    imapPort: '993',
-    imapUseSsl: true,
-    smtpHost: 'smtp.office365.com',
-    smtpPort: '587',
-    smtpUseTls: true,
-  },
-  imap: {
-    imapHost: '',
-    imapPort: '993',
-    imapUseSsl: true,
-    smtpHost: '',
-    smtpPort: '587',
-    smtpUseTls: true,
-  },
-};
-
-const makeProfileImapForm = (data?: ProfileData | null): ProfileImapFormState => {
-  const provider = (data?.emailConnection.provider || 'gmail') as ProfileImapProvider;
-  const safeProvider: ProfileImapProvider = provider in profileImapPresets ? provider : 'imap';
-  const preset = profileImapPresets[safeProvider];
-  return {
-    provider: safeProvider,
-    imapEmail: data?.emailConnection.settings.imapEmail || data?.emailConnection.address || data?.user.email || '',
-    imapHost: data?.emailConnection.settings.imapHost || preset.imapHost,
-    imapPort: String(data?.emailConnection.settings.imapPort || preset.imapPort),
-    imapUsername: data?.emailConnection.settings.imapEmail || data?.emailConnection.address || data?.user.email || '',
-    imapPassword: '',
-    imapUseSsl: data?.emailConnection.settings.imapUseSsl ?? preset.imapUseSsl,
-    smtpHost: data?.emailConnection.settings.smtpHost || preset.smtpHost,
-    smtpPort: String(data?.emailConnection.settings.smtpPort || preset.smtpPort),
-    smtpUsername: data?.emailConnection.settings.imapEmail || data?.emailConnection.address || data?.user.email || '',
-    smtpPassword: '',
-    smtpUseTls: data?.emailConnection.settings.smtpUseTls ?? preset.smtpUseTls,
-  };
-};
-
-const makeEmptyBusinessCardForm = (): BusinessCardFormState => ({
-  name: '',
-  fullName: '',
-  title: '',
-  companyName: '',
-  department: '',
-  phone: '',
-  mobile: '',
-  email: '',
-  address: '',
-  website: '',
-  fax: '',
-  logoUrl: '',
-  logoLinkUrl: '',
-  signatureHtml: '',
-  isDefault: false,
-  logo: null,
-});
-
-const makeBusinessCardForm = (card?: BusinessCardItem | null): BusinessCardFormState => ({
-  name: card?.name || '',
-  fullName: card?.fullName || '',
-  title: card?.title || '',
-  companyName: card?.companyName || '',
-  department: card?.department || '',
-  phone: card?.phone || '',
-  mobile: card?.mobile || '',
-  email: card?.email || '',
-  address: card?.address || '',
-  website: card?.website || '',
-  fax: card?.fax || '',
-  logoUrl: card?.logoUrl || '',
-  logoLinkUrl: card?.logoLinkUrl || '',
-  signatureHtml: card?.signatureHtml || '',
-  isDefault: Boolean(card?.isDefault),
-  logo: null,
-});
-
-const businessCardFormToPayload = (form: BusinessCardFormState): { payload?: BusinessCardPayload; error?: string } => {
-  if (!form.name.trim()) {
-    return { error: '명함 이름을 입력하세요.' };
-  }
-  if (!form.fullName.trim()) {
-    return { error: '이름을 입력하세요.' };
-  }
-  if (!form.email.trim()) {
-    return { error: '이메일을 입력하세요.' };
-  }
-  return {
-    payload: {
-      ...form,
-      name: form.name.trim(),
-      fullName: form.fullName.trim(),
-      title: form.title.trim(),
-      companyName: form.companyName.trim(),
-      department: form.department.trim(),
-      phone: form.phone.trim(),
-      mobile: form.mobile.trim(),
-      email: form.email.trim(),
-      address: form.address.trim(),
-      website: form.website.trim(),
-      fax: form.fax.trim(),
-      logoUrl: form.logoUrl.trim(),
-      logoLinkUrl: form.logoLinkUrl.trim(),
-      signatureHtml: form.signatureHtml,
-    },
-  };
-};
 
 const makeEmptyDocumentTemplateForm = (): DocumentTemplateFormState => ({
   companyId: '',
@@ -1714,30 +1471,6 @@ const routeMeta: Record<
       { label: '사용자/직원관리', href: '/employees/', primary: true },
     ],
   },
-  mail: {
-    eyebrow: 'Sales CRM / Mailbox',
-    title: '메일',
-    summary: '고객과 주고받은 메일을 고객 기록, AI 브리핑 근거와 함께 관리합니다.',
-    primaryHref: '/mailbox/',
-    primaryLabel: '프론트 메일함 보기',
-    actions: [
-      { label: '메일 작성', href: '/mailbox/?compose=1', primary: true },
-      { label: '받은편지함', href: '/mailbox/?box=inbox' },
-      { label: '보낸편지함', href: '/mailbox/?box=sent' },
-    ],
-  },
-  businessCards: {
-    eyebrow: 'Sales CRM / Signature',
-    title: '명함',
-    summary: '메일 발송에 사용할 개인 명함과 서명 정보를 관리합니다.',
-    primaryHref: '/mailbox/business-cards/',
-    primaryLabel: '명함 관리 열기',
-    actions: [
-      { label: '명함 목록', href: '/mailbox/business-cards/', primary: true },
-      { label: '메일함', href: '/mailbox/' },
-      { label: '프로필', href: '/profile/' },
-    ],
-  },
   weeklyReports: {
     eyebrow: 'Sales CRM / Weekly Reports',
     title: '주간보고',
@@ -1801,13 +1534,11 @@ const routeMeta: Record<
   profile: {
     eyebrow: 'Sales CRM / Profile',
     title: '프로필',
-    summary: '내 계정, 권한, 메일 연동 상태를 확인합니다.',
+    summary: '내 계정과 권한을 확인합니다.',
     primaryHref: '/profile/',
     primaryLabel: '프로필 열기',
     actions: [
       { label: '프로필 보기', href: '/profile/', primary: true },
-      { label: '메일함', href: '/mailbox/' },
-      { label: '명함 관리', href: '/mailbox/business-cards/' },
     ],
   },
   notFound: {
@@ -1835,9 +1566,6 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/employees/')) return 'employees';
-  if (pathname.startsWith('/mailbox/business-cards/')) return 'businessCards';
-  if (pathname.startsWith('/mailbox/')) return 'mail';
-  if (pathname.startsWith('/business-cards/')) return 'businessCards';
   if (pathname.startsWith('/weekly-reports/')) return 'weeklyReports';
   if (pathname.startsWith('/documents/')) return 'documents';
   if (pathname.startsWith('/products/')) return 'products';
@@ -1891,28 +1619,6 @@ function getScheduleDetailId(): number | null {
 
 function isScheduleCalendarRoute(): boolean {
   return /^\/schedules\/calendar\/?$/.test(window.location.pathname);
-}
-
-function getMailboxThreadId(): string {
-  const match = window.location.pathname.match(/^\/mailbox\/thread\/(.+?)\/?$/);
-  return match ? decodeURIComponent(match[1]) : '';
-}
-
-function getMailboxScheduledId(): number | null {
-  const match = window.location.pathname.match(/^\/mailbox\/scheduled\/(\d+)\/?$/);
-  if (!match) {
-    return null;
-  }
-  const id = Number(match[1]);
-  return Number.isFinite(id) && id > 0 ? id : null;
-}
-
-function getMailboxTypeParam(): MailboxType {
-  const value = new URLSearchParams(window.location.search).get('box');
-  if (value === 'sent' || value === 'scheduled' || value === 'starred' || value === 'archived' || value === 'trash') {
-    return value;
-  }
-  return 'inbox';
 }
 
 const productSortFields: ProductSortField[] = ['code', 'description', 'specification', 'unit', 'price', 'status', 'quoteCount', 'deliveryCount', 'updatedAt'];
@@ -2488,7 +2194,7 @@ function WorkspaceRoutePage({
   );
 }
 
-const legacyFallbackViews: MainView[] = ['businessCards'];
+const legacyFallbackViews: MainView[] = [];
 const pipelineDataViews: MainView[] = ['pipeline', 'weeklyReports', 'documents', 'products'];
 
 function routeUsesPipelineData(view: MainView): boolean {
@@ -2581,7 +2287,6 @@ function LegacyFallbackRoutePage({ view }: { view: MainView }) {
           </div>
           <div className="route-action-list">
             <a href="/dashboard/">대시보드<ChevronRight size={15} /></a>
-            <a href="/mailbox/">메일함<ChevronRight size={15} /></a>
             <a href="/weekly-reports/">주간보고<ChevronRight size={15} /></a>
           </div>
         </article>
@@ -3507,12 +3212,6 @@ function CustomerDetailPage({
             <a className="route-secondary-action" href={data.links.pipeline}>
               <Target size={15} />
               파이프라인
-            </a>
-          ) : null}
-          {data.links.mailCompose ? (
-            <a className="route-secondary-action" href={data.links.mailCompose}>
-              <Mail size={15} />
-              메일
             </a>
           ) : null}
           {accountManagement?.canManage ? (
@@ -5020,238 +4719,16 @@ function DemoManagementPage({
   );
 }
 
-function BusinessCardSignaturePreview({ html }: { html: string }) {
-  if (!html.trim()) {
-    return <div className="business-card-preview-empty">서명 미리보기가 없습니다</div>;
-  }
-  return (
-    <iframe
-      className="business-card-signature-frame"
-      sandbox=""
-      srcDoc={`<!doctype html><html><body>${html}</body></html>`}
-      title="명함 서명 미리보기"
-    />
-  );
-}
-
-function BusinessCardsPage({
-  actioningId,
-  data,
-  error,
-  form,
-  formOpen,
-  loading,
-  message,
-  saving,
-  editingId,
-  onCreateOpen,
-  onDelete,
-  onEditOpen,
-  onFormChange,
-  onFormOpenChange,
-  onRefresh,
-  onSetDefault,
-  onSubmit,
-}: {
-  actioningId: number | null;
-  data: BusinessCardsData | null;
-  editingId: number | null;
-  error: string;
-  form: BusinessCardFormState;
-  formOpen: boolean;
-  loading: boolean;
-  message: string;
-  saving: boolean;
-  onCreateOpen: () => void;
-  onDelete: (card: BusinessCardItem) => void;
-  onEditOpen: (card: BusinessCardItem) => void;
-  onFormChange: (field: keyof BusinessCardFormState, value: string | boolean | File | null) => void;
-  onFormOpenChange: (open: boolean) => void;
-  onRefresh: () => void;
-  onSetDefault: (card: BusinessCardItem) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  const businessCardEditorRef = useRef<HTMLElement | null>(null);
-  useGuidedPanelFocus(formOpen, businessCardEditorRef, `business-card-${editingId || 'new'}`);
-
-  if (loading && !data) {
-    return (
-      <section className="dashboard-loading">
-        <Loader2 className="spin-icon" size={24} />
-        <span>명함 데이터를 불러오는 중입니다</span>
-      </section>
-    );
-  }
-  if (!data) return null;
-  const editingCard = data.cards.find((card) => card.id === editingId);
-  const defaultCard = data.cards.find((card) => card.isDefault) || null;
-  const cardsWithPreview = data.cards.filter((card) => card.signaturePreviewHtml.trim()).length;
-
-  return (
-    <section className="business-cards-page">
-      {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>명함 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
-      ) : null}
-      {message ? <div className="form-success-message">{message}</div> : null}
-      {error ? <div className="form-error-message">{error}</div> : null}
-
-      <div className="dashboard-summary-band">
-        <div>
-          <span className="eyebrow">Signature</span>
-          <h2>명함 관리</h2>
-          <p>{defaultCard ? `${defaultCard.name} 기본 사용 중` : '기본 명함 미지정'}</p>
-        </div>
-        <div className="reports-actions">
-          <a className="route-secondary-action" href={data.links.mailbox}>메일함</a>
-          <button className="route-secondary-action" onClick={onRefresh} type="button"><RefreshCw size={15} />새로고침</button>
-          <button className="route-primary-action" onClick={onCreateOpen} type="button"><Plus size={16} />새 명함</button>
-        </div>
-      </div>
-
-      <div className="business-card-summary-strip">
-        <div>
-          <ImagePlus size={17} />
-          <span>등록 명함</span>
-          <strong>{formatNumber(data.cards.length)}개</strong>
-        </div>
-        <div className={defaultCard ? 'stable' : 'risk'}>
-          <Star size={17} />
-          <span>기본 명함</span>
-          <strong>{defaultCard?.name || '없음'}</strong>
-        </div>
-        <div>
-          <Eye size={17} />
-          <span>서명 미리보기</span>
-          <strong>{formatNumber(cardsWithPreview)}개</strong>
-        </div>
-      </div>
-
-      <div className="business-cards-layout">
-        <section className="dashboard-panel business-card-list-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Cards</span>
-              <h2>등록된 명함</h2>
-            </div>
-            {loading ? <Loader2 className="spin-icon" size={18} /> : <ImagePlus size={18} />}
-          </div>
-          {data.cards.length === 0 ? (
-            <DashboardEmpty label="등록된 명함이 없습니다" />
-          ) : (
-            <div className="business-card-list">
-              {data.cards.map((card) => (
-                <article className={`business-card-item ${card.isDefault ? 'default' : ''}`} key={card.id}>
-                  <div className="business-card-item-main">
-                    <div>
-                      <div className="business-card-title-row">
-                        <strong>{card.name}</strong>
-                        {card.isDefault ? <span>기본</span> : null}
-                      </div>
-                      <p>{[card.fullName, card.title, card.companyName].filter(Boolean).join(' · ')}</p>
-                      <small>{[card.email, card.mobile || card.phone].filter(Boolean).join(' · ')}</small>
-                      <div className="business-card-meta-grid">
-                        <span>{card.department || '부서 없음'}</span>
-                        <span>{card.updatedAt ? formatDateLabel(card.updatedAt) : '수정일 없음'}</span>
-                      </div>
-                    </div>
-                    <div className="customer-row-actions">
-                      <button className="customer-row-action" onClick={() => onEditOpen(card)} type="button"><Pencil size={14} />수정</button>
-                      {!card.isDefault ? (
-                        <button className="customer-row-action" disabled={actioningId === card.id} onClick={() => onSetDefault(card)} type="button"><Star size={14} />기본</button>
-                      ) : null}
-                      <button className="customer-row-action danger" disabled={actioningId === card.id} onClick={() => onDelete(card)} type="button"><Trash2 size={14} />삭제</button>
-                    </div>
-                  </div>
-                  <div className="business-card-preview-block">
-                    <div>
-                      <span>서명 미리보기</span>
-                      {card.logoFileUrl || card.logoUrl ? <small>로고 포함</small> : <small>텍스트 서명</small>}
-                    </div>
-                    <BusinessCardSignaturePreview html={card.signaturePreviewHtml} />
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <aside className={`dashboard-panel business-card-editor ${formOpen ? 'open' : ''}`} ref={businessCardEditorRef}>
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">{editingCard ? 'Edit card' : 'New card'}</span>
-              <h2>{editingCard ? '명함 수정' : '새 명함'}</h2>
-            </div>
-            {formOpen ? (
-              <button className="icon-button" onClick={() => onFormOpenChange(false)} type="button" aria-label="명함 폼 닫기">
-                <X size={17} />
-              </button>
-            ) : null}
-          </div>
-          {formOpen ? (
-            <form className="business-card-form" onSubmit={onSubmit}>
-              <div className="business-card-form-section-title">표시 정보</div>
-              <label>명함 이름<input value={form.name} onChange={(event) => onFormChange('name', event.target.value)} required /></label>
-              <label>이름<input value={form.fullName} onChange={(event) => onFormChange('fullName', event.target.value)} required /></label>
-              <label>직함<input value={form.title} onChange={(event) => onFormChange('title', event.target.value)} /></label>
-              <label>회사명<input value={form.companyName} onChange={(event) => onFormChange('companyName', event.target.value)} /></label>
-              <label>부서<input value={form.department} onChange={(event) => onFormChange('department', event.target.value)} /></label>
-              <div className="business-card-form-section-title">연락처</div>
-              <label>이메일<input type="email" value={form.email} onChange={(event) => onFormChange('email', event.target.value)} required /></label>
-              <label>휴대폰<input value={form.mobile} onChange={(event) => onFormChange('mobile', event.target.value)} /></label>
-              <label>전화번호<input value={form.phone} onChange={(event) => onFormChange('phone', event.target.value)} /></label>
-              <label>팩스<input value={form.fax} onChange={(event) => onFormChange('fax', event.target.value)} /></label>
-              <label>웹사이트<input type="url" value={form.website} onChange={(event) => onFormChange('website', event.target.value)} placeholder="https://" /></label>
-              <label className="business-card-form-wide">주소<textarea value={form.address} onChange={(event) => onFormChange('address', event.target.value)} /></label>
-              <div className="business-card-form-section-title">서명</div>
-              <label>로고 URL<input type="url" value={form.logoUrl} onChange={(event) => onFormChange('logoUrl', event.target.value)} placeholder="https://" /></label>
-              <label>로고 링크<input type="url" value={form.logoLinkUrl} onChange={(event) => onFormChange('logoLinkUrl', event.target.value)} placeholder="https://" /></label>
-              <label className="business-card-form-wide">로고 업로드<input type="file" accept="image/*" onChange={(event) => onFormChange('logo', event.target.files?.[0] ?? null)} /></label>
-              <label className="business-card-form-wide">커스텀 HTML 서명<textarea value={form.signatureHtml} onChange={(event) => onFormChange('signatureHtml', event.target.value)} /></label>
-              <label className="business-card-default-toggle"><input type="checkbox" checked={form.isDefault} onChange={(event) => onFormChange('isDefault', event.target.checked)} />기본 명함으로 사용</label>
-              <div className="form-actions">
-                <button className="primary-button" disabled={saving} type="submit">
-                  {saving ? <Loader2 className="spin-icon" size={16} /> : <Check size={16} />}
-                  저장
-                </button>
-                <button className="secondary-button" onClick={() => onFormOpenChange(false)} type="button">취소</button>
-              </div>
-            </form>
-          ) : (
-            <DashboardEmpty label="명함을 선택하거나 새 명함을 추가하세요" />
-          )}
-        </aside>
-      </div>
-    </section>
-  );
-}
-
 function ProfileSettingsPage({
   data,
   error,
   form,
-  imapForm,
-  imapOpen,
-  imapSaving,
-  imapTesting,
   loading,
   message,
   passwordForm,
   passwordSaving,
   saving,
-  disconnecting,
-  onDisconnectEmail,
   onFormChange,
-  onImapAction,
-  onImapFormChange,
-  onImapOpenChange,
-  onImapSubmit,
   onPasswordFormChange,
   onPasswordSubmit,
   onSubmit,
@@ -5259,29 +4736,16 @@ function ProfileSettingsPage({
   data: ProfileData | null;
   error: string;
   form: ProfileFormState;
-  imapForm: ProfileImapFormState;
-  imapOpen: boolean;
-  imapSaving: boolean;
-  imapTesting: 'imap' | 'smtp' | '';
   loading: boolean;
   message: string;
   passwordForm: ProfilePasswordFormState;
   passwordSaving: boolean;
   saving: boolean;
-  disconnecting: boolean;
-  onDisconnectEmail: () => void;
   onFormChange: (field: keyof ProfileFormState, value: string) => void;
-  onImapAction: (action: ProfileImapPayload['action']) => void;
-  onImapFormChange: (field: keyof ProfileImapFormState, value: string | boolean) => void;
-  onImapOpenChange: (open: boolean) => void;
-  onImapSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onPasswordFormChange: (field: keyof ProfilePasswordFormState, value: string) => void;
   onPasswordSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const imapFormPanelRef = useRef<HTMLFormElement | null>(null);
-  useGuidedPanelFocus(imapOpen, imapFormPanelRef, 'profile-imap');
-
   if (loading && !data) {
     return (
       <section className="dashboard-loading">
@@ -5291,11 +4755,9 @@ function ProfileSettingsPage({
     );
   }
   if (!data) return null;
-  const connection = data.emailConnection;
   const permissionItems = [
     { label: 'AI 사용', enabled: data.profile.canUseAi },
     { label: '엑셀 다운로드', enabled: data.profile.canDownloadExcel },
-    { label: '메일 연동', enabled: connection.enabled && connection.connected },
   ];
 
   return (
@@ -5332,11 +4794,6 @@ function ProfileSettingsPage({
           <Building2 size={18} />
           <span>소속</span>
           <strong>{data.profile.company || '-'}</strong>
-        </div>
-        <div className={connection.connected ? 'stable' : 'risk'}>
-          <Mail size={18} />
-          <span>메일</span>
-          <strong>{connection.connected ? connection.providerLabel : '미연동'}</strong>
         </div>
         <div>
           <ShieldCheck size={18} />
@@ -5378,131 +4835,6 @@ function ProfileSettingsPage({
             </button>
           </form>
         </section>
-
-        <aside className="dashboard-panel profile-connection-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Email</span>
-              <h2>메일 연동</h2>
-            </div>
-            <Mail size={18} />
-          </div>
-          {!connection.enabled ? (
-            <DashboardEmpty label="관리자 계정은 메일 연동 관리를 사용하지 않습니다" />
-          ) : connection.connected ? (
-            <div className="profile-connection-state connected">
-              <div className="profile-connection-heading">
-                <div>
-                  <Mail size={18} />
-                </div>
-                <div>
-                  <strong>{connection.providerLabel} 연결됨</strong>
-                  <span>{connection.address}</span>
-                </div>
-              </div>
-              <small>마지막 동기화 {connection.lastSyncAt ? formatDateTimeLabel(connection.lastSyncAt) : '-'}</small>
-              <small>연결일 {connection.connectedAt ? formatDateTimeLabel(connection.connectedAt) : '-'}</small>
-              <div className="profile-connection-actions">
-                <a className="route-secondary-action" href={connection.links.mailbox}>메일함</a>
-                <a className="route-secondary-action" href={connection.links.businessCards}>명함 관리</a>
-                {connection.imapConnected ? <a className="route-secondary-action" href={connection.links.imapSync}>동기화</a> : null}
-                <button className="route-secondary-action danger" disabled={disconnecting} onClick={onDisconnectEmail} type="button">
-                  {disconnecting ? <Loader2 className="spin-icon" size={15} /> : <X size={15} />}
-                  연결 해제
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="profile-connection-state">
-              <div className="profile-connection-heading">
-                <div>
-                  <Mail size={18} />
-                </div>
-                <div>
-                  <strong>연동된 이메일이 없습니다</strong>
-                  <span>메일 발송과 수신 준비가 필요합니다.</span>
-                </div>
-              </div>
-              <div className="profile-connection-actions">
-                <a className="route-secondary-action" href={connection.links.gmailConnect}>Gmail 연결</a>
-                <button className="route-secondary-action" onClick={() => onImapOpenChange(!imapOpen)} type="button">
-                  {imapOpen ? <X size={15} /> : <Plus size={15} />}
-                  회사 이메일
-                </button>
-              </div>
-              {imapOpen ? (
-                <form className="profile-form profile-imap-form" onSubmit={onImapSubmit} ref={imapFormPanelRef}>
-                  <label>
-                    제공업체
-                    <select value={imapForm.provider} onChange={(event) => onImapFormChange('provider', event.target.value)}>
-                      <option value="gmail">Gmail</option>
-                      <option value="outlook">Outlook/Office365</option>
-                      <option value="imap">Custom IMAP/SMTP</option>
-                    </select>
-                  </label>
-                  <label>
-                    이메일
-                    <input type="email" value={imapForm.imapEmail} onChange={(event) => onImapFormChange('imapEmail', event.target.value)} required />
-                  </label>
-                  <label>
-                    IMAP 사용자명
-                    <input value={imapForm.imapUsername} onChange={(event) => onImapFormChange('imapUsername', event.target.value)} />
-                  </label>
-                  <label>
-                    비밀번호
-                    <input type="password" value={imapForm.imapPassword} onChange={(event) => onImapFormChange('imapPassword', event.target.value)} required />
-                  </label>
-                  <label>
-                    IMAP 서버
-                    <input value={imapForm.imapHost} onChange={(event) => onImapFormChange('imapHost', event.target.value)} required />
-                  </label>
-                  <label>
-                    IMAP 포트
-                    <input inputMode="numeric" value={imapForm.imapPort} onChange={(event) => onImapFormChange('imapPort', event.target.value)} required />
-                  </label>
-                  <label>
-                    SMTP 서버
-                    <input value={imapForm.smtpHost} onChange={(event) => onImapFormChange('smtpHost', event.target.value)} required />
-                  </label>
-                  <label>
-                    SMTP 포트
-                    <input inputMode="numeric" value={imapForm.smtpPort} onChange={(event) => onImapFormChange('smtpPort', event.target.value)} required />
-                  </label>
-                  <label>
-                    SMTP 사용자명
-                    <input value={imapForm.smtpUsername} onChange={(event) => onImapFormChange('smtpUsername', event.target.value)} />
-                  </label>
-                  <label>
-                    SMTP 비밀번호
-                    <input type="password" value={imapForm.smtpPassword} onChange={(event) => onImapFormChange('smtpPassword', event.target.value)} />
-                  </label>
-                  <label className="business-card-default-toggle">
-                    <input type="checkbox" checked={imapForm.imapUseSsl} onChange={(event) => onImapFormChange('imapUseSsl', event.target.checked)} />
-                    IMAP SSL
-                  </label>
-                  <label className="business-card-default-toggle">
-                    <input type="checkbox" checked={imapForm.smtpUseTls} onChange={(event) => onImapFormChange('smtpUseTls', event.target.checked)} />
-                    SMTP TLS
-                  </label>
-                  <div className="profile-imap-actions">
-                    <button className="secondary-button" disabled={imapSaving || Boolean(imapTesting)} onClick={() => onImapAction('test_imap')} type="button">
-                      {imapTesting === 'imap' ? <Loader2 className="spin-icon" size={15} /> : <RefreshCw size={15} />}
-                      수신 테스트
-                    </button>
-                    <button className="secondary-button" disabled={imapSaving || Boolean(imapTesting)} onClick={() => onImapAction('test_smtp')} type="button">
-                      {imapTesting === 'smtp' ? <Loader2 className="spin-icon" size={15} /> : <Send size={15} />}
-                      발신 테스트
-                    </button>
-                    <button className="primary-button" disabled={imapSaving || Boolean(imapTesting)} type="submit">
-                      {imapSaving ? <Loader2 className="spin-icon" size={16} /> : <Check size={16} />}
-                      연동 저장
-                    </button>
-                  </div>
-                </form>
-              ) : null}
-            </div>
-          )}
-        </aside>
 
         <section className="dashboard-panel profile-password-panel">
           <div className="dashboard-panel-heading">
@@ -9868,9 +9200,6 @@ function ScheduleDetailPage({
   const taxInvoice = data.taxInvoice;
   const editableQuoteGroups = scheduleQuoteGroupsFromRows(deliveryRows);
   const savedQuoteGroupNotes = schedule.quoteGroupNotes?.filter((item) => item.notes.trim()) ?? [];
-  const scheduleMailSubject = isQuoteSchedule
-    ? `${schedule.customer || '고객'} 견적서 전달드립니다`
-    : `${schedule.customer || '고객'} 거래명세서 전달드립니다`;
   const prepaymentUsages = schedule.prepaymentUsages ?? [];
   const deliveryTotalAmount = deliveryItems.reduce((total, item) => total + (item.totalPrice || 0), 0);
   const prepaymentBaseAmount = deliveryTotalAmount > 0 ? deliveryTotalAmount : schedule.expectedRevenue;
@@ -10348,11 +9677,6 @@ function ScheduleDetailPage({
           </div>
           <div className="customers-side-actions note-detail-actions">
             {data.links.customer ? <a href={data.links.customer}>고객 상세</a> : null}
-            {data.links.sendMail ? (
-              <a href={`${data.links.sendMail}${schedule.customerEmail ? `&to=${encodeURIComponent(schedule.customerEmail)}` : ''}&subject=${encodeURIComponent(scheduleMailSubject)}`}>
-                메일 발송
-              </a>
-            ) : data.links.djangoSendMail ? <a href={data.links.djangoSendMail}>메일 발송</a> : null}
             {data.links.createNote ? <a href={data.links.createNote}>보고 작성</a> : null}
             <a href={data.links.calendar}>일정 캘린더</a>
           </div>
@@ -12470,1210 +11794,6 @@ function PrepaymentDetailPage({
           </div>
         </aside>
       </div>
-    </section>
-  );
-}
-
-const mailboxTabs: Array<{ id: MailboxType; label: string; icon: typeof Inbox }> = [
-  { id: 'inbox', label: '받은편지함', icon: Inbox },
-  { id: 'sent', label: '보낸편지함', icon: Send },
-  { id: 'scheduled', label: '예약메일', icon: Clock },
-  { id: 'starred', label: '중요편지함', icon: Star },
-  { id: 'archived', label: '보관함', icon: Archive },
-  { id: 'trash', label: '휴지통', icon: Trash2 },
-];
-
-function MailAttachmentLinks({ attachments }: { attachments: MailboxEmailItem['attachments'] }) {
-  const visibleAttachments = (attachments ?? []).filter((attachment) => attachment.filename);
-  if (visibleAttachments.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mail-message-attachments">
-      {visibleAttachments.map((attachment, index) => {
-        const content = (
-          <>
-            <Download size={14} />
-            <span>{attachment.filename}</span>
-            {attachment.size ? <small>{formatFileSize(attachment.size)}</small> : null}
-          </>
-        );
-        return attachment.downloadHref ? (
-          <a href={attachment.downloadHref} key={`${attachment.filename}-${index}`}>
-            {content}
-          </a>
-        ) : (
-          <span key={`${attachment.filename}-${index}`}>
-            {content}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-const mailEditorFonts = [
-  { label: '기본', value: 'Arial, sans-serif' },
-  { label: '맑은 고딕', value: '"Malgun Gothic", "Apple SD Gothic Neo", sans-serif' },
-  { label: '나눔고딕', value: '"Nanum Gothic", sans-serif' },
-  { label: '명조', value: 'Georgia, "Times New Roman", serif' },
-  { label: '고정폭', value: '"Courier New", monospace' },
-];
-
-const escapeHtml = (value: string) => (
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-);
-
-const normalizeMailEditorUrl = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return '';
-  }
-  if (/^(https?:|mailto:)/i.test(trimmed)) {
-    return trimmed;
-  }
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-    return `mailto:${trimmed}`;
-  }
-  return `https://${trimmed}`;
-};
-
-const sanitizeMailEditorHtml = (html: string) => {
-  if (typeof document === 'undefined') {
-    return html;
-  }
-  const container = document.createElement('div');
-  container.innerHTML = html || '';
-  container.querySelectorAll('script, style, iframe, object, embed, form, input, button, textarea, select, meta, link').forEach((node) => node.remove());
-  container.querySelectorAll<HTMLElement>('*').forEach((node) => {
-    Array.from(node.attributes).forEach((attribute) => {
-      const name = attribute.name.toLowerCase();
-      const value = attribute.value.trim();
-      if (name.startsWith('on')) {
-        node.removeAttribute(attribute.name);
-      }
-      if ((name === 'href' || name === 'src') && /^javascript:/i.test(value)) {
-        node.removeAttribute(attribute.name);
-      }
-    });
-    if (node.tagName.toLowerCase() === 'a') {
-      node.setAttribute('target', '_blank');
-      node.setAttribute('rel', 'noopener noreferrer');
-    }
-    if (node.tagName.toLowerCase() === 'img') {
-      node.setAttribute('style', `${node.getAttribute('style') || ''};max-width:100%;height:auto;`.replace(/^;/, ''));
-    }
-  });
-  return container.innerHTML;
-};
-
-const extractMailEditorLinks = (html: string) => {
-  if (typeof document === 'undefined') {
-    return [];
-  }
-  const container = document.createElement('div');
-  container.innerHTML = sanitizeMailEditorHtml(html || '');
-  const seen = new Set<string>();
-  return Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href]'))
-    .map((anchor) => {
-      const href = normalizeMailEditorUrl(anchor.getAttribute('href') || '');
-      const label = (anchor.textContent || href).trim() || href;
-      return { href, label };
-    })
-    .filter((link) => {
-      if (!link.href || seen.has(link.href)) {
-        return false;
-      }
-      seen.add(link.href);
-      return true;
-    })
-    .slice(0, 8);
-};
-
-const mailHtmlHasMeaningfulContent = (html: string) => {
-  if (typeof document === 'undefined') {
-    return /<(img|a|strong|b|em|i|u|p|div|span|li|table)\b/i.test(html || '');
-  }
-  const container = document.createElement('div');
-  container.innerHTML = sanitizeMailEditorHtml(html || '');
-  return Boolean(container.textContent?.trim() || container.querySelector('img'));
-};
-
-function MailRichTextEditor({
-  disabled,
-  valueHtml,
-  onChange,
-}: {
-  disabled?: boolean;
-  valueHtml: string;
-  onChange: (bodyText: string, bodyHtml: string) => void;
-}) {
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [empty, setEmpty] = useState(true);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [draftLinks, setDraftLinks] = useState<Array<{ href: string; label: string }>>([]);
-
-  const emitChange = () => {
-    const editor = editorRef.current;
-    if (!editor) {
-      return;
-    }
-    const bodyText = (editor.innerText || '').replace(/\u00a0/g, ' ').replace(/\n{4,}/g, '\n\n\n');
-    const bodyHtml = sanitizeMailEditorHtml(editor.innerHTML || '');
-    setEmpty(!bodyText.trim() && !/<img\b/i.test(bodyHtml));
-    setDraftLinks(extractMailEditorLinks(bodyHtml));
-    onChange(bodyText, bodyHtml);
-  };
-
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (!editor) {
-      return;
-    }
-    const nextHtml = valueHtml || '';
-    if (editor.innerHTML !== nextHtml && (!nextHtml || document.activeElement !== editor)) {
-      editor.innerHTML = nextHtml;
-    }
-    const bodyText = (editor.innerText || '').replace(/\u00a0/g, ' ');
-    setEmpty(!bodyText.trim() && !/<img\b/i.test(nextHtml));
-    setDraftLinks(extractMailEditorLinks(nextHtml));
-  }, [valueHtml]);
-
-  const focusEditor = () => {
-    editorRef.current?.focus();
-  };
-
-  const applyCommand = (command: string, value?: string) => {
-    if (disabled) {
-      return;
-    }
-    focusEditor();
-    document.execCommand(command, false, value);
-    emitChange();
-  };
-
-  const getEditorSelectionRange = () => {
-    const editor = editorRef.current;
-    const selection = window.getSelection();
-    if (!editor || !selection || selection.rangeCount === 0) {
-      return null;
-    }
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
-      return null;
-    }
-    return range.cloneRange();
-  };
-
-  const restoreEditorSelection = (range: Range | null) => {
-    if (!range) {
-      focusEditor();
-      return;
-    }
-    const selection = window.getSelection();
-    focusEditor();
-    if (!selection) {
-      return;
-    }
-    selection.removeAllRanges();
-    selection.addRange(range);
-  };
-
-  const insertHtml = (html: string, range?: Range | null) => {
-    if (disabled) {
-      return;
-    }
-    if (range !== undefined) {
-      restoreEditorSelection(range);
-    } else {
-      focusEditor();
-    }
-    document.execCommand('insertHTML', false, sanitizeMailEditorHtml(html));
-    emitChange();
-  };
-
-  const handleLinkInsert = () => {
-    const range = getEditorSelectionRange();
-    const selectedText = range?.toString().trim() || '';
-    const rawLabel = window.prompt('링크로 표시할 텍스트를 입력하세요.', selectedText);
-    if (rawLabel === null) {
-      return;
-    }
-    const label = rawLabel.trim();
-    if (!label) {
-      return;
-    }
-    const rawUrl = window.prompt('링크 URL을 입력하세요.');
-    if (rawUrl === null) {
-      return;
-    }
-    const url = normalizeMailEditorUrl(rawUrl);
-    if (!url) {
-      return;
-    }
-    insertHtml(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`, range);
-  };
-
-  const handleImageFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setUploadError('이미지 파일만 넣을 수 있습니다.');
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setUploadError('이미지는 2MB 이하만 넣을 수 있습니다.');
-      return;
-    }
-    setUploadingImage(true);
-    setUploadError('');
-    try {
-      const result = await uploadMailboxEditorImage(file);
-      if (!result.url) {
-        throw new Error('이미지 URL을 받지 못했습니다.');
-      }
-      insertHtml(`<img src="${escapeHtml(result.url)}" alt="${escapeHtml(file.name)}" style="max-width:100%;height:auto;">`);
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.');
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
-    const imageFile = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'));
-    if (imageFile) {
-      event.preventDefault();
-      void handleImageFile(imageFile);
-      return;
-    }
-    const html = event.clipboardData.getData('text/html');
-    if (html) {
-      event.preventDefault();
-      insertHtml(html);
-    }
-  };
-
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    const imageFile = Array.from(event.dataTransfer.files).find((file) => file.type.startsWith('image/'));
-    if (!imageFile) {
-      return;
-    }
-    event.preventDefault();
-    void handleImageFile(imageFile);
-  };
-
-  return (
-    <div className="mail-rich-editor">
-      <div className="mail-rich-toolbar" aria-label="메일 본문 서식 도구">
-        <button aria-label="굵게" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('bold')} title="굵게" type="button">
-          <Bold size={15} />
-        </button>
-        <button aria-label="기울임" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('italic')} title="기울임" type="button">
-          <Italic size={15} />
-        </button>
-        <button aria-label="밑줄" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('underline')} title="밑줄" type="button">
-          <Underline size={15} />
-        </button>
-        <select aria-label="글씨체" disabled={disabled} onChange={(event) => applyCommand('fontName', event.target.value)} defaultValue={mailEditorFonts[0].value} title="글씨체">
-          {mailEditorFonts.map((font) => (
-            <option key={font.value} value={font.value}>{font.label}</option>
-          ))}
-        </select>
-        <select aria-label="글씨 크기" disabled={disabled} onChange={(event) => applyCommand('fontSize', event.target.value)} defaultValue="3" title="글씨 크기">
-          <option value="2">작게</option>
-          <option value="3">보통</option>
-          <option value="4">크게</option>
-          <option value="5">아주 크게</option>
-        </select>
-        <label className="mail-rich-color" title="글자색">
-          <Type size={14} />
-          <input aria-label="글자색" disabled={disabled} onChange={(event) => applyCommand('foreColor', event.target.value)} type="color" />
-        </label>
-        <label className="mail-rich-color" title="배경색">
-          <span>A</span>
-          <input aria-label="배경색" disabled={disabled} onChange={(event) => applyCommand('hiliteColor', event.target.value)} type="color" />
-        </label>
-        <button aria-label="번호 목록" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('insertOrderedList')} title="번호 목록" type="button">
-          1.
-        </button>
-        <button aria-label="글머리 목록" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('insertUnorderedList')} title="글머리 목록" type="button">
-          •
-        </button>
-        <button aria-label="링크" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={handleLinkInsert} title="링크" type="button">
-          <Link2 size={15} />
-        </button>
-        <button aria-label="사진" disabled={disabled || uploadingImage} onMouseDown={(event) => event.preventDefault()} onClick={() => fileInputRef.current?.click()} title="사진" type="button">
-          {uploadingImage ? <Loader2 className="spin-icon" size={15} /> : <ImagePlus size={15} />}
-        </button>
-        <button aria-label="서식 지우기" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => applyCommand('removeFormat')} title="서식 지우기" type="button">
-          <X size={15} />
-        </button>
-        <input
-          accept="image/*"
-          className="visually-hidden"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            if (file) {
-              void handleImageFile(file);
-            }
-            event.currentTarget.value = '';
-          }}
-          ref={fileInputRef}
-          type="file"
-        />
-      </div>
-      <div
-        aria-label="메일 본문"
-        className={`mail-rich-editor-surface${empty ? ' empty' : ''}`}
-        contentEditable={!disabled}
-        data-placeholder="메일 본문을 작성하세요"
-        onBlur={emitChange}
-        onDrop={handleDrop}
-        onInput={emitChange}
-        onKeyUp={emitChange}
-        onPaste={handlePaste}
-        ref={editorRef}
-        role="textbox"
-        suppressContentEditableWarning
-      />
-      {uploadError ? <div className="mail-rich-error">{uploadError}</div> : null}
-      {draftLinks.length > 0 ? (
-        <div className="mail-link-test-panel" aria-label="본문 링크 테스트">
-          <div>
-            <Link2 size={14} />
-            <span>본문 링크 테스트</span>
-          </div>
-          <div className="mail-link-test-list">
-            {draftLinks.map((link) => (
-              <a href={link.href} key={link.href} rel="noopener noreferrer" target="_blank">
-                <span>{link.label}</span>
-                <small>{link.href}</small>
-                <MoveUpRight size={13} />
-              </a>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function MailInternalCcPicker({
-  contacts,
-  disabled,
-  includeAll,
-  selectedEmails,
-  onIncludeAllChange,
-  onSelectedEmailsChange,
-}: {
-  contacts: MailInternalCcContact[];
-  disabled?: boolean;
-  includeAll: boolean;
-  selectedEmails: string[];
-  onIncludeAllChange: (checked: boolean) => void;
-  onSelectedEmailsChange: (emails: string[]) => void;
-}) {
-  const [query, setQuery] = useState('');
-  const normalizedSelected = useMemo(
-    () => new Set(selectedEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
-    [selectedEmails],
-  );
-  const uniqueContacts = useMemo(() => {
-    const seen = new Set<string>();
-    return contacts.filter((contact) => {
-      const key = contact.email.trim().toLowerCase();
-      if (!key || seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }, [contacts]);
-  const selectedContacts = uniqueContacts.filter((contact) => normalizedSelected.has(contact.email.trim().toLowerCase()));
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredContacts = uniqueContacts.filter((contact) => {
-    if (!normalizedQuery) {
-      return true;
-    }
-    return [contact.name, contact.email, contact.label ?? ''].join(' ').toLowerCase().includes(normalizedQuery);
-  });
-  const visibleContacts = filteredContacts.slice(0, 8);
-  const selectedCount = includeAll ? uniqueContacts.length : selectedContacts.length;
-
-  const toggleContact = (email: string) => {
-    if (disabled || includeAll) {
-      return;
-    }
-    const key = email.trim().toLowerCase();
-    const next = normalizedSelected.has(key)
-      ? selectedEmails.filter((item) => item.trim().toLowerCase() !== key)
-      : [...selectedEmails, email];
-    onSelectedEmailsChange(next);
-  };
-
-  return (
-    <div className="mail-internal-cc-picker">
-      <div className="mail-internal-cc-head">
-        <div>
-          <span>내부 직원 참조</span>
-          <small>{includeAll ? `전체 ${formatNumber(uniqueContacts.length)}명` : `선택 ${formatNumber(selectedCount)}명 / 전체 ${formatNumber(uniqueContacts.length)}명`}</small>
-        </div>
-        <div className="mail-internal-cc-actions">
-          <button
-            className={includeAll ? 'active' : ''}
-            disabled={disabled || uniqueContacts.length === 0}
-            onClick={() => onIncludeAllChange(!includeAll)}
-            type="button"
-          >
-            <Users size={13} />
-            {includeAll ? '전체 해제' : '전체 참조'}
-          </button>
-          <button
-            disabled={disabled || includeAll || selectedEmails.length === 0}
-            onClick={() => onSelectedEmailsChange([])}
-            type="button"
-          >
-            <X size={13} />
-            선택 해제
-          </button>
-        </div>
-      </div>
-
-      {includeAll ? (
-        <div className="mail-internal-cc-all">
-          <CheckCircle2 size={15} />
-          <span>발송 시 회사 내부 직원 전체가 참조에 포함됩니다.</span>
-        </div>
-      ) : (
-        <>
-          <label className="mail-internal-cc-search">
-            <Search size={14} />
-            <input
-              disabled={disabled}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="이름 또는 이메일 검색"
-              value={query}
-            />
-          </label>
-          {selectedContacts.length > 0 ? (
-            <div className="mail-internal-cc-selected" aria-label="선택된 내부 직원 참조">
-              {selectedContacts.map((contact) => (
-                <button key={contact.email} onClick={() => toggleContact(contact.email)} type="button">
-                  <span>{contact.name}</span>
-                  <small>{contact.email}</small>
-                  <X size={12} />
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <div className="mail-internal-cc-results">
-            {visibleContacts.length === 0 ? (
-              <span className="mail-internal-cc-empty">검색 결과가 없습니다</span>
-            ) : (
-              visibleContacts.map((contact) => {
-                const selected = normalizedSelected.has(contact.email.trim().toLowerCase());
-                return (
-                  <button
-                    className={selected ? 'selected' : ''}
-                    disabled={disabled}
-                    key={contact.email}
-                    onClick={() => toggleContact(contact.email)}
-                    type="button"
-                  >
-                    <div>
-                      <strong>{contact.name || contact.email}</strong>
-                      <span>{contact.email}</span>
-                    </div>
-                    {selected ? <Check size={14} /> : null}
-                  </button>
-                );
-              })
-            )}
-          </div>
-          {filteredContacts.length > visibleContacts.length ? (
-            <p className="mail-internal-cc-hint">
-              {formatNumber(filteredContacts.length - visibleContacts.length)}명이 더 있습니다. 검색어를 더 구체적으로 입력하세요.
-            </p>
-          ) : null}
-        </>
-      )}
-    </div>
-  );
-}
-
-function MailComposePanel({
-  create,
-  form,
-  open,
-  saving,
-  error,
-  message,
-  submitLabel,
-  onAutoAttachmentRemove,
-  onAttachmentRemove,
-  onAttachmentsChange,
-  onBodyChange,
-  onChange,
-  onCustomerChange,
-  onInternalCcChange,
-  onInternalCcEmailsChange,
-  onOpenChange,
-  onSubmit,
-}: {
-  create: MailboxData['create'];
-  form: MailComposeFormState;
-  open: boolean;
-  saving: boolean;
-  error: string;
-  message: string;
-  submitLabel: string;
-  onAutoAttachmentRemove: (key: string) => void;
-  onAttachmentRemove: (index: number) => void;
-  onAttachmentsChange: (files: File[]) => void;
-  onBodyChange: (bodyText: string, bodyHtml: string) => void;
-  onChange: (field: MailComposeTextField, value: string) => void;
-  onCustomerChange: (customerId: string) => void;
-  onInternalCcChange: (checked: boolean) => void;
-  onInternalCcEmailsChange: (emails: string[]) => void;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  const composePanelRef = useRef<HTMLElement | null>(null);
-  useGuidedPanelFocus(open, composePanelRef, submitLabel || 'mail-compose');
-
-  if (!open) {
-    return null;
-  }
-  const visibleAutoAttachments = form.autoAttachments.filter((attachment) => !form.excludedAutoAttachmentKeys.includes(attachment.key));
-
-  return (
-    <section className="mail-compose-panel" ref={composePanelRef}>
-      <div className="dashboard-panel-heading">
-        <div>
-          <span className="eyebrow">Compose</span>
-          <h2>{submitLabel}</h2>
-        </div>
-        <button className="icon-button" type="button" onClick={() => onOpenChange(false)} aria-label="메일 작성 닫기">
-          <X size={17} />
-        </button>
-      </div>
-      <form className="mail-compose-form" onSubmit={onSubmit}>
-        {create.customers.length > 0 ? (
-          <div className="form-field">
-            <span>연결 고객</span>
-            <SearchableSelect
-              allowEmpty
-              ariaLabel="연결 고객 선택"
-              emptyLabel="고객 선택 없음"
-              onChange={onCustomerChange}
-              options={create.customers.map(makeCustomerSelectOption)}
-              placeholder="고객, 회사, 이메일 검색"
-              value={form.followupId}
-            />
-          </div>
-        ) : null}
-        <label>
-          <span>받는 사람</span>
-          <input value={form.toEmail} onChange={(event) => onChange('toEmail', event.target.value)} placeholder="customer@example.com" />
-        </label>
-        <div className="mail-compose-grid">
-          <label>
-            <span>참조</span>
-            <input value={form.ccEmails} onChange={(event) => onChange('ccEmails', event.target.value)} placeholder="쉼표로 구분" />
-          </label>
-          <label>
-            <span>숨은참조</span>
-            <input value={form.bccEmails} onChange={(event) => onChange('bccEmails', event.target.value)} placeholder="쉼표로 구분" />
-          </label>
-        </div>
-        {create.internalCcContacts.length > 0 ? (
-          <MailInternalCcPicker
-            contacts={create.internalCcContacts}
-            disabled={saving}
-            includeAll={form.includeInternalCc}
-            onIncludeAllChange={onInternalCcChange}
-            onSelectedEmailsChange={onInternalCcEmailsChange}
-            selectedEmails={form.internalCcEmails}
-          />
-        ) : null}
-        <label>
-          <span>제목</span>
-          <input value={form.subject} onChange={(event) => onChange('subject', event.target.value)} placeholder="메일 제목" />
-        </label>
-        <label>
-          <span>본문</span>
-          <MailRichTextEditor
-            disabled={saving}
-            onChange={onBodyChange}
-            valueHtml={form.bodyHtml}
-          />
-        </label>
-        <label className="mail-attachment-field">
-          <span>첨부파일</span>
-          <input
-            multiple
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              onAttachmentsChange(Array.from(event.target.files ?? []));
-              event.currentTarget.value = '';
-            }}
-            type="file"
-          />
-        </label>
-        {form.attachments.length > 0 ? (
-          <div className="mail-attachment-list" aria-label="선택된 첨부파일">
-            {form.attachments.map((file, index) => (
-              <div className="mail-attachment-item" key={`${file.name}-${file.size}-${index}`}>
-                <Upload size={14} />
-                <span>{file.name}</span>
-                <small>{formatFileSize(file.size)}</small>
-                <button aria-label={`${file.name} 첨부 제거`} onClick={() => onAttachmentRemove(index)} type="button">
-                  <X size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {form.autoAttachments.length > 0 ? (
-          <div className="mail-auto-attachments" aria-label="자동 첨부 예정 문서">
-            <div className="dashboard-api-alert compact success">
-              <FileText size={16} />
-              <span>
-                {visibleAutoAttachments.length > 0
-                  ? `자동 첨부 ${visibleAutoAttachments.length}개가 발송에 포함됩니다.`
-                  : '자동 첨부를 모두 제외했습니다.'}
-              </span>
-            </div>
-            {visibleAutoAttachments.length > 0 ? (
-              <div className="mail-attachment-list">
-                {visibleAutoAttachments.map((attachment) => (
-                  <div className="mail-attachment-item auto" key={attachment.key}>
-                    <FileText size={14} />
-                    <span>{attachment.filename}</span>
-                    <small>{attachment.willGenerate ? '발송 시 생성' : attachment.size ? formatFileSize(attachment.size) : attachment.documentTypeLabel}</small>
-                    <button aria-label={`${attachment.filename} 자동 첨부 제외`} onClick={() => onAutoAttachmentRemove(attachment.key)} type="button">
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {create.businessCards.length > 0 ? (
-          <label>
-            <span>명함 서명</span>
-            <select value={form.businessCardId} onChange={(event) => onChange('businessCardId', event.target.value)}>
-              <option value="">사용 안 함</option>
-              {create.businessCards.map((card) => (
-                <option value={card.id} key={card.id}>
-                  {card.name}{card.isDefault ? ' · 기본' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <div className="mail-schedule-control">
-          <span>발송 방식</span>
-          <div className="segmented-control">
-            <button
-              className={form.sendMode === 'now' ? 'active' : ''}
-              onClick={() => onChange('sendMode', 'now')}
-              type="button"
-            >
-              <Send size={14} />
-              바로 발송
-            </button>
-            <button
-              className={form.sendMode === 'scheduled' ? 'active' : ''}
-              onClick={() => onChange('sendMode', 'scheduled')}
-              type="button"
-            >
-              <Clock size={14} />
-              예약 발송
-            </button>
-          </div>
-          {form.sendMode === 'scheduled' ? (
-            <label>
-              <span>예약 일시</span>
-              <input
-                min={formatDateTimeLocalInputValue(new Date(Date.now() + 2 * 60 * 1000))}
-                onChange={(event) => onChange('scheduledAt', event.target.value)}
-                type="datetime-local"
-                value={form.scheduledAt}
-              />
-            </label>
-          ) : null}
-        </div>
-        {error ? <div className="dashboard-api-alert compact"><AlertTriangle size={16} /><span>{error}</span></div> : null}
-        {message ? <div className="dashboard-api-alert compact success"><CheckCircle2 size={16} /><span>{message}</span></div> : null}
-        <div className="mail-compose-actions">
-          <button className="route-secondary-action" type="button" onClick={() => onOpenChange(false)}>취소</button>
-          <button className="route-primary-action" disabled={saving} type="submit">
-            {saving ? <Loader2 className="spin-icon" size={16} /> : form.sendMode === 'scheduled' ? <Clock size={16} /> : <Send size={16} />}
-            {form.sendMode === 'scheduled' ? '예약하기' : submitLabel}
-          </button>
-        </div>
-      </form>
-    </section>
-  );
-}
-
-function MailboxPage({
-  data,
-  loading,
-  selectedBox,
-  query,
-  composeOpen,
-  composeForm,
-  composing,
-  composeError,
-  composeMessage,
-  syncing,
-  actioningId,
-  onAction,
-  onComposeAutoAttachmentRemove,
-  onComposeAttachmentRemove,
-  onComposeAttachmentsChange,
-  onComposeBodyChange,
-  onBoxChange,
-  onComposeCustomerChange,
-  onComposeFormChange,
-  onComposeInternalCcChange,
-  onComposeInternalCcEmailsChange,
-  onComposeOpenChange,
-  onComposeSubmit,
-  onQueryChange,
-  onSync,
-}: {
-  data: MailboxData | null;
-  loading: boolean;
-  selectedBox: MailboxType;
-  query: string;
-  composeOpen: boolean;
-  composeForm: MailComposeFormState;
-  composing: boolean;
-  composeError: string;
-  composeMessage: string;
-  syncing: boolean;
-  actioningId: number | null;
-  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel' | 'sendNow') => void;
-  onComposeAutoAttachmentRemove: (key: string) => void;
-  onComposeAttachmentRemove: (index: number) => void;
-  onComposeAttachmentsChange: (files: File[]) => void;
-  onComposeBodyChange: (bodyText: string, bodyHtml: string) => void;
-  onBoxChange: (box: MailboxType) => void;
-  onComposeCustomerChange: (customerId: string) => void;
-  onComposeFormChange: (field: MailComposeTextField, value: string) => void;
-  onComposeInternalCcChange: (checked: boolean) => void;
-  onComposeInternalCcEmailsChange: (emails: string[]) => void;
-  onComposeOpenChange: (open: boolean) => void;
-  onComposeSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onQueryChange: (value: string) => void;
-  onSync: () => void;
-}) {
-  const mailbox = data ?? null;
-  const counts = mailbox?.counts ?? { inbox: 0, sent: 0, scheduled: 0, starred: 0, archived: 0, trash: 0, unread: 0 };
-  const isScheduledBox = selectedBox === 'scheduled';
-
-  return (
-    <section className="mailbox-page">
-      {mailbox?.source !== 'django' && !loading ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>메일 API에 연결되지 않았습니다</strong>
-            <span>{mailbox?.error || '로그인 상태나 Django API 응답을 확인해야 합니다.'}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
-      ) : null}
-
-      <div className="mailbox-summary-band">
-        <div>
-          <span className="eyebrow">Customer mailbox</span>
-          <h2>{isScheduledBox ? '예약메일' : mailbox?.connection.address || '메일함'}</h2>
-          <p>
-            {isScheduledBox
-              ? '예약 대기 메일을 확인하고 취소합니다'
-              : mailbox?.connection.connected ? `${mailbox.connection.provider} 연결됨` : '메일 계정 연결이 필요합니다'}
-          </p>
-        </div>
-        <div className="mailbox-summary-actions">
-          <button className="route-secondary-action" disabled={syncing || !mailbox?.connection.connected} onClick={onSync} type="button">
-            {syncing ? <Loader2 className="spin-icon" size={16} /> : <RefreshCw size={16} />}
-            동기화
-          </button>
-          <button
-            className="route-primary-action"
-            disabled={!mailbox?.connection.connected}
-            onClick={() => onComposeOpenChange(true)}
-            type="button"
-          >
-            <Send size={16} />
-            메일 작성
-          </button>
-        </div>
-      </div>
-
-      {!mailbox?.connection.connected && !isScheduledBox ? (
-        <div className="dashboard-api-alert compact">
-          <AlertTriangle size={16} />
-          <span>Gmail 또는 IMAP 계정을 연결하면 React 메일함에서 고객 메일을 관리할 수 있습니다.</span>
-          <a href={mailbox?.connection.connectHref || '/reporting/gmail/connect/'}>Gmail 연결</a>
-          <a href={mailbox?.connection.imapConnectHref || '/reporting/imap/connect/'}>IMAP 연결</a>
-        </div>
-      ) : null}
-      {!mailbox?.connection.connected && isScheduledBox ? (
-        <div className="dashboard-api-alert compact success">
-          <Clock size={16} />
-          <span>예약메일 확인과 취소는 메일 계정 연결 없이도 가능합니다. 실제 발송 시점에는 Gmail 또는 IMAP 연결이 필요합니다.</span>
-        </div>
-      ) : null}
-
-      <MailComposePanel
-        create={mailbox?.create ?? {
-          canSend: false,
-          message: '',
-          submitUrl: '/reporting/api/mailbox/send/',
-          djangoUrl: '/reporting/gmail/send/mailbox/',
-          autoAttachments: [],
-          autoAttachLabel: '',
-          schedule: null,
-          internalCcEmails: [],
-          internalCcContacts: [],
-          customers: [],
-          businessCards: [],
-        }}
-        error={composeError}
-        form={composeForm}
-        message={composeMessage}
-        open={composeOpen}
-        saving={composing}
-        submitLabel="메일 발송"
-        onAutoAttachmentRemove={onComposeAutoAttachmentRemove}
-        onAttachmentRemove={onComposeAttachmentRemove}
-        onAttachmentsChange={onComposeAttachmentsChange}
-        onBodyChange={onComposeBodyChange}
-        onChange={onComposeFormChange}
-        onCustomerChange={onComposeCustomerChange}
-        onInternalCcChange={onComposeInternalCcChange}
-        onInternalCcEmailsChange={onComposeInternalCcEmailsChange}
-        onOpenChange={onComposeOpenChange}
-        onSubmit={onComposeSubmit}
-      />
-
-      <div className="mailbox-layout">
-        <aside className="mailbox-rail">
-          {mailboxTabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button className={selectedBox === tab.id ? 'active' : ''} key={tab.id} onClick={() => onBoxChange(tab.id)} type="button">
-                <Icon size={16} />
-                <span>{tab.label}</span>
-                <strong>{formatNumber(counts[tab.id] || 0)}</strong>
-              </button>
-            );
-          })}
-        </aside>
-
-        <section className="mailbox-list-panel">
-          <div className="mailbox-toolbar">
-            <label className="search-box mailbox-search">
-              <Search size={17} />
-              <input onChange={(event) => onQueryChange(event.target.value)} placeholder="제목, 고객, 본문 검색" value={query} />
-            </label>
-            <span>{formatNumber(mailbox?.pagination.totalCount || 0)}건</span>
-          </div>
-          {loading ? (
-            <div className="loading-state"><Loader2 className="spin-icon" size={18} /> 메일을 불러오는 중입니다.</div>
-          ) : mailbox?.emails.length ? (
-            <div className="mail-row-list">
-              {mailbox.emails.map((email) => (
-                <article className={`mail-row ${email.type === 'received' && !email.isRead ? 'unread' : ''}`} key={email.id}>
-                  <a className="mail-row-main" href={email.threadHref}>
-                    <div>
-                      <strong>{email.subject || '(제목 없음)'}</strong>
-                      <span>{email.contact || email.senderEmail || email.recipientEmail}</span>
-                    </div>
-                    <p>{email.preview || '본문 미리보기가 없습니다.'}</p>
-                    {email.isScheduled ? (
-                      <small className="mail-status-badge">예약 발송 · {formatDateTimeLabel(email.scheduledAt || email.happenedAt)}</small>
-                    ) : null}
-                    {(email.attachments ?? []).length > 0 ? (
-                      <small className="mail-row-attachment-count">첨부 {formatNumber(email.attachments.length)}개</small>
-                    ) : null}
-                    <small>
-                      {email.followup.company ? `${email.followup.company} · ` : ''}
-                      {email.followup.customer || email.followup.department || email.typeLabel}
-                    </small>
-                  </a>
-                  <div className="mail-row-side">
-                    <time>{formatDateTimeLabel(email.happenedAt)}</time>
-                    <div className="mail-row-actions">
-                      {selectedBox === 'scheduled' ? (
-                        <>
-                          <button disabled={actioningId === email.id || !email.sendNowHref} onClick={() => onAction(email, 'sendNow')} type="button" aria-label="바로 보내기" title="바로 보내기">
-                            <Send size={15} />
-                          </button>
-                          <button disabled={actioningId === email.id || !email.cancelHref} onClick={() => onAction(email, 'cancel')} type="button" aria-label="예약 취소" title="예약 취소">
-                            <X size={15} />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
-                            <Star size={15} className={email.isStarred ? 'filled-icon' : ''} />
-                          </button>
-                          {selectedBox === 'trash' ? (
-                            <button disabled={actioningId === email.id} onClick={() => onAction(email, 'restore')} type="button" aria-label="복원">
-                              <Archive size={15} />
-                            </button>
-                          ) : (
-                            <button disabled={actioningId === email.id} onClick={() => onAction(email, 'archive')} type="button" aria-label="보관">
-                              <Archive size={15} />
-                            </button>
-                          )}
-                          <button disabled={actioningId === email.id} onClick={() => onAction(email, selectedBox === 'trash' ? 'delete' : 'trash')} type="button" aria-label="삭제">
-                            <Trash2 size={15} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <strong>표시할 메일이 없습니다</strong>
-              <span>검색어를 지우거나 다른 메일함을 선택하세요.</span>
-            </div>
-          )}
-          {mailbox?.pagination.totalPages && mailbox.pagination.totalPages > 1 ? (
-            <div className="mailbox-pagination">
-              <a className={!mailbox.pagination.hasPrevious ? 'disabled' : ''} href={`/mailbox/?box=${selectedBox}&page=${mailbox.pagination.previousPage || 1}${query ? `&q=${encodeURIComponent(query)}` : ''}`}>이전</a>
-              <span>{mailbox.pagination.page} / {mailbox.pagination.totalPages}</span>
-              <a className={!mailbox.pagination.hasNext ? 'disabled' : ''} href={`/mailbox/?box=${selectedBox}&page=${mailbox.pagination.nextPage || mailbox.pagination.page}${query ? `&q=${encodeURIComponent(query)}` : ''}`}>다음</a>
-            </div>
-          ) : null}
-        </section>
-      </div>
-    </section>
-  );
-}
-
-function MailboxThreadPage({
-  data,
-  loading,
-  replyForm,
-  replyOpen,
-  replySaving,
-  replyError,
-  replyMessage,
-  actioningId,
-  onAction,
-  onReplyAttachmentRemove,
-  onReplyAttachmentsChange,
-  onReplyBodyChange,
-  onReplyFormChange,
-  onReplyInternalCcChange,
-  onReplyInternalCcEmailsChange,
-  onReplyOpenChange,
-  onReplySubmit,
-}: {
-  data: MailboxThreadData | null;
-  loading: boolean;
-  replyForm: MailComposeFormState;
-  replyOpen: boolean;
-  replySaving: boolean;
-  replyError: string;
-  replyMessage: string;
-  actioningId: number | null;
-  onAction: (email: MailboxEmailItem, action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel' | 'sendNow') => void;
-  onReplyAttachmentRemove: (index: number) => void;
-  onReplyAttachmentsChange: (files: File[]) => void;
-  onReplyBodyChange: (bodyText: string, bodyHtml: string) => void;
-  onReplyFormChange: (field: MailComposeTextField, value: string) => void;
-  onReplyInternalCcChange: (checked: boolean) => void;
-  onReplyInternalCcEmailsChange: (emails: string[]) => void;
-  onReplyOpenChange: (open: boolean) => void;
-  onReplySubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  const thread = data ?? {
-    success: false,
-    source: 'unavailable' as const,
-    error: '',
-    thread: { id: '', subject: '', followup: null, messageCount: 0, lastReceivedEmailId: null },
-    connection: {
-      connected: false,
-      provider: '',
-      address: '',
-      gmailConnected: false,
-      imapConnected: false,
-      lastSyncAt: null,
-      connectHref: '/reporting/gmail/connect/',
-      imapConnectHref: '/reporting/imap/connect/',
-      profileHref: '/reporting/profile/',
-    },
-    links: { mailbox: '/mailbox/', djangoThread: '', reply: '' },
-    create: {
-      canSend: false,
-      message: '',
-      submitUrl: '',
-      djangoUrl: '',
-      autoAttachments: [],
-      autoAttachLabel: '',
-      schedule: null,
-      internalCcEmails: [],
-      internalCcContacts: [],
-      customers: [],
-      businessCards: [],
-    },
-    emails: [],
-  };
-  const lastEmail = thread.emails[thread.emails.length - 1];
-  const isScheduledThread = Boolean(thread.thread.isScheduled || thread.emails.some((email) => email.isScheduled));
-  const mailboxHref = thread.links.mailbox || (isScheduledThread ? '/mailbox/?box=scheduled' : '/mailbox/');
-
-  return (
-    <section className="mail-thread-page">
-      <div className="route-detail-header">
-        <div>
-          <a href={mailboxHref}>메일함</a>
-          <span>/</span>
-          <strong>{thread.thread.subject || (isScheduledThread ? '예약메일' : '메일 스레드')}</strong>
-        </div>
-        <div className="route-detail-actions">
-          {!isScheduledThread && thread.links.djangoThread ? (
-            <a className="route-secondary-action" href={thread.links.djangoThread}>Django 보기</a>
-          ) : null}
-          {isScheduledThread ? (
-            <>
-              <button
-                className="route-primary-action"
-                disabled={!lastEmail || !lastEmail.sendNowHref || actioningId === lastEmail.id}
-                onClick={() => lastEmail && onAction(lastEmail, 'sendNow')}
-                type="button"
-              >
-                <Send size={16} />
-                바로 보내기
-              </button>
-              <button
-                className="route-secondary-action"
-                disabled={!lastEmail || !lastEmail.cancelHref || actioningId === lastEmail.id}
-                onClick={() => lastEmail && onAction(lastEmail, 'cancel')}
-                type="button"
-              >
-                <X size={16} />
-                예약 취소
-              </button>
-            </>
-          ) : (
-            <button className="route-primary-action" disabled={!lastEmail} onClick={() => onReplyOpenChange(true)} type="button">
-              <Reply size={16} />
-              답장
-            </button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="loading-state"><Loader2 className="spin-icon" size={18} /> 스레드를 불러오는 중입니다.</div>
-      ) : thread.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>메일 스레드를 불러올 수 없습니다</strong>
-            <span>{thread.error || '로그인 상태나 Django API 응답을 확인해야 합니다.'}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
-      ) : (
-        <>
-          <div className="mail-thread-summary">
-            <div>
-              <span className="eyebrow">{isScheduledThread ? 'Scheduled email' : 'Thread'}</span>
-              <h2>{thread.thread.subject || '(제목 없음)'}</h2>
-              <p>
-                {thread.thread.followup?.company ? `${thread.thread.followup.company} · ` : ''}
-                {thread.thread.followup?.customer || thread.thread.followup?.department || (isScheduledThread ? '예약 발송 대기' : `${thread.thread.messageCount}개 메시지`)}
-              </p>
-            </div>
-            {thread.thread.followup?.href ? <a className="route-secondary-action" href={thread.thread.followup.href}>고객 상세</a> : null}
-          </div>
-
-          {!isScheduledThread ? (
-            <MailComposePanel
-              create={thread.create}
-              error={replyError}
-              form={replyForm}
-              message={replyMessage}
-              open={replyOpen}
-              saving={replySaving}
-              submitLabel="답장 발송"
-              onAutoAttachmentRemove={() => {}}
-              onAttachmentRemove={onReplyAttachmentRemove}
-              onAttachmentsChange={onReplyAttachmentsChange}
-              onBodyChange={onReplyBodyChange}
-              onChange={onReplyFormChange}
-              onCustomerChange={(customerId) => onReplyFormChange('followupId', customerId)}
-              onInternalCcChange={onReplyInternalCcChange}
-              onInternalCcEmailsChange={onReplyInternalCcEmailsChange}
-              onOpenChange={onReplyOpenChange}
-              onSubmit={onReplySubmit}
-            />
-          ) : null}
-
-          <div className="mail-thread-list">
-            {thread.emails.map((email) => (
-              <article className={`mail-message-card ${email.type}`} key={email.id}>
-                <div className="mail-message-header">
-                  <div>
-                    <strong>{email.type === 'sent' ? email.recipientEmail : email.senderEmail}</strong>
-                    <span>{email.typeLabel} · {formatDateTimeLabel(email.happenedAt)}</span>
-                  </div>
-                  <div className="mail-row-actions">
-                    {email.isScheduled ? (
-                      <>
-                        <button disabled={actioningId === email.id || !email.sendNowHref} onClick={() => onAction(email, 'sendNow')} type="button" aria-label="바로 보내기" title="바로 보내기">
-                          <Send size={15} />
-                        </button>
-                        <button disabled={actioningId === email.id || !email.cancelHref} onClick={() => onAction(email, 'cancel')} type="button" aria-label="예약 취소" title="예약 취소">
-                          <X size={15} />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'star')} type="button" aria-label="중요 표시">
-                          <Star size={15} className={email.isStarred ? 'filled-icon' : ''} />
-                        </button>
-                        <button disabled={actioningId === email.id} onClick={() => onAction(email, 'trash')} type="button" aria-label="휴지통">
-                          <Trash2 size={15} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="mail-message-body">{email.bodyText || email.preview || '본문이 없습니다.'}</div>
-                <MailAttachmentLinks attachments={email.attachments} />
-                {email.followup.href ? (
-                  <div className="mail-message-links">
-                    <a href={email.followup.href}>{email.followup.company || '고객'} 상세</a>
-                    {email.schedule.href ? <a href={email.schedule.href}>연결 일정</a> : null}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </>
-      )}
     </section>
   );
 }
@@ -16713,10 +14833,6 @@ export function App() {
   const noteDetailId = currentView === 'notes' ? getNoteDetailId() : null;
   const scheduleDetailId = currentView === 'schedules' ? getScheduleDetailId() : null;
   const scheduleCalendarRoute = currentView === 'schedules' && isScheduleCalendarRoute();
-  const mailboxThreadId = currentView === 'mail' ? getMailboxThreadId() : '';
-  const mailboxScheduledId = currentView === 'mail' ? getMailboxScheduledId() : null;
-  const mailboxDetailRoute = Boolean(mailboxThreadId || mailboxScheduledId);
-  const initialMailboxBox = currentView === 'mail' && mailboxScheduledId ? 'scheduled' : currentView === 'mail' ? getMailboxTypeParam() : 'inbox';
   const prepaymentCustomerId = currentView === 'prepayments' ? getPrepaymentCustomerId() : null;
   const prepaymentAccountId = currentView === 'prepayments' ? getPrepaymentAccountId() : null;
   const prepaymentDetailId = currentView === 'prepayments' ? getPrepaymentDetailId() : null;
@@ -16880,51 +14996,12 @@ export function App() {
   const [productSort, setProductSort] = useState<ProductSortField>(() => getProductSortParam());
   const [productOrder, setProductOrder] = useState<ProductSortOrder>(() => getProductOrderParam());
   const [productPage, setProductPage] = useState(() => Number(new URLSearchParams(window.location.search).get('page') || '1') || 1);
-  const [mailboxData, setMailboxData] = useState<MailboxData | null>(null);
-  const [mailboxLoading, setMailboxLoading] = useState(currentView === 'mail' && !mailboxDetailRoute);
-  const [mailboxThreadData, setMailboxThreadData] = useState<MailboxThreadData | null>(null);
-  const [mailboxThreadLoading, setMailboxThreadLoading] = useState(mailboxDetailRoute);
-  const [mailboxBox, setMailboxBox] = useState<MailboxType>(initialMailboxBox);
-  const [mailboxQuery, setMailboxQuery] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
-  const [mailboxPage, setMailboxPage] = useState(() => Number(new URLSearchParams(window.location.search).get('page') || '1') || 1);
-  const [mailComposeOpen, setMailComposeOpen] = useState(
-    currentView === 'mail' && !mailboxDetailRoute && new URLSearchParams(window.location.search).get('compose') === '1',
-  );
-  const [mailComposeForm, setMailComposeForm] = useState<MailComposeFormState>(() => makeInitialMailComposeForm());
-  const [mailComposing, setMailComposing] = useState(false);
-  const [mailComposeError, setMailComposeError] = useState('');
-  const [mailComposeMessage, setMailComposeMessage] = useState('');
-  const [mailSyncing, setMailSyncing] = useState(false);
-  const [mailActioningId, setMailActioningId] = useState<number | null>(null);
-  const [mailReplyOpen, setMailReplyOpen] = useState(false);
-  const [mailReplyForm, setMailReplyForm] = useState<MailComposeFormState>(() => makeEmptyMailComposeForm());
-  const [mailReplySaving, setMailReplySaving] = useState(false);
-  const [mailReplyError, setMailReplyError] = useState('');
-  const [mailReplyMessage, setMailReplyMessage] = useState('');
-  const [businessCardsData, setBusinessCardsData] = useState<BusinessCardsData | null>(null);
-  const [businessCardsLoading, setBusinessCardsLoading] = useState(currentView === 'businessCards');
-  const [businessCardFormOpen, setBusinessCardFormOpen] = useState(
-    currentView === 'businessCards' && new URLSearchParams(window.location.search).get('create') === '1',
-  );
-  const [businessCardEditingId, setBusinessCardEditingId] = useState<number | null>(null);
-  const [businessCardForm, setBusinessCardForm] = useState<BusinessCardFormState>(() => makeEmptyBusinessCardForm());
-  const [businessCardSaving, setBusinessCardSaving] = useState(false);
-  const [businessCardActioningId, setBusinessCardActioningId] = useState<number | null>(null);
-  const [businessCardMessage, setBusinessCardMessage] = useState('');
-  const [businessCardError, setBusinessCardError] = useState('');
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(currentView === 'profile');
   const [profileForm, setProfileForm] = useState<ProfileFormState>(() => makeProfileForm());
   const [profilePasswordForm, setProfilePasswordForm] = useState<ProfilePasswordFormState>(() => makeEmptyProfilePasswordForm());
-  const [profileImapForm, setProfileImapForm] = useState<ProfileImapFormState>(() => makeProfileImapForm());
-  const [profileImapOpen, setProfileImapOpen] = useState(
-    currentView === 'profile' && new URLSearchParams(window.location.search).get('imap') === '1',
-  );
   const [profileSaving, setProfileSaving] = useState(false);
   const [profilePasswordSaving, setProfilePasswordSaving] = useState(false);
-  const [profileImapSaving, setProfileImapSaving] = useState(false);
-  const [profileImapTesting, setProfileImapTesting] = useState<'imap' | 'smtp' | ''>('');
-  const [profileEmailDisconnecting, setProfileEmailDisconnecting] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
   const [employeesData, setEmployeesData] = useState<EmployeesData | null>(null);
@@ -17629,113 +15706,6 @@ export function App() {
   }, [currentView, productOrder, productPage, productQuery, productSort, productStatus]);
 
   useEffect(() => {
-    if (currentView !== 'mail' || mailboxDetailRoute) {
-      setMailboxData(null);
-      setMailboxLoading(false);
-      return;
-    }
-    let alive = true;
-    setMailboxLoading(true);
-    loadMailboxData({
-      box: mailboxBox,
-      q: mailboxQuery,
-      page: mailboxPage,
-      scheduleId: mailComposeForm.scheduleId ? Number(mailComposeForm.scheduleId) : undefined,
-    }).then((data) => {
-      if (!alive) {
-        return;
-      }
-      setMailboxData(data);
-      setMailboxLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [currentView, mailboxBox, mailboxPage, mailboxQuery, mailboxDetailRoute, mailComposeForm.scheduleId]);
-
-  useEffect(() => {
-    if (currentView !== 'mail' || mailboxDetailRoute || !mailboxData || !mailComposeForm.scheduleId) {
-      return;
-    }
-    const autoAttachments = mailboxData.create.autoAttachments ?? [];
-    const seed = [
-      mailComposeForm.scheduleId,
-      ...autoAttachments.map((attachment) => attachment.key),
-    ].join('|');
-    setMailComposeForm((previous) => {
-      if (!previous.scheduleId || previous.autoAttachmentSeed === seed) {
-        return previous;
-      }
-      return {
-        ...previous,
-        autoAttachments,
-        autoAttachmentSeed: seed,
-        excludedAutoAttachmentKeys: [],
-      };
-    });
-  }, [currentView, mailboxData, mailboxDetailRoute, mailComposeForm.scheduleId]);
-
-  useEffect(() => {
-    if (currentView !== 'mail' || !mailboxData || !mailComposeForm.followupId || mailComposeForm.toEmail) {
-      return;
-    }
-    const customer = mailboxData.create.customers.find((item) => String(item.id) === mailComposeForm.followupId);
-    if (!customer?.email) {
-      return;
-    }
-    setMailComposeForm((previous) => (
-      previous.toEmail
-        ? previous
-        : {
-          ...previous,
-          toEmail: customer.email,
-        }
-    ));
-  }, [currentView, mailboxData, mailComposeForm.followupId, mailComposeForm.toEmail]);
-
-  useEffect(() => {
-    if (currentView !== 'mail' || (!mailboxThreadId && !mailboxScheduledId)) {
-      setMailboxThreadData(null);
-      setMailboxThreadLoading(false);
-      return;
-    }
-    let alive = true;
-    setMailboxThreadLoading(true);
-    const detailRequest = mailboxScheduledId
-      ? loadMailboxScheduledEmailData(mailboxScheduledId)
-      : loadMailboxThreadData(mailboxThreadId);
-    detailRequest.then((data) => {
-      if (!alive) {
-        return;
-      }
-      setMailboxThreadData(data);
-      setMailboxThreadLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [currentView, mailboxThreadId, mailboxScheduledId]);
-
-  useEffect(() => {
-    if (currentView !== 'businessCards') {
-      setBusinessCardsLoading(false);
-      return;
-    }
-    let alive = true;
-    setBusinessCardsLoading(true);
-    loadBusinessCardsData().then((data) => {
-      if (!alive) {
-        return;
-      }
-      setBusinessCardsData(data);
-      setBusinessCardsLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [currentView]);
-
-  useEffect(() => {
     if (currentView !== 'profile') {
       setProfileLoading(false);
       return;
@@ -17748,10 +15718,6 @@ export function App() {
       }
       setProfileData(data);
       setProfileForm(makeProfileForm(data));
-      setProfileImapForm(makeProfileImapForm(data));
-      if (new URLSearchParams(window.location.search).get('imap') === '1' && !data.emailConnection.connected) {
-        setProfileImapOpen(true);
-      }
       setProfileLoading(false);
     });
     return () => {
@@ -18666,144 +16632,6 @@ export function App() {
     setPrepaymentDetailData(data);
     return data;
   };
-  const refreshMailboxData = async () => {
-    const data = await loadMailboxData({
-      box: mailboxBox,
-      q: mailboxQuery,
-      page: mailboxPage,
-      scheduleId: mailComposeForm.scheduleId ? Number(mailComposeForm.scheduleId) : undefined,
-    });
-    setMailboxData(data);
-    return data;
-  };
-  const refreshMailboxThreadData = async () => {
-    if (!mailboxThreadId && !mailboxScheduledId) {
-      return null;
-    }
-    const data = mailboxScheduledId
-      ? await loadMailboxScheduledEmailData(mailboxScheduledId)
-      : await loadMailboxThreadData(mailboxThreadId);
-    setMailboxThreadData(data);
-    return data;
-  };
-  const refreshBusinessCardsData = async () => {
-    const data = await loadBusinessCardsData();
-    setBusinessCardsData(data);
-    return data;
-  };
-  const handleBusinessCardCreateOpen = () => {
-    setBusinessCardEditingId(null);
-    setBusinessCardForm(makeEmptyBusinessCardForm());
-    setBusinessCardFormOpen(true);
-    setBusinessCardError('');
-    setBusinessCardMessage('');
-  };
-  const handleBusinessCardEditOpen = (card: BusinessCardItem) => {
-    setBusinessCardEditingId(card.id);
-    setBusinessCardForm(makeBusinessCardForm(card));
-    setBusinessCardFormOpen(true);
-    setBusinessCardError('');
-    setBusinessCardMessage('');
-  };
-  const handleBusinessCardFormOpenChange = (open: boolean) => {
-    setBusinessCardFormOpen(open);
-    setBusinessCardError('');
-    if (!open) {
-      setBusinessCardEditingId(null);
-      setBusinessCardForm(makeEmptyBusinessCardForm());
-    }
-  };
-  const handleBusinessCardFormChange = (field: keyof BusinessCardFormState, value: string | boolean | File | null) => {
-    setBusinessCardForm((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-    setBusinessCardError('');
-  };
-
-  useEffect(() => {
-    if (currentView !== 'businessCards' || !businessCardsData) {
-      return;
-    }
-    const params = new URLSearchParams(window.location.search);
-    const requestedCardId = Number(params.get('card') || 0);
-    const shouldEdit = params.get('edit') === '1';
-    const shouldCreate = params.get('create') === '1';
-    if (requestedCardId && shouldEdit && businessCardEditingId !== requestedCardId) {
-      const card = businessCardsData.cards.find((item) => item.id === requestedCardId);
-      if (card) {
-        setBusinessCardEditingId(card.id);
-        setBusinessCardForm(makeBusinessCardForm(card));
-        setBusinessCardFormOpen(true);
-      }
-      return;
-    }
-    if (shouldCreate && !businessCardFormOpen && !businessCardEditingId) {
-      setBusinessCardForm(makeEmptyBusinessCardForm());
-      setBusinessCardFormOpen(true);
-    }
-  }, [businessCardEditingId, businessCardFormOpen, businessCardsData, currentView]);
-
-  const handleBusinessCardSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!businessCardsData || businessCardSaving) {
-      return;
-    }
-    const { payload, error } = businessCardFormToPayload(businessCardForm);
-    if (!payload) {
-      setBusinessCardError(error || '입력값을 확인하세요.');
-      return;
-    }
-    const editingCard = businessCardsData.cards.find((card) => card.id === businessCardEditingId);
-    const submitUrl = editingCard ? editingCard.links.update : businessCardsData.links.create;
-    setBusinessCardSaving(true);
-    setBusinessCardError('');
-    setBusinessCardMessage('');
-    try {
-      const data = await saveBusinessCard(payload, submitUrl);
-      setBusinessCardsData(data);
-      setBusinessCardMessage(data.message || (editingCard ? '명함을 저장했습니다.' : '명함을 생성했습니다.'));
-      handleBusinessCardFormOpenChange(false);
-    } catch (error) {
-      setBusinessCardError(error instanceof Error ? error.message : '명함 저장에 실패했습니다.');
-    } finally {
-      setBusinessCardSaving(false);
-    }
-  };
-  const handleBusinessCardDelete = async (card: BusinessCardItem) => {
-    if (businessCardActioningId !== null || !window.confirm('이 명함을 삭제하시겠습니까?')) {
-      return;
-    }
-    setBusinessCardActioningId(card.id);
-    setBusinessCardError('');
-    setBusinessCardMessage('');
-    try {
-      const data = await deleteBusinessCard(card.links.delete);
-      setBusinessCardsData(data);
-      setBusinessCardMessage(data.message || '명함을 삭제했습니다.');
-    } catch (error) {
-      setBusinessCardError(error instanceof Error ? error.message : '명함 삭제에 실패했습니다.');
-    } finally {
-      setBusinessCardActioningId(null);
-    }
-  };
-  const handleBusinessCardSetDefault = async (card: BusinessCardItem) => {
-    if (businessCardActioningId !== null || card.isDefault) {
-      return;
-    }
-    setBusinessCardActioningId(card.id);
-    setBusinessCardError('');
-    setBusinessCardMessage('');
-    try {
-      const data = await setDefaultBusinessCard(card.links.setDefault);
-      setBusinessCardsData(data);
-      setBusinessCardMessage(data.message || '기본 명함을 변경했습니다.');
-    } catch (error) {
-      setBusinessCardError(error instanceof Error ? error.message : '기본 명함 변경에 실패했습니다.');
-    } finally {
-      setBusinessCardActioningId(null);
-    }
-  };
   const handleProfileFormChange = (field: keyof ProfileFormState, value: string) => {
     setProfileForm((previous) => ({
       ...previous,
@@ -18816,38 +16644,6 @@ export function App() {
       ...previous,
       [field]: value,
     }));
-    setProfileError('');
-  };
-  const handleProfileImapFormChange = (field: keyof ProfileImapFormState, value: string | boolean) => {
-    setProfileImapForm((previous) => {
-      if (field === 'provider') {
-        const provider = (value || 'imap') as ProfileImapProvider;
-        const preset = profileImapPresets[provider] || profileImapPresets.imap;
-        return {
-          ...previous,
-          provider,
-          imapHost: preset.imapHost,
-          imapPort: preset.imapPort,
-          imapUseSsl: preset.imapUseSsl,
-          smtpHost: preset.smtpHost,
-          smtpPort: preset.smtpPort,
-          smtpUseTls: preset.smtpUseTls,
-        };
-      }
-      if (field === 'imapEmail') {
-        const nextEmail = String(value);
-        return {
-          ...previous,
-          imapEmail: nextEmail,
-          imapUsername: previous.imapUsername || nextEmail,
-          smtpUsername: previous.smtpUsername || nextEmail,
-        };
-      }
-      return {
-        ...previous,
-        [field]: value,
-      };
-    });
     setProfileError('');
   };
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -18908,405 +16704,6 @@ export function App() {
       setProfileError(error instanceof Error ? error.message : '비밀번호 변경에 실패했습니다.');
     } finally {
       setProfilePasswordSaving(false);
-    }
-  };
-  const buildProfileImapPayload = (action: ProfileImapPayload['action'] = 'save'): ProfileImapPayload => ({
-    action,
-    provider: profileImapForm.provider,
-    imapEmail: profileImapForm.imapEmail.trim(),
-    imapHost: profileImapForm.imapHost.trim(),
-    imapPort: Number(profileImapForm.imapPort || 993),
-    imapUsername: profileImapForm.imapUsername.trim() || profileImapForm.imapEmail.trim(),
-    imapPassword: profileImapForm.imapPassword,
-    imapUseSsl: profileImapForm.imapUseSsl,
-    smtpHost: profileImapForm.smtpHost.trim(),
-    smtpPort: Number(profileImapForm.smtpPort || 587),
-    smtpUsername: profileImapForm.smtpUsername.trim() || profileImapForm.imapUsername.trim() || profileImapForm.imapEmail.trim(),
-    smtpPassword: profileImapForm.smtpPassword || profileImapForm.imapPassword,
-    smtpUseTls: profileImapForm.smtpUseTls,
-  });
-  const handleProfileImapAction = async (action: ProfileImapPayload['action'] = 'save') => {
-    if (!profileData || profileImapSaving || profileImapTesting) {
-      return;
-    }
-    const payload = buildProfileImapPayload(action);
-    if (!payload.imapEmail || !payload.imapPassword) {
-      setProfileError('이메일 주소와 메일 비밀번호를 입력하세요.');
-      return;
-    }
-    setProfileError('');
-    setProfileMessage('');
-    if (action === 'save') {
-      setProfileImapSaving(true);
-    } else {
-      setProfileImapTesting(action === 'test_smtp' ? 'smtp' : 'imap');
-    }
-    try {
-      const data = await connectProfileImap(payload, profileData.emailConnection.links.imapConnectApi);
-      setProfileData(data);
-      if (action === 'save') {
-        setProfileImapForm(makeProfileImapForm(data));
-        setProfileImapOpen(false);
-      }
-      setProfileMessage(data.message || (action === 'save' ? '회사 이메일 연동을 저장했습니다.' : '연결 테스트를 완료했습니다.'));
-    } catch (error) {
-      setProfileError(error instanceof Error ? error.message : '회사 이메일 연동 처리에 실패했습니다.');
-    } finally {
-      setProfileImapSaving(false);
-      setProfileImapTesting('');
-    }
-  };
-  const handleProfileImapSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    void handleProfileImapAction('save');
-  };
-  const handleProfileEmailDisconnect = async () => {
-    if (!profileData || profileEmailDisconnecting || !window.confirm('이메일 연동을 해제하시겠습니까?')) {
-      return;
-    }
-    setProfileEmailDisconnecting(true);
-    setProfileError('');
-    setProfileMessage('');
-    try {
-      const data = await disconnectProfileEmail(profileData.emailConnection.links.disconnect);
-      setProfileData(data);
-      setProfileImapForm(makeProfileImapForm(data));
-      setProfileImapOpen(false);
-      setProfileMessage(data.message || '이메일 연동을 해제했습니다.');
-    } catch (error) {
-      setProfileError(error instanceof Error ? error.message : '이메일 연동 해제에 실패했습니다.');
-    } finally {
-      setProfileEmailDisconnecting(false);
-    }
-  };
-  const handleMailboxBoxChange = (box: MailboxType) => {
-    setMailboxBox(box);
-    setMailboxPage(1);
-    window.history.replaceState(null, '', `/mailbox/?box=${box}`);
-  };
-  const handleMailComposeOpenChange = (open: boolean) => {
-    setMailComposeOpen(open);
-    setMailComposeError('');
-    if (open) {
-      setMailComposeMessage('');
-    }
-  };
-  const handleMailComposeFormChange = (field: MailComposeTextField, value: string) => {
-    setMailComposeForm((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-    setMailComposeError('');
-  };
-  const handleMailComposeBodyChange = (bodyText: string, bodyHtml: string) => {
-    setMailComposeForm((previous) => ({
-      ...previous,
-      bodyHtml,
-      bodyText,
-    }));
-    setMailComposeError('');
-  };
-  const handleMailComposeInternalCcChange = (checked: boolean) => {
-    setMailComposeForm((previous) => ({
-      ...previous,
-      includeInternalCc: checked,
-      internalCcEmails: checked ? [] : previous.internalCcEmails,
-    }));
-    setMailComposeError('');
-  };
-  const handleMailComposeInternalCcEmailsChange = (emails: string[]) => {
-    setMailComposeForm((previous) => ({
-      ...previous,
-      includeInternalCc: false,
-      internalCcEmails: emails,
-    }));
-    setMailComposeError('');
-  };
-  const handleMailComposeAttachmentsChange = (files: File[]) => {
-    if (files.length === 0) {
-      return;
-    }
-    setMailComposeForm((previous) => ({
-      ...previous,
-      attachments: [...previous.attachments, ...files],
-    }));
-    setMailComposeError('');
-  };
-  const handleMailComposeAttachmentRemove = (index: number) => {
-    setMailComposeForm((previous) => ({
-      ...previous,
-      attachments: previous.attachments.filter((_, fileIndex) => fileIndex !== index),
-    }));
-    setMailComposeError('');
-  };
-  const handleMailComposeAutoAttachmentRemove = (key: string) => {
-    setMailComposeForm((previous) => ({
-      ...previous,
-      excludedAutoAttachmentKeys: previous.excludedAutoAttachmentKeys.includes(key)
-        ? previous.excludedAutoAttachmentKeys
-        : [...previous.excludedAutoAttachmentKeys, key],
-    }));
-    setMailComposeError('');
-  };
-  const handleMailComposeCustomerChange = (customerId: string) => {
-    const customer = mailboxData?.create.customers.find((item) => String(item.id) === customerId);
-    setMailComposeForm((previous) => ({
-      ...previous,
-      autoAttachments: previous.followupId === customerId ? previous.autoAttachments : [],
-      autoAttachmentSeed: previous.followupId === customerId ? previous.autoAttachmentSeed : '',
-      excludedAutoAttachmentKeys: previous.followupId === customerId ? previous.excludedAutoAttachmentKeys : [],
-      followupId: customerId,
-      scheduleId: previous.followupId === customerId ? previous.scheduleId : '',
-      toEmail: customer?.email || previous.toEmail,
-    }));
-    setMailComposeError('');
-  };
-  const makeMailboxPayload = (form: MailComposeFormState): MailboxSendPayload => ({
-    toEmail: form.toEmail.trim(),
-    ccEmails: form.ccEmails.trim() || undefined,
-    bccEmails: form.bccEmails.trim() || undefined,
-    subject: form.subject.trim(),
-    bodyText: form.bodyText.trim(),
-    bodyHtml: form.bodyHtml.trim() || undefined,
-    scheduledAt: form.sendMode === 'scheduled' ? form.scheduledAt : undefined,
-    followupId: form.followupId ? Number(form.followupId) : undefined,
-    scheduleId: form.scheduleId ? Number(form.scheduleId) : undefined,
-    businessCardId: form.businessCardId ? Number(form.businessCardId) : undefined,
-    includeInternalCc: form.includeInternalCc,
-    internalCcEmails: form.includeInternalCc ? [] : form.internalCcEmails,
-    attachments: form.attachments,
-    excludedAutoAttachmentKeys: form.excludedAutoAttachmentKeys,
-  });
-  const handleMailComposeSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!mailboxData || mailComposing) {
-      return;
-    }
-    const payload = makeMailboxPayload(mailComposeForm);
-    if (!payload.toEmail || !payload.subject || (!payload.bodyText && !mailHtmlHasMeaningfulContent(payload.bodyHtml || ''))) {
-      setMailComposeError('받는 사람, 제목, 본문을 입력하세요.');
-      return;
-    }
-    if (mailComposeForm.sendMode === 'scheduled' && !mailComposeForm.scheduledAt) {
-      setMailComposeError('예약 발송 일시를 선택하세요.');
-      return;
-    }
-    setMailComposing(true);
-    setMailComposeError('');
-    setMailComposeMessage('');
-    try {
-      const result = await sendMailboxEmail(payload, mailboxData.create.submitUrl);
-      setMailComposeMessage(result.message || (payload.scheduledAt ? '메일을 예약했습니다.' : '메일이 발송되었습니다.'));
-      setMailComposeForm(makeEmptyMailComposeForm());
-      if (payload.scheduledAt || result.queued) {
-        setMailboxBox('scheduled');
-        setMailboxPage(1);
-        window.history.replaceState(null, '', '/mailbox/?box=scheduled');
-        setMailboxData(await loadMailboxData({ box: 'scheduled', q: mailboxQuery, page: 1 }));
-      } else {
-        await refreshMailboxData();
-      }
-    } catch (error) {
-      setMailComposeError(error instanceof Error ? error.message : '메일 발송에 실패했습니다.');
-    } finally {
-      setMailComposing(false);
-    }
-  };
-  const handleMailboxSync = async () => {
-    if (!mailboxData || mailSyncing) {
-      return;
-    }
-    setMailSyncing(true);
-    setMailComposeError('');
-    setMailComposeMessage('');
-    try {
-      const result = await runMailboxSync(mailboxData.links.sync);
-      setMailComposeMessage(result.message || '메일 동기화를 완료했습니다.');
-      await refreshMailboxData();
-    } catch (error) {
-      setMailComposeError(error instanceof Error ? error.message : '메일 동기화에 실패했습니다.');
-    } finally {
-      setMailSyncing(false);
-    }
-  };
-  const handleMailboxAction = async (
-    email: MailboxEmailItem,
-    action: 'star' | 'archive' | 'trash' | 'restore' | 'delete' | 'cancel' | 'sendNow',
-  ) => {
-    if (mailActioningId !== null) {
-      return;
-    }
-    const url = {
-      star: email.toggleStarHref,
-      archive: email.archiveHref,
-      trash: email.trashHref,
-      restore: email.restoreHref,
-      delete: email.deleteHref,
-      cancel: email.cancelHref || '',
-      sendNow: email.sendNowHref || '',
-    }[action];
-    if (!url) {
-      return;
-    }
-    if (action === 'cancel' && !window.confirm('예약 메일을 취소하시겠습니까?')) {
-      return;
-    }
-    if (action === 'sendNow' && !window.confirm('예약 메일을 지금 바로 발송하시겠습니까?')) {
-      return;
-    }
-    if (action === 'delete' && !window.confirm('메일을 영구 삭제하시겠습니까?')) {
-      return;
-    }
-    setMailActioningId(email.id);
-    try {
-      const result = await runMailboxAction(url);
-      if (action === 'sendNow') {
-        if (mailboxDetailRoute) {
-          window.location.href = result.href || '/mailbox/?box=sent';
-          return;
-        }
-        setMailComposeMessage(result.message || '예약 메일을 바로 발송했습니다.');
-        setMailboxBox('sent');
-        setMailboxPage(1);
-        window.history.replaceState(null, '', '/mailbox/?box=sent');
-        setMailboxData(await loadMailboxData({ box: 'sent', q: mailboxQuery, page: 1 }));
-        return;
-      }
-      if (action === 'cancel' && mailboxScheduledId) {
-        window.location.href = '/mailbox/?box=scheduled';
-        return;
-      }
-      if (mailboxDetailRoute) {
-        await refreshMailboxThreadData();
-      } else {
-        await refreshMailboxData();
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '메일 작업에 실패했습니다.';
-      if (mailboxDetailRoute) {
-        setMailReplyError(message);
-      } else {
-        setMailComposeError(message);
-      }
-    } finally {
-      setMailActioningId(null);
-    }
-  };
-  const handleMailReplyOpenChange = (open: boolean) => {
-    setMailReplyOpen(open);
-    setMailReplyError('');
-    if (!open) {
-      return;
-    }
-    setMailReplyMessage('');
-    const received = [...(mailboxThreadData?.emails ?? [])].reverse().find((email) => email.type === 'received');
-    const target = received ?? mailboxThreadData?.emails[mailboxThreadData.emails.length - 1];
-    setMailReplyForm((previous) => ({
-      ...previous,
-      toEmail: getReplyTargetEmail(target) || previous.toEmail,
-      subject: mailboxThreadData?.thread.subject
-        ? mailboxThreadData.thread.subject.startsWith('Re:')
-          ? mailboxThreadData.thread.subject
-          : `Re: ${mailboxThreadData.thread.subject}`
-        : previous.subject,
-      followupId: target?.followup.id ? String(target.followup.id) : previous.followupId,
-    }));
-  };
-
-  useEffect(() => {
-    if (currentView !== 'mail' || !mailboxDetailRoute || !mailboxThreadData || mailReplyOpen) {
-      return;
-    }
-    if (new URLSearchParams(window.location.search).get('reply') === '1') {
-      handleMailReplyOpenChange(true);
-    }
-  }, [currentView, mailboxDetailRoute, mailboxThreadData, mailReplyOpen]);
-
-  const handleMailReplyFormChange = (field: MailComposeTextField, value: string) => {
-    setMailReplyForm((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-    setMailReplyError('');
-  };
-  const handleMailReplyBodyChange = (bodyText: string, bodyHtml: string) => {
-    setMailReplyForm((previous) => ({
-      ...previous,
-      bodyHtml,
-      bodyText,
-    }));
-    setMailReplyError('');
-  };
-  const handleMailReplyInternalCcChange = (checked: boolean) => {
-    setMailReplyForm((previous) => ({
-      ...previous,
-      includeInternalCc: checked,
-      internalCcEmails: checked ? [] : previous.internalCcEmails,
-    }));
-    setMailReplyError('');
-  };
-  const handleMailReplyInternalCcEmailsChange = (emails: string[]) => {
-    setMailReplyForm((previous) => ({
-      ...previous,
-      includeInternalCc: false,
-      internalCcEmails: emails,
-    }));
-    setMailReplyError('');
-  };
-  const handleMailReplyAttachmentsChange = (files: File[]) => {
-    if (files.length === 0) {
-      return;
-    }
-    setMailReplyForm((previous) => ({
-      ...previous,
-      attachments: [...previous.attachments, ...files],
-    }));
-    setMailReplyError('');
-  };
-  const handleMailReplyAttachmentRemove = (index: number) => {
-    setMailReplyForm((previous) => ({
-      ...previous,
-      attachments: previous.attachments.filter((_, fileIndex) => fileIndex !== index),
-    }));
-    setMailReplyError('');
-  };
-  const handleMailReplySubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!mailboxThreadData || mailReplySaving) {
-      return;
-    }
-    const payload = makeMailboxPayload(mailReplyForm);
-    if (!payload.toEmail || !payload.subject || (!payload.bodyText && !mailHtmlHasMeaningfulContent(payload.bodyHtml || ''))) {
-      setMailReplyError('받는 사람, 제목, 본문을 입력하세요.');
-      return;
-    }
-    if (mailReplyForm.sendMode === 'scheduled' && !mailReplyForm.scheduledAt) {
-      setMailReplyError('예약 발송 일시를 선택하세요.');
-      return;
-    }
-    const received = [...mailboxThreadData.emails].reverse().find((email) => email.type === 'received');
-    const target = received ?? mailboxThreadData.emails[mailboxThreadData.emails.length - 1];
-    const submitUrl = mailboxThreadData.links.reply || target?.replyHref;
-    if (!submitUrl) {
-      setMailReplyError('답장 대상 메일을 찾을 수 없습니다.');
-      return;
-    }
-    setMailReplySaving(true);
-    setMailReplyError('');
-    setMailReplyMessage('');
-    try {
-      const result = await replyMailboxEmail(submitUrl, payload);
-      setMailReplyMessage(result.message || (payload.scheduledAt ? '답장을 예약했습니다.' : '답장을 발송했습니다.'));
-      setMailReplyForm(makeEmptyMailComposeForm());
-      if (payload.scheduledAt || result.queued) {
-        window.location.href = '/mailbox/?box=scheduled';
-        return;
-      }
-      await refreshMailboxThreadData();
-    } catch (error) {
-      setMailReplyError(error instanceof Error ? error.message : '답장 발송에 실패했습니다.');
-    } finally {
-      setMailReplySaving(false);
     }
   };
 
@@ -19576,95 +16973,6 @@ export function App() {
     );
   }
 
-  if (currentView === 'mail') {
-    if (mailboxDetailRoute) {
-      return (
-        <AppShell activeView={currentView}>
-          <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-          <MailboxThreadPage
-            actioningId={mailActioningId}
-            data={mailboxThreadData}
-            loading={mailboxThreadLoading}
-            replyError={mailReplyError}
-            replyForm={mailReplyForm}
-            replyMessage={mailReplyMessage}
-            replyOpen={mailReplyOpen}
-            replySaving={mailReplySaving}
-            onAction={handleMailboxAction}
-            onReplyAttachmentRemove={handleMailReplyAttachmentRemove}
-            onReplyAttachmentsChange={handleMailReplyAttachmentsChange}
-            onReplyBodyChange={handleMailReplyBodyChange}
-            onReplyFormChange={handleMailReplyFormChange}
-            onReplyInternalCcChange={handleMailReplyInternalCcChange}
-            onReplyInternalCcEmailsChange={handleMailReplyInternalCcEmailsChange}
-            onReplyOpenChange={handleMailReplyOpenChange}
-            onReplySubmit={handleMailReplySubmit}
-          />
-        </AppShell>
-      );
-    }
-
-    return (
-      <AppShell activeView={currentView}>
-        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <MailboxPage
-          actioningId={mailActioningId}
-          composeError={mailComposeError}
-          composeForm={mailComposeForm}
-          composeMessage={mailComposeMessage}
-          composeOpen={mailComposeOpen}
-          composing={mailComposing}
-          data={mailboxData}
-          loading={mailboxLoading}
-          query={mailboxQuery}
-          selectedBox={mailboxBox}
-          syncing={mailSyncing}
-          onAction={handleMailboxAction}
-          onBoxChange={handleMailboxBoxChange}
-          onComposeAutoAttachmentRemove={handleMailComposeAutoAttachmentRemove}
-          onComposeAttachmentRemove={handleMailComposeAttachmentRemove}
-          onComposeAttachmentsChange={handleMailComposeAttachmentsChange}
-          onComposeBodyChange={handleMailComposeBodyChange}
-          onComposeCustomerChange={handleMailComposeCustomerChange}
-          onComposeFormChange={handleMailComposeFormChange}
-          onComposeInternalCcChange={handleMailComposeInternalCcChange}
-          onComposeInternalCcEmailsChange={handleMailComposeInternalCcEmailsChange}
-          onComposeOpenChange={handleMailComposeOpenChange}
-          onComposeSubmit={handleMailComposeSubmit}
-          onQueryChange={setMailboxQuery}
-          onSync={handleMailboxSync}
-        />
-      </AppShell>
-    );
-  }
-
-  if (currentView === 'businessCards') {
-    return (
-      <AppShell activeView={currentView}>
-        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <BusinessCardsPage
-          actioningId={businessCardActioningId}
-          data={businessCardsData}
-          editingId={businessCardEditingId}
-          error={businessCardError}
-          form={businessCardForm}
-          formOpen={businessCardFormOpen}
-          loading={businessCardsLoading}
-          message={businessCardMessage}
-          saving={businessCardSaving}
-          onCreateOpen={handleBusinessCardCreateOpen}
-          onDelete={handleBusinessCardDelete}
-          onEditOpen={handleBusinessCardEditOpen}
-          onFormChange={handleBusinessCardFormChange}
-          onFormOpenChange={handleBusinessCardFormOpenChange}
-          onRefresh={() => { void refreshBusinessCardsData(); }}
-          onSetDefault={handleBusinessCardSetDefault}
-          onSubmit={handleBusinessCardSubmit}
-        />
-      </AppShell>
-    );
-  }
-
   if (currentView === 'weeklyReports') {
     if (weeklyReportCreateRoute) {
       return (
@@ -19845,24 +17153,14 @@ export function App() {
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <ProfileSettingsPage
           data={profileData}
-          disconnecting={profileEmailDisconnecting}
           error={profileError}
           form={profileForm}
-          imapForm={profileImapForm}
-          imapOpen={profileImapOpen}
-          imapSaving={profileImapSaving}
-          imapTesting={profileImapTesting}
           loading={profileLoading}
           message={profileMessage}
           passwordForm={profilePasswordForm}
           passwordSaving={profilePasswordSaving}
           saving={profileSaving}
-          onDisconnectEmail={handleProfileEmailDisconnect}
           onFormChange={handleProfileFormChange}
-          onImapAction={handleProfileImapAction}
-          onImapFormChange={handleProfileImapFormChange}
-          onImapOpenChange={setProfileImapOpen}
-          onImapSubmit={handleProfileImapSubmit}
           onPasswordFormChange={handleProfilePasswordFormChange}
           onPasswordSubmit={handleProfilePasswordSubmit}
           onSubmit={handleProfileSubmit}

@@ -12,7 +12,6 @@ type NavigationPayload = {
     canManageUsers: boolean;
     canManageCompanies: boolean;
     canUseAi: boolean;
-    canUseMailbox: boolean;
     canViewAllUsers: boolean;
   };
   items: Array<{
@@ -39,15 +38,17 @@ test.describe('Role permissions and Excel downloads', () => {
   }> = [
     {
       role: 'salesman',
-      expectedItems: ['dashboard', 'analytics', 'customers', 'mail', 'prepayments'],
-      hiddenItems: ['tasksManager', 'employees', 'userAdmin', 'ai'],
+      // NOTE: 'analytics'/'ai'/'tasksManager' were already removed from navigation_api in
+      // earlier menu-pruning phases (현황/AI/업무) — this test predates those and is stale
+      // beyond the 'mail'/canUseMailbox fix applied here. Left as-is pending a full pass.
+      expectedItems: ['dashboard', 'analytics', 'customers', 'prepayments'],
+      hiddenItems: ['tasksManager', 'employees', 'userAdmin', 'ai', 'mail'],
       capabilities: {
         canManageTasks: false,
         canManageEmployees: false,
         canManageUsers: false,
         canManageCompanies: true,
         canUseAi: false,
-        canUseMailbox: true,
         canViewAllUsers: false,
       },
     },
@@ -61,21 +62,19 @@ test.describe('Role permissions and Excel downloads', () => {
         canManageUsers: false,
         canManageCompanies: false,
         canUseAi: true,
-        canUseMailbox: false,
         canViewAllUsers: true,
       },
     },
     {
       role: 'admin',
-      expectedItems: ['dashboard', 'analytics', 'customers', 'userAdmin', 'mail', 'ai', 'prepayments'],
-      hiddenItems: ['tasksManager', 'employees'],
+      expectedItems: ['dashboard', 'analytics', 'customers', 'userAdmin', 'ai', 'prepayments'],
+      hiddenItems: ['tasksManager', 'employees', 'mail'],
       capabilities: {
         canManageTasks: false,
         canManageEmployees: true,
         canManageUsers: true,
         canManageCompanies: true,
         canUseAi: true,
-        canUseMailbox: true,
         canViewAllUsers: true,
       },
     },

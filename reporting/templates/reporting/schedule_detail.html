@@ -279,12 +279,6 @@ a.text-decoration-none {
           {% endif %}
         </h1>
         <div>
-          <a
-            href="{% url 'reporting:send_email_from_schedule' schedule.pk %}"
-            class="btn btn-success me-2"
-          >
-            <i class="fas fa-envelope me-1"></i>이메일 발송
-          </a>
           {% if can_modify %}
           <a
             href="{% url 'reporting:schedule_edit' schedule.pk %}"
@@ -759,88 +753,6 @@ a.text-decoration-none {
       </div>
     </div>
   </div>
-
-  <!-- 이메일 스레드 섹션 -->
-  {% if email_threads %}
-  <div class="row mt-4">
-    <div class="col-12">
-      <div class="card">
-        <div class="card-header bg-white">
-          <div class="d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">
-              <i class="fas fa-envelope me-2"></i>관련 이메일
-            </h5>
-            <div>
-              <a
-                href="{% url 'reporting:send_email_from_schedule' schedule.pk %}"
-                class="btn btn-success btn-sm"
-              >
-                <i class="fas fa-paper-plane me-1"></i>이메일 발송
-              </a>
-            </div>
-          </div>
-        </div>
-        <div class="card-body">
-          {% if not email_threads %}
-          <div class="text-center text-muted py-4">
-            <i class="fas fa-inbox fa-3x mb-3"></i>
-            <p>아직 발송된 이메일이 없습니다.</p>
-            <a href="{% url 'reporting:send_email_from_schedule' schedule.pk %}" class="btn btn-success">
-              <i class="fas fa-paper-plane me-1"></i>첫 이메일 발송하기
-            </a>
-          </div>
-          {% else %}
-          {% for thread_id, emails in email_threads.items %}
-          <div class="email-thread mb-4 pb-3 {% if not forloop.last %}border-bottom{% endif %}">
-            <div class="d-flex justify-content-between align-items-start mb-3">
-              <h6 class="mb-0">
-                <i class="fas fa-comments me-2"></i>{{ emails.0.subject }}
-                <span class="badge bg-secondary ms-2">{{ emails|length }}개 메시지</span>
-              </h6>
-              <a href="{% url 'reporting:mailbox_thread' thread_id %}" class="btn btn-sm btn-outline-primary">
-                <i class="fas fa-eye me-1"></i>전체 스레드 보기
-              </a>
-            </div>
-            
-            {% for email in emails %}
-            <div class="email-message-preview mb-2 p-3 {% if email.email_type == 'sent' %}bg-light{% else %}bg-white border border-success{% endif %} rounded" 
-                 style="cursor: pointer;" 
-                 onclick="window.location.href='{% url 'reporting:mailbox_thread' thread_id %}'">
-              <div class="d-flex justify-content-between align-items-start mb-2">
-                <div class="flex-grow-1">
-                  <strong>
-                    {% if email.email_type == 'sent' %}
-                      <i class="fas fa-paper-plane text-primary me-1"></i>발신
-                    {% else %}
-                      <i class="fas fa-inbox text-success me-1"></i>수신 (답장)
-                      {% if not email.is_read %}
-                        <span class="badge bg-danger ms-1">NEW</span>
-                      {% endif %}
-                    {% endif %}
-                  </strong>
-                  <span class="text-muted ms-2">
-                    {% if email.email_type == 'sent' %}
-                      받는 사람: {{ email.recipient_email }}
-                    {% else %}
-                      보낸 사람: {{ email.sender_email }}
-                    {% endif %}
-                  </span>
-                </div>
-                <small class="text-muted text-nowrap ms-2">{{ email.sent_at|default:email.received_at|date:"Y-m-d H:i" }}</small>
-              </div>
-              <p class="mb-0 text-muted small" style="overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
-                {{ email.body|striptags|truncatewords:30 }}
-              </p>
-            </div>
-            {% endfor %}
-          </div>
-          {% endfor %}
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
 
   <!-- 관련 히스토리 섹션 -->
   {% if related_histories %}

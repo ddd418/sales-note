@@ -391,70 +391,6 @@ function getCoreCrmReactLocation(requestUrl) {
     return buildReactLocation('/employees/', params, { extra: { employee: match[1] } });
   }
 
-  if (pathname === '/reporting/gmail/send/mailbox/' || pathname === '/reporting/gmail/send/mailbox') {
-    return buildReactLocation('/mailbox/', params, { extra: { compose: '1' } });
-  }
-  match = pathname.match(/^\/reporting\/gmail\/send\/mailbox\/(\d+)\/?$/);
-  if (match) {
-    return buildReactLocation('/mailbox/', params, { extra: { compose: '1', followup_id: match[1] } });
-  }
-  const mailboxBoxRoutes = {
-    '/reporting/mailbox/inbox/': 'inbox',
-    '/reporting/mailbox/inbox': 'inbox',
-    '/reporting/mailbox/sent/': 'sent',
-    '/reporting/mailbox/sent': 'sent',
-    '/reporting/mailbox/starred/': 'starred',
-    '/reporting/mailbox/starred': 'starred',
-    '/reporting/mailbox/trash/': 'trash',
-    '/reporting/mailbox/trash': 'trash',
-    '/reporting/mailbox/sync/': 'inbox',
-    '/reporting/mailbox/sync': 'inbox',
-  };
-  if (mailboxBoxRoutes[pathname]) {
-    return buildReactLocation('/mailbox/', params, { extra: { box: mailboxBoxRoutes[pathname] } });
-  }
-  match = pathname.match(/^\/reporting\/mailbox\/thread\/([^/]+)\/?$/);
-  if (match) {
-    return buildReactLocation(`/mailbox/thread/${match[1]}/`, params);
-  }
-  match = pathname.match(/^\/reporting\/mailbox\/(?:delete|move-to-trash|restore)\/(\d+)\/?$/);
-  if (match) {
-    return buildReactLocation('/mailbox/', params, { extra: { box: 'trash' } });
-  }
-  match = pathname.match(/^\/reporting\/mailbox\/toggle-star\/(\d+)\/?$/);
-  if (match) {
-    return buildReactLocation('/mailbox/', params, { extra: { box: 'inbox' } });
-  }
-  match = pathname.match(/^\/reporting\/mailbox\/archive\/(\d+)\/?$/);
-  if (match) {
-    return buildReactLocation('/mailbox/', params, { extra: { box: 'archived' } });
-  }
-
-  if (pathname === '/reporting/business-cards/' || pathname === '/reporting/business-cards') {
-    return buildReactLocation('/mailbox/business-cards/', params);
-  }
-  if (pathname === '/reporting/business-cards/create/' || pathname === '/reporting/business-cards/create') {
-    return buildReactLocation('/mailbox/business-cards/', params, { extra: { create: '1' } });
-  }
-  match = pathname.match(/^\/reporting\/business-cards\/(\d+)\/edit\/?$/);
-  if (match) {
-    return buildReactLocation('/mailbox/business-cards/', params, { extra: { card: match[1], edit: '1' } });
-  }
-  match = pathname.match(/^\/reporting\/business-cards\/(\d+)\/(?:delete|set-default)\/?$/);
-  if (match) {
-    return buildReactLocation('/mailbox/business-cards/', params, { extra: { card: match[1] } });
-  }
-
-  if (pathname === '/reporting/gmail/disconnect/' || pathname === '/reporting/gmail/disconnect') {
-    return buildReactLocation('/profile/', params);
-  }
-  if (pathname === '/reporting/imap/connect/' || pathname === '/reporting/imap/connect') {
-    return buildReactLocation('/profile/', params, { extra: { imap: '1' } });
-  }
-  if (pathname === '/reporting/imap/disconnect/' || pathname === '/reporting/imap/disconnect') {
-    return buildReactLocation('/profile/', params);
-  }
-
   if (pathname === '/reporting/prepayment/' || pathname === '/reporting/prepayment') {
     return buildReactLocation('/prepayments/', params, { rename: { search: 'q' } });
   }
@@ -562,6 +498,12 @@ function isRemovedFrontendRoute(pathname) {
     pathname === '/services' ||
     pathname === '/services/' ||
     pathname.startsWith('/services/') ||
+    pathname === '/mailbox' ||
+    pathname === '/mailbox/' ||
+    pathname.startsWith('/mailbox/') ||
+    pathname === '/business-cards' ||
+    pathname === '/business-cards/' ||
+    pathname.startsWith('/business-cards/') ||
     // '/assets/' doubles as the Vite build output directory (hashed .js/.css bundles) —
     // only 404 the bare nav route, never a path that looks like a static file.
     (pathname === '/assets' || pathname === '/assets/' ||

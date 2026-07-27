@@ -31,6 +31,24 @@
 
 ---
 
+## 2026-07-27 Phase 5: 메일(Mail)/명함(BusinessCards) 완전 제거 (7단계 중 마지막)
+
+**Scope**: 독립 메뉴 2개(메일함 `/mailbox/`, 명함 `/mailbox/business-cards/`) + 사용자 확인된 결합 기능 2개(일정상세 "메일 발송" 버튼, 프로필 Gmail/IMAP 연동 설정 패널) 완전 제거. Gmail OAuth, IMAP/SMTP 연동, 메일함 CRUD, 명함 CRUD, 예약 발송 큐까지 메일 엔진 전체를 삭제.
+
+**메일 엔진 삭제 범위**: `reporting/gmail_views.py`(3566줄)/`imap_views.py`(350줄)/`imap_utils.py`(710줄)/`gmail_utils.py`(621줄) 전체 삭제, `reporting/scheduled_email_worker.py`(인라인 예약메일 워커) + `reporting/management/commands/process_scheduled_emails.py` 전체 삭제, `reporting/tasks.py`의 Celery 태스크 3개(`refresh_gmail_tokens`/`auto_sync_gmail`/`send_due_scheduled_emails`) 제거(`cleanup_old_files_task`는 무관, 보존), `sales_project/celery.py`의 beat 스케줄 2개 제거, `reporting/apps.py`의 인라인 워커 기동 코드 제거. 도근이용 스크립트 7개(check_email_95.py 등, 사용자 확인 후 함께 삭제).
+
+**핵심 발견 (조사 에이전트)**: `EmailLog` 모델은 메일 엔진과 무관하게 AI 워크스페이스 액션큐(이메일 회신대기 카드)·일정 상세 뷰(이메일 스레드 컨텍스트, 읽기전용)·`ai_chat` 앱에서 여전히 직접 조회됨 — 모델과 그 읽기 경로는 보존, 오직 **쓰기(gmail_views/imap_views가 EmailLog를 생성하는 경로)**만 제거. AI 액션큐의 이메일 회신대기 카드 생성 로직(`_ai_workspace_email_waiting_action_payload`)이 삭제될 `mailbox_thread` URL을 요청 시점에 `reverse()`하고 있어 정상적인 사용 패턴(발송 2일 지난 미회신 메일)에서 500 에러가 날 상황이었음 — 배포 전 발견, 링크만 제거(카드 자체는 계속 생성).
+
+**사용자 확인 필요했던 2가지**:
+1. `_ai_workspace_email_context_payload`가 gmail_views.py의 순수 포맷팅 헬퍼 3개(`_email_body_text`/`_email_text_preview`/`_email_thread_identifier`, 그리고 그 의존성 `_strip_html_style_blocks`/`_strip_css_text_artifacts`/`_looks_like_email_html`/`_email_html_to_display_text`/`_strip_quoted_html_for_display`/`_strip_quoted_text_for_display`, 총 9개)를 try/except로 거안해 씀 — gmail_views.py 삭제 시 자동으로 더 허접한 fallback으로 대치되는데, **"헬퍼 이전 후 삭제" 선택** → 9개 헬퍼를 `views.py`로 이관하고 try/except 제거(항상 성공하므로).
+2. 루트 도근이용 스크립트 7개 — **"같이 삭제" 선택**.
+
+**실행 중 발견/수정한 자체 버그 3건**: (1) App.tsx의 공유 폼 헬퍼 삭제 범위가 무관한 데모 폼 헬퍼 2개(`makeDemoRecordForm`/`demoRecordFormToPayload`)까지 삼킴 — tsc가 즉시 검출, git diff로 원본 복원. (2) 같은 방식으로 프로필 기본정보/비밀번호 핸들러 4개(`handleProfileFormChange`/`handleProfilePasswordFormChange`/`handleProfileSubmit`/`handleProfilePasswordSubmit`)까지 큰 메일함 핸들러 블록 삭제에 같이 딸려나감 — tsc가 "Cannot find name"으로 검출, git diff로 원본 위치 확인 후 복원. (3) 없음(CSS는 이번엔 className 그렙 크로스체크를 먼저 하고 나서 삭제해 사고 없이 진행 — Phase 4의 교훈 적용).
+
+**DB change required**: No (`EmailLog`/`BusinessCard`/`ScheduledEmail`/`ScheduledEmailAttachment`, `UserProfile`의 gmail_*/imap_*/smtp_* 필드 전부 `models.py`에 보존).
+
+---
+
 ## 2026-07-27 Phase 4: 장비(Assets)/서비스(Services) 완전 제거
 
 **Scope**: 독립 메뉴 2개(장비 `/assets/`, 서비스 `/services/`)와 고객상세 페이지에 임베디드된 장비/서비스/교정 CRUD 패널까지 전부 제거. `reporting/api/assets.py` 삭제, `views.py`의 관련 뷰 17개 + 전용 헬퍼 30여개 삭제, `navigation_api`의 'assets'/'services' 항목 제거, `_download_registry`의 assets.serviceReport/calibrationCertificate 항목 제거, `admin.py`의 3개 모델 admin 등록 제거(모델 클래스는 보존), `readonly_api.py` allowlist 2개 제거. `urls.py` 17개 URL 패턴 + `sales_project/urls.py` catch-all에서 assets/services 토큰 제거하고 `removed_react_route`로 이동(단, `/assets/<file>.<ext>` 형태의 Vite 정적파일 서빙 패턴(`react_asset`, line 52)은 손대지 않음 — 순서상 먼저 매칭되어 안전).

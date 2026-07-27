@@ -2585,9 +2585,6 @@ def navigation_api(request):
         items.append({'id': 'employees', 'label': '직원관리', 'href': '/employees/'})
     if profile.role == 'admin':
         items.append({'id': 'userAdmin', 'label': '사용자관리', 'href': '/employees/'})
-    if profile.role != 'manager':
-        items.append({'id': 'mail', 'label': '메일', 'href': '/mailbox/'})
-    items.append({'id': 'businessCards', 'label': '명함', 'href': '/mailbox/business-cards/'})
     items.extend([
         {'id': 'weeklyReports', 'label': '주간보고', 'href': '/weekly-reports/'},
         {'id': 'documents', 'label': '서류', 'href': '/documents/'},
@@ -2615,7 +2612,6 @@ def navigation_api(request):
             'canManageUsers': profile.role == 'admin',
             'canManageCompanies': profile.role != 'manager',
             'canUseAi': bool(profile.can_use_ai),
-            'canUseMailbox': profile.role != 'manager',
             'canViewAllUsers': bool(profile.can_view_all_users()),
         },
         'items': items,
@@ -5851,7 +5847,6 @@ def customer_detail_summary_api(request, followup_id):
             'createSchedule': f'/schedules/?create=1&customer={followup.id}',
             'createNote': f'/notes/?create=1&customer={followup.id}',
             'deliveryRecordsXlsx': reverse('reporting:customer_delivery_records_xlsx_export_api', args=[followup.id]),
-            'mailCompose': '' if user_profile.is_manager() else f'/mailbox/?compose=1&followup_id={followup.id}',
             'pipeline': '/pipeline/',
         },
         'permissions': {
@@ -5951,7 +5946,6 @@ def _empty_department_account_detail_response(request, department, user_profile,
             'createSchedule': '',
             'createNote': '',
             'deliveryRecordsXlsx': '',
-            'mailCompose': '',
             'pipeline': '/pipeline/',
         },
         'permissions': {
@@ -11150,8 +11144,6 @@ def _schedules_detail_payload(request, schedule, user_profile):
             'updateDeliveryItems': reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]) if can_edit else '',
             'toggleTaxInvoice': tax_invoice['toggleUrl'],
             'prepayments': reverse('reporting:prepayment_api_list') if can_edit else '',
-            'sendMail': f'/mailbox/?compose=1&schedule_id={schedule.id}&followup_id={followup.id}' if followup else '',
-            'djangoSendMail': reverse('reporting:send_email_from_schedule', args=[schedule.id]),
         },
         'edit': _schedules_edit_config(request, schedule, can_edit),
         'ai': {
@@ -12043,19 +12035,6 @@ def _ai_workspace_action_payload(
     }
 
 
-def _ai_workspace_email_thread_values(email):
-    return [
-        value
-        for value in [
-            email.gmail_thread_id,
-            email.thread_id,
-            email.gmail_message_id,
-            email.message_id,
-        ]
-        if value
-    ]
-
-
 def _ai_workspace_email_waiting_subject_key(subject):
     value = re.sub(r'\s+', ' ', str(subject or '')).strip().lower()
     if not value:
@@ -12111,11 +12090,10 @@ def _ai_workspace_email_waiting_action_payload(email, today=None):
         return None
 
     today = today or timezone.localdate()
-    thread_values = _ai_workspace_email_thread_values(email)
     due_date = (email.sent_at.date() + timedelta(days=2)) if email.sent_at else today
     score = 50 + _ai_workspace_score_date(due_date, today)
     evidence = [
-        _ai_workspace_evidence('발송일', email.sent_at.date().isoformat() if email.sent_at else '', f"/mailbox/thread/{thread_values[0]}/" if thread_values else ''),
+        _ai_workspace_evidence('발송일', email.sent_at.date().isoformat() if email.sent_at else ''),
         _ai_workspace_evidence('제목', email.subject or ''),
         _ai_workspace_evidence('수신자', email.to_email or email.recipient_email or ''),
     ]
@@ -12131,9 +12109,7 @@ def _ai_workspace_email_waiting_action_payload(email, today=None):
         draft_types=['email', 'note'],
         hrefs={
             'customer': f'/customers/{followup.id}/',
-            'mailboxThread': f"/mailbox/thread/{thread_values[0]}/" if thread_values else '',
             'djangoCustomer': reverse('reporting:followup_detail', args=[followup.id]),
-            'djangoMailboxThread': reverse('reporting:mailbox_thread', args=[thread_values[0]]) if thread_values else '',
         },
     )
 
@@ -15690,16 +15666,180 @@ def _ai_workspace_email_followup(email):
     return None
 
 
+def _email_thread_identifier(email):
+    return email.gmail_thread_id or email.thread_id or email.gmail_message_id or email.message_id or str(email.id)
+
+
+def _strip_html_style_blocks(value):
+    import re
+
+    text = str(value or '')
+    text = re.sub(r'(?is)<\s*style\b[^>]*>.*?<\s*/\s*style\s*>', ' ', text)
+    text = re.sub(r'(?is)<\s*script\b[^>]*>.*?<\s*/\s*script\s*>', ' ', text)
+    return text
+
+
+def _strip_css_text_artifacts(value):
+    import re
+
+    text = str(value or '')
+    selector_pattern = r'(?:p|div|span|body|td|table|tr|a|li|ul|ol)'
+    css_prop_pattern = r'(?:margin|padding|font|color|line-height|mso-|text-|background|border|white-space)'
+    text = re.sub(
+        rf'(?im)^\s*{selector_pattern}\s*\{{[^{{}}\n]*{css_prop_pattern}[^{{}}\n]*\}}\s*$',
+        '',
+        text,
+    )
+    text = re.sub(
+        rf'(?i)\b{selector_pattern}\s*\{{[^{{}}]*(?:margin|padding|font|mso-)[^{{}}]*\}}\s*',
+        '',
+        text,
+    )
+    return text
+
+
+def _looks_like_email_html(value):
+    import html
+    import re
+
+    text = str(value or '')
+    if not text.strip():
+        return False
+    candidates = [text]
+    unescaped = html.unescape(text)
+    if unescaped != text:
+        candidates.append(unescaped)
+    html_pattern = re.compile(
+        r'(?is)<\s*(?:!doctype|html|head|body|style|script|meta|div|p|br|span|table|tbody|tr|td|blockquote)\b'
+    )
+    return any(html_pattern.search(candidate) for candidate in candidates)
+
+
+def _strip_quoted_html_for_display(raw_html):
+    """React 메일 상세 표시에서는 Gmail/Outlook 인용 체인을 숨긴다."""
+    import re
+
+    quote_patterns = [
+        r'(?is)<div[^>]+class=["\'][^"\']*gmail_quote[^"\']*["\'][^>]*>.*$',
+        r'(?is)<div[^>]+id=["\']mail-editor-reference-message-container["\'][^>]*>.*$',
+        r'(?is)<div[^>]+class=["\'][^"\']*ms-outlook-mobile-reference-message[^"\']*["\'][^>]*>.*$',
+        r'(?is)<blockquote\b[^>]*>.*$',
+    ]
+    cut_positions = []
+    for pattern in quote_patterns:
+        match = re.search(pattern, raw_html)
+        if match and match.start() >= 20:
+            cut_positions.append(match.start())
+
+    if not cut_positions:
+        return raw_html
+    return raw_html[:min(cut_positions)]
+
+
+def _strip_quoted_text_for_display(text):
+    import re
+
+    quote_patterns = [
+        r'\n\s*\d{4}년\s+\d{1,2}월\s+\d{1,2}일.{0,500}?(님이 작성:|wrote:)',
+        r'\n\s*On .{1,500}? wrote:',
+        r'\n\s*-{2,}\s*Original Message\s*-{2,}',
+        r'\n\s*-----Original Message-----',
+        r'\n\s*보낸 사람\s*:',
+        r'\n\s*From\s*:',
+        r'\n\s*Sent\s*:',
+        r'\n\s*받는 사람\s*:',
+        r'\n\s*To\s*:',
+        r'\n\s*Get Outlook for',
+        r'\n\s*받기 Mac용 Outlook',
+    ]
+    cut_positions = []
+    for pattern in quote_patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match and match.start() >= 20:
+            cut_positions.append(match.start())
+
+    if not cut_positions:
+        return text
+    return text[:min(cut_positions)].rstrip()
+
+
+def _email_html_to_display_text(value, limit=12000, strip_quotes=True):
+    import html
+    import re
+    from django.utils.html import strip_tags
+    from django.utils.text import Truncator
+
+    raw = html.unescape(str(value or ''))
+    raw = _strip_html_style_blocks(raw)
+    if strip_quotes:
+        raw = _strip_quoted_html_for_display(raw)
+    text = re.sub(r'(?i)<\s*br\s*/?\s*>', '\n', raw)
+    text = re.sub(r'(?i)<\s*/\s*(p|div|li|tr|h[1-6]|blockquote|section|article|table|head|body|html)\s*>', '\n', text)
+    text = re.sub(r'(?i)<\s*li(?:\s[^>]*)?>', '- ', text)
+    text = strip_tags(text)
+    text = html.unescape(text).replace('\xa0', ' ')
+    text = _strip_css_text_artifacts(text)
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    lines = [' '.join(line.split()) for line in text.split('\n')]
+    normalized = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if not previous_blank and normalized:
+                normalized.append('')
+            previous_blank = True
+            continue
+        normalized.append(line)
+        previous_blank = False
+    return Truncator(_strip_quoted_text_for_display('\n'.join(normalized).strip())).chars(limit)
+
+
+def _email_text_preview(email, limit=160):
+    from django.utils.html import strip_tags
+    from django.utils.text import Truncator
+
+    raw = email.body_html or email.body or ''
+    if email.body_html or _looks_like_email_html(raw):
+        text = _email_html_to_display_text(raw, limit=limit)
+    else:
+        raw = _strip_html_style_blocks(raw)
+        text = strip_tags(raw).replace('\xa0', ' ')
+        text = _strip_css_text_artifacts(text)
+    text = ' '.join(text.split())
+    return Truncator(text).chars(limit)
+
+
+def _email_body_text(email, limit=12000):
+    import html
+    from django.utils.text import Truncator
+
+    raw = email.body_html or email.body or ''
+    if email.body_html or _looks_like_email_html(raw):
+        return _email_html_to_display_text(raw, limit=limit)
+
+    text = raw
+    text = html.unescape(text).replace('\xa0', ' ')
+    text = _strip_css_text_artifacts(text)
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    lines = [' '.join(line.split()) for line in text.split('\n')]
+    normalized = []
+    previous_blank = False
+    for line in lines:
+        if not line:
+            if not previous_blank and normalized:
+                normalized.append('')
+            previous_blank = True
+            continue
+        normalized.append(line)
+        previous_blank = False
+
+    return Truncator(_strip_quoted_text_for_display('\n'.join(normalized).strip())).chars(limit)
+
+
 def _ai_workspace_email_context_payload(email):
-    try:
-        from reporting.gmail_views import _email_body_text, _email_text_preview, _email_thread_identifier
-        body_text = _email_body_text(email, limit=1600)
-        preview = _email_text_preview(email, limit=220)
-        thread_id = _email_thread_identifier(email)
-    except Exception:
-        body_text = email.body or email.body_html or ''
-        preview = body_text[:220]
-        thread_id = email.gmail_thread_id or email.thread_id or email.gmail_message_id or email.message_id or str(email.id)
+    body_text = _email_body_text(email, limit=1600)
+    preview = _email_text_preview(email, limit=220)
+    thread_id = _email_thread_identifier(email)
 
     followup = _ai_workspace_email_followup(email)
     department = None
@@ -18455,15 +18595,7 @@ def schedule_detail_view(request, pk):
     
     # 납품 품목 조회 (DeliveryItem 모델)
     delivery_items = DeliveryItem.objects.filter(schedule=schedule)
-    
-    # 관련 이메일 스레드 조회
-    from collections import defaultdict
-    email_logs = EmailLog.objects.filter(schedule=schedule).order_by('gmail_thread_id', 'sent_at')
-    email_threads = defaultdict(list)
-    for email in email_logs:
-        if email.gmail_thread_id:
-            email_threads[email.gmail_thread_id].append(email)
-    
+
     # 관련 히스토리에서 납품 품목 텍스트 찾기 (대체 방법)
     delivery_text = None
     delivery_amount = 0
@@ -18496,7 +18628,6 @@ def schedule_detail_view(request, pk):
         'delivery_items': delivery_items,
         'delivery_text': delivery_text,  # 히스토리에서 가져온 납품 품목 텍스트
         'delivery_amount': delivery_amount,  # 납품 금액
-        'email_threads': dict(email_threads),  # 이메일 스레드
         'from_page': from_page,
         'is_owner': is_own_schedule,  # 본인 일정 여부
         'can_modify': is_own_schedule,  # 수정/삭제 권한 (본인만)
@@ -26986,43 +27117,6 @@ def _react_request_payload(request):
     return request.POST
 
 
-def _profile_connection_payload(profile):
-    connected = bool(profile.gmail_token or profile.imap_connected_at)
-    provider = 'gmail' if profile.gmail_token else profile.email_provider
-    address = profile.gmail_email if profile.gmail_token else profile.imap_email
-    connected_at = profile.gmail_connected_at if profile.gmail_token else profile.imap_connected_at
-    last_sync_at = profile.gmail_last_sync_at if profile.gmail_token else profile.imap_last_sync_at
-    return {
-        'enabled': profile.role != 'manager',
-        'connected': connected,
-        'provider': provider or 'gmail',
-        'providerLabel': 'Gmail' if profile.gmail_token else profile.get_email_provider_display(),
-        'address': address or '',
-        'connectedAt': connected_at.isoformat() if connected_at else None,
-        'lastSyncAt': last_sync_at.isoformat() if last_sync_at else None,
-        'gmailConnected': bool(profile.gmail_token),
-        'imapConnected': bool(profile.imap_connected_at),
-        'settings': {
-            'imapEmail': profile.imap_email or '',
-            'imapHost': profile.imap_host or '',
-            'imapPort': profile.imap_port or 993,
-            'imapUseSsl': bool(profile.imap_use_ssl),
-            'smtpHost': profile.smtp_host or '',
-            'smtpPort': profile.smtp_port or 587,
-            'smtpUseTls': bool(profile.smtp_use_tls),
-        },
-        'links': {
-            'mailbox': '/mailbox/',
-            'businessCards': '/mailbox/business-cards/',
-            'gmailConnect': reverse('reporting:gmail_connect'),
-            'imapConnect': '/profile/?imap=1',
-            'imapConnectApi': reverse('reporting:profile_imap_connect_api'),
-            'imapSync': reverse('reporting:sync_imap_emails'),
-            'disconnect': reverse('reporting:profile_email_disconnect_api'),
-        },
-    }
-
-
 def _profile_api_payload(request):
     user = request.user
     profile = get_user_profile(user)
@@ -27048,7 +27142,6 @@ def _profile_api_payload(request):
             'canUseAi': bool(profile.can_use_ai),
             'canDownloadExcel': bool(profile.can_excel_download()),
         },
-        'emailConnection': _profile_connection_payload(profile),
         'links': {
             'update': reverse('reporting:profile_api_update'),
             'password': reverse('reporting:profile_api_password'),
@@ -27139,243 +27232,6 @@ def profile_password_api(request):
         'success': True,
         'message': '비밀번호를 변경했습니다.',
     })
-
-
-def _profile_bool_payload(value, default=False):
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
-
-
-def _profile_int_payload(value, default):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _profile_imap_form_payload(payload):
-    from .imap_utils import EMAIL_PRESETS
-
-    provider = (payload.get('provider') or 'imap').strip().lower()
-    if provider not in {'gmail', 'outlook', 'imap'}:
-        provider = 'imap'
-    preset = EMAIL_PRESETS.get(provider, {})
-    imap_email = (payload.get('imapEmail') or payload.get('imap_email') or '').strip()
-    imap_username = (
-        payload.get('imapUsername')
-        or payload.get('imap_username')
-        or imap_email
-        or ''
-    ).strip()
-    imap_password = (payload.get('imapPassword') or payload.get('imap_password') or '').strip()
-    imap_host = (
-        payload.get('imapHost')
-        or payload.get('imap_host')
-        or preset.get('imap_host')
-        or ''
-    ).strip()
-    imap_port = _profile_int_payload(payload.get('imapPort') or payload.get('imap_port'), preset.get('imap_port', 993))
-    imap_use_ssl = _profile_bool_payload(
-        payload.get('imapUseSsl') if 'imapUseSsl' in payload else payload.get('imap_use_ssl'),
-        bool(preset.get('imap_use_ssl', True)),
-    )
-    smtp_host = (
-        payload.get('smtpHost')
-        or payload.get('smtp_host')
-        or preset.get('smtp_host')
-        or ''
-    ).strip()
-    smtp_port = _profile_int_payload(payload.get('smtpPort') or payload.get('smtp_port'), preset.get('smtp_port', 587))
-    smtp_username = (
-        payload.get('smtpUsername')
-        or payload.get('smtp_username')
-        or imap_username
-        or ''
-    ).strip()
-    smtp_password = (
-        payload.get('smtpPassword')
-        or payload.get('smtp_password')
-        or imap_password
-        or ''
-    ).strip()
-    smtp_use_tls = _profile_bool_payload(
-        payload.get('smtpUseTls') if 'smtpUseTls' in payload else payload.get('smtp_use_tls'),
-        bool(preset.get('smtp_use_tls', True)),
-    )
-    return {
-        'provider': provider,
-        'imap_email': imap_email,
-        'imap_host': imap_host,
-        'imap_port': imap_port,
-        'imap_username': imap_username,
-        'imap_password': imap_password,
-        'imap_use_ssl': imap_use_ssl,
-        'smtp_host': smtp_host,
-        'smtp_port': smtp_port,
-        'smtp_username': smtp_username,
-        'smtp_password': smtp_password,
-        'smtp_use_tls': smtp_use_tls,
-    }
-
-
-def _profile_imap_validate(values, existing_profile=None):
-    errors = {}
-    email_field = forms.EmailField(required=True)
-    try:
-        email_field.clean(values['imap_email'])
-    except forms.ValidationError:
-        errors['imapEmail'] = '올바른 이메일 주소를 입력하세요.'
-    if not values['imap_host']:
-        errors['imapHost'] = 'IMAP 서버를 입력하세요.'
-    if not values['smtp_host']:
-        errors['smtpHost'] = 'SMTP 서버를 입력하세요.'
-    if values['imap_port'] <= 0 or values['imap_port'] > 65535:
-        errors['imapPort'] = 'IMAP 포트를 확인하세요.'
-    if values['smtp_port'] <= 0 or values['smtp_port'] > 65535:
-        errors['smtpPort'] = 'SMTP 포트를 확인하세요.'
-    if not values['imap_username']:
-        errors['imapUsername'] = 'IMAP 사용자명을 입력하세요.'
-    if not values['smtp_username']:
-        errors['smtpUsername'] = 'SMTP 사용자명을 입력하세요.'
-    has_existing_password = bool(existing_profile and existing_profile.imap_password)
-    if not values['imap_password'] and not has_existing_password:
-        errors['imapPassword'] = '메일 비밀번호 또는 앱 비밀번호를 입력하세요.'
-    if not values['smtp_password'] and not bool(existing_profile and existing_profile.smtp_password):
-        errors['smtpPassword'] = 'SMTP 비밀번호를 입력하세요.'
-    return errors
-
-
-@never_cache
-@require_http_methods(["POST"])
-def profile_imap_connect_api(request):
-    """React 프로필 화면용 IMAP/SMTP 연결 API."""
-    from .imap_utils import EmailEncryption, test_imap_connection, test_smtp_connection
-
-    auth_response = _api_login_required_response(request)
-    if auth_response:
-        return auth_response
-
-    profile = get_user_profile(request.user)
-    if profile.role == 'manager':
-        return JsonResponse({
-            'success': False,
-            'error': '매니저 계정은 메일 연동 설정을 변경할 수 없습니다.',
-        }, status=403)
-
-    payload = _react_request_payload(request)
-    action = (payload.get('action') or 'save').strip().lower()
-    values = _profile_imap_form_payload(payload)
-    errors = _profile_imap_validate(values, profile)
-    if errors:
-        return JsonResponse({
-            'success': False,
-            'error': '메일 연동 입력값을 확인하세요.',
-            'errors': errors,
-        }, status=400)
-
-    if action in {'test_imap', 'imap'}:
-        success, message = test_imap_connection(
-            values['imap_host'],
-            values['imap_port'],
-            values['imap_username'],
-            values['imap_password'],
-            values['imap_use_ssl'],
-        )
-        response_payload = _profile_api_payload(request)
-        response_payload.update({
-            'success': success,
-            'message': message,
-            'testType': 'imap',
-        })
-        return JsonResponse(response_payload, encoder=DjangoJSONEncoder, status=200 if success else 400)
-
-    if action in {'test_smtp', 'smtp'}:
-        success, message = test_smtp_connection(
-            values['smtp_host'],
-            values['smtp_port'],
-            values['smtp_username'],
-            values['smtp_password'],
-            values['smtp_use_tls'],
-        )
-        response_payload = _profile_api_payload(request)
-        response_payload.update({
-            'success': success,
-            'message': message,
-            'testType': 'smtp',
-        })
-        return JsonResponse(response_payload, encoder=DjangoJSONEncoder, status=200 if success else 400)
-
-    if action not in {'save', ''}:
-        return JsonResponse({'success': False, 'error': '지원하지 않는 작업입니다.'}, status=400)
-
-    profile.email_provider = values['provider']
-    profile.imap_email = values['imap_email']
-    profile.imap_host = values['imap_host']
-    profile.imap_port = values['imap_port']
-    profile.imap_username = values['imap_username']
-    profile.imap_password = EmailEncryption.encrypt_password(values['imap_password']) if values['imap_password'] else profile.imap_password
-    profile.imap_use_ssl = values['imap_use_ssl']
-    profile.smtp_host = values['smtp_host']
-    profile.smtp_port = values['smtp_port']
-    profile.smtp_username = values['smtp_username']
-    profile.smtp_password = EmailEncryption.encrypt_password(values['smtp_password']) if values['smtp_password'] else profile.smtp_password
-    profile.smtp_use_tls = values['smtp_use_tls']
-    profile.imap_connected_at = timezone.now()
-    profile.save(update_fields=[
-        'email_provider',
-        'imap_email',
-        'imap_host',
-        'imap_port',
-        'imap_username',
-        'imap_password',
-        'imap_use_ssl',
-        'smtp_host',
-        'smtp_port',
-        'smtp_username',
-        'smtp_password',
-        'smtp_use_tls',
-        'imap_connected_at',
-        'updated_at',
-    ])
-    response_payload = _profile_api_payload(request)
-    response_payload['message'] = '회사 이메일 연동을 저장했습니다.'
-    return JsonResponse(response_payload, encoder=DjangoJSONEncoder)
-
-
-@never_cache
-@require_http_methods(["POST"])
-def profile_email_disconnect_api(request):
-    """React 프로필 이메일 연동 해제 API."""
-    auth_response = _api_login_required_response(request)
-    if auth_response:
-        return auth_response
-
-    profile = get_user_profile(request.user)
-    profile.gmail_token = None
-    profile.gmail_email = ''
-    profile.gmail_connected_at = None
-    profile.gmail_last_sync_at = None
-    profile.email_provider = 'gmail'
-    profile.imap_email = ''
-    profile.imap_host = ''
-    profile.imap_port = 993
-    profile.imap_username = ''
-    profile.imap_password = ''
-    profile.imap_use_ssl = True
-    profile.smtp_host = ''
-    profile.smtp_port = 587
-    profile.smtp_username = ''
-    profile.smtp_password = ''
-    profile.smtp_use_tls = True
-    profile.imap_connected_at = None
-    profile.imap_last_sync_at = None
-    profile.save()
-    response_payload = _profile_api_payload(request)
-    response_payload['message'] = '이메일 연동을 해제했습니다.'
-    return JsonResponse(response_payload, encoder=DjangoJSONEncoder)
 
 
 @login_required
@@ -32301,270 +32157,6 @@ def customer_records_api(request, followup_id):
         return JsonResponse({
             'success': False,
             'error': '고객 기록을 가져오는 중 오류가 발생했습니다.'
-        }, status=500)
-
-
-@login_required
-@require_http_methods(["POST"])
-def quick_add_customer(request):
-    """빠른 고객 등록 API (이메일 발송용)"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    try:
-        data = json.loads(request.body)
-        
-        customer_name = data.get('customer_name', '').strip()
-        email = data.get('email', '').strip()
-        company_id = data.get('company_id', '').strip()
-        company_name = data.get('company_name', '').strip()
-        department_id = data.get('department_id', '').strip()
-        department_name = data.get('department_name', '').strip()
-        manager = data.get('manager', '').strip()
-        phone_number = data.get('phone_number', '').strip()
-        priority = 'scheduled'
-        address = data.get('address', '').strip()
-        notes = data.get('notes', '').strip()
-        
-        # 필수 필드 검증
-        if not email:
-            return JsonResponse({
-                'success': False,
-                'error': '이메일은 필수입니다.'
-            })
-        
-        if not company_name:
-            return JsonResponse({
-                'success': False,
-                'error': '업체/학교명은 필수입니다.'
-            })
-        
-        # 이메일 유효성 검사
-        import re
-        email_pattern = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
-        if not re.match(email_pattern, email):
-            return JsonResponse({
-                'success': False,
-                'error': '유효한 이메일 주소를 입력해주세요.'
-            })
-        
-        # 중복 체크 (같은 사용자가 같은 이메일로 이미 등록했는지)
-        existing = FollowUp.objects.filter(
-            user=request.user,
-            email=email
-        ).first()
-        
-        if existing:
-            return JsonResponse({
-                'success': False,
-                'error': f'이미 등록된 이메일입니다. (고객: {existing.customer_name})'
-            })
-        
-        # 업체 처리
-        company = None
-        user_company = request.user.userprofile.company
-        
-        if company_id:
-            # 기존 업체 선택
-            try:
-                company = Company.objects.get(
-                    id=company_id,
-                    created_by__userprofile__company=user_company
-                )
-            except Company.DoesNotExist:
-                return JsonResponse({
-                    'success': False,
-                    'error': '선택한 업체를 찾을 수 없습니다.'
-                })
-        else:
-            # 새 업체 생성
-            company = Company.objects.create(
-                name=company_name,
-                created_by=request.user
-            )
-            logger.info(f"새 업체 생성: {company_name} by {request.user.username}")
-        
-        # 부서 처리
-        department = None
-        if department_name:
-            if department_id:
-                # 기존 부서 선택
-                try:
-                    department = Department.objects.get(
-                        id=department_id,
-                        company=company
-                    )
-                except Department.DoesNotExist:
-                    return JsonResponse({
-                        'success': False,
-                        'error': '선택한 부서를 찾을 수 없습니다.'
-                    })
-            else:
-                # 새 부서 생성
-                department = Department.objects.create(
-                    name=department_name,
-                    company=company,
-                    created_by=request.user
-                )
-                logger.info(f"새 부서 생성: {department_name} by {request.user.username}")
-        
-        # 팔로우업 생성
-        followup = FollowUp.objects.create(
-            user=request.user,
-            customer_name=customer_name or email.split('@')[0],  # 고객명 없으면 이메일 ID 사용
-            email=email,
-            company=company,
-            department=department,
-            manager=manager or customer_name,  # 담당자 없으면 고객명 사용
-            phone_number=phone_number,
-            priority=priority,
-            address=address,
-            notes=notes,
-            status='active',
-            user_company=user_company
-        )
-        
-        logger.info(f"빠른 고객 등록 성공: {followup.customer_name} ({email}) by {request.user.username}")
-        
-        return JsonResponse({
-            'success': True,
-            'followup_id': followup.id,
-            'message': '고객이 등록되었습니다.'
-        })
-        
-    except Exception as e:
-        logger.error(f"Quick add customer error: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return JsonResponse({
-            'success': False,
-            'error': '고객 등록 중 오류가 발생했습니다.'
-        }, status=500)
-
-
-@login_required
-@require_http_methods(["POST"])
-def quick_add_company(request):
-    """업체 즉시 생성 API"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    try:
-        data = json.loads(request.body)
-        company_name = data.get('company_name', '').strip()
-        
-        if not company_name:
-            return JsonResponse({
-                'success': False,
-                'error': '업체/학교명은 필수입니다.'
-            })
-        
-        # 중복 체크 (같은 회사 내)
-        user_company = request.user.userprofile.company
-        existing = Company.objects.filter(
-            name=company_name,
-            created_by__userprofile__company=user_company
-        ).first()
-        
-        if existing:
-            return JsonResponse({
-                'success': True,
-                'company_id': existing.id,
-                'company_name': existing.name,
-                'message': '이미 등록된 업체입니다.'
-            })
-        
-        # 새 업체 생성
-        company = Company.objects.create(
-            name=company_name,
-            created_by=request.user
-        )
-        
-        logger.info(f"새 업체 생성: {company_name} (ID: {company.id}) by {request.user.username}")
-        
-        return JsonResponse({
-            'success': True,
-            'company_id': company.id,
-            'company_name': company.name,
-            'message': '업체가 등록되었습니다.'
-        })
-        
-    except Exception as e:
-        logger.error(f"Quick add company error: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': '업체 등록 중 오류가 발생했습니다.'
-        }, status=500)
-
-
-@login_required
-@require_http_methods(["POST"])
-def quick_add_department(request):
-    """부서 즉시 생성 API"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    try:
-        data = json.loads(request.body)
-        department_name = data.get('department_name', '').strip()
-        company_id = data.get('company_id', '').strip()
-        
-        if not department_name:
-            return JsonResponse({
-                'success': False,
-                'error': '부서/연구실명은 필수입니다.'
-            })
-        
-        if not company_id:
-            return JsonResponse({
-                'success': False,
-                'error': '업체를 먼저 선택하거나 등록해주세요.'
-            })
-        
-        # 업체 확인
-        try:
-            company = Company.objects.get(id=company_id)
-        except Company.DoesNotExist:
-            return JsonResponse({
-                'success': False,
-                'error': '선택한 업체를 찾을 수 없습니다.'
-            })
-        
-        # 중복 체크
-        existing = Department.objects.filter(
-            name=department_name,
-            company=company
-        ).first()
-        
-        if existing:
-            return JsonResponse({
-                'success': True,
-                'department_id': existing.id,
-                'department_name': existing.name,
-                'message': '이미 등록된 부서입니다.'
-            })
-        
-        # 새 부서 생성
-        department = Department.objects.create(
-            name=department_name,
-            company=company,
-            created_by=request.user
-        )
-        
-        logger.info(f"새 부서 생성: {department_name} (ID: {department.id}) by {request.user.username}")
-        
-        return JsonResponse({
-            'success': True,
-            'department_id': department.id,
-            'department_name': department.name,
-            'message': '부서가 등록되었습니다.'
-        })
-        
-    except Exception as e:
-        logger.error(f"Quick add department error: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': '부서 등록 중 오류가 발생했습니다.'
         }, status=500)
 
 

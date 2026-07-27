@@ -46,6 +46,76 @@ manage.py test reporting (전체 670개) → 실패 3건, 전부 git stash로 �
 
 ---
 
+## 2026-07-27 — 메뉴 가지치기 Phase 5: 메일(Mail)/명함(BusinessCards) 완전 제거 (7단계 중 마지막)
+
+### 요약
+
+- 사이드바 "메일"/"명함" 독립 메뉴 완전 제거 + 사용자 확인된 결합 기능 2개(일정상세 "메일 발송" 버튼, 프로필 Gmail/IMAP 연동 설정 패널)까지 제거. Gmail OAuth, IMAP/SMTP 연동, 메일함 CRUD, 명함 CRUD, 예약 발송 큐를 포함한 메일 엔진 전체 삭제. **7개 메뉴 가지치기 작업의 마지막 단계 — 완료.**
+
+### 변경된 파일
+
+- 삭제: `reporting/gmail_views.py`(3566줄), `reporting/imap_views.py`(350줄), `reporting/imap_utils.py`(710줄), `reporting/gmail_utils.py`(621줄), `reporting/scheduled_email_worker.py`, `reporting/management/commands/process_scheduled_emails.py`, `reporting/templates/reporting/gmail/`(7개 템플릿), `reporting/templates/reporting/imap_connect.html`
+- 삭제(사용자 확인): 루트 도근이용 스크립트 7개(`check_email_95.py`, `check_email_96_full.py`, `check_thread_emails.py`, `clear_business_card_logos.py`, `resync_emails.py`, `test_template_context.py`, `update_business_card_signatures.py`)
+- `reporting/views.py`:
+  - `profile_imap_connect_api`/`profile_email_disconnect_api`/`_profile_imap_form_payload`/`_profile_int_payload`/`_profile_bool_payload` 삭제
+  - `_profile_connection_payload` 삭제 + `_profile_api_payload`의 `'emailConnection'` 키 제거 — 이 함수는 삭제될 URL 4개(`gmail_connect`/`profile_imap_connect_api`/`sync_imap_emails`/`profile_email_disconnect_api`)를 무조건 `reverse()`하고 있어 방치했으면 모든 `GET /reporting/api/profile/`이 500이었을 것
+  - Schedule 상세 payload의 `sendMail`/`djangoSendMail` 키 제거(마찬가지로 무조건 `reverse()`하던 `send_email_from_schedule`가 대상) — `schedule_detail.html`의 "메일 발송" 버튼과 "관련 이메일" 스레드 섹션 전체 제거, `schedule_detail_view`의 `email_threads` context 조립 코드 제거
+  - Customer/account detail payload의 `mailCompose` 키 제거(고객상세 "메일" 퀵액션)
+  - `navigation_api`의 'mail'/'businessCards' 항목 + `canUseMailbox` capability 제거
+  - AI 액션큐 `_ai_workspace_email_waiting_action_payload`: 삭제될 `mailbox_thread`를 요청 시점에 `reverse()`하던 부분(`mailboxThread`/`djangoMailboxThread` href) 제거 — **발견 계기**: 발송 2일 지난 미회신 메일이 있는 정상 상태에서 AI 워크스페이스 엔드포인트가 500이 났을 실제 버그, 배포 전 발견
+  - `quick_add_customer`/`quick_add_company`/`quick_add_department`(메일함 작성 화면 전용) 삭제
+  - **AI 이메일 컨텍스트 헬퍼 9개를 gmail_views.py에서 views.py로 이관**(사용자 결정): `_email_thread_identifier`/`_strip_html_style_blocks`/`_strip_css_text_artifacts`/`_looks_like_email_html`/`_strip_quoted_html_for_display`/`_strip_quoted_text_for_display`/`_email_html_to_display_text`/`_email_text_preview`/`_email_body_text` — `_ai_workspace_email_context_payload`가 이전에는 이 헬퍼들을 try/except로 import해 실패 시 허접한 fallback을 쓰던 것을, 이관 후에는 항상 성공하므로 try/except 제거하고 직접 호출
+- `reporting/urls.py`: gmail/imap/mailbox/business-cards 관련 URL 패턴 전부(Gmail OAuth, 발송/답장, IMAP 연결/동기화, 메일함 페이지+API 12개, 명함 페이지+API 5개, 이미지 업로드) + 헬퍼 함수 5개(`_mailbox_compose_react_page` 등) + `quick-add-*` 3개 제거
+- `reporting/admin.py`: `EmailLogAdmin`/`ScheduledEmailAdmin`/`ScheduledEmailAttachmentInline`/`BusinessCardAdmin` 등록 제거(모델 클래스는 보존)
+- `reporting/readonly_api.py`: allowlist에서 `business_card_api_list`/`mailbox_api_list` 제거
+- `reporting/write_api.py`: `WRITE_DENY_URL_NAMES`에서 `gmail_callback`/`gmail_disconnect`/`imap_connect`/`imap_disconnect`/`profile_imap_connect_api`/`profile_email_disconnect_api` 제거
+- `reporting/tasks.py`: Celery 태스크 3개(`refresh_gmail_tokens`/`auto_sync_gmail`/`send_due_scheduled_emails`) 제거, `cleanup_old_files_task`는 무관하여 보존
+- `sales_project/celery.py`: beat 스케줄에서 `refresh-gmail-tokens-daily`/`send-due-scheduled-emails` 제거
+- `reporting/apps.py`: `ready()`에서 `start_scheduled_email_inline_worker()` 기동 코드 제거
+- `reporting/templates/reporting/base.html`: 레거시 메일함/명함 nav 링크 블록(`{% if user.userprofile.role != 'manager' %}...{% endif %}`) 제거
+- `reporting/templates/reporting/profile.html`: "이메일 연동" 카드 전체(Gmail/IMAP 연결 상태 표시 + 연동 폼) 제거
+- `reporting/templates/reporting/followup_detail.html`: "메일 보내기" 버튼 2곳 제거
+- `sales_project/urls.py`: catch-all regex에서 `mailbox`/`business-cards` 토큰 제거, `removed_react_route`로 이동
+- `frontend/src/App.tsx`: Mailbox/BusinessCards 컴포넌트 블록(`mailboxTabs`~`MailboxThreadPage`, ~1200줄) 전체 삭제, 프로필 Gmail/IMAP 패널(state 6개/handler 4개/JSX)만 서저컬 제거(프로필 기본정보/비밀번호 변경은 보존), Schedule 상세 "메일 발송" 버튼 제거, 고객상세 "메일" 퀵액션 제거, mail/businessCards 전용 폼 헬퍼·타입 다수 제거, 이제 미사용된 아이콘 9개(`Inbox`/`ImagePlus`/`Mail`/`Bold`/`Italic`/`Reply`/`Send`/`Type`/`Underline`) 제거
+- `frontend/src/components/shared/CrmShell.tsx`: MainView/nav/route에서 mail/businessCards 제거, 미사용 아이콘(`Mail`/`ImagePlus`) 제거
+- `frontend/src/api/legacy.ts`, `frontend/src/api/dashboard.ts`: mail/business-card 관련 타입 13개 + 함수 17개 + empty-data 상수 3개 제거, `ProfileData.emailConnection` 필드(타입+기본값+정규화 로직) 제거, `CustomerDetailData.links.mailCompose` 필드 제거, 이제 미사용된 `canUseMailbox` capability 필드 제거(legacy.ts의 이미 고아 상태였던 `NavigationData` 중복 정의 포함)
+- `frontend/src/styles.css`: mailbox/mail/business-card/profile-connection/profile-imap 전용 CSS 대량 제거. **공유 셀렉터는 신중히 처리**: `.profile-overview-strip`/`.profile-form`/`.profile-readonly-grid`/`.profile-permission-row`/`.profile-password-form`/`.reports-actions`/`.reports-page`는 다른 콤마결합 셀렉터에서 business-card/mail 부분만 제거하고 보존(className 그렙 크로스체크로 사전 검증)
+- `frontend/server.mjs`: `/reporting/gmail/...`/`/reporting/mailbox/...`/`/reporting/business-cards/...`/`/reporting/imap/...` 레거시 리다이렉트 블록 전체 제거, `isRemovedFrontendRoute()`에 `/mailbox/`/`/business-cards/` 추가(Phase 3의 교훈을 적용해 배포 전에 미리 처리)
+- `frontend/e2e/permissions-and-downloads.spec.ts`: `canUseMailbox` 필드 + `'mail'` 항목 참조 제거. **참고**: 이 파일은 이전 단계(Phase 1의 tasksManager, Phase 2의 ai, Phase 3의 analytics)부터 이미 낡아있었음 — 이번 phase가 깬 부분만 수정, 나머지는 주석으로 명시하고 그대로 둠(시드 데이터의 `can_use_ai` 값 등을 이 세션에서 검증할 수 없어 임의로 고치지 않음)
+- `reporting/tests.py`: `ReactMailboxApiTests`/`GmailMailboxThreadRegressionTests`/`EmailEncryptionSafetyTests` 클래스 전체 삭제, `ReactReportsProfileBusinessCardApiTests`에서 명함/IMAP 관련 메서드 6개 제거(Profile 기본정보/비밀번호 테스트는 보존), `CoreCrmLegacyRedirectTests`의 메일/명함 리다이렉트 테스트 삭제, `SalesNoteReadonlyBearerApiTests`의 관련 reverse() 2개 제거, `ReactNavigationApiTests`의 mail/businessCards/canUseMailbox 단언 정리, `RemovedStandaloneMenuRouteTests`에 새 404 케이스 6개 추가(mailbox/business-cards/gmail/imap)
+
+### 실행 중 발견/수정한 자체 버그 3건
+
+- **App.tsx 헬퍼 삭제 범위 오류 (2회)**: 공유 폼 헬퍼 삭제 시 무관한 데모 폼 헬퍼 2개(`makeDemoRecordForm`/`demoRecordFormToPayload`)가 같이 삭제됨 — `tsc --noEmit`이 즉시 검출, `git diff`로 원본 복원. 이후 대형 메일함 핸들러 블록(refreshMailboxData~handleMailReplySubmit, ~540줄) 삭제 시 프로필 기본정보/비밀번호 핸들러 4개(`handleProfileFormChange`/`handleProfilePasswordFormChange`/`handleProfileSubmit`/`handleProfilePasswordSubmit`)가 같이 삭제됨 — 역시 `tsc`가 "Cannot find name"으로 즉시 검출, `git diff`로 원래 코드를 찾아 렌더 분기 직전에 복원.
+- **백엔드 테스트 놓침**: `test_customer_detail_summary_api_returns_notes_and_schedules`가 이제 삭제된 `payload['links']['mailCompose']` 필드를 단언하고 있었음 — 이 특정 단언은 `reverse('reporting:mailbox...)` 패턴 그렙에 안 걸려서(딕셔너리 키 단언이라) 최초 전체 테스트 스윕에서 걸림. 단언 삭제 후 전체 스윕 재실행하여 회귀 0건 확인.
+
+이번 phase는 Phase 4의 교훈(정적 파일 서빙과 겹치는 라우트를 조심할 것, CSS 공유 셀렉터를 className 그렙으로 먼저 검증할 것, server.mjs 수정을 배포 전에 끝낼 것)을 전부 미리 적용해 실행 — CSS 랜드마인은 이번엔 0건.
+
+### 안전
+
+- **DB 테이블 무변경**: `EmailLog`/`BusinessCard`/`ScheduledEmail`/`ScheduledEmailAttachment` 모델 클래스와 `UserProfile`의 gmail_*/imap_*/smtp_* 필드는 전부 `models.py`에 보존(고아 상태, 마이그레이션 드랍 없음).
+- **`EmailLog` 읽기 경로 보존 확인**: AI 워크스페이스 액션큐의 이메일 회신대기 카드(`_ai_workspace_email_waiting_action_payload`, EmailLog 쿼리 자체는 유지), `schedule_list_view`의 `email_sent` 필터, `ai_chat/services.py`의 `gather_email_data_for_followups` — 전부 조사 후 명시적으로 스코프 밖 확인, 손대지 않음. 오직 EmailLog를 **생성/수정**하던 gmail_views.py/imap_views.py/tasks.py의 쓰기 경로만 제거.
+
+### 검증
+
+```text
+py_compile / manage.py check / makemigrations --check --dry-run → 전부 OK, "No changes detected"
+manage.py test (targeted: ReactNavigationApiTests, SalesNoteReadonlyBearerApiTests,
+  ReactReportsProfileBusinessCardApiTests, CoreCrmLegacyRedirectTests, RemovedStandaloneMenuRouteTests)
+  → 16개 전부 OK (신규 404 케이스 6개 포함)
+tsc --noEmit → 2차례 "Cannot find name" 검출 → 둘 다 원본 코드 복원 후 재실행 OK
+npm run build (vite) → OK, App 번들 457.62kB → 394.79kB
+manage.py test reporting (전체 472개) → 1차 실행에서 mailCompose 단언 누락 발견(신규 회귀) → 수정 →
+  재실행 → 실패 3건, 전부 Phase 1에서 이미 검증된 기존 결함과 동일(AnonymousUser AttributeError,
+  SESSION_SAVE_EVERY_REQUEST 기본값, test_schedule_form_includes_vat_mode) — 회귀 아님
+```
+
+### 프로덕션 배포 상태
+
+- (배포 전 — 이 섹션은 배포 완료 후 갱신 예정)
+
+---
+
 ## 2026-07-27 — 메뉴 가지치기 Phase 4: 장비(Assets)/서비스(Services) 완전 제거
 
 ### 요약

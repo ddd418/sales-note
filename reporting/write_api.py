@@ -46,9 +46,7 @@ WRITE_DENY_URL_NAMES = {
     "employees_toggle_active_api", "user_create", "user_edit", "user_delete",
     "user_toggle_active", "user_toggle_ai", "manager_user_create",
     "manager_user_edit", "manager_user_list", "api_change_company_creator",
-    # 메일/자격증명 연결 (자격증명 쓰기)
-    "gmail_callback", "gmail_disconnect", "imap_connect", "imap_disconnect",
-    "profile_imap_connect_api", "profile_email_disconnect_api", "profile_api_password",
+    "profile_api_password",
 }
 
 # 되돌릴 수 없거나 외부로 나가는 액션 — 확인 헤더 필요.

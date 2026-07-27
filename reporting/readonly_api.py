@@ -30,8 +30,6 @@ READONLY_ALLOWED_URL_NAMES = {
     "weekly_reports_api",
     "weekly_report_detail_api",
     "personal_schedules_detail_api",
-    "business_card_api_list",
-    "mailbox_api_list",
 }
 
 
