@@ -12869,3 +12869,76 @@ tbody tr:hover {
     margin-left: 0;
   }
 }
+
+.pipeline-sheet-editable {
+  display: block;
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.pipeline-sheet-editable:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-hover);
+}
+
+.pipeline-sheet-edit-box {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.pipeline-sheet-edit-box textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.pipeline-sheet-edit-box input[type='date'] {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.pipeline-sheet-edit-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pipeline-sheet-edit-actions button {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pipeline-sheet-edit-actions button:first-child {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-strong);
+  font-weight: 600;
+}
+
+.pipeline-sheet-edit-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

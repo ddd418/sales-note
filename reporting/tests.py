@@ -13267,3 +13267,126 @@ class PipelineSheetApiTests(TestCase):
         quotes_ws = wb['견적 전환']
         departments = [row[1] for row in quotes_ws.iter_rows(min_row=2, values_only=True)]
         self.assertTrue(any((d or '').startswith('엑셀') for d in departments))
+
+    # ------------------------------------------------------------ 인라인 수정
+
+    def _update_activity(self, kind, activity_id, patch):
+        return self.client.post(
+            reverse('reporting:pipeline_sheet_activity_update_api', args=[kind, activity_id]),
+            data=json.dumps(patch),
+            content_type='application/json',
+        )
+
+    def test_activity_update_requires_login(self):
+        response = self._update_activity('history', 1, {'body': '내용'})
+        self.assertEqual(response.status_code, 401)
+
+    def test_activity_update_rejects_invalid_kind(self):
+        self.client.force_login(self.user)
+        response = self._update_activity('quote', 1, {'body': '내용'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_activity_update_edits_history_body_obstacle_and_next_action(self):
+        from reporting.models import History
+
+        followup = self._account(self.user, '인라인수정')
+        history = History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='memo', meeting_date=self.week_start, content='원래 메모',
+        )
+        self.client.force_login(self.user)
+
+        response = self._update_activity('history', history.id, {
+            'body': '수정된 메모',
+            'obstacle': '예산 미확정',
+            'nextAction': '견적 재발행',
+            'nextActionDate': (self.week_end + timedelta(days=2)).isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['activity']['body'], '수정된 메모')
+        self.assertEqual(payload['activity']['obstacle'], '예산 미확정')
+        self.assertEqual(payload['activity']['nextAction'], '견적 재발행')
+        history.refresh_from_db()
+        self.assertEqual(history.content, '수정된 메모')
+        self.assertEqual(history.meeting_obstacles, '예산 미확정')
+        self.assertEqual(history.next_action, '견적 재발행')
+        self.assertEqual(history.next_action_date, self.week_end + timedelta(days=2))
+
+    def test_activity_update_writes_meeting_situation_for_customer_meeting(self):
+        """`오늘 상황`이 현재 표시 필드면, 같은 필드에 계속 써야 내용이 갈라지지 않는다."""
+        from reporting.models import History
+
+        followup = self._account(self.user, '미팅수정')
+        history = History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='customer_meeting', meeting_date=self.week_start,
+            meeting_situation='기존 상황',
+        )
+        self.client.force_login(self.user)
+
+        response = self._update_activity('history', history.id, {'body': '새 상황'})
+
+        self.assertEqual(response.status_code, 200)
+        history.refresh_from_db()
+        self.assertEqual(history.meeting_situation, '새 상황')
+        self.assertEqual(history.content, None)
+
+    def test_activity_update_clears_next_action_date_when_blank(self):
+        from reporting.models import History
+
+        followup = self._account(self.user, '예정일삭제')
+        history = History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='memo', meeting_date=self.week_start, content='메모',
+            next_action='할 일', next_action_date=self.week_end,
+        )
+        self.client.force_login(self.user)
+
+        response = self._update_activity('history', history.id, {
+            'nextAction': '', 'nextActionDate': '',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        history.refresh_from_db()
+        self.assertEqual(history.next_action, '')
+        self.assertIsNone(history.next_action_date)
+
+    def test_activity_update_edits_schedule_notes(self):
+        from datetime import time
+        from reporting.models import Schedule
+
+        followup = self._account(self.user, '일정메모수정')
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            visit_date=self.week_start, visit_time=time(10, 0),
+            status='scheduled', activity_type='customer_meeting',
+            notes='자동 생성: 영업노트 후속 미팅',
+        )
+        self.client.force_login(self.user)
+
+        response = self._update_activity('schedule', schedule.id, {'body': '방문 전 준비물 확인'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['activity']['body'], '방문 전 준비물 확인')
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.notes, '방문 전 준비물 확인')
+
+    def test_activity_update_blocks_editing_other_users_history(self):
+        from reporting.models import History
+
+        followup = self._account(self.other, '남의기록')
+        history = History.objects.create(
+            user=self.other, company=self.company, followup=followup,
+            action_type='memo', meeting_date=self.week_start, content='남의 메모',
+        )
+        self.client.force_login(self.user)
+
+        response = self._update_activity('history', history.id, {'body': '건드리면 안 됨'})
+
+        self.assertEqual(response.status_code, 403)
+        history.refresh_from_db()
+        self.assertEqual(history.content, '남의 메모')

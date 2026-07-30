@@ -725,14 +725,17 @@ GRADE_COLORS = {'VIP': '#ffd700', 'A': '#28a745', 'B': '#17a2b8', 'C': '#6c757d'
 
 def _suggest_pipeline_stage(followup, current_month_schedules=None, recent_histories=None):
     """
-    Quote / Schedule / History 데이터를 기반으로 추천 파이프라인 단계와 근거를 반환.
+    Quote 데이터를 기반으로 추천 파이프라인 단계와 근거를 반환.
     - prefetch_related('quotes') 후 호출 시 DB 추가 쿼리 없음.
-    - current_month_schedules: 최근 30일 Schedule 리스트 (미리 날짜 필터링된 것).
-    - recent_histories: 최근 30일 History 리스트 (미리 날짜 필터링된 것).
-      None 이면 History 기반 단계 추천을 건너뜀 (날짜 필터 없는 전체 조회 방지).
-    Returns (stage_key, source_label) or (None, None) if no better suggestion.
+    - current_month_schedules / recent_histories: 최근 30일 견적 활동 감지에만 쓴다.
+      recent_histories가 None이면 히스토리 기반 추천은 건너뜀 (날짜 필터 없는 전체 조회 방지).
+    Returns (stage_key, source_label) or (None, None) if no suggestion.
 
-    단계 우선순위: 견적(Quote) > 최근 30일 일정 > 최근 30일 미팅 히스토리
+    '접촉/미팅' 단계는 더 이상 자동 추천하지 않는다 — 미팅 기록 하나로 카드가
+    저절로 넘어가면 실제로 접촉했는지와 무관하게 단계가 채워져 신뢰할 수 없었다.
+    영업 담당자가 칸반에서 직접 옮기는 것만 이 단계의 유일한 입력 경로다.
+
+    단계 우선순위: 견적(Quote) 객체 > 최근 30일 견적 일정 > 최근 30일 견적 히스토리
     """
     # 1. Quote 기반 (최우선 — 실제 견적 객체)
     quotes = list(followup.quotes.all())
@@ -747,8 +750,7 @@ def _suggest_pipeline_stage(followup, current_month_schedules=None, recent_histo
             return ('lost', '견적 거절')
         return ('quote', '견적')
 
-    # 2. 최근 30일 일정 기반 (current_month_schedules는 이미 날짜 필터된 목록)
-    #    ※ 견적 일정이 있으면 quote 우선 — 미팅 일정보다 항상 앞섬
+    # 2. 최근 30일 견적 일정 (current_month_schedules는 이미 날짜 필터된 목록)
     if current_month_schedules:
         has_quote_schedule = any(
             s.activity_type == 'quote'
@@ -758,19 +760,13 @@ def _suggest_pipeline_stage(followup, current_month_schedules=None, recent_histo
         )
         if has_quote_schedule:
             return ('quote', '최근 견적 일정')
-        # 최근 30일 내 다른 일정(미팅/접촉 등)이 있으면 contact 단계 추천
-        return ('contact', '최근 30일 일정')
 
-    # 3. 최근 30일 History 기반 (recent_histories는 이미 날짜 필터된 목록)
+    # 3. 최근 30일 견적 히스토리 (recent_histories는 이미 날짜 필터된 목록)
     #    ※ 날짜 필터 없는 followup.histories.all() 호출 절대 금지
     #    ※ None 이면 안전하게 건너뜀 (전체 이력 조회 방지)
     if recent_histories is not None:
-        # 견적 히스토리가 있으면 quote 우선
         if any(h.action_type == 'quote' for h in recent_histories):
             return ('quote', '최근 견적 활동')
-        # 최근 30일 내 고객 미팅 히스토리가 있으면 contact
-        if any(h.action_type == 'customer_meeting' for h in recent_histories):
-            return ('contact', '최근 고객 미팅')
 
     return (None, None)
 

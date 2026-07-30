@@ -1,4 +1,4 @@
-import { assertSuccessfulJsonPayload, fetchJson } from './shared';
+import { assertSuccessfulJsonPayload, csrfHeaders, fetchJson } from './shared';
 
 export type PipelineSheetOption = {
   value: string;
@@ -30,7 +30,35 @@ export type PipelineSheetActivity = {
   nextActionDate: string | null;
   amount: number;
   href: string;
+  /** 본인 기록(또는 admin)일 때만 그리드에서 바로 수정할 수 있다. */
+  editable: boolean;
 };
+
+export type PipelineSheetActivityPatch = {
+  body?: string;
+  obstacle?: string;
+  nextAction?: string;
+  nextActionDate?: string;
+};
+
+export async function updatePipelineSheetActivity(
+  kind: 'history' | 'schedule',
+  id: number,
+  patch: PipelineSheetActivityPatch,
+): Promise<PipelineSheetActivity> {
+  const href = `/reporting/api/pipeline-sheet/activities/${kind}/${id}/update/`;
+  const { response, payload } = await fetchJson<{ success?: boolean; activity: PipelineSheetActivity }>(
+    href,
+    {
+      method: 'POST',
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(patch),
+    },
+    '활동을 저장하지 못했습니다.',
+  );
+  assertSuccessfulJsonPayload(response, payload, '활동을 저장하지 못했습니다.');
+  return payload.activity;
+}
 
 export type PipelineSheetWeeklyRow = {
   accountKey: string;

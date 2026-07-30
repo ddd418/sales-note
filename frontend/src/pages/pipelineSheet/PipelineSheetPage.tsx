@@ -9,11 +9,14 @@ import {
   Search,
   Target,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   loadPipelineSheetQuotes,
   loadPipelineSheetWeekly,
   pipelineSheetExportHref,
+  updatePipelineSheetActivity,
+  type PipelineSheetActivity,
+  type PipelineSheetActivityPatch,
   type PipelineSheetQuoteRow,
   type PipelineSheetQuotesData,
   type PipelineSheetWeeklyData,
@@ -21,6 +24,27 @@ import {
 } from '../../api/pipelineSheet';
 
 type SheetTab = 'weekly' | 'quotes';
+
+/** `nextAction`은 텍스트+예정일을 한 단위로 묶어 같이 편집한다. */
+type EditableField = 'body' | 'obstacle' | 'nextAction';
+
+type EditingCell = {
+  activityId: number;
+  kind: 'history' | 'schedule';
+  field: EditableField;
+};
+
+type ActivityEditBundle = {
+  editing: EditingCell | null;
+  text: string;
+  date: string;
+  savingKey: string | null;
+  onStart: (activity: PipelineSheetActivity, field: EditableField) => void;
+  onChangeText: (value: string) => void;
+  onChangeDate: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+};
 
 const QUOTE_FILTERS: { value: string; label: string }[] = [
   { value: 'all', label: '전체' },
@@ -58,11 +82,75 @@ function normalizeTab(value: string | null): SheetTab {
   return value === 'quotes' ? 'quotes' : 'weekly';
 }
 
-type WeeklyAccountBlockProps = {
-  row: PipelineSheetWeeklyRow;
+function activityCellKey(kind: string, id: number, field: EditableField): string {
+  return `${kind}-${id}-${field}`;
+}
+
+type ActivityCellProps = {
+  activity: PipelineSheetActivity;
+  field: EditableField;
+  edit: ActivityEditBundle;
+  display: ReactNode;
+  placeholder: string;
 };
 
-function WeeklyAccountBlock({ row }: WeeklyAccountBlockProps) {
+function ActivityCell({ activity, field, edit, display, placeholder }: ActivityCellProps) {
+  // Schedule에는 장애물/다음액션 필드가 없다 — 본문(body)만 편집 가능하다.
+  const editable = activity.editable && (activity.kind === 'history' || field === 'body');
+  if (!editable) {
+    return <>{display}</>;
+  }
+
+  const isEditing =
+    edit.editing?.activityId === activity.id && edit.editing.kind === activity.kind && edit.editing.field === field;
+  const saving = edit.savingKey === activityCellKey(activity.kind, activity.id, field);
+
+  if (!isEditing) {
+    return (
+      <button className="pipeline-sheet-editable" onClick={() => edit.onStart(activity, field)} type="button">
+        {display}
+      </button>
+    );
+  }
+
+  return (
+    <div className="pipeline-sheet-edit-box">
+      <textarea
+        autoFocus
+        onChange={(event) => edit.onChangeText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            edit.onSave();
+          } else if (event.key === 'Escape') {
+            edit.onCancel();
+          }
+        }}
+        placeholder={placeholder}
+        rows={field === 'body' ? 4 : 2}
+        value={edit.text}
+      />
+      {field === 'nextAction' ? (
+        <input onChange={(event) => edit.onChangeDate(event.target.value)} type="date" value={edit.date} />
+      ) : null}
+      <div className="pipeline-sheet-edit-actions">
+        <button disabled={saving} onClick={edit.onSave} type="button">
+          {saving ? '저장중' : '저장'}
+        </button>
+        <button disabled={saving} onClick={edit.onCancel} type="button">
+          취소
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type WeeklyAccountBlockProps = {
+  row: PipelineSheetWeeklyRow;
+  edit: ActivityEditBundle;
+};
+
+function WeeklyAccountBlock({ row, edit }: WeeklyAccountBlockProps) {
   return (
     <tbody className="pipeline-sheet-account">
       <tr className="pipeline-sheet-account-head">
@@ -84,11 +172,31 @@ function WeeklyAccountBlock({ row }: WeeklyAccountBlockProps) {
             <small>{activity.weekday}</small>
           </td>
           <td className="pipeline-sheet-type">{activity.type}</td>
-          <td className="pipeline-sheet-body">{activity.body || <span className="muted">내용 없음</span>}</td>
-          <td className="pipeline-sheet-obstacle">{activity.obstacle || '-'}</td>
+          <td className="pipeline-sheet-body">
+            <ActivityCell
+              activity={activity}
+              display={activity.body || <span className="muted">내용 없음</span>}
+              edit={edit}
+              field="body"
+              placeholder="상황 / 내용"
+            />
+          </td>
+          <td className="pipeline-sheet-obstacle">
+            <ActivityCell activity={activity} display={activity.obstacle || '-'} edit={edit} field="obstacle" placeholder="장애물" />
+          </td>
           <td className="pipeline-sheet-next">
-            {activity.nextAction || '-'}
-            {activity.nextActionDate ? <small>{formatDayLabel(activity.nextActionDate)}</small> : null}
+            <ActivityCell
+              activity={activity}
+              display={
+                <>
+                  {activity.nextAction || '-'}
+                  {activity.nextActionDate ? <small>{formatDayLabel(activity.nextActionDate)}</small> : null}
+                </>
+              }
+              edit={edit}
+              field="nextAction"
+              placeholder="다음 액션"
+            />
           </td>
           <td className="pipeline-sheet-amount">{activity.amount ? `${formatMoney(activity.amount)}원` : '-'}</td>
         </tr>
@@ -167,6 +275,11 @@ export function PipelineSheetPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState<EditingCell | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const refreshWeekly = useCallback(async () => {
     setLoading(true);
@@ -249,6 +362,56 @@ export function PipelineSheetPage() {
   const weeklyMetrics = weekly?.metrics;
   const quoteMetrics = quotes?.metrics;
   const refreshCurrent = tab === 'weekly' ? refreshWeekly : refreshQuotes;
+
+  const startEdit = useCallback((activity: PipelineSheetActivity, field: EditableField) => {
+    setEditing({ activityId: activity.id, kind: activity.kind, field });
+    setEditText(field === 'nextAction' ? activity.nextAction : field === 'obstacle' ? activity.obstacle : activity.body);
+    setEditDate(activity.nextActionDate || '');
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditing(null);
+    setEditText('');
+    setEditDate('');
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    if (!editing) {
+      return;
+    }
+    const key = activityCellKey(editing.kind, editing.activityId, editing.field);
+    setSavingKey(key);
+    setError('');
+    try {
+      const patch: PipelineSheetActivityPatch =
+        editing.field === 'nextAction'
+          ? { nextAction: editText, nextActionDate: editDate }
+          : editing.field === 'obstacle'
+            ? { obstacle: editText }
+            : { body: editText };
+      await updatePipelineSheetActivity(editing.kind, editing.activityId, patch);
+      setEditing(null);
+      setEditText('');
+      setEditDate('');
+      await refreshWeekly();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '저장하지 못했습니다.');
+    } finally {
+      setSavingKey(null);
+    }
+  }, [editDate, editText, editing, refreshWeekly]);
+
+  const activityEdit: ActivityEditBundle = {
+    editing,
+    text: editText,
+    date: editDate,
+    savingKey,
+    onStart: startEdit,
+    onChangeText: setEditText,
+    onChangeDate: setEditDate,
+    onSave: () => void saveEdit(),
+    onCancel: cancelEdit,
+  };
 
   return (
     <section className="pipeline-sheet-page">
@@ -367,7 +530,7 @@ export function PipelineSheetPage() {
                   </tr>
                 </tbody>
               ) : weekly?.rows.length ? (
-                weekly.rows.map((row) => <WeeklyAccountBlock key={row.accountKey} row={row} />)
+                weekly.rows.map((row) => <WeeklyAccountBlock edit={activityEdit} key={row.accountKey} row={row} />)
               ) : (
                 <tbody>
                   <tr>

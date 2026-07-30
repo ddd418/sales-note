@@ -7802,13 +7802,6 @@ def notes_create_api(request):
             history.schedule = followup_schedule
             history.save(update_fields=['schedule'])
 
-    try:
-        if history.action_type == 'customer_meeting' and history.followup:
-            from .funnel_views import _try_advance_pipeline
-            _try_advance_pipeline(history.followup, 'contact')
-    except Exception:
-        pass
-
     followup_schedule_payload = _notes_create_schedule_payload(followup_schedule) if followup_schedule else None
     message = '영업노트를 저장했습니다.'
     if followup_schedule_created:
@@ -19896,14 +19889,6 @@ def history_create_view(request):
             history.user = request.user
             history.save()
 
-            # 파이프라인 자동 진행 (고객 미팅 → contact 이상으로 앞으로만 이동)
-            try:
-                if history.action_type == 'customer_meeting' and history.followup:
-                    from .funnel_views import _try_advance_pipeline
-                    _try_advance_pipeline(history.followup, 'contact')
-            except Exception:
-                pass  # 파이프라인 업데이트 실패해도 히스토리 저장은 유지
-
             # 납품 품목 저장
             save_delivery_items(request, history)
             
@@ -22419,14 +22404,6 @@ def history_create_from_schedule(request, schedule_id):
                     history.delivery_amount = 0
                     
                 history.save()
-
-                # 파이프라인 자동 진행 (고객 미팅 → contact 이상으로 앞으로만 이동)
-                try:
-                    if history.action_type == 'customer_meeting' and history.followup:
-                        from .funnel_views import _try_advance_pipeline
-                        _try_advance_pipeline(history.followup, 'contact')
-                except Exception:
-                    pass  # 파이프라인 업데이트 실패해도 히스토리 저장은 유지
 
                 # 파일 업로드 처리 (공통 validate_file_upload 사용)
                 uploaded_files = request.FILES.getlist('files')

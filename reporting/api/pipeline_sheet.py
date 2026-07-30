@@ -18,9 +18,11 @@
 쓴다. 두 화면의 숫자가 갈라지면 보고 도구로서 신뢰를 잃기 때문이다.
 """
 
+import json
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from django.utils import timezone
@@ -48,6 +50,7 @@ from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
     _user_display_name,
+    can_modify_user_data,
     get_user_profile,
 )
 
@@ -161,7 +164,7 @@ def _activity_body(history):
     return ''
 
 
-def _history_activity(history):
+def _history_activity(history, viewer):
     when = history.meeting_date or timezone.localtime(history.created_at).date()
     return {
         'kind': 'history',
@@ -175,10 +178,11 @@ def _history_activity(history):
         'nextActionDate': history.next_action_date.isoformat() if history.next_action_date else None,
         'amount': 0,
         'href': f'/notes/{history.id}/',
+        'editable': can_modify_user_data(viewer, history.user),
     }
 
 
-def _schedule_activity(schedule):
+def _schedule_activity(schedule, viewer):
     when = schedule.visit_date
     return {
         'kind': 'schedule',
@@ -192,7 +196,82 @@ def _schedule_activity(schedule):
         'nextActionDate': None,
         'amount': _schedule_amount(schedule),
         'href': f'/schedules/{schedule.id}/',
+        # Schedule에는 장애물/다음액션 필드가 없다 — 메모(body)만 편집 가능하다.
+        'editable': can_modify_user_data(viewer, schedule.user),
     }
+
+
+# --------------------------------------------------------- 탭1 그리드 인라인 수정
+# "그 자리에서" 고칠 수 있어야 시트가 보고서 초안이 아니라 진짜 보고 도구가 된다.
+
+def _write_activity_body(history, text):
+    """읽을 때의 우선순위(오늘 상황 → 내용)와 대칭이 되도록 같은 필드에 쓴다."""
+    if (history.meeting_situation or '').strip():
+        history.meeting_situation = text
+    elif history.action_type == 'customer_meeting' and not (history.content or '').strip():
+        history.meeting_situation = text
+    else:
+        history.content = text
+
+
+@never_cache
+@require_http_methods(["POST"])
+def pipeline_sheet_activity_update_api(request, kind, activity_id):
+    """탭1 그리드 셀 인라인 수정 — 영업노트 본문/장애물/다음액션/예정일, 일정 메모.
+
+    화면이 쓰는 `_history_activity`/`_schedule_activity`를 그대로 재사용해
+    응답을 만든다. 목록 재조회 없이도 행을 갱신할 수 있게 하기 위함이다.
+    """
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+
+    if kind not in ('history', 'schedule'):
+        return JsonResponse({'success': False, 'error': '잘못된 요청입니다.'}, status=400)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({'success': False, 'error': '잘못된 요청 형식입니다.'}, status=400)
+
+    with transaction.atomic():
+        if kind == 'history':
+            activity = History.objects.select_for_update().filter(id=activity_id).first()
+        else:
+            activity = Schedule.objects.select_for_update().filter(id=activity_id).first()
+        if not activity:
+            return JsonResponse({'success': False, 'error': '기록을 찾을 수 없습니다.'}, status=404)
+
+        if not can_modify_user_data(request.user, activity.user):
+            return JsonResponse({'success': False, 'error': '본인의 기록만 수정할 수 있습니다.'}, status=403)
+
+        if kind == 'history':
+            if 'body' in payload:
+                _write_activity_body(activity, (payload.get('body') or '').strip())
+            if 'obstacle' in payload:
+                activity.meeting_obstacles = (payload.get('obstacle') or '').strip()
+            if 'nextAction' in payload:
+                activity.next_action = (payload.get('nextAction') or '').strip()
+            if 'nextActionDate' in payload:
+                raw = (payload.get('nextActionDate') or '').strip()
+                if raw:
+                    try:
+                        activity.next_action_date = date.fromisoformat(raw)
+                    except ValueError:
+                        return JsonResponse({'success': False, 'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
+                else:
+                    activity.next_action_date = None
+            activity.save()
+            result = _history_activity(activity, request.user)
+        else:
+            if 'body' in payload:
+                activity.notes = (payload.get('body') or '').strip()
+                activity.save(update_fields=['notes'])
+            result = _schedule_activity(activity, request.user)
+
+    return JsonResponse({'success': True, 'activity': result})
 
 
 # ------------------------------------------------------------ 계정 행 만들기
@@ -279,7 +358,7 @@ def _weekly_rows(request, week_start, week_end, base_rows):
     for history in histories:
         key = contact_to_account.get(history.followup_id)
         if key in buckets:
-            buckets[key].append(_history_activity(history))
+            buckets[key].append(_history_activity(history, request.user))
 
     schedules = Schedule.objects.filter(
         followup_id__in=contact_ids,
@@ -295,7 +374,7 @@ def _weekly_rows(request, week_start, week_end, base_rows):
     for schedule in schedules:
         key = contact_to_account.get(schedule.followup_id)
         if key in buckets:
-            buckets[key].append(_schedule_activity(schedule))
+            buckets[key].append(_schedule_activity(schedule, request.user))
 
     rows = []
     for row in base_rows:

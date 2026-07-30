@@ -76,6 +76,50 @@
 
 ---
 
+## 2026-07-31 파이프라인 시트 탭1 그리드 인라인 수정
+
+**Background**: 사용자가 탭1에서 자동 생성된 텍스트("자동 생성: 영업노트 후속 미팅 / 원본 노트: /notes/866/ / 다음 액션: …")를 예로 들며 "그자리에서 수정할 수 있게 하자"고 요청. 지금까지 시트는 읽기 전용이었음.
+
+**설계**: 활동 셀(상황/내용, 장애물, 다음 액션+예정일)을 클릭하면 그 자리에서 편집 상자가 뜨고, 저장하면 원본 모델(History/Schedule)에 쓰고 `_weekly_payload()`를 재조회해 행 집계(하단 next/장애물 요약 등)까지 다시 맞춘다 — 프론트에서 집계 로직을 중복 구현하지 않기 위함.
+
+- **History 활동**: `상황/내용`(읽기 우선순위 `meeting_situation`→`content`와 대칭으로 같은 필드에 씀, `_write_activity_body`), `장애물`(`meeting_obstacles`), `다음 액션`+`예정일`(`next_action`/`next_action_date`, 한 편집 상자에서 같이 수정)을 편집 가능.
+- **Schedule 활동**: `notes` 필드 하나뿐이라 본문(body)만 편집 가능 — 장애물/다음액션 열은 계속 `-`로 고정(클릭 불가).
+- **권한**: 신규 `editable` 플래그를 활동 dict에 추가, `can_modify_user_data`로 계산(본인 salesman 또는 admin만 true, manager는 읽기 전용 — 기존 히스토리 수정 API와 동일 규칙). 프론트는 `editable=false`면 버튼 대신 정적 텍스트만 렌더.
+- **API**: `POST /reporting/api/pipeline-sheet/activities/<kind>/<id>/update/` (`pipeline_sheet_activity_update_api`). `select_for_update` + `transaction.atomic`, 본문은 JSON, 응답은 갱신된 activity dict.
+
+**Scope**: `reporting/api/pipeline_sheet.py`(`_write_activity_body`, `pipeline_sheet_activity_update_api`, `_history_activity`/`_schedule_activity`에 `editable` 추가), `reporting/urls.py`(URL 1개), `frontend/src/api/pipelineSheet.ts`(`updatePipelineSheetActivity`, `editable`/`PipelineSheetActivityPatch` 타입), `frontend/src/pages/pipelineSheet/PipelineSheetPage.tsx`(`ActivityCell` 컴포넌트, 편집 상태), `styles.css`(`.pipeline-sheet-editable`/`.pipeline-sheet-edit-*`).
+
+**검증**:
+- 신규 Django 테스트 7개(로그인 필요/잘못된 kind/본문·장애물·다음액션 동시 수정/미팅 상황 필드 대칭 쓰기/예정일 빈값 처리/일정 메모 수정/타인 기록 403) — `PipelineSheetApiTests` 18/18 통과.
+- `manage.py check` / `makemigrations --check --dry-run`("No changes detected") / `tsc --noEmit` / `npm run build` 통과.
+- **로컬 브라우저로 실사용 검증**: 로컬 Django(`runserver`) + Vite dev 서버를 띄우고, 사용자가 예시로 든 것과 동일한 시나리오(History의 `next_action` + 그로부터 자동 생성된 Schedule.notes)를 더미 계정으로 재현. 다음 액션 셀 클릭→텍스트/예정일 수정→저장→재조회 후 새 값 반영 확인, 일정 메모(자동 생성 텍스트) 클릭→수정→저장 확인, 장애물 셀 편집 후 **취소**를 눌러 원래 값이 그대로 남는 것 확인. 더미 계정/데이터는 검증 후 삭제. (참고: 첫 시도에서 브라우저 자동화의 Ctrl+A가 텍스트 영역 포커스를 놓쳐 기존 텍스트 중간에 삽입되는 현상이 있었음 — `form_input`으로 값을 직접 채워서 재현·확인. 저장된 문자열은 항상 프론트가 보낸 그대로였으므로 백엔드/프론트 로직 문제는 아니었음.)
+- `.claude/launch.json` 신규 생성(`npm --prefix frontend run dev`) — 이후 UI 변경 검증에 재사용 가능하도록 남겨둠.
+
+**DB change required**: No.
+
+---
+
+## 2026-07-31 파이프라인 '접촉/미팅' 자동 채움 제거 + 기존 자동 카드 초기화
+
+**Background**: 사용자가 파이프라인 화면에서 "접촉/미팅은 자동으로 채워지지 않게 해주세요, 제가 수동으로 채울 수 있게. 그러니 현재 접촉/미팅에있는 카드들은 전부 지워주시고"라고 요청.
+
+**조사 결과**: `FollowUp.pipeline_stage`가 `'contact'`(라벨 "접촉/미팅")로 자동 이동하는 경로가 3곳 있었음 — 영업노트 API(`reporting/views.py:7808` 근방)/레거시 히스토리 생성 뷰(`:19903` 근방)/일정→히스토리 전환 뷰(`:22427` 근방)에서 `action_type == 'customer_meeting'`인 History를 만들 때마다 아무 확인 없이 `_try_advance_pipeline(history.followup, 'contact')`를 호출. 즉 미팅 메모 하나만 남겨도 카드가 저절로 "접촉/미팅" 칼럼으로 넘어갔음. 또한 파이프라인 화면의 "동기화" 버튼(`funnel_pipeline_sync_api`, 단일/전체)도 `_suggest_pipeline_stage()`가 최근 30일 일정·히스토리만 있으면 `'contact'`를 추천해 같은 결과를 냈음.
+
+**변경**:
+- `reporting/views.py`: 위 3곳의 `_try_advance_pipeline(..., 'contact')` 호출 블록 전부 삭제 (히스토리 저장 자체는 그대로 유지).
+- `reporting/funnel_views.py`의 `_suggest_pipeline_stage()`: 견적(Quote) 기반 추천(quote/negotiation/won/lost)은 그대로 두고, 일정/히스토리만 보고 `'contact'`를 추천하던 2·3단계 분기를 제거. 이제 이 함수는 절대 `'contact'`를 반환하지 않음 — "동기화" 버튼을 눌러도 접촉/미팅으로는 안 옮겨감.
+- 신규 데이터 마이그레이션 `reporting/migrations/0121_reset_auto_contact_stage_to_potential.py`: 배포 시 `python manage.py migrate`가 자동 실행하는 `RunPython`으로, 현재 `pipeline_stage='contact'`인 `FollowUp`을 전부 `'potential'`로 되돌리고 `pipeline_manually_set`도 `False`로 초기화. `0116`/`0117`의 데이터-정규화 마이그레이션과 동일한 패턴(스키마 변경 없음, `makemigrations --check`에 안 걸림, reverse는 noop).
+
+**배포 전 프로덕션 확인(읽기 전용, `railway run -s Postgres`의 `DATABASE_PUBLIC_URL`로 직접 조회, 자격정보는 로그에 남기지 않음)**: 접촉/미팅 단계 카드 총 34개 — `pipeline_manually_set=False`(자동 채움) 21개, `True`(과거에 실제로 드래그/수동 설정) 13개. **사용자에게 확인**: 수동 설정 이력이 있는 13개도 같이 초기화할지 물었고, "34개 전부 초기화"로 확답받아 예외 없이 전체 리셋으로 확정.
+
+**Scope**: `reporting/views.py`(3개 블록 삭제), `reporting/funnel_views.py`(`_suggest_pipeline_stage` 축소), `reporting/migrations/0121_reset_auto_contact_stage_to_potential.py`(신규).
+
+**검증**: `py_compile` / `manage.py check` / `makemigrations --check --dry-run`("No changes detected") / `manage.py migrate reporting 0121` 로컬 적용 확인. 기존 테스트 중 `'contact'`로의 자동 전이를 `assertEqual`로 검증하는 테스트는 없음을 grep으로 먼저 확인(quote/negotiation/won/lost/potential 전이만 검증됨) — 이번 변경으로 깨지는 기존 테스트는 없을 것으로 판단, 전체 회귀 스윕으로 최종 확인.
+
+**DB change required**: Yes — 데이터 전용 마이그레이션(스키마 변경 없음). 다음 배포 시 `migrate`가 자동 적용.
+
+---
+
 ## 2026-07-27 Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
 
 **Background**: 사용자가 새 메뉴 "파이프라인 시트"를 만들기로 확정. 그 시트의 탭1(주간 활동)이 기존 주간보고를 그대로 대체하므로, 죽은 코드 옆에서 유사한 새 코드를 짜는 혼선을 피하려고 **먼저 주간보고를 완전 제거**하고 시작. 원래 7개 가지치기 목록에는 없던 8번째 제거.
