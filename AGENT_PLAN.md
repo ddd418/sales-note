@@ -158,6 +158,8 @@
 
 **DB change required**: No.
 
+**Deploy**: Done. Commit `dd15049` on `origin/main`. Railway `web` deploy `61a3776b-4aac-4054-a694-faa4be74b31d` SUCCESS, `sales-note-frontend` deploy `fbefd095-2316-494d-b176-2c45c05e0bc7` SUCCESS. 전체 백엔드 회귀 496개 — 4건은 기존 무관 결함(전과 동일)으로 회귀 없음. `post_deploy_smoke.py` → **ok (29/29 PASS)**, 신규 `/revenue/` 라우트 200 + `/reporting/api/revenue-detail/` 401 login_required(프론트/백엔드 양쪽) 포함.
+
 ---
 
 ## 2026-07-31 파이프라인 "올해것만" — 연간 자동 리셋
