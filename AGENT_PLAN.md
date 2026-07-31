@@ -154,6 +154,8 @@
 
 **DB change required**: Yes — 데이터 전용 마이그레이션(스키마 변경 없음, 0121과 같은 패턴). 다음 배포 시 `migrate`가 자동 적용.
 
+**Deploy**: Done. Commit `1a069a0` on `origin/main`. Railway `web` deploy `a9d56b55-a395-454f-81a4-2e90077a0a20` SUCCESS(배포 로그에 `Applying reporting.0122_backfill_won_stage_for_delivered_accounts... OK` 확인), `sales-note-frontend` deploy `d167d7e0-91b0-495a-bf6b-950bbb51977b` SUCCESS. 전체 백엔드 회귀 484개 — 4건은 이번 변경 전부터 있던 기존 결함(전과 동일)으로 회귀 없음. `post_deploy_smoke.py` → **ok (27/27 PASS)**. 배포 후 프로덕션 Postgres에 읽기 전용으로 직접 조회해 `pipeline_stage` 분포 확인: `won` 16→68(드라이런 예측대로 52건 백필), `lost` 6→5(오분류 1건 정정).
+
 ---
 
 ## 2026-07-27 Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
