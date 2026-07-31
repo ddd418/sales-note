@@ -158,6 +158,10 @@
 
 **Deploy**: Done. Commit `fea027a` on `origin/main`. Railway `web` deploy `506cae97-e8f3-4c9b-8233-68ad5f453112` SUCCESS, `sales-note-frontend` deploy `9932fb9a-a365-4ef9-b7a7-4daca1820844` SUCCESS. 전체 백엔드 회귀 497개 — 4건은 기존 무관 결함(전과 동일)으로 회귀 없음. `post_deploy_smoke.py` → **ok (29/29 PASS)**.
 
+**배포했는데도 실제로는 안 고쳐졌던 근본 원인**: 사용자가 "여전히 카드 클릭하면 그냥 일정목록만 뜸"이라고 재지적. `frontend/src/main.tsx`가 경로가 `/dashboard/`로 시작하면 `App.tsx`가 아니라 **완전히 별개인 `DashboardApp.tsx`**를 마운트한다는 걸 놓쳤음 — 매출 카드 3개가 그 파일에 통째로 다시 정의돼 있었고, 지금까지의 세 커밋 전부 `App.tsx` 쪽만 고치고 있었어서 실제 대시보드(사용자가 보는 화면)에는 반영이 안 됐던 것. `DashboardApp.tsx`의 동일한 세 카드 href도 `/revenue/?period=...`로 맞춰 고침. 이번엔 로컬에서 `/dashboard/`가 실제로 `DashboardApp`을 마운트하는 것까지 확인하고, 카드를 직접 클릭해서 `/revenue/`로 정상 이동하는 것을 종단간으로 검증(이전 라운드들은 이 별도 컴포넌트의 존재를 몰라서 검증 대상 자체가 틀렸었음).
+
+**Deploy 2**: Done. Commit `ffb74af`. Railway `web` deploy `3a5180f3-73de-4a97-b0a6-1db19819555b` SUCCESS, `sales-note-frontend` deploy `f4bcadc3-e2ea-4e87-bf4a-a82ced6b46d9` SUCCESS(프론트만 변경했지만 `web` 서비스 이미지에도 프론트 빌드가 포함돼 같이 재빌드됨). `post_deploy_smoke.py` → **ok (29/29 PASS)**.
+
 **검증**: `py_compile` / `manage.py check` / `makemigrations --check --dry-run`("No changes detected", 스키마 변경 없음) / `tsc --noEmit` + `npm run build` 통과. 신규 테스트: `RevenueDetailApiTests` 4개(로그인 필요, 완료만 포함·예정 제외, 선결제 포함·취소 제외, **드릴다운 합계가 `dashboard_summary_api`와 정확히 일치**) + `PipelineYearResetTests`에 카드 숨김 테스트 2개(근거 없는 진행단계 숨김, 잠재는 예외) 추가 — 전부 통과. 로컬 Django+Vite로 실제 시나리오 재현: 예정 납품만 있는 계정과 완료 납품이 섞인 계정을 만들어 파이프라인 보드·매출 드릴다운·대시보드 API 세 곳의 숫자가 서로 일치하는 것까지 확인(더미 데이터는 검증 후 삭제).
 
 **DB change required**: No.
