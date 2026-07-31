@@ -13003,12 +13003,20 @@ class PipelineHideCardTests(TestCase):
 
     def test_inactive_contact_does_not_dominate_account_stage(self):
         # 같은 계정: 활성 견적 연락처 + 비활성 수주 연락처 → 계정 단계는 '견적'(수주가 지배 X).
+        from datetime import time
         dept = Department.objects.create(
             name='단계부서', company=self.company, created_by=self.owner,
         )
         active_quote = FollowUp.objects.create(
             user=self.owner, customer_name='활성견적', company=self.company, department=dept,
             pipeline_stage='quote', is_active=True,
+        )
+        # 견적 단계 카드가 근거 없이 0원이면 이제 보드에서 빠지므로, 이 테스트의
+        # 실제 목적(비활성 연락처가 단계를 지배하지 않는지)을 검증하려면 근거를 심어야 한다.
+        Schedule.objects.create(
+            user=self.owner, company=self.company_uc, followup=active_quote,
+            visit_date=timezone.localdate(), visit_time=time(10, 0),
+            status='completed', activity_type='quote', expected_revenue=1000000,
         )
         FollowUp.objects.create(
             user=self.owner, customer_name='비활성수주', company=self.company, department=dept,
@@ -13669,3 +13677,159 @@ class PipelineYearResetTests(TestCase):
         deal = next(item for item in response.json()['deals'] if item['id'] == self.followup.id)
         current_quote.refresh_from_db()
         self.assertEqual(deal['value'], int(current_quote.total_amount))
+
+    def test_pipeline_hides_advanced_stage_card_with_no_current_year_evidence(self):
+        """근거 없는 진행 단계 카드는 0원으로 남기지 말고 보드에서 아예 뺀다."""
+        from datetime import date, time
+        from unittest.mock import patch
+        from reporting.funnel_views import _ensure_pipeline_year_reset
+        from reporting.models import Quote, Schedule
+
+        _ensure_pipeline_year_reset(today=date(2099, 1, 1))
+        self.followup.pipeline_stage = 'quote'
+        self.followup.save(update_fields=['pipeline_stage'])
+
+        old_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=date(2020, 5, 1), visit_time=time(10, 0),
+            status='completed', activity_type='quote',
+        )
+        old_quote = Quote.objects.create(
+            quote_number='STALE-1', schedule=old_schedule, followup=self.followup, user=self.user,
+            valid_until=date(2020, 12, 31), subtotal=9000000, total_amount=9000000,
+        )
+        Quote.objects.filter(pk=old_quote.pk).update(quote_date=date(2020, 5, 1))
+
+        self.client.force_login(self.user)
+        with patch('reporting.funnel_views.timezone.localdate', return_value=date(2099, 3, 1)):
+            response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+
+        payload = response.json()
+        self.assertFalse(any(item['id'] == self.followup.id for item in payload['deals']))
+        stages = {stage['id']: stage for stage in payload['stages']}
+        self.assertEqual(stages['quote']['count'], 0)
+
+    def test_pipeline_keeps_potential_card_with_no_evidence(self):
+        """잠재 단계는 원래 근거가 없어도 정상 — 이 규칙에서 제외되어야 한다."""
+        from datetime import date
+        from unittest.mock import patch
+        from reporting.funnel_views import _ensure_pipeline_year_reset
+
+        _ensure_pipeline_year_reset(today=date(2099, 1, 1))
+        self.followup.pipeline_stage = 'potential'
+        self.followup.pipeline_manually_set = False
+        self.followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
+
+        self.client.force_login(self.user)
+        with patch('reporting.funnel_views.timezone.localdate', return_value=date(2099, 3, 1)):
+            response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+
+        payload = response.json()
+        self.assertTrue(any(item['id'] == self.followup.id for item in payload['deals']))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 대시보드 매출 드릴다운 ('진짜 매출' 내역) 검증
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RevenueDetailApiTests(TestCase):
+    """대시보드 매출 카드 → 드릴다운 화면의 합계가 상단 숫자와 일치하는지 검증"""
+
+    def setUp(self):
+        from reporting.models import Company, Department, FollowUp
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='매출드릴다운회사')
+        self.user = make_user('revenue_detail_me', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='매출드릴다운업체', created_by=self.user)
+        self.department = Department.objects.create(
+            company=customer_company, name='매출드릴다운연구실', created_by=self.user,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='매출드릴다운담당자',
+            company=customer_company, department=self.department, pipeline_stage='won',
+        )
+
+    def test_requires_login(self):
+        response = self.client.get(reverse('reporting:revenue_detail_api'))
+        self.assertEqual(response.status_code, 401)
+
+    def test_excludes_scheduled_delivery_and_includes_completed(self):
+        from datetime import time
+        from reporting.models import DeliveryItem, Schedule
+
+        today = timezone.localdate()
+        completed_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        completed_item = DeliveryItem.objects.create(
+            schedule=completed_schedule, item_name='완료납품', quantity=1, unit_price=1000000,
+        )
+        scheduled_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(11, 0),
+            status='scheduled', activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=scheduled_schedule, item_name='예정납품', quantity=1, unit_price=9000000,
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporting:revenue_detail_api'), {'period': 'year'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        item_names = [item['itemName'] for item in payload['items'] if item['kind'] == 'delivery']
+        self.assertIn('완료납품', item_names)
+        self.assertNotIn('예정납품', item_names)
+        completed_item.refresh_from_db()
+        self.assertEqual(payload['summary']['deliveryTotal'], int(completed_item.total_price))
+
+    def test_includes_prepayment_and_excludes_cancelled(self):
+        from reporting.models import Prepayment
+
+        today = timezone.localdate()
+        active_prepayment = Prepayment.objects.create(
+            customer=self.followup, company=self.followup.company, department=self.department,
+            amount=500000, balance=500000, payment_date=today, created_by=self.user,
+        )
+        Prepayment.objects.create(
+            customer=self.followup, company=self.followup.company, department=self.department,
+            amount=700000, balance=700000, payment_date=today, created_by=self.user, status='cancelled',
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporting:revenue_detail_api'), {'period': 'year'})
+
+        payload = response.json()
+        self.assertEqual(payload['summary']['prepaymentTotal'], int(active_prepayment.amount))
+        prepayment_hrefs = [item['href'] for item in payload['items'] if item['kind'] == 'prepayment']
+        self.assertEqual(prepayment_hrefs, [f'/prepayments/{active_prepayment.id}/'])
+
+    def test_total_matches_dashboard_summary_metric(self):
+        from datetime import time
+        from reporting.models import DeliveryItem, Prepayment, Schedule
+
+        today = timezone.localdate()
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule, item_name='매출검증납품', quantity=1, unit_price=1200000,
+        )
+        Prepayment.objects.create(
+            customer=self.followup, company=self.followup.company, department=self.department,
+            amount=300000, balance=300000, payment_date=today, created_by=self.user,
+        )
+
+        self.client.force_login(self.user)
+        dashboard_response = self.client.get(reverse('reporting:dashboard_summary_api'))
+        detail_response = self.client.get(reverse('reporting:revenue_detail_api'), {'period': 'year'})
+
+        dashboard_year_revenue = dashboard_response.json()['metrics']['yearRevenue']
+        detail_total = detail_response.json()['summary']['total']
+        self.assertEqual(detail_total, dashboard_year_revenue)
+        self.assertGreater(detail_total, 0)

@@ -3485,10 +3485,12 @@ def dashboard_summary_api(request):
             for user in team_users
         ]
 
+    # 완료(completed)된 납품만 "실제 매출"로 센다 — 예정(scheduled)은 아직
+    # 실제로 납품되지 않았으니 취소/변경될 수 있어 실매출이 아니다.
     revenue_items = DeliveryItem.objects.filter(
         schedule__in=schedules,
         schedule__activity_type='delivery',
-        schedule__status__in=['scheduled', 'completed'],
+        schedule__status='completed',
     )
     prepayment_revenue_items = Prepayment.objects.filter(
         created_by__in=scope_users,

@@ -28,6 +28,7 @@ export type MainView =
   | 'demos'
   | 'pipeline'
   | 'pipelineSheet'
+  | 'revenue'
   | 'notes'
   | 'schedules'
   | 'employees'
@@ -48,6 +49,7 @@ const reactRoutePrefixes = [
   '/demos/',
   '/pipeline/',
   '/pipeline-sheet/',
+  '/revenue/',
   '/notes/',
   '/schedules/',
   '/employees/',
@@ -99,6 +101,7 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   demos: { eyebrow: 'Sales CRM / Demos', title: '데모관리' },
   pipeline: { eyebrow: 'Sales CRM / Pipeline', title: '파이프라인' },
   pipelineSheet: { eyebrow: 'Sales CRM / Pipeline Sheet', title: '파이프라인 시트' },
+  revenue: { eyebrow: 'Sales CRM / Revenue', title: '매출 내역' },
   notes: { eyebrow: 'Sales CRM / Notes', title: '영업노트' },
   schedules: { eyebrow: 'Sales CRM / Schedule', title: '일정' },
   employees: { eyebrow: 'Sales CRM / Employees', title: '직원관리' },

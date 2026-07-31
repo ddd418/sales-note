@@ -11,3 +11,7 @@ export const ReceivablesPage = lazy(() =>
 export const PipelineSheetPage = lazy(() =>
   import('./pipelineSheet/PipelineSheetPage').then((module) => ({ default: module.PipelineSheetPage })),
 );
+
+export const RevenueDetailPage = lazy(() =>
+  import('./revenueDetail/RevenueDetailPage').then((module) => ({ default: module.RevenueDetailPage })),
+);

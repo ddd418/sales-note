@@ -136,6 +136,30 @@
 
 ---
 
+## 2026-07-31 근거 없는 진행단계 카드 숨김 + 대시보드 매출 드릴다운
+
+**Background**: 연간 리셋/연도 스코핑 배포 직후 사용자가 두 가지를 추가 요청 —
+1. "파이프라인에서 이번년도 건이 아니면 카드도 빠져야함 0원만 되는게 아니라 카드도 안보여야함"
+2. "대시보드에서 당해년도 전체 매출 클릭시 진짜 매출만 보이는 화면으로 가져야함 똑같이 현재 분기 매출도 그렇게 되어야함"
+
+**1) 카드 숨김 — 스코프 판단**: "이번년도 건이 아니면"을 '잠재'까지 포함해 전부 적용하면, 프로스펙팅용으로 방금 CSS까지 고친 "우선 잠재 고객" TOP10 리스트가 통째로 비게 됨(잠재는 원래 근거 없이 시작하는 단계라 "0원이 된" 케이스가 아님). 사용자가 "0원만 되는게 아니라"고 콕 집은 건 바로 전 커밋에서 올해 연도로 걸러 0원이 되게 만든 **견적/협상/수주/실주** 카드를 가리키는 것으로 판단해, 그 4단계에서 금액이 0으로 계산되는 카드만 보드에서 제외하고 잠재는 그대로 둠(별도 확인 없이 진행 — 근거가 확실했음).
+
+- `reporting/funnel_views.py`: `pipeline_command_center_api`(React 보드)와 `funnel_pipeline_view`(레거시 Django 템플릿 보드, 실제로는 `react_page_redirect`가 GET을 전부 React로 돌려보내 죽은 코드지만 일관성 위해 같이 고침) 양쪽의 카드 생성 루프에 `if stage in ('quote','negotiation','won','lost') and pricing_amount <= 0: continue` 추가.
+- **로컬 검증 중 발견한 것**: 계정 그룹핑은 부서 단위라, 같은 부서 아래 여러 담당자(FollowUp)가 있으면 "가장 앞선 단계"가 그룹 전체의 단계로 채택되고 가격도 그 대표 레코드 기준으로 계산됨(`_pipeline_account_followup`가 `pricing_schedules`/`pricing_histories`는 그룹 전체에서 병합하지만, 단계별 근거 종류는 여전히 구분됨 — 견적 단계는 견적류 증거만, 납품 증거는 안 봄). 처음 만든 테스트 시나리오가 두 계정을 우연히 같은 부서에 넣어 이 병합 때문에 진짜 매출이 있는 계정까지 같이 숨겨지는 것처럼 보였는데, 부서를 분리하고 납품을 정식 경로(History 생성)로 발생시키자 정확히 의도대로 동작함을 확인 — 버그 아니라 테스트 설계 실수였음.
+
+**2) 매출 드릴다운 — 추가로 발견한 문제**: 대시보드의 "당해년도 전체 매출"/"현재 분기 매출" 카드는 지금 `data.links.schedules`(그냥 `/schedules/`, 필터 없음)로 연결돼 있어 클릭해도 그 숫자의 근거를 볼 수 없었음. 게다가 `dashboard_summary_api`의 매출 계산 자체가 `schedule__status__in=['scheduled','completed']`로 **예정된 납품까지 매출에 포함**하고 있었음 — "진짜 매출"이라 부르기엔 부정확. 사용자에게 확인 후(완료만 = 진짜 매출, 추천안 채택) 상단 숫자 자체도 함께 고침.
+
+- `reporting/views.py`의 `dashboard_summary_api`: `schedule__status__in=['scheduled','completed']` → `schedule__status='completed'`로 좁힘(연·분기·월 매출 전부).
+- 신규 `reporting/api/revenue_detail.py` + URL `api/revenue-detail/?period=year|quarter` — `dashboard_summary_api`와 **완전히 같은 기간 경계·완료 기준**으로 계산해서 드릴다운 합계가 상단 숫자와 항상 일치하게 함. 완료 납품(DeliveryItem) + 취소 안 된 선결제(Prepayment)를 날짜순으로 나열, 각 항목 원본(`/schedules/{id}/`, `/prepayments/{id}/`)으로 링크.
+- 신규 프론트 페이지 `frontend/src/pages/revenueDetail/RevenueDetailPage.tsx`(탭 2개: 당해년도/현재 분기) + `frontend/src/api/revenueDetail.ts`. 나비 항목은 아님(대시보드 카드 클릭으로만 진입) — `CrmShell.tsx`/`App.tsx`에 `MainView`·`routeShellMeta`·라우팅만 추가하고 `fallbackNavItems`엔 안 넣음. 대시보드의 두 매출 카드 `href`를 `/revenue/?period=year`/`/revenue/?period=quarter`로 변경.
+- `sales_project/urls.py` catch-all 정규식에 `revenue` 추가.
+
+**검증**: `py_compile` / `manage.py check` / `makemigrations --check --dry-run`("No changes detected", 스키마 변경 없음) / `tsc --noEmit` + `npm run build` 통과. 신규 테스트: `RevenueDetailApiTests` 4개(로그인 필요, 완료만 포함·예정 제외, 선결제 포함·취소 제외, **드릴다운 합계가 `dashboard_summary_api`와 정확히 일치**) + `PipelineYearResetTests`에 카드 숨김 테스트 2개(근거 없는 진행단계 숨김, 잠재는 예외) 추가 — 전부 통과. 로컬 Django+Vite로 실제 시나리오 재현: 예정 납품만 있는 계정과 완료 납품이 섞인 계정을 만들어 파이프라인 보드·매출 드릴다운·대시보드 API 세 곳의 숫자가 서로 일치하는 것까지 확인(더미 데이터는 검증 후 삭제).
+
+**DB change required**: No.
+
+---
+
 ## 2026-07-31 파이프라인 "올해것만" — 연간 자동 리셋
 
 **Background**: 위 수주 합계 수정 직후 사용자가 "파이프라인에서는 올해것만 보여야함 매번 년도 바뀌면 초기화 되어야함"이라고 요청. 단계와 금액 중 뭐가 리셋되는지 물었더니 **"단계와 금액 모두 매년 1월 1일 잠재로 리셋"**으로 확답.

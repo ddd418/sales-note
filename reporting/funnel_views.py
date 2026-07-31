@@ -859,6 +859,10 @@ def funnel_pipeline_view(request):
         last_history = fu.all_histories[0] if fu.all_histories else None
         pricing = _select_pipeline_pricing(fu, stage)
         pricing_amount = pricing['amount']
+        # React 보드(pipeline_command_center_api)와 동일한 규칙 — 근거 없는
+        # 진행 단계 카드는 0원으로 남기지 않고 아예 뺀다.
+        if stage in ('quote', 'negotiation', 'won', 'lost') and pricing_amount <= 0:
+            continue
         quote_reference = _select_quote_reference_pricing(fu, stage)
         quote_comparison = _build_quote_comparison(stage, pricing, quote_reference)
         has_overdue_action = any(
@@ -1863,6 +1867,12 @@ def pipeline_command_center_api(request):
         last_history = fu.all_histories[0] if fu.all_histories else None
         pricing = _select_pipeline_pricing(fu, stage)
         pricing_amount = pricing['amount']
+        # 견적/협상/수주/실주 단계인데 올해 이걸 뒷받침하는 근거가 없으면(금액이
+        # 0으로 계산되면) 카드를 아예 보드에서 뺀다 — 0원으로 표시만 하고 남겨두면
+        # "올해 것만 보인다"는 원칙이 깨진다. '잠재'는 원래도 근거 없이 시작하는
+        # 단계라 이 규칙에서 제외한다.
+        if stage in ('quote', 'negotiation', 'won', 'lost') and pricing_amount <= 0:
+            continue
         quote_reference = _select_quote_reference_pricing(fu, stage)
         quote_comparison = _build_quote_comparison(stage, pricing, quote_reference)
         probability = pricing['probability']

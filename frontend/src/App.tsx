@@ -217,6 +217,7 @@ import {
   CompanyManagementPage,
   PipelineSheetPage,
   ReceivablesPage,
+  RevenueDetailPage,
 } from './pages/lazyPages';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
 import { AttachmentManager, type AttachmentManagerFile } from './components/shared/AttachmentManager';
@@ -1428,6 +1429,16 @@ const routeMeta: Record<
       { label: '파이프라인', href: '/pipeline/' },
     ],
   },
+  revenue: {
+    eyebrow: 'Sales CRM / Revenue',
+    title: '매출 내역',
+    summary: '완료된 납품과 선결제만 모아 대시보드 매출 숫자의 실제 근거를 보여줍니다.',
+    primaryHref: '/revenue/',
+    primaryLabel: '매출 내역 보기',
+    actions: [
+      { label: '대시보드', href: '/dashboard/' },
+    ],
+  },
   notes: {
     eyebrow: 'Sales CRM / Notes',
     title: '영업노트',
@@ -1549,6 +1560,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/prepayments/')) return 'prepayments';
   if (pathname.startsWith('/profile/')) return 'profile';
   if (pathname.startsWith('/pipeline-sheet/')) return 'pipelineSheet';
+  if (pathname.startsWith('/revenue/')) return 'revenue';
   if (pathname.startsWith('/pipeline/')) return 'pipeline';
   return 'pipeline';
 }
@@ -13435,10 +13447,10 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     {
       label: '당해년도 전체 매출',
       value: formatWon(data.metrics.yearRevenue),
-      detail: `${revenueYear}년 납품·선결제 기준`,
+      detail: `${revenueYear}년 완료 납품·선결제 기준`,
       icon: CircleDollarSign,
       tone: 'amber' as const,
-      href: data.links.schedules,
+      href: '/revenue/?period=year',
     },
     {
       label: '현재 분기 매출',
@@ -13446,7 +13458,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       detail: `${revenueYear}년 ${revenueQuarter}분기`,
       icon: Target,
       tone: 'green' as const,
-      href: data.links.schedules,
+      href: '/revenue/?period=quarter',
     },
     {
       label: '오늘 일정',
@@ -16398,6 +16410,17 @@ export function App() {
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <LazyPageBoundary>
           <PipelineSheetPage />
+        </LazyPageBoundary>
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'revenue') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <LazyPageBoundary>
+          <RevenueDetailPage />
         </LazyPageBoundary>
       </AppShell>
     );

@@ -564,6 +564,7 @@ urlpatterns = [
     path('api/pipeline-sheet/weekly/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_weekly_api'), name='pipeline_sheet_weekly_api'),
     path('api/pipeline-sheet/quotes/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_quotes_api'), name='pipeline_sheet_quotes_api'),
     path('api/pipeline-sheet/export/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_export_api'), name='pipeline_sheet_export_api'),
+    path('api/revenue-detail/', lazy_view('reporting.api.revenue_detail.revenue_detail_api'), name='revenue_detail_api'),
     path('api/pipeline-sheet/activities/<str:kind>/<int:activity_id>/update/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_activity_update_api'), name='pipeline_sheet_activity_update_api'),
     path('funnel/api/save-target/', funnel_views.funnel_save_target, name='funnel_save_target'),
     path('funnel/api/auto-target/', funnel_views.funnel_auto_target, name='funnel_auto_target'),

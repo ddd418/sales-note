@@ -12960,3 +12960,167 @@ tbody tr:hover {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ── 매출 내역(진짜 매출 드릴다운) ────────────────────────────────────────── */
+
+.revenue-detail-page {
+  display: grid;
+  gap: 14px;
+}
+
+.revenue-detail-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.revenue-detail-tabs {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.revenue-detail-tab {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.revenue-detail-tab.active {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-strong);
+}
+
+.revenue-detail-period-label,
+.revenue-detail-scope {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.revenue-detail-scope {
+  margin-left: auto;
+}
+
+.revenue-detail-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.revenue-detail-summary-strip > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.revenue-detail-summary-strip span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.revenue-detail-summary-strip strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.revenue-detail-table-wrap {
+  overflow: auto;
+  max-height: 68vh;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.revenue-detail-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.revenue-detail-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.revenue-detail-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.revenue-detail-table td a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.revenue-detail-table td small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.revenue-detail-kind {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.revenue-detail-kind.delivery {
+  background: var(--primary-bg);
+  color: var(--primary-strong);
+}
+
+.revenue-detail-kind.prepayment {
+  background: var(--success-bg);
+  color: var(--green);
+}
+
+.revenue-detail-amount {
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 600;
+}
+
+.revenue-detail-footnote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .revenue-detail-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .revenue-detail-scope {
+    margin-left: 0;
+  }
+}
