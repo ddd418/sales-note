@@ -118,6 +118,8 @@
 
 **DB change required**: Yes — 데이터 전용 마이그레이션(스키마 변경 없음). 다음 배포 시 `migrate`가 자동 적용.
 
+**Deploy**: Done. Commit `0817a22` on `origin/main`. Railway `web` deploy `620c6ab7-73ed-4968-8fb5-ca8dcb571dda` SUCCESS, `sales-note-frontend` deploy `e95c507b-2677-4ab2-a42e-14c5c66bc3b1` SUCCESS. 전체 백엔드 회귀 480개 — 4건은 이번 변경 전부터 있던 기존 결함(전과 동일)으로 회귀 없음. `post_deploy_smoke.py` → **ok (27/27 PASS)**. 배포 후 프로덕션 Postgres에 읽기 전용으로 직접 조회하여 `pipeline_stage='contact'` 0건 확인 — 마이그레이션이 34건 전부 `potential`로 정상 초기화.
+
 ---
 
 ## 2026-07-27 Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
