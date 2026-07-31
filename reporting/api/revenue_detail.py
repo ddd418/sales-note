@@ -25,7 +25,11 @@ from reporting.views import (
 
 
 def _period_bounds(period, today):
-    if period == 'quarter':
+    if period == 'month':
+        start = date(today.year, today.month, 1)
+        end = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
+        label = f'{today.year}년 {today.month}월'
+    elif period == 'quarter':
         quarter = ((today.month - 1) // 3) + 1
         quarter_start_month = ((quarter - 1) * 3) + 1
         start = date(today.year, quarter_start_month, 1)
@@ -65,7 +69,7 @@ def revenue_detail_api(request):
     user_profile = get_user_profile(request.user)
     scope_users, selected_user = _dashboard_scope_users(request, user_profile)
     today = timezone.localdate()
-    period = request.GET.get('period') if request.GET.get('period') in ('year', 'quarter') else 'year'
+    period = request.GET.get('period') if request.GET.get('period') in ('year', 'quarter', 'month') else 'year'
     start, end, period_label = _period_bounds(period, today)
 
     delivery_items = DeliveryItem.objects.filter(

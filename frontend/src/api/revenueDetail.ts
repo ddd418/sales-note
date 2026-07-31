@@ -1,6 +1,6 @@
 import { assertSuccessfulJsonPayload, fetchJson } from './shared';
 
-export type RevenuePeriod = 'year' | 'quarter';
+export type RevenuePeriod = 'year' | 'quarter' | 'month';
 
 export type RevenueDetailItem = {
   kind: 'delivery' | 'prepayment';

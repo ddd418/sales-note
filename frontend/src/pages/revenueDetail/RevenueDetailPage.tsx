@@ -17,7 +17,10 @@ const formatDateLabel = (value: string | null | undefined) => {
 };
 
 function normalizePeriod(value: string | null): RevenuePeriod {
-  return value === 'quarter' ? 'quarter' : 'year';
+  if (value === 'quarter' || value === 'month') {
+    return value;
+  }
+  return 'year';
 }
 
 export function RevenueDetailPage() {
@@ -71,6 +74,13 @@ export function RevenueDetailPage() {
             type="button"
           >
             현재 분기
+          </button>
+          <button
+            className={`revenue-detail-tab${period === 'month' ? ' active' : ''}`}
+            onClick={() => setPeriod('month')}
+            type="button"
+          >
+            이번 달
           </button>
         </div>
         <span className="revenue-detail-period-label">

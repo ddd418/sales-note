@@ -13479,10 +13479,10 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     {
       label: '이번 달 매출',
       value: formatWon(data.metrics.monthlyRevenue),
-      detail: '납품·선결제 기준',
+      detail: '완료 납품·선결제 기준',
       icon: CircleDollarSign,
       tone: 'amber' as const,
-      href: data.links.schedules,
+      href: '/revenue/?period=month',
     },
   ];
 

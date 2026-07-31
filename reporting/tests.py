@@ -13833,3 +13833,31 @@ class RevenueDetailApiTests(TestCase):
         detail_total = detail_response.json()['summary']['total']
         self.assertEqual(detail_total, dashboard_year_revenue)
         self.assertGreater(detail_total, 0)
+
+    def test_month_period_total_matches_dashboard_monthly_metric(self):
+        from datetime import time
+        from reporting.models import DeliveryItem, Prepayment, Schedule
+
+        today = timezone.localdate()
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule, item_name='이번달매출검증', quantity=1, unit_price=400000,
+        )
+        Prepayment.objects.create(
+            customer=self.followup, company=self.followup.company, department=self.department,
+            amount=150000, balance=150000, payment_date=today, created_by=self.user,
+        )
+
+        self.client.force_login(self.user)
+        dashboard_response = self.client.get(reverse('reporting:dashboard_summary_api'))
+        detail_response = self.client.get(reverse('reporting:revenue_detail_api'), {'period': 'month'})
+
+        dashboard_monthly_revenue = dashboard_response.json()['metrics']['monthlyRevenue']
+        payload = detail_response.json()
+        self.assertEqual(payload['period']['value'], 'month')
+        self.assertEqual(payload['summary']['total'], dashboard_monthly_revenue)
+        self.assertGreater(payload['summary']['total'], 0)
