@@ -154,6 +154,8 @@
 
 **DB change required**: Yes — 신규 테이블(`PipelineYearResetLog`) + 배포 시점 연도 시드 1행. 다음 배포 시 `migrate`가 자동 적용.
 
+**Deploy**: Done. Commit `8dcc44b` on `origin/main`. Railway `web` deploy `93845cf9-a91b-46de-b0b3-4642eff64eca` SUCCESS(배포 로그에 `Applying reporting.0123_pipeline_year_reset_log... OK` 확인), `sales-note-frontend` deploy `094e5c30-b6b4-49fb-ba94-1545011d79ca` SUCCESS. 전체 백엔드 회귀 490개 — 4건은 이번 변경 전부터 있던 기존 결함(전과 동일)으로 회귀 없음. `post_deploy_smoke.py` → **ok (27/27 PASS)**. **가장 중요한 확인**: 배포 후 프로덕션 Postgres를 읽기 전용으로 직접 조회해 `PipelineYearResetLog(year=2026, affected_count=0)` 시드 확인(리셋 안 일어남) + `pipeline_stage` 분포가 배포 직전과 완전히 동일(수주 68, 잠재 346, 견적 5, 협상 1, 실주 5)함을 확인 — 배포 즉시 전체 파이프라인이 지워지는 사고 없이 안전하게 반영됨.
+
 ---
 
 ## 2026-07-31 파이프라인 '수주' 합계가 실제 매출보다 훨씬 낮은 문제
