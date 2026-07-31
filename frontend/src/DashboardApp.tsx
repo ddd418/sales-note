@@ -224,10 +224,10 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     {
       label: '당해년도 전체 매출',
       value: formatWon(data.metrics.yearRevenue),
-      detail: `${revenueYear}년 납품·선결제 기준`,
+      detail: `${revenueYear}년 완료 납품·선결제 기준`,
       icon: CircleDollarSign,
       tone: 'amber' as const,
-      href: data.links.schedules,
+      href: '/revenue/?period=year',
     },
     {
       label: '현재 분기 매출',
@@ -235,7 +235,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
       detail: `${revenueYear}년 ${revenueQuarter}분기`,
       icon: Target,
       tone: 'green' as const,
-      href: data.links.schedules,
+      href: '/revenue/?period=quarter',
     },
     {
       label: '오늘 일정',
@@ -256,10 +256,10 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     {
       label: '이번 달 매출',
       value: formatWon(data.metrics.monthlyRevenue),
-      detail: '납품·선결제 기준',
+      detail: '완료 납품·선결제 기준',
       icon: CircleDollarSign,
       tone: 'amber' as const,
-      href: data.links.schedules,
+      href: '/revenue/?period=month',
     },
   ];
 
