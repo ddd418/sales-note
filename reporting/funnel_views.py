@@ -1573,15 +1573,19 @@ def _actual_delivery_revenue(followup):
                 'number': f'활동 #{history.id}',
             })
 
-    selected_entries = _latest_dated_entries(delivery_entries)
-    if not selected_entries:
+    if not delivery_entries:
         return Decimal('0'), None, None, 0
 
+    # 이 계정이 올해 여러 번 납품했다면 전부 합산한다 — 가장 최근 1건만 세면
+    # "실제 납품 매출"이라는 이름과 달리 이전 납품이 조용히 사라진다.
+    delivery_entries.sort(key=lambda entry: entry['date'] or date.min, reverse=True)
+    latest_entry = delivery_entries[0]
+
     return (
-        _sum_entry_amounts(selected_entries),
-        selected_entries[0]['object'],
-        selected_entries[0]['date'],
-        len(selected_entries),
+        _sum_entry_amounts(delivery_entries),
+        latest_entry['object'],
+        latest_entry['date'],
+        len(delivery_entries),
     )
 
 

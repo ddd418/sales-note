@@ -10636,7 +10636,8 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['latestQuote']['basisDate'], (timezone.localdate() + timedelta(days=2)).isoformat())
         self.assertEqual(deal['latestQuote']['quoteDate'], (timezone.localdate() + timedelta(days=2)).isoformat())
 
-    def test_pipeline_api_uses_latest_delivery_date_amount_for_won(self):
+    def test_pipeline_api_sums_all_delivery_dates_amount_for_won(self):
+        """계정이 여러 번 납품했으면 최근 1건이 아니라 전부 합산해야 한다."""
         from datetime import timedelta
         from django.utils import timezone
 
@@ -10650,13 +10651,13 @@ class PipelineApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         deal = next(deal for deal in payload['deals'] if deal['id'] == followup.id)
-        self.assertEqual(deal['value'], 2200000)
-        self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출')
+        self.assertEqual(deal['value'], 3300000)
+        self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출 2건')
         self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
         self.assertEqual(deal['latestQuote']['basisDate'], (timezone.localdate() - timedelta(days=1)).isoformat())
         self.assertIsNone(deal['latestQuote']['quoteDate'])
         stages = {stage['id']: stage for stage in payload['stages']}
-        self.assertEqual(stages['won']['totalValue'], 2200000)
+        self.assertEqual(stages['won']['totalValue'], 3300000)
 
     def test_pipeline_api_uses_quote_history_items_before_quote_model_fallback(self):
         from django.utils import timezone
@@ -13390,3 +13391,120 @@ class PipelineSheetApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         history.refresh_from_db()
         self.assertEqual(history.content, '남의 메모')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 납품 → 파이프라인 '수주' 자동 반영 검증
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DeliveryPipelineSyncTests(TestCase):
+    """납품이 확인되면 카드가 자동으로 '수주'로 옮겨지는지, 여러 건이면 합산되는지 검증"""
+
+    def setUp(self):
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='납품동기화회사')
+        self.user = make_user('delivery_sync_me', role='salesman', company=self.company)
+
+    def _account(self, name, department_name=None, stage='quote'):
+        from reporting.models import Company, Department, FollowUp
+        customer_company = Company.objects.create(name=name + '업체', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company, name=department_name or (name + '연구실'),
+            created_by=self.user,
+        )
+        return FollowUp.objects.create(
+            user=self.user, user_company=self.company,
+            customer_name=name + '담당자', company=customer_company,
+            department=department, pipeline_stage=stage,
+        )
+
+    def test_standalone_delivery_history_advances_followup_to_won(self):
+        from reporting.models import History
+        followup = self._account('독립납품')
+
+        History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='delivery_schedule', delivery_amount=1000000,
+        )
+
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'won')
+        self.assertFalse(followup.pipeline_manually_set)
+
+    def test_standalone_delivery_history_without_followup_advances_whole_department(self):
+        from reporting.models import Company, Department, FollowUp, History
+        customer_company = Company.objects.create(name='공용업체', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company, name='공용연구실', created_by=self.user,
+        )
+        followup_a = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='담당자A',
+            company=customer_company, department=department, pipeline_stage='quote',
+        )
+        followup_b = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='담당자B',
+            company=customer_company, department=department, pipeline_stage='quote',
+        )
+
+        History.objects.create(
+            user=self.user, company=self.company, department=department,
+            action_type='delivery_schedule', delivery_amount=500000,
+        )
+
+        followup_a.refresh_from_db()
+        followup_b.refresh_from_db()
+        self.assertEqual(followup_a.pipeline_stage, 'won')
+        self.assertEqual(followup_b.pipeline_stage, 'won')
+
+    def test_editing_existing_delivery_history_keeps_pipeline_at_won(self):
+        """delivery_schedule 히스토리를 나중에 고쳐도(.save() 경유) '수주'를 다시 반영한다."""
+        from reporting.models import History
+        followup = self._account('납품수정')
+        history = History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='delivery_schedule', delivery_amount=100000,
+        )
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'won')
+
+        # 사람이 파이프라인을 다른 단계로 되돌렸다고 가정
+        followup.pipeline_stage = 'negotiation'
+        followup.pipeline_manually_set = True
+        followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse('reporting:history_update_api', args=[history.id]),
+            {'content': '납품 완료', 'delivery_amount': '200000', 'delivery_items': '시약 추가'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'won')
+
+    def test_delivery_pipeline_value_sums_all_completed_deliveries_this_account(self):
+        """계정이 여러 번 납품했으면 '수주' 카드 금액에 전부 합산돼야 한다(최근 1건만 세던 버그 수정)."""
+        from datetime import time, timedelta
+        from decimal import Decimal
+        from reporting.models import DeliveryItem, Schedule
+
+        followup = self._account('복수납품', stage='won')
+        today = timezone.localdate()
+        expected_total = Decimal('0')
+        for offset, amount in ((60, 1000000), (10, 2000000)):
+            schedule = Schedule.objects.create(
+                user=self.user, company=self.company, followup=followup,
+                visit_date=today - timedelta(days=offset), visit_time=time(10, 0),
+                status='completed', activity_type='delivery',
+            )
+            # DeliveryItem.save()가 total_price를 단가*수량*1.1(부가세)로 재계산한다.
+            item = DeliveryItem.objects.create(
+                schedule=schedule, item_name='장비', quantity=1, unit_price=amount,
+            )
+            expected_total += item.total_price
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+        deal = next(item for item in response.json()['deals'] if item['id'] == followup.id)
+        self.assertEqual(deal['value'], int(expected_total))

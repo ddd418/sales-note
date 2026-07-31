@@ -1,13 +1,48 @@
 """
 영업 보고 시스템 시그널
 - 납품 완료 시 OpportunityTracking 자동 업데이트
+- 납품 완료 시 파이프라인 카드를 '수주'로 자동 이동
 - Schedule 삭제 시 연결된 OpportunityTracking도 삭제
 - DeliveryItem 생성/삭제 시 Product 판매횟수 자동 업데이트
 """
+import logging
+
 from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from datetime import date
-from .models import History, OpportunityTracking, Schedule, DeliveryItem
+from .models import FollowUp, History, OpportunityTracking, Schedule, DeliveryItem
+
+logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=History)
+def advance_pipeline_stage_on_delivery(sender, instance, created, **kwargs):
+    """납품 히스토리가 저장되면 계정 카드를 '수주'로 옮긴다.
+
+    History가 어디서 만들어지든(영업노트 API, 레거시 폼, 일정→히스토리 전환,
+    write-proxy, 관리자 화면 등) 여기 한 곳만 거치면 놓치지 않는다. 계정에
+    담당자(followup)가 없고 부서만 연결돼 있으면 그 부서의 계정 전체를 옮긴다
+    — 파이프라인 다른 곳(카드 숨김 등)에서도 부서 단위로 같이 움직이는 것과
+    맞춘 것이다. 실제 납품은 사실 확인이라, 기존 단계나 수동 설정 여부와
+    무관하게 '수주'로 덮어쓴다.
+    """
+    if instance.action_type != 'delivery_schedule':
+        return
+    try:
+        if instance.followup_id:
+            targets = [instance.followup]
+        elif instance.department_id:
+            targets = list(FollowUp.objects.filter(department_id=instance.department_id))
+        else:
+            return
+        for followup in targets:
+            if followup.pipeline_stage == 'won' and not followup.pipeline_manually_set:
+                continue
+            followup.pipeline_stage = 'won'
+            followup.pipeline_manually_set = False
+            followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
+    except Exception:
+        logger.exception('Failed to advance pipeline stage for history %s', getattr(instance, 'id', None))
 
 
 @receiver(post_save, sender=History)

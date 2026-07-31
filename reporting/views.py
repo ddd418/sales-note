@@ -22402,7 +22402,7 @@ def history_create_from_schedule(request, schedule_id):
                 # 견적/납품 유형은 delivery_amount=0으로 강제 (더블 매출 방지)
                 if history.action_type in ['delivery_schedule', 'quote_submission']:
                     history.delivery_amount = 0
-                    
+
                 history.save()
 
                 # 파일 업로드 처리 (공통 validate_file_upload 사용)
@@ -23828,7 +23828,7 @@ def history_update_api(request, history_id):
         
         # 변경사항 저장
         history.save()
-        
+
         # 기존 파일 삭제 처리
         delete_file_ids = request.POST.getlist('delete_files')
         if delete_file_ids:

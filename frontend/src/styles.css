@@ -9225,10 +9225,22 @@ h2 {
 }
 
 .mini-deal-list span {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
+}
+
+.mini-deal-list span,
+.mini-deal-list span small {
   text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.mini-deal-list span small {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .mini-deal-list strong {

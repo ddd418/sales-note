@@ -122,6 +122,40 @@
 
 ---
 
+## 2026-07-31 잠재 컬럼 "동일 회사 중복처럼 보임" UI 수정
+
+**Background**: 위 접촉/미팅 초기화로 '잠재' 단계 카드가 34개 되돌아오면서, 접힌 '잠재' 컬럼의 TOP3 미리보기에 같은 회사(예: 건국대학교)의 서로 다른 부서/연구실 계정이 부서명 없이 회사명만 나란히 표시되어 완전한 중복처럼 보임(스크린샷으로 확인). 실제로는 프로덕션 DB 조회로 확인한 결과 진짜 중복이 아니라 건국대학교 산하 4개의 서로 다른 연구실(계정)이었음.
+
+**Scope**: `frontend/src/App.tsx`의 접힌 '잠재' 컬럼 미니 리스트(`mini-deal-list`) — `deal.company`만 보이던 것을 `deal.department`가 있으면 그 아래 작은 글씨로 같이 표시. `styles.css`에 `.mini-deal-list span`을 2줄 레이아웃으로 변경.
+
+**검증**: `tsc --noEmit` + `npm run build` 통과. 로컬 Django+Vite dev 서버를 띄우고 건국대학교 산하 서로 다른 연구실 3개를 더미로 심어 접힌 '잠재' 컬럼에서 부서명이 실제로 갈라져 표시되는 것을 브라우저로 확인, 더미 데이터는 검증 후 삭제.
+
+**DB change required**: No.
+
+---
+
+## 2026-07-31 파이프라인 '수주' 합계가 실제 매출보다 훨씬 낮은 문제
+
+**Background**: 사용자가 "올해 전체매출이 2500만원 정도인데 파이프라인에서 보면 수주가 1400만원정도밖에 안되네 이거 해결해야함"이라고 지적.
+
+**조사(프로덕션 읽기 전용 직접 조회로 검증)**: 원인이 구조적으로 두 가지 겹쳐 있었음.
+1. **최근 납품 1건만 집계하는 버그**: `funnel_views._actual_delivery_revenue()`가 계정의 납품 이력 중 `_latest_dated_entries()`로 **가장 최근 날짜 1건만** 골라 합산했음 — 같은 계정이 연중 여러 번 납품했으면 최신 건 외에는 조용히 버려짐. 함수 이름·라벨("실제 납품 매출")과 실제 동작이 어긋나는 명백한 버그. 프로덕션 확인 결과 올해 기준으로만 약 445만원이 이렇게 누락되고 있었음.
+2. **'수주' 단계로 아예 안 옮겨진 계정**: 카드가 '수주'로 바뀌는 유일한 경로가 (a) 파이프라인 "동기화" 버튼 또는 (b) `views.py`의 `_sync_schedule_pipeline()`(Schedule 생성/수정 시 `activity_type='delivery'`면 자동 이동)뿐이었음. **Schedule 없이 History만으로 기록된 납품**(standalone `action_type='delivery_schedule'`)이나 **개별 담당자 없이 부서에만 연결된 납품**은 이 경로를 타지 않아 계속 다른 단계에 머물렀음. 프로덕션 확인 결과 올해 실제 납품 매출이 있는데 '수주'가 아닌 계정이 23개(약 2,175만원)였음.
+
+**사용자 확인**: 앞으로 납품이 완료되면 접촉/미팅과 달리 **자동으로 '수주'로 이동**시킬지 물었고, "납품은 추측이 아니라 사실"이라는 이유로 자동화 유지를 확답받음(접촉/미팅 자동화 제거와 상반된 결정이지만 신호의 확실성이 다름).
+
+**변경**:
+- `reporting/funnel_views.py`의 `_actual_delivery_revenue()`: `_latest_dated_entries()`로 잘라내지 않고 **해당 계정의 납품 항목 전부를 합산**하도록 수정(대표 표시용 날짜/객체는 계속 최신 것 사용, 금액만 전체 합).
+- 신규 `reporting/signals.py`의 `advance_pipeline_stage_on_delivery` — `History` 모델의 `post_save` 시그널로 등록(기존 `update_opportunity_on_delivery`와 같은 파일·같은 패턴, 다만 저 시그널은 이제 안 쓰는 `OpportunityTracking`을 갱신하고 이건 실제로 쓰는 `FollowUp.pipeline_stage`를 갱신함). `action_type == 'delivery_schedule'`인 History가 저장될 때마다(영업노트 API, 레거시 폼, 일정→히스토리 전환, write-proxy, 관리자 화면 등 **어디서 만들어졌든 전부**) 그 계정을(담당자 없이 부서만 연결됐으면 그 부서의 계정 전체를) '수주'로 옮김 — 기존 단계·수동 설정 여부와 무관하게 덮어씀. 뷰마다 개별 호출을 심는 대신 시그널 하나로 처리해 앞으로 새 코드 경로가 생겨도 놓치지 않음. `views.py`에 처음 뷰별로 4곳 심었다가, `History`에 이미 이런 목적의 시그널(`OpportunityTracking`용)이 있는 걸 발견하고 그 패턴을 따라 시그널로 옮기며 뷰별 호출은 제거.
+- 기존 `_sync_schedule_pipeline()`(Schedule 기반, `activity_type='delivery'`)은 그대로 유지 — 서로 겹쳐도(둘 다 그냥 '수주'로 세팅) 해가 없고, 이번에 추가한 시그널이 놓치는 경로(스탠드얼론 History, 부서 전용)를 보완하는 관계.
+- 신규 데이터 마이그레이션 `0122_backfill_won_stage_for_delivered_accounts.py`: 완료된 납품 Schedule 또는 `delivery_schedule` History 증거가 있는데 현재 `pipeline_stage != 'won'`인 계정을 일괄 '수주'로 되돌림(전체 기간 기준, 연도 제한 없음 — 파이프라인 단계 자체가 원래 연도 구분이 없는 개념이라 다른 단계 로직과 일관되게 맞춤). 프로덕션 드라이런 확인: 대상 65개 중 52개가 실제로 바뀜(잠재 47, 견적 3, 협상 1, **실주 1** — 실주로 표시돼 있었지만 실제 납품 증거가 있어 '수주'로 정정됨).
+
+**검증**: `py_compile` 전체 / `manage.py check` / `makemigrations --check --dry-run`("No changes detected") / 로컬에 `0122` 적용 확인 / 신규 `DeliveryPipelineSyncTests` 4개(standalone 히스토리 자동 이동, 부서 전체 이동, 기존 납품 히스토리 수정 시 재반영, 복수 납품 합산) 전부 통과 / 이번 변경으로 깨진 기존 테스트 1개 발견·수정 — `test_pipeline_api_uses_latest_delivery_date_amount_for_won`이 **버그였던 "최근 1건만" 동작을 정상으로 간주해 검증**하고 있었음. `test_pipeline_api_sums_all_delivery_dates_amount_for_won`으로 이름과 기대값을 고쳐서 새 동작(합산)을 검증하도록 수정. `PipelineApiTests`/`SchedulesSummaryApiTests`/`PipelineSheetApiTests` 등 파이프라인 관련 스위트 158개 통과, 전체 백엔드 회귀로 최종 확인 예정.
+
+**DB change required**: Yes — 데이터 전용 마이그레이션(스키마 변경 없음, 0121과 같은 패턴). 다음 배포 시 `migrate`가 자동 적용.
+
+---
+
 ## 2026-07-27 Phase 6: 주간보고(WeeklyReports) 완전 제거 — 신규 "파이프라인 시트" 준비
 
 **Background**: 사용자가 새 메뉴 "파이프라인 시트"를 만들기로 확정. 그 시트의 탭1(주간 활동)이 기존 주간보고를 그대로 대체하므로, 죽은 코드 옆에서 유사한 새 코드를 짜는 혼선을 피하려고 **먼저 주간보고를 완전 제거**하고 시작. 원래 7개 가지치기 목록에는 없던 8번째 제거.

@@ -13858,7 +13858,10 @@ function PipelineBoard({
                   <div className="mini-deal-list">
                     {topPotential.map((deal) => (
                       <button key={deal.id} onClick={() => onSelect(deal)}>
-                        <span>{deal.company}</span>
+                        <span>
+                          {deal.company}
+                          {deal.department ? <small>{deal.department}</small> : null}
+                        </span>
                         <strong>{deal.attentionScore ?? 0}</strong>
                       </button>
                     ))}
