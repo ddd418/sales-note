@@ -156,6 +156,8 @@
 
 **후속 추가 (같은 날)**: 사용자가 "당해년도 전체매출 분기매출 이번달매출 클릭시 해당 매출건만 소팅한 화면으로 넘어가야 합니다"라고 재요청 — 대시보드에 있는 매출 카드가 사실 3개(당해년도/분기/**이번 달**)인데 처음 구현에서 "이번 달 매출" 카드는 빠뜨리고 `data.links.schedules`(필터 없는 일정 목록)로 그대로 뒀었음. `_period_bounds`에 `period='month'` 분기 추가, `RevenueDetailPage`에 세 번째 탭("이번 달") 추가, 대시보드 "이번 달 매출" 카드 href를 `/revenue/?period=month`로 변경. 신규 테스트로 이번 달 드릴다운 합계가 `dashboard_summary_api`의 `monthlyRevenue`와 일치하는 것까지 확인(연/분기와 같은 패턴).
 
+**Deploy**: Done. Commit `fea027a` on `origin/main`. Railway `web` deploy `506cae97-e8f3-4c9b-8233-68ad5f453112` SUCCESS, `sales-note-frontend` deploy `9932fb9a-a365-4ef9-b7a7-4daca1820844` SUCCESS. 전체 백엔드 회귀 497개 — 4건은 기존 무관 결함(전과 동일)으로 회귀 없음. `post_deploy_smoke.py` → **ok (29/29 PASS)**.
+
 **검증**: `py_compile` / `manage.py check` / `makemigrations --check --dry-run`("No changes detected", 스키마 변경 없음) / `tsc --noEmit` + `npm run build` 통과. 신규 테스트: `RevenueDetailApiTests` 4개(로그인 필요, 완료만 포함·예정 제외, 선결제 포함·취소 제외, **드릴다운 합계가 `dashboard_summary_api`와 정확히 일치**) + `PipelineYearResetTests`에 카드 숨김 테스트 2개(근거 없는 진행단계 숨김, 잠재는 예외) 추가 — 전부 통과. 로컬 Django+Vite로 실제 시나리오 재현: 예정 납품만 있는 계정과 완료 납품이 섞인 계정을 만들어 파이프라인 보드·매출 드릴다운·대시보드 API 세 곳의 숫자가 서로 일치하는 것까지 확인(더미 데이터는 검증 후 삭제).
 
 **DB change required**: No.
