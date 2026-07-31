@@ -1927,6 +1927,21 @@ class OpportunityLabel(models.Model):
         unique_together = ['name', 'user_company']
 
 
+# 파이프라인 연간 리셋 기록 — 연도당 1행. 존재하면 그 해는 이미 리셋된 것이다.
+class PipelineYearResetLog(models.Model):
+    year = models.PositiveIntegerField(unique=True, verbose_name="연도")
+    reset_at = models.DateTimeField(auto_now_add=True, verbose_name="리셋 시각")
+    affected_count = models.PositiveIntegerField(default=0, verbose_name="리셋된 계정 수")
+
+    def __str__(self):
+        return f'{self.year}년 파이프라인 리셋'
+
+    class Meta:
+        verbose_name = "파이프라인 연간 리셋 기록"
+        verbose_name_plural = "파이프라인 연간 리셋 기록"
+        ordering = ['-year']
+
+
 # 영업 기회 추적 (OpportunityTracking) 모델
 class OpportunityTracking(models.Model):
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='opportunities', verbose_name="관련 고객")

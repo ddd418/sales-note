@@ -8234,6 +8234,9 @@ def _schedule_pipeline_target_stage(schedule):
 def _sync_schedule_pipeline(schedule):
     """Synchronize a customer pipeline card from the schedule state only."""
     try:
+        from .funnel_views import _ensure_pipeline_year_reset
+        _ensure_pipeline_year_reset()
+
         target_stage = _schedule_pipeline_target_stage(schedule)
         if not target_stage:
             return False

@@ -9215,6 +9215,8 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  width: 100%;
   min-height: 32px;
   padding: 7px 8px;
   border: 1px solid var(--line);
@@ -9222,10 +9224,12 @@ h2 {
   background: var(--panel-soft);
   color: var(--text);
   text-align: left;
+  box-sizing: border-box;
 }
 
 .mini-deal-list span {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
@@ -9233,6 +9237,8 @@ h2 {
 
 .mini-deal-list span,
 .mini-deal-list span small {
+  min-width: 0;
+  max-width: 100%;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;

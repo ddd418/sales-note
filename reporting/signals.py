@@ -29,6 +29,9 @@ def advance_pipeline_stage_on_delivery(sender, instance, created, **kwargs):
     if instance.action_type != 'delivery_schedule':
         return
     try:
+        from .funnel_views import _ensure_pipeline_year_reset
+        _ensure_pipeline_year_reset()
+
         if instance.followup_id:
             targets = [instance.followup]
         elif instance.department_id:

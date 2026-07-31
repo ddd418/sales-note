@@ -11,11 +11,12 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import ensure_csrf_cookie
+from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from django.utils import timezone
 
 from .models import (
-    Department, Company, FollowUp, Schedule, History, 
+    Department, Company, FollowUp, PipelineYearResetLog, Schedule, History,
     DeliveryItem, FunnelTarget, Quote
 )
 from .readonly_api import readonly_bearer_or_login_required
@@ -1747,16 +1748,49 @@ def _attention_score(stage, latest_quote, next_schedule, last_history, has_overd
     return score, ' · '.join(reasons[:3]) if reasons else '추가 활동 필요'
 
 
+def _ensure_pipeline_year_reset(today=None):
+    """새해가 되면 파이프라인 단계를 전부 '잠재'로 되돌린다(연 1회, 최초 접근 시).
+
+    이 배포 환경에는 Celery beat/worker가 별도 서비스로 떠 있지 않아 스케줄
+    작업에 기댈 수 없다 — 대신 파이프라인 단계를 읽거나 쓰는 모든 경로 맨
+    앞에서 "올해 리셋 기록이 있는가"를 확인해 없으면 그 자리에서 수행한다.
+    `year`에 unique 제약을 걸어 동시에 여러 요청이 들어와도 한 번만 실행된다.
+    """
+    today = today or timezone.localdate()
+    current_year = today.year
+    if PipelineYearResetLog.objects.filter(year=current_year).exists():
+        return
+    try:
+        with transaction.atomic():
+            log, created = PipelineYearResetLog.objects.get_or_create(year=current_year)
+            if created:
+                affected = FollowUp.objects.exclude(pipeline_stage='potential').update(
+                    pipeline_stage='potential', pipeline_manually_set=False,
+                )
+                if affected:
+                    log.affected_count = affected
+                    log.save(update_fields=['affected_count'])
+    except Exception:
+        logger.exception('Failed to run pipeline year reset for %s', current_year)
+
+
 def pipeline_followups_queryset(request, today=None):
     """파이프라인 계정 집계에 필요한 FollowUp 큐리셋(프리페치 포함).
 
     파이프라인 화면과 파이프라인 시트가 **같은 데이터**를 보도록 공유한다.
     한쪽만 프리페치가 바뀌면 두 화면의 금액/단계가 갈라지므로 여기서만 고친다.
+
+    파이프라인은 "올해" 스냅샷이다 — 단계는 `_ensure_pipeline_year_reset()`이
+    매년 1월 1일 잠재로 되돌리고, 금액은 여기서 올해 견적/일정/납품만 보이도록
+    걸러서 재작년 견적이 다시 슬금슬금 새 단계의 금액으로 섞여 들어오지 않게 한다.
     """
     from datetime import timedelta
 
     today = today or timezone.localdate()
     thirty_days_ago = today - timedelta(days=30)
+    current_year = today.year
+
+    _ensure_pipeline_year_reset(today)
 
     recent_histories_qs = History.objects.filter(
         parent_history__isnull=True,
@@ -1767,9 +1801,14 @@ def pipeline_followups_queryset(request, today=None):
     pricing_histories_qs = History.objects.filter(
         parent_history__isnull=True,
         action_type__in=['quote', 'delivery_schedule'],
+    ).filter(
+        Q(delivery_date__year=current_year) |
+        Q(delivery_date__isnull=True, meeting_date__year=current_year) |
+        Q(delivery_date__isnull=True, meeting_date__isnull=True, created_at__year=current_year)
     ).prefetch_related('delivery_items_set').order_by('-created_at')
     pricing_schedules_qs = Schedule.objects.filter(
         activity_type__in=['quote', 'delivery'],
+        visit_date__year=current_year,
     ).prefetch_related(
         'delivery_items_set',
         Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
@@ -1795,7 +1834,9 @@ def pipeline_followups_queryset(request, today=None):
             Prefetch('histories', queryset=pricing_histories_qs, to_attr='pricing_histories'),
             Prefetch('histories', queryset=recent_histories_qs,
                      to_attr='recent_histories_for_stage'),
-            Prefetch('quotes', queryset=Quote.objects.prefetch_related('items__product').order_by('-created_at'),
+            Prefetch('quotes', queryset=Quote.objects.filter(
+                quote_date__year=current_year,
+            ).prefetch_related('items__product').order_by('-created_at'),
                      to_attr='all_quotes'),
         )
         .order_by('pipeline_stage', 'company__name', 'customer_name')
@@ -1993,6 +2034,7 @@ def pipeline_command_center_api(request):
 def funnel_pipeline_move(request):
     """카드 단계 이동 API"""
     try:
+        _ensure_pipeline_year_reset()
         # Manager는 파이프라인 카드 이동 불가 (뷰어 권한)
         _move_profile = _get_user_profile(request.user)
         if _move_profile.is_manager():
@@ -2038,6 +2080,7 @@ def funnel_pipeline_sync(request):
       · 최근 30일 일정만 기준으로 사용 (Blocker 2)
     """
     try:
+        _ensure_pipeline_year_reset()
         data = json.loads(request.body)
         followup_id = data.get('followup_id')
 

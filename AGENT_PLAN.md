@@ -130,7 +130,29 @@
 
 **검증**: `tsc --noEmit` + `npm run build` 통과. 로컬 Django+Vite dev 서버를 띄우고 건국대학교 산하 서로 다른 연구실 3개를 더미로 심어 접힌 '잠재' 컬럼에서 부서명이 실제로 갈라져 표시되는 것을 브라우저로 확인, 더미 데이터는 검증 후 삭제.
 
+**후속 수정 (같은 날)**: 사용자가 "텍스트박스가 카드를 벗어난다"고 재지적 — 부서명 라벨을 추가하며 `.mini-deal-list span`을 `flex-direction: column`으로 바꿨는데, 중첩된 `<small>`에 `min-width: 0`이 안 걸려 있어 긴 부서명이 카드 밖으로 흘러나갔음(flex/grid 아이템의 기본 `min-width: auto`가 축소를 막는 전형적인 CSS 함정). `.mini-deal-list button`/`span`/`small` 전부에 `min-width: 0`을 걸고 `box-sizing: border-box`를 추가해 고정. 아주 긴 부서명으로 더미 데이터를 만들어 `getBoundingClientRect()`로 카드 경계를 실제로 벗어나는지 JS로 기하학적 검증(스크린샷 대신 — 헤드리스 브라우저 팬이 비표시 상태라 스크린샷이 안 나와서 택한 방법).
+
 **DB change required**: No.
+
+---
+
+## 2026-07-31 파이프라인 "올해것만" — 연간 자동 리셋
+
+**Background**: 위 수주 합계 수정 직후 사용자가 "파이프라인에서는 올해것만 보여야함 매번 년도 바뀌면 초기화 되어야함"이라고 요청. 단계와 금액 중 뭐가 리셋되는지 물었더니 **"단계와 금액 모두 매년 1월 1일 잠재로 리셋"**으로 확답.
+
+**인프라 제약 발견**: 이 배포 환경에는 Celery beat/worker가 별도 서비스로 떠 있지 않음(Railway 서비스 목록에 `web`/`sales-note-frontend`/`salesnote-mcp` 3개뿐, `REDIS_URL`도 `web` 서비스 환경변수에 없음) — `sales_project/celery.py`에 스케줄이 코드로는 있지만 실제로 실행되는 프로세스가 없어 스케줄 작업에 기댈 수 없음. 대신 **지연 평가(lazy) 방식**을 택함: 파이프라인을 읽거나 쓰는 모든 경로 맨 앞에서 "올해 리셋 기록이 있는가"를 확인하고, 없으면 그 자리에서 수행.
+
+**변경**:
+- 신규 모델 `PipelineYearResetLog`(연도당 1행, `year`에 unique 제약 — 동시 요청이 몰려도 DB 유니크 제약이 자연스러운 락 역할을 해 한 번만 실행됨).
+- `reporting/funnel_views.py`의 `_ensure_pipeline_year_reset(today=None)` — 올해 로그가 없으면 `FollowUp.pipeline_stage`가 `'potential'`이 아닌 전부를 `'potential'`로, `pipeline_manually_set`도 `False`로 되돌림. 호출 지점 4곳: `pipeline_followups_queryset()`(모든 읽기 — 파이프라인 보드/커맨드센터 API/파이프라인 시트 공유), `_sync_schedule_pipeline()`(일정 기반 쓰기, `views.py`), `advance_pipeline_stage_on_delivery` 시그널(납품 히스토리 기반 쓰기, `signals.py`), `funnel_pipeline_move`/`funnel_pipeline_sync`(수동 이동/동기화 버튼).
+- **금액도 올해 것만**: `pipeline_followups_queryset()`의 가격 계산용 프리페치(`pricing_schedules_qs`/`pricing_histories_qs`/`all_quotes`)에 올해 연도 필터 추가. 단계는 리셋되지만 프리페치가 연도로 안 걸러지면, 리셋 후 다시 '수주'가 된 카드가 재작년 납품 금액까지 같이 끌고 올 수 있어서 필요했음. 견적 단계의 "최근 견적 라운드만 보여준다"(`_latest_dated_entries`, 여러 번 견적 보낸 것 중 최신 라운드 총액)는 의도된 동작이라 건드리지 않음 — 이건 "최근 1건만 세는 버그"였던 납품 매출 합산과는 다른 개념.
+- **마이그레이션 시점 함정 발견 및 수정**: 처음엔 `0123` 마이그레이션에 스키마 생성만 넣었는데, 그러면 배포 즉시(연중 아무 때나) "올해 리셋 기록이 없다"고 판단해 방금 막 백필한 수주 68개를 포함한 전체 파이프라인을 그 자리에서 다 지워버리는 사고가 날 뻔했음 — 마이그레이션 실행 시점의 실제 연도로 `PipelineYearResetLog` 1행을 미리 심는 `RunPython`을 추가해, "올해는 이미 진행 중이니 리셋 대상 아님, 다음 리셋은 내년 1월 1일에 자연스럽게"로 고침.
+
+**Scope**: `reporting/models.py`(`PipelineYearResetLog`), `reporting/migrations/0123_pipeline_year_reset_log.py`(신규, 스키마+시드), `reporting/funnel_views.py`(`_ensure_pipeline_year_reset`, 가격 쿼리 연도 필터, 호출 지점 2곳), `reporting/views.py`(`_sync_schedule_pipeline` 호출 지점), `reporting/signals.py`(`advance_pipeline_stage_on_delivery` 호출 지점).
+
+**검증**: `py_compile` / `manage.py check` / `makemigrations --check --dry-run`("No changes detected") / 로컬에 `0123` 적용 후 시드 행 확인. 신규 `PipelineYearResetTests` 6개(리셋이 비잠재 전부 되돌림, 같은 해 재호출은 멱등, 해가 바뀌면 다시 실행, API 호출만으로 자동 트리거, 작년 납품 금액 제외, 작년 견적 금액 제외) 통과. 전체 백엔드 회귀 490개 — 기존 무관 결함 4건 외 회귀 없음(중간에 특정 조합 실행에서 1회 재현 안 되는 산발적 실패를 봤으나, 동일 커맨드 재실행과 전체 스위트 재실행 모두 깨끗하게 통과해 테스트 환경(Windows SQLite 공유캐시 in-memory) 쪽 일시적 현상으로 판단, 로직 자체는 전용 유닛 테스트로 확정적으로 검증됨).
+
+**DB change required**: Yes — 신규 테이블(`PipelineYearResetLog`) + 배포 시점 연도 시드 1행. 다음 배포 시 `migrate`가 자동 적용.
 
 ---
 

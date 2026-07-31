@@ -13508,3 +13508,164 @@ class DeliveryPipelineSyncTests(TestCase):
         response = self.client.get(reverse('reporting:pipeline_command_center_api'))
         deal = next(item for item in response.json()['deals'] if item['id'] == followup.id)
         self.assertEqual(deal['value'], int(expected_total))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 파이프라인 "올해것만" — 연간 리셋 + 금액 연도 스코핑 검증
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PipelineYearResetTests(TestCase):
+    """매년 1월 1일 파이프라인 단계가 잠재로 리셋되고, 금액이 올해 것만 반영되는지 검증"""
+
+    def setUp(self):
+        from reporting.models import Company, Department, FollowUp
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='연간리셋회사')
+        self.user = make_user('year_reset_me', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='연간리셋업체', created_by=self.user)
+        self.department = Department.objects.create(
+            company=customer_company, name='연간리셋연구실', created_by=self.user,
+        )
+        self.followup = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='연간리셋담당자',
+            company=customer_company, department=self.department, pipeline_stage='won',
+        )
+
+    def test_ensure_pipeline_year_reset_resets_all_non_potential_stages(self):
+        from datetime import date
+        from reporting.funnel_views import _ensure_pipeline_year_reset
+        from reporting.models import PipelineYearResetLog
+
+        self.followup.pipeline_manually_set = True
+        self.followup.save(update_fields=['pipeline_manually_set'])
+
+        _ensure_pipeline_year_reset(today=date(2099, 1, 1))
+
+        self.followup.refresh_from_db()
+        self.assertEqual(self.followup.pipeline_stage, 'potential')
+        self.assertFalse(self.followup.pipeline_manually_set)
+        self.assertTrue(PipelineYearResetLog.objects.filter(year=2099).exists())
+
+    def test_ensure_pipeline_year_reset_is_idempotent_within_same_year(self):
+        from datetime import date
+        from reporting.funnel_views import _ensure_pipeline_year_reset
+
+        _ensure_pipeline_year_reset(today=date(2099, 1, 1))
+
+        # 리셋 이후 올해 새 활동으로 다시 '수주'가 됐다고 가정
+        self.followup.pipeline_stage = 'won'
+        self.followup.save(update_fields=['pipeline_stage'])
+
+        _ensure_pipeline_year_reset(today=date(2099, 6, 1))
+
+        self.followup.refresh_from_db()
+        self.assertEqual(self.followup.pipeline_stage, 'won')
+
+    def test_ensure_pipeline_year_reset_fires_again_next_year(self):
+        from datetime import date
+        from reporting.funnel_views import _ensure_pipeline_year_reset
+
+        _ensure_pipeline_year_reset(today=date(2099, 1, 1))
+        self.followup.pipeline_stage = 'quote'
+        self.followup.save(update_fields=['pipeline_stage'])
+
+        _ensure_pipeline_year_reset(today=date(2100, 1, 1))
+
+        self.followup.refresh_from_db()
+        self.assertEqual(self.followup.pipeline_stage, 'potential')
+
+    def test_pipeline_command_center_api_triggers_year_reset_automatically(self):
+        from datetime import date
+        from unittest.mock import patch
+        from reporting.models import PipelineYearResetLog
+
+        PipelineYearResetLog.objects.all().delete()
+        self.client.force_login(self.user)
+
+        with patch('reporting.funnel_views.timezone.localdate', return_value=date(2099, 3, 1)):
+            response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+
+        self.assertEqual(response.status_code, 200)
+        self.followup.refresh_from_db()
+        self.assertEqual(self.followup.pipeline_stage, 'potential')
+        self.assertTrue(PipelineYearResetLog.objects.filter(year=2099).exists())
+
+    def test_pipeline_value_excludes_prior_year_delivery(self):
+        """올해 이미 리셋을 거쳐 '수주'로 재확인된 계정이, 작년 납품 금액은 빼고
+        올해 납품만 카드 금액에 반영하는지 검증한다."""
+        from datetime import date, time
+        from unittest.mock import patch
+        from reporting.funnel_views import _ensure_pipeline_year_reset
+        from reporting.models import DeliveryItem, Schedule
+
+        # 올해 리셋이 이미 끝난 상태를 만든 뒤(먼저 리셋 → 그 다음에 다시 '수주'로
+        # 확정) 리셋이 이번 API 호출에서 다시 값을 지우지 않도록 한다.
+        _ensure_pipeline_year_reset(today=date(2099, 1, 1))
+        self.followup.pipeline_stage = 'won'
+        self.followup.save(update_fields=['pipeline_stage'])
+
+        old_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=date(2020, 3, 1), visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=old_schedule, item_name='작년 장비', quantity=1, unit_price=5000000,
+        )
+        current_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=date(2099, 2, 1), visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        current_item = DeliveryItem.objects.create(
+            schedule=current_schedule, item_name='올해 장비', quantity=1, unit_price=1000000,
+        )
+
+        self.client.force_login(self.user)
+        with patch('reporting.funnel_views.timezone.localdate', return_value=date(2099, 3, 1)):
+            response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+
+        deal = next(item for item in response.json()['deals'] if item['id'] == self.followup.id)
+        self.assertEqual(deal['value'], int(current_item.total_price))
+
+    def test_pipeline_value_excludes_prior_year_quote(self):
+        """작년 견적은 카드 금액에서 빠지고, 올해 견적만 반영돼야 한다."""
+        from datetime import date, time
+        from unittest.mock import patch
+        from reporting.funnel_views import _ensure_pipeline_year_reset
+        from reporting.models import Quote, Schedule
+
+        _ensure_pipeline_year_reset(today=date(2099, 1, 1))
+        self.followup.pipeline_stage = 'quote'
+        self.followup.save(update_fields=['pipeline_stage'])
+
+        old_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=date(2020, 5, 1), visit_time=time(10, 0),
+            status='completed', activity_type='quote',
+        )
+        old_quote = Quote.objects.create(
+            quote_number='OLD-1', schedule=old_schedule, followup=self.followup, user=self.user,
+            valid_until=date(2020, 12, 31), subtotal=9000000, total_amount=9000000,
+        )
+        # quote_date는 auto_now_add라 생성 시점을 못 정하므로 저장 후 직접 되돌린다.
+        Quote.objects.filter(pk=old_quote.pk).update(quote_date=date(2020, 5, 1))
+
+        current_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=date(2099, 2, 1), visit_time=time(10, 0),
+            status='completed', activity_type='quote',
+        )
+        current_quote = Quote.objects.create(
+            quote_number='NEW-1', schedule=current_schedule, followup=self.followup, user=self.user,
+            valid_until=date(2099, 12, 31), subtotal=2000000, total_amount=2000000,
+        )
+        Quote.objects.filter(pk=current_quote.pk).update(quote_date=date(2099, 2, 1))
+
+        self.client.force_login(self.user)
+        with patch('reporting.funnel_views.timezone.localdate', return_value=date(2099, 3, 1)):
+            response = self.client.get(reverse('reporting:pipeline_command_center_api'))
+
+        deal = next(item for item in response.json()['deals'] if item['id'] == self.followup.id)
+        current_quote.refresh_from_db()
+        self.assertEqual(deal['value'], int(current_quote.total_amount))
