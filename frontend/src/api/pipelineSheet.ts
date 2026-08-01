@@ -24,6 +24,7 @@ export type PipelineSheetActivity = {
   date: string;
   weekday: string;
   type: string;
+  itemsLabel: string;
   body: string;
   obstacle: string;
   nextAction: string;

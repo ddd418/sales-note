@@ -13142,6 +13142,55 @@ class PipelineSheetApiTests(TestCase):
         self.assertNotIn('untouchedAmount', payload['metrics'])
         self.assertNotIn('untouchedAccounts', payload)
 
+    def test_weekly_api_shows_items_label_for_quote_and_delivery_activities(self):
+        """어떤 품목을 했는지 활동 행에서 바로 보여야 한다."""
+        from datetime import time
+        from reporting.models import DeliveryItem, History, Schedule
+
+        followup = self._account(self.user, '품목표시')
+
+        quote_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            visit_date=self.week_start, visit_time=time(9, 0),
+            status='completed', activity_type='quote',
+        )
+        DeliveryItem.objects.create(
+            schedule=quote_schedule, item_name='분광광도계', quantity=1, unit='EA', unit_price=5000000,
+        )
+
+        delivery_schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            visit_date=self.week_end, visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=delivery_schedule, item_name='원심분리기', quantity=2, unit='대', unit_price=1000000,
+        )
+
+        # History가 일정에 연결돼 있을 때는 일정의 품목을 따라간다(fallback 경로).
+        history_with_schedule = History.objects.create(
+            user=self.user, company=self.company, followup=followup, schedule=delivery_schedule,
+            action_type='delivery_schedule', meeting_date=self.week_end,
+        )
+        # 레거시 자유 텍스트만 있는 경우는 그 텍스트를 그대로 보여준다.
+        History.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            action_type='delivery_schedule', meeting_date=self.week_end,
+            delivery_items='레거시 품목 텍스트',
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.weekly_url, {'week': self.week_start.isoformat()})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(r for r in payload['rows'] if r['department'].startswith('품목표시'))
+        labels = {(a['kind'], a['id']): a['itemsLabel'] for a in row['activities']}
+        self.assertEqual(labels[('schedule', quote_schedule.id)], '분광광도계 1EA')
+        self.assertEqual(labels[('schedule', delivery_schedule.id)], '원심분리기 2대')
+        self.assertEqual(labels[('history', history_with_schedule.id)], '원심분리기 2대')
+        self.assertIn('레거시 품목 텍스트', labels.values())
+
     def test_weekly_api_scopes_to_own_accounts_for_salesman(self):
         from reporting.models import History
         mine = self._account(self.user, '내계정')
@@ -13195,7 +13244,9 @@ class PipelineSheetApiTests(TestCase):
         wb = load_workbook(_io.BytesIO(response.content))
         self.assertEqual(wb.sheetnames, ['주간 활동', '다운로드 정보'])
         weekly_ws = wb['주간 활동']
-        bodies = [row[8] for row in weekly_ws.iter_rows(min_row=2, values_only=True)]
+        header = [cell.value for cell in weekly_ws[1]]
+        self.assertEqual(header[8], '품목')
+        bodies = [row[9] for row in weekly_ws.iter_rows(min_row=2, values_only=True)]
         self.assertIn('데모 요청', bodies)
         self.assertIn('재방문 약속', bodies)
 

@@ -139,6 +139,36 @@ def _schedule_amount(schedule):
 
 # --------------------------------------------------------------- 활동 텍스트
 
+def _items_label(items):
+    """DeliveryItem 목록을 한 줄로 — '품목명 수량단위, ...'. 금액은 별도 컬럼에 이미 있다."""
+    parts = []
+    for item in items:
+        quantity_label = f"{item.quantity}{item.unit or 'EA'}"
+        parts.append(f"{item.item_name} {quantity_label}")
+    return ', '.join(parts)
+
+
+def _history_items_label(history):
+    """견적/납품 History에 딸린 품목 한 줄 요약.
+
+    History에 직접 달린 품목을 우선하고, 없으면 연결된 일정의 품목을, 그것도
+    없으면 레거시 자유 텍스트(`delivery_items`)를 쓴다 — 상세 화면과 같은 우선순위.
+    """
+    if history.action_type not in ('quote', 'delivery_schedule'):
+        return ''
+    items = getattr(history, 'linked_history_items', None)
+    if items is None:
+        items = list(history.delivery_items_set.all().order_by('id'))
+    if not items and history.schedule_id:
+        schedule = history.schedule
+        items = getattr(schedule, 'linked_schedule_items', None) if schedule else None
+        if items is None and schedule:
+            items = list(schedule.delivery_items_set.all().order_by('id'))
+    if items:
+        return _items_label(items)
+    return (history.delivery_items or '').strip()
+
+
 def _activity_body(history):
     """활동 내용. `오늘 상황`이 있으면 그것, 없으면 `내용`.
 
@@ -160,6 +190,7 @@ def _history_activity(history, viewer):
         'date': when.isoformat(),
         'weekday': WEEKDAY_LABELS[when.weekday()],
         'type': history.get_action_type_display(),
+        'itemsLabel': _history_items_label(history),
         'body': _activity_body(history),
         'obstacle': (history.meeting_obstacles or '').strip(),
         'nextAction': (history.next_action or history.meeting_next_action or '').strip(),
@@ -178,6 +209,7 @@ def _schedule_activity(schedule, viewer):
         'date': when.isoformat(),
         'weekday': WEEKDAY_LABELS[when.weekday()],
         'type': schedule.get_activity_type_display(),
+        'itemsLabel': _items_label(getattr(schedule, 'linked_delivery_items', []) or []),
         'body': (schedule.notes or '').strip(),
         'obstacle': '',
         'nextAction': '',
@@ -342,7 +374,12 @@ def _weekly_rows(request, week_start, week_end, base_rows):
         | Q(meeting_date__isnull=True,
             created_at__date__gte=week_start,
             created_at__date__lte=week_end)
-    ).select_related('followup').order_by('created_at')
+    ).select_related('followup', 'schedule').prefetch_related(
+        Prefetch('delivery_items_set', queryset=DeliveryItem.objects.order_by('id'),
+                 to_attr='linked_history_items'),
+        Prefetch('schedule__delivery_items_set', queryset=DeliveryItem.objects.order_by('id'),
+                 to_attr='linked_schedule_items'),
+    ).order_by('created_at')
     for history in histories:
         key = contact_to_account.get(history.followup_id)
         if key in buckets:
@@ -488,7 +525,7 @@ def _write_weekly_sheet(wb, weekly):
     ws.title = '주간 활동'
     ws.append([
         '날짜', '요일', '업체/학교', '부서/연구실', '담당자', '영업담당',
-        '단계', '활동유형', '상황/내용', '장애물', '다음 액션', '예정일', '금액',
+        '단계', '활동유형', '품목', '상황/내용', '장애물', '다음 액션', '예정일', '금액',
     ])
     for row in weekly['rows']:
         for activity in row['activities']:
@@ -501,6 +538,7 @@ def _write_weekly_sheet(wb, weekly):
                 row['owner'],
                 row['stageLabel'],
                 activity['type'],
+                activity['itemsLabel'],
                 activity['body'],
                 activity['obstacle'],
                 activity['nextAction'],
@@ -509,8 +547,8 @@ def _write_weekly_sheet(wb, weekly):
             ])
     _style_sheet(
         ws,
-        widths=[12, 6, 22, 22, 18, 12, 12, 12, 52, 30, 30, 12, 14],
-        money_columns=(13,),
+        widths=[12, 6, 22, 22, 18, 12, 12, 12, 28, 52, 30, 30, 12, 14],
+        money_columns=(14,),
     )
 
 

@@ -128,7 +128,7 @@ function WeeklyAccountBlock({ row, edit }: WeeklyAccountBlockProps) {
   return (
     <tbody className="pipeline-sheet-account">
       <tr className="pipeline-sheet-account-head">
-        <th colSpan={6}>
+        <th colSpan={7}>
           <a href={row.href}>{accountLabel(row)}</a>
           <span className="pipeline-sheet-stage">{row.stageLabel}</span>
           <span className="pipeline-sheet-meta">
@@ -146,6 +146,7 @@ function WeeklyAccountBlock({ row, edit }: WeeklyAccountBlockProps) {
             <small>{activity.weekday}</small>
           </td>
           <td className="pipeline-sheet-type">{activity.type}</td>
+          <td className="pipeline-sheet-items">{activity.itemsLabel || '-'}</td>
           <td className="pipeline-sheet-body">
             <ActivityCell
               activity={activity}
@@ -368,6 +369,7 @@ export function PipelineSheetPage() {
             <tr>
               <th>날짜</th>
               <th>활동</th>
+              <th>품목</th>
               <th>상황 / 내용</th>
               <th>장애물</th>
               <th>다음 액션</th>
@@ -377,7 +379,7 @@ export function PipelineSheetPage() {
           {loading && !weekly ? (
             <tbody>
               <tr>
-                <td colSpan={6}>
+                <td colSpan={7}>
                   <Loader2 className="spin-icon" size={18} /> 데이터를 불러오는 중입니다
                 </td>
               </tr>
@@ -387,7 +389,7 @@ export function PipelineSheetPage() {
           ) : (
             <tbody>
               <tr>
-                <td colSpan={6}>이 주에 기록된 활동이 없습니다</td>
+                <td colSpan={7}>이 주에 기록된 활동이 없습니다</td>
               </tr>
             </tbody>
           )}

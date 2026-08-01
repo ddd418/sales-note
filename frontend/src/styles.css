@@ -12724,6 +12724,13 @@ tbody tr:hover {
   color: var(--muted);
 }
 
+.pipeline-sheet-items {
+  min-width: 160px;
+  max-width: 260px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .pipeline-sheet-body {
   min-width: 280px;
   max-width: 520px;
