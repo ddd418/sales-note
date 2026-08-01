@@ -1,5 +1,22 @@
 # AGENT_PLAN.md
 
+## 2026-08-01 파이프라인 시트: 견적/납품 활동에 품목 표시
+
+**Background**: 사용자 요청 — "파이프라인 시트에서 납품 일정 및 견적 일정에서는 어떤 품목을 했는지 명확하게 나와야함". 활동 그리드에는 그동안 일정 메모(`notes`)만 보였고, 실제로 어떤 품목(DeliveryItem)이 견적/납품됐는지는 계정 상세 화면을 따로 열어야만 알 수 있었다.
+
+**Scope**:
+- `reporting/api/pipeline_sheet.py`: `_items_label(items)` 헬퍼 추가 — DeliveryItem 목록을 "품목명 수량단위, ..." 한 줄로 요약(금액은 이미 별도 컬럼에 있으므로 넣지 않음). `_schedule_activity`는 이미 prefetch돼 있던 `linked_delivery_items`에서 바로 `itemsLabel`을 만든다. `_history_activity`는 새 `_history_items_label(history)` 헬퍼를 쓰는데, 우선순위는 History에 직접 달린 품목 → 연결된 일정(`history.schedule`)의 품목 → 레거시 자유 텍스트(`History.delivery_items`) 순(계정 상세 화면의 기존 우선순위와 동일). `_weekly_rows`의 History 쿼리셋에 `Prefetch('delivery_items_set', ...)`와 `Prefetch('schedule__delivery_items_set', ...)`를 추가해 N+1을 막음.
+- 화면 그리드(`PipelineSheetPage.tsx`)와 엑셀 내보내기(`_write_weekly_sheet`) 양쪽에 "품목" 컬럼을 활동유형과 상황/내용 사이에 추가(컬럼 수 6→7, 엑셀 13→14, 금액 컬럼 인덱스 13→14로 이동). `frontend/src/api/pipelineSheet.ts`의 `PipelineSheetActivity` 타입에 `itemsLabel: string` 추가. `styles.css`에 `.pipeline-sheet-items` 규칙 추가.
+- `reporting/tests.py`: 신규 `test_weekly_api_shows_items_label_for_quote_and_delivery_activities` — 견적/납품 일정의 DeliveryItem, History가 일정에 연결된 경우의 fallback, 레거시 자유 텍스트 fallback까지 모두 검증. 기존 엑셀 export 테스트를 새 컬럼 인덱스(품목=8, 상황/내용=9, 0-based)에 맞춰 갱신.
+
+**DB change required**: No.
+
+**검증**: `py_compile`/`manage.py check`/`makemigrations --check --dry-run`("No changes detected") 통과 → `PipelineSheetApiTests` 14개 전부 PASS → `tsc --noEmit` 클린 → `npm run build` 성공 → 로컬 Django+Vite 브라우저로 직접 확인(e2e_salesman 로그인, 견적/납품 일정에 DeliveryItem을 심어 화면과 엑셀 다운로드 모두에서 "분광광도계 1EA", "원심분리기 2대, 로터 1EA" 형태로 정확히 표시되는 것을 확인 후 테스트 데이터 정리) → 전체 백엔드 회귀 493개, 실패 4건은 이전과 동일한 기존 무관 결함(세션 저장 기본값/VAT 모드 폼/부서분석 문구/익명유저 엑셀 익스포트)으로 회귀 없음.
+
+**Deploy**: Done. Commit `ce1fc0d` on `origin/main`. Railway `web` deploy `190dc28c-e669-4809-baf7-20bea81ffe25` SUCCESS, `sales-note-frontend` deploy `ac560969-5131-4c22-939f-b23f178259ff` SUCCESS. `post_deploy_smoke.py` → **ok (29/29 PASS)**.
+
+---
+
 ## 2026-08-01 파이프라인 시트: 견적 전환 탭 제거 + 미접촉 계정 → 견적/납품 금액
 
 **Background**: 사용자 요청 2건. (1) "파이프라인 시트에서 견적 전환을 아예 없앨거야 없애버려" — 견적 전환 탭을 프론트/백엔드/엑셀/테스트 전부에서 완전 제거. (2) "미접촉 계정을 싹다 없애고 미접촉 계정 위치에 견적 금액, 미접촉 금액 위치에 납품 금액 넣자 — 현재 선택한 기간의 금액이 반영되면 됨" — 미접촉 계정 경고 블록 + 관련 메트릭 카드 2개를 삭제하고 그 자리에 선택한 주(week_start~week_end)의 견적/납품 금액 합계를 넣음.
