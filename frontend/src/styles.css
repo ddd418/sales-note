@@ -12725,10 +12725,29 @@ tbody tr:hover {
 }
 
 .pipeline-sheet-items {
-  min-width: 160px;
-  max-width: 260px;
-  font-weight: 600;
+  min-width: 120px;
+  max-width: 220px;
   overflow-wrap: anywhere;
+}
+
+.pipeline-sheet-items-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pipeline-sheet-items-detail {
+  margin-top: 6px;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 12px;
 }
 
 .pipeline-sheet-body {

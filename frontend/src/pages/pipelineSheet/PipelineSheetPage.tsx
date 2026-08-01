@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarRange, Download, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CalendarRange, ChevronDown, ChevronRight, Download, Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   loadPipelineSheetWeekly,
@@ -119,12 +119,43 @@ function ActivityCell({ activity, field, edit, display, placeholder }: ActivityC
   );
 }
 
+function itemsActivityKey(activity: PipelineSheetActivity): string {
+  return `${activity.kind}-${activity.id}`;
+}
+
+type ItemsCellProps = {
+  activity: PipelineSheetActivity;
+  expanded: boolean;
+  onToggle: (key: string) => void;
+};
+
+function ItemsCell({ activity, expanded, onToggle }: ItemsCellProps) {
+  if (!activity.itemsLabel) {
+    return <>-</>;
+  }
+  return (
+    <>
+      <button
+        className="pipeline-sheet-items-toggle"
+        onClick={() => onToggle(itemsActivityKey(activity))}
+        type="button"
+      >
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        품목
+      </button>
+      {expanded ? <div className="pipeline-sheet-items-detail">{activity.itemsLabel}</div> : null}
+    </>
+  );
+}
+
 type WeeklyAccountBlockProps = {
   row: PipelineSheetWeeklyRow;
   edit: ActivityEditBundle;
+  expandedItems: Set<string>;
+  onToggleItems: (key: string) => void;
 };
 
-function WeeklyAccountBlock({ row, edit }: WeeklyAccountBlockProps) {
+function WeeklyAccountBlock({ row, edit, expandedItems, onToggleItems }: WeeklyAccountBlockProps) {
   return (
     <tbody className="pipeline-sheet-account">
       <tr className="pipeline-sheet-account-head">
@@ -146,7 +177,13 @@ function WeeklyAccountBlock({ row, edit }: WeeklyAccountBlockProps) {
             <small>{activity.weekday}</small>
           </td>
           <td className="pipeline-sheet-type">{activity.type}</td>
-          <td className="pipeline-sheet-items">{activity.itemsLabel || '-'}</td>
+          <td className="pipeline-sheet-items">
+            <ItemsCell
+              activity={activity}
+              expanded={expandedItems.has(itemsActivityKey(activity))}
+              onToggle={onToggleItems}
+            />
+          </td>
           <td className="pipeline-sheet-body">
             <ActivityCell
               activity={activity}
@@ -196,6 +233,19 @@ export function PipelineSheetPage() {
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
+  const toggleItems = useCallback((key: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   const refreshWeekly = useCallback(async () => {
     setLoading(true);
@@ -385,7 +435,15 @@ export function PipelineSheetPage() {
               </tr>
             </tbody>
           ) : weekly?.rows.length ? (
-            weekly.rows.map((row) => <WeeklyAccountBlock edit={activityEdit} key={row.accountKey} row={row} />)
+            weekly.rows.map((row) => (
+              <WeeklyAccountBlock
+                edit={activityEdit}
+                expandedItems={expandedItems}
+                key={row.accountKey}
+                onToggleItems={toggleItems}
+                row={row}
+              />
+            ))
           ) : (
             <tbody>
               <tr>
