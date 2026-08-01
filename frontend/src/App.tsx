@@ -1421,11 +1421,10 @@ const routeMeta: Record<
   pipelineSheet: {
     eyebrow: 'Sales CRM / Pipeline Sheet',
     title: '파이프라인 시트',
-    summary: '계정별 주간 활동과 누적 견적 전환을 한 장에서 보고, 다음 주 계획을 세웁니다.',
+    summary: '계정별 주간 활동과 이번 주 견적·납품 금액을 한 장에서 보고, 다음 주 계획을 세웁니다.',
     primaryHref: '/pipeline-sheet/',
     primaryLabel: '시트 보기',
     actions: [
-      { label: '견적 전환', href: '/pipeline-sheet/?tab=quotes' },
       { label: '파이프라인', href: '/pipeline/' },
     ],
   },

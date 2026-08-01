@@ -562,7 +562,6 @@ urlpatterns = [
     ), name='funnel_detail'),
     path('api/pipeline/', funnel_views.pipeline_command_center_api, name='pipeline_command_center_api'),
     path('api/pipeline-sheet/weekly/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_weekly_api'), name='pipeline_sheet_weekly_api'),
-    path('api/pipeline-sheet/quotes/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_quotes_api'), name='pipeline_sheet_quotes_api'),
     path('api/pipeline-sheet/export/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_export_api'), name='pipeline_sheet_export_api'),
     path('api/revenue-detail/', lazy_view('reporting.api.revenue_detail.revenue_detail_api'), name='revenue_detail_api'),
     path('api/pipeline-sheet/activities/<str:kind>/<int:activity_id>/update/', lazy_view('reporting.api.pipeline_sheet.pipeline_sheet_activity_update_api'), name='pipeline_sheet_activity_update_api'),

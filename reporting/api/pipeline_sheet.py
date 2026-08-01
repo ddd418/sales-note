@@ -1,14 +1,8 @@
 """파이프라인 시트 API — 한 장으로 보고하고 계획하는 영업 시트.
 
-두 개의 탭을 한 메뉴에서 제공한다.
-
-- **탭1 주간 활동(보고용)**: 계정별로 그 주에 있었던 활동을 모아 보여준다.
-  위에서 아래로 읽으면 그대로 "저번주에 누구를 방문해서 이러이러했습니다"가 된다.
-  맨 위에 파이프라인 잔량과 *이번 주 활동이 없는 주요 계정*을 함께 실어, 다음 주
-  계획이 시트에서 바로 나오게 한다.
-- **탭2 견적 전환(전략용, 누적)**: 계정별로 지금까지 나간 견적이 얼마나 납품으로
-  이어졌는지 본다. 전환율 0%인데 금액이 큰 계정, 오래 방치된 견적이 드러나는 것이
-  이 탭의 목적이다.
+계정별로 그 주에 있었던 활동을 모아 보여준다(보고용). 위에서 아래로 읽으면
+그대로 "저번주에 누구를 방문해서 이러이러했습니다"가 된다. 맨 위에는 이번 주
+견적/납품 금액 합계를 실어, 그 주에 실제로 움직인 돈이 바로 보이게 한다.
 
 기간 규칙: 이 회사의 한 주는 **월요일~금요일(5영업일)**이며, 주는 오직 그 주의
 월요일 날짜로 식별한다(ISO 주차 개념을 쓰지 않는다). 이 규칙은 제거된 주간보고
@@ -43,9 +37,6 @@ from reporting.funnel_views import (
     _select_pipeline_pricing,
     pipeline_followups_queryset,
 )
-from reporting.services.account_ledger import (
-    account_operational_ledgers_for_followups,
-)
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -60,9 +51,6 @@ from reporting.views import (
 WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
 
 STAGE_LABELS = {key: label for key, label, *_ in PIPELINE_STAGES}
-OPEN_STAGES = {'potential', 'contact', 'quote', 'negotiation'}
-# 만료/거절/취소된 견적은 이미 끝난 건이라 "미결"로 세지 않는다.
-DEAD_QUOTE_STATUSES = {'rejected', 'expired', 'cancelled'}
 
 
 def week_bounds(reference=None):
@@ -201,7 +189,7 @@ def _schedule_activity(schedule, viewer):
     }
 
 
-# --------------------------------------------------------- 탭1 그리드 인라인 수정
+# --------------------------------------------------------- 그리드 인라인 수정
 # "그 자리에서" 고칠 수 있어야 시트가 보고서 초안이 아니라 진짜 보고 도구가 된다.
 
 def _write_activity_body(history, text):
@@ -217,7 +205,7 @@ def _write_activity_body(history, text):
 @never_cache
 @require_http_methods(["POST"])
 def pipeline_sheet_activity_update_api(request, kind, activity_id):
-    """탭1 그리드 셀 인라인 수정 — 영업노트 본문/장애물/다음액션/예정일, 일정 메모.
+    """그리드 셀 인라인 수정 — 영업노트 본문/장애물/다음액션/예정일, 일정 메모.
 
     화면이 쓰는 `_history_activity`/`_schedule_activity`를 그대로 재사용해
     응답을 만든다. 목록 재조회 없이도 행을 갱신할 수 있게 하기 위함이다.
@@ -334,7 +322,7 @@ def _scope_payload(request, user_profile, scope_users, selected_user):
     }
 
 
-# =============================================================== 탭1: 주간 활동
+# =============================================================== 주간 활동 집계
 
 def _weekly_rows(request, week_start, week_end, base_rows):
     """계정별 행에 그 주의 활동을 붙인다."""
@@ -371,10 +359,19 @@ def _weekly_rows(request, week_start, week_end, base_rows):
         Prefetch('delivery_items_set', queryset=DeliveryItem.objects.order_by('id'),
                  to_attr='linked_delivery_items'),
     ).order_by('visit_date', 'visit_time')
+    # 이번 주 견적/납품 금액 합계 — 요약 카드용. 손대지 못한 계정 대신 이걸 보여준다.
+    quote_amount_total = 0
+    delivery_amount_total = 0
     for schedule in schedules:
         key = contact_to_account.get(schedule.followup_id)
-        if key in buckets:
-            buckets[key].append(_schedule_activity(schedule, request.user))
+        if key not in buckets:
+            continue
+        activity = _schedule_activity(schedule, request.user)
+        buckets[key].append(activity)
+        if schedule.activity_type == 'quote':
+            quote_amount_total += activity['amount']
+        elif schedule.activity_type == 'delivery':
+            delivery_amount_total += activity['amount']
 
     rows = []
     for row in base_rows:
@@ -390,7 +387,7 @@ def _weekly_rows(request, week_start, week_end, base_rows):
             'nextActionDate': latest_next['nextActionDate'] if latest_next else None,
             'hasObstacle': any(a['obstacle'] for a in activities),
         })
-    return rows
+    return rows, quote_amount_total, delivery_amount_total
 
 
 def _weekly_payload(request):
@@ -401,17 +398,10 @@ def _weekly_payload(request):
     week_end = week_start + timedelta(days=4)
 
     base_rows = _account_rows(request, today)
-    rows = _weekly_rows(request, week_start, week_end, base_rows)
+    rows, quote_amount_total, delivery_amount_total = _weekly_rows(request, week_start, week_end, base_rows)
 
     active = [r for r in rows if r['activityCount'] > 0]
     active.sort(key=lambda r: (-r['activityCount'], -r['amount'], r['company']))
-
-    # 계획의 핵심: 금액은 큰데 이번 주에 손대지 못한 계정.
-    untouched = [
-        r for r in rows
-        if r['activityCount'] == 0 and r['amount'] > 0 and r['stage'] in OPEN_STAGES
-    ]
-    untouched.sort(key=lambda r: -r['amount'])
 
     stage_totals = {key: {'count': 0, 'amount': 0} for key, *_ in PIPELINE_STAGES}
     for row in rows:
@@ -435,177 +425,11 @@ def _weekly_payload(request):
         'stages': _stage_definitions(),
         'stageTotals': stage_totals,
         'rows': active,
-        'untouchedAccounts': [
-            {
-                'accountKey': r['accountKey'],
-                'company': r['company'],
-                'department': r['department'],
-                'stage': r['stage'],
-                'stageLabel': r['stageLabel'],
-                'amount': r['amount'],
-                'href': r['href'],
-            }
-            for r in untouched[:12]
-        ],
         'metrics': {
             'activeAccounts': len(active),
             'totalActivities': sum(r['activityCount'] for r in active),
-            'untouchedCount': len(untouched),
-            'untouchedAmount': sum(r['amount'] for r in untouched),
-        },
-    }
-
-
-# ============================================================ 탭2: 견적 전환
-
-def _quote_rows(request, base_rows):
-    """계정별 누적 견적 -> 납품 전환.
-
-    계정 원장을 쓴다. 고객상세/계정 화면과 같은 계산을 공유해야 숫자가 갈리지
-    않는다. 견적서(Quote)와 견적 일정(Schedule) 양쪽 모두 원장이 전환 여부를
-    실어주므로(각각 `converted_to_delivery`, `purchase_confirmed`) 둘을 함께
-    센다.
-    """
-    user_profile = get_user_profile(request.user)
-    scope_users, _selected = _dashboard_scope_users(request, user_profile)
-
-    contact_ids = [cid for row in base_rows for cid in row['_contactIds']]
-    followups = pipeline_followups_queryset(request).filter(id__in=contact_ids)
-    ledgers = account_operational_ledgers_for_followups(
-        list(followups),
-        scope_users,
-        actor=request.user,
-        record_limit=None,
-    )
-
-    today = timezone.localdate()
-    rows = []
-    for row in base_rows:
-        ledger = ledgers.get(row['accountKey']) or {}
-        quote_records = ledger.get('quoteRecords') or []
-        if not quote_records:
-            continue
-
-        quotes = []
-        for record in quote_records:
-            amount = int(record.get('totalAmount') or 0)
-            converted = bool(record.get('converted_to_delivery'))
-            raw_date = record.get('date')
-            age = None
-            if raw_date:
-                try:
-                    age = (today - date.fromisoformat(raw_date)).days
-                except (TypeError, ValueError):
-                    age = None
-            quotes.append({
-                'id': record.get('id'),
-                'recordType': record.get('recordType'),
-                'number': record.get('quoteNumber') or '',
-                'date': raw_date,
-                'amount': amount,
-                'status': record.get('status') or '',
-                'statusLabel': record.get('statusLabel') or '',
-                'converted': converted,
-                'ageDays': age,
-                'source': record.get('source') or '',
-                'href': record.get('href') or '',
-            })
-
-        quotes.sort(key=lambda q: (q['date'] or '', q['id'] or 0), reverse=True)
-        quote_count = len(quotes)
-        quote_amount = sum(q['amount'] for q in quotes)
-        converted_quotes = [q for q in quotes if q['converted']]
-        converted_count = len(converted_quotes)
-        converted_amount = sum(q['amount'] for q in converted_quotes)
-        open_quotes = [q for q in quotes if not q['converted']]
-        pending = [q for q in open_quotes if (q['status'] or '') not in DEAD_QUOTE_STATUSES]
-        dead = [q for q in open_quotes if (q['status'] or '') in DEAD_QUOTE_STATUSES]
-        latest = quotes[0] if quotes else None
-
-        rows.append({
-            **{k: v for k, v in row.items() if not k.startswith('_')},
-            'quoteCount': quote_count,
-            'quoteAmount': quote_amount,
-            'convertedCount': converted_count,
-            'convertedAmount': converted_amount,
-            'conversionRate': round(converted_count / quote_count * 100) if quote_count else 0,
-            'conversionAmountRate': round(converted_amount / quote_amount * 100) if quote_amount else 0,
-            'pendingCount': len(pending),
-            'pendingAmount': sum(q['amount'] for q in pending),
-            'deadCount': len(dead),
-            'latestQuoteDate': latest['date'] if latest else None,
-            'latestQuoteAgeDays': latest['ageDays'] if latest else None,
-            'quotes': quotes,
-        })
-    return rows
-
-
-QUOTE_SORTS = {
-    'conversion': lambda r: (r['conversionRate'], -r['quoteAmount']),
-    'quoteAmount': lambda r: -r['quoteAmount'],
-    'convertedAmount': lambda r: -r['convertedAmount'],
-    'quoteCount': lambda r: -r['quoteCount'],
-    'pendingAmount': lambda r: -r['pendingAmount'],
-    'stale': lambda r: -(r['latestQuoteAgeDays'] or 0),
-}
-
-
-def _quotes_payload(request):
-    user_profile = get_user_profile(request.user)
-    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
-    today = timezone.localdate()
-
-    base_rows = _account_rows(request, today)
-    rows = _quote_rows(request, base_rows)
-
-    quick = (request.GET.get('filter') or '').strip()
-    if quick == 'zero':
-        rows = [r for r in rows if r['conversionRate'] == 0]
-    elif quick == 'pending':
-        rows = [r for r in rows if r['pendingCount'] > 0]
-    elif quick == 'dead':
-        rows = [r for r in rows if r['deadCount'] > 0]
-
-    query = (request.GET.get('q') or '').strip().lower()
-    if query:
-        rows = [
-            r for r in rows
-            if query in f"{r['company']} {r['department']} {r['contact']}".lower()
-        ]
-
-    sort_key = (request.GET.get('sort') or 'conversion').strip()
-    rows.sort(key=QUOTE_SORTS.get(sort_key, QUOTE_SORTS['conversion']))
-
-    total_quotes = sum(r['quoteCount'] for r in rows)
-    total_quote_amount = sum(r['quoteAmount'] for r in rows)
-    total_converted = sum(r['convertedCount'] for r in rows)
-    total_converted_amount = sum(r['convertedAmount'] for r in rows)
-
-    return {
-        'success': True,
-        'source': 'django',
-        'generatedAt': timezone.now().isoformat(),
-        'scope': _scope_payload(request, user_profile, scope_users, selected_user),
-        'filters': {'filter': quick, 'query': query, 'sort': sort_key},
-        'sortOptions': [
-            {'value': 'conversion', 'label': '전환율 낮은 순'},
-            {'value': 'quoteAmount', 'label': '견적금액 큰 순'},
-            {'value': 'convertedAmount', 'label': '전환금액 큰 순'},
-            {'value': 'quoteCount', 'label': '견적건수 많은 순'},
-            {'value': 'pendingAmount', 'label': '미결금액 큰 순'},
-            {'value': 'stale', 'label': '오래 방치된 순'},
-        ],
-        'rows': rows,
-        'metrics': {
-            'accounts': len(rows),
-            'quoteCount': total_quotes,
-            'quoteAmount': total_quote_amount,
-            'convertedCount': total_converted,
-            'convertedAmount': total_converted_amount,
-            'conversionRate': round(total_converted / total_quotes * 100) if total_quotes else 0,
-            'conversionAmountRate': (
-                round(total_converted_amount / total_quote_amount * 100) if total_quote_amount else 0
-            ),
+            'quoteAmount': quote_amount_total,
+            'deliveryAmount': delivery_amount_total,
         },
     }
 
@@ -616,22 +440,11 @@ def _quotes_payload(request):
 @ensure_csrf_cookie
 @require_http_methods(["GET"])
 def pipeline_sheet_weekly_api(request):
-    """탭1 — 계정별 주간 활동."""
+    """계정별 주간 활동."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
     return JsonResponse(_weekly_payload(request))
-
-
-@never_cache
-@ensure_csrf_cookie
-@require_http_methods(["GET"])
-def pipeline_sheet_quotes_api(request):
-    """탭2 — 계정별 누적 견적 전환."""
-    auth_response = _api_login_required_response(request)
-    if auth_response:
-        return auth_response
-    return JsonResponse(_quotes_payload(request))
 
 
 # ================================================================ XLSX 내보내기
@@ -670,7 +483,7 @@ def _style_sheet(ws, widths, money_columns=(), rate_columns=()):
 
 
 def _write_weekly_sheet(wb, weekly):
-    """탭1 — 활동 1건이 한 행. 위에서 아래로 읽으면 그게 곧 보고다."""
+    """활동 1건이 한 행. 위에서 아래로 읽으면 그게 곧 보고다."""
     ws = wb.active
     ws.title = '주간 활동'
     ws.append([
@@ -701,76 +514,18 @@ def _write_weekly_sheet(wb, weekly):
     )
 
 
-def _write_untouched_sheet(wb, weekly):
-    """계획용 — 금액은 큰데 그 주에 손대지 못한 계정."""
-    ws = wb.create_sheet(title='미접촉 계정')
-    ws.append(['업체/학교', '부서/연구실', '단계', '금액'])
-    for item in weekly['untouchedAccounts']:
-        ws.append([
-            item['company'],
-            item['department'],
-            item['stageLabel'],
-            item['amount'] or 0,
-        ])
-    _style_sheet(ws, widths=[24, 24, 14, 16], money_columns=(4,))
-
-
-def _write_quotes_sheet(wb, quotes):
-    """탭2 — 계정별 누적 견적 전환."""
-    ws = wb.create_sheet(title='견적 전환')
-    ws.append([
-        '업체/학교', '부서/연구실', '담당자', '영업담당',
-        '견적건수', '견적금액', '전환건수', '전환금액',
-        '전환율(건)', '전환율(금액)', '미결건수', '미결금액', '종료건수',
-        '최근 견적일', '경과일',
-    ])
-    for row in quotes['rows']:
-        ws.append([
-            row['company'],
-            row['department'],
-            row['contact'],
-            row['owner'],
-            row['quoteCount'],
-            row['quoteAmount'] or 0,
-            row['convertedCount'],
-            row['convertedAmount'] or 0,
-            row['conversionRate'],
-            row['conversionAmountRate'],
-            row['pendingCount'],
-            row['pendingAmount'] or 0,
-            row['deadCount'],
-            row['latestQuoteDate'] or '',
-            row['latestQuoteAgeDays'] if row['latestQuoteAgeDays'] is not None else '',
-        ])
-    _style_sheet(
-        ws,
-        widths=[24, 24, 18, 12, 10, 16, 10, 16, 12, 14, 10, 16, 10, 14, 10],
-        money_columns=(6, 8, 12),
-        rate_columns=(9, 10),
-    )
-
-
-def _write_info_sheet(wb, request, weekly, quotes):
+def _write_info_sheet(wb, request, weekly):
     ws = wb.create_sheet(title='다운로드 정보')
     week = weekly['week']
     wm = weekly['metrics']
-    qm = quotes['metrics']
     for row in [
         ('보고서', '파이프라인 시트'),
         ('주간 활동 기간', f"{week['start']} ~ {week['end']}"),
         ('범위', weekly['scope']['label']),
         ('활동 있는 계정', wm['activeAccounts']),
         ('총 활동 건수', wm['totalActivities']),
-        ('미접촉 계정', wm['untouchedCount']),
-        ('미접촉 금액', wm['untouchedAmount']),
-        ('견적 전환 기준', '전체 누적'),
-        ('견적 계정 수', qm['accounts']),
-        ('견적 건수', qm['quoteCount']),
-        ('견적 금액', qm['quoteAmount']),
-        ('전환 건수', qm['convertedCount']),
-        ('전환 금액', qm['convertedAmount']),
-        ('전환율(건)', f"{qm['conversionRate']}%"),
-        ('전환율(금액)', f"{qm['conversionAmountRate']}%"),
+        ('이번 주 견적 금액', wm['quoteAmount']),
+        ('이번 주 납품 금액', wm['deliveryAmount']),
         ('생성일시', timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M')),
         ('생성자', _user_display_name(request.user)),
     ]:
@@ -797,13 +552,10 @@ def pipeline_sheet_export_api(request):
         return auth_response
 
     weekly = _weekly_payload(request)
-    quotes = _quotes_payload(request)
 
     wb = Workbook()
     _write_weekly_sheet(wb, weekly)
-    _write_untouched_sheet(wb, weekly)
-    _write_quotes_sheet(wb, quotes)
-    _write_info_sheet(wb, request, weekly, quotes)
+    _write_info_sheet(wb, request, weekly)
 
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
