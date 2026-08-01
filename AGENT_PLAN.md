@@ -1,5 +1,22 @@
 # AGENT_PLAN.md
 
+## 2026-08-01 파이프라인 시트: 품목 목록을 토글로 접기
+
+**Background**: 사용자 요청 — "수주나 견적한거 품목은 숨겨져있다가 열어야 보이는 것으로 하자". 바로 앞 배포에서 견적/납품 활동 행에 품목을 항상 펼쳐서 보여줬더니 그리드가 번잡해졌다는 피드백. 백엔드가 이미 계산해 내려주는 `itemsLabel`은 그대로 두고, 프론트에서만 기본 접힘 + 클릭 시 펼침으로 바꾼다.
+
+**Scope**: 순수 프론트엔드 변경, 백엔드/API 계약 변경 없음.
+- `frontend/src/pages/pipelineSheet/PipelineSheetPage.tsx`: `expandedItems`(Set<string>, 키는 `${kind}-${id}`) 상태와 `toggleItems` 핸들러를 `PipelineSheetPage`에 추가. 신규 `ItemsCell` 컴포넌트 — `itemsLabel`이 없으면 `-`, 있으면 "품목" 토글 버튼(ChevronRight/ChevronDown 아이콘)만 보이고, 펼친 상태일 때만 실제 품목 텍스트를 버튼 아래 보여준다. `WeeklyAccountBlock`에 `expandedItems`/`onToggleItems`를 props로 통과.
+- `frontend/src/styles.css`: `.pipeline-sheet-items-toggle`(알약 모양 버튼), `.pipeline-sheet-items-detail`(펼쳤을 때 품목 텍스트) 추가, `.pipeline-sheet-items` 너비를 토글 버튼에 맞게 축소.
+- 엑셀 내보내기는 그대로 둠 — 다운로드는 펼쳐보는 상호작용이 없는 정적 문서라 항상 전체 품목이 보이는 편이 맞다고 판단.
+
+**DB change required**: No.
+
+**검증**: `tsc --noEmit` 클린 → `npm run build` 성공 → 로컬 Django+Vite 브라우저로 확인(e2e_salesman 로그인, 견적/납품 일정에 DeliveryItem을 심어 기본 상태에서는 "품목" 버튼만 보이고 클릭하면 "분광광도계 1EA" 같은 실제 품목이 펼쳐지는 것, 다시 클릭하면 접히는 것까지 확인 후 테스트 데이터 정리). 백엔드 변경이 없어 Django 회귀 스윕은 생략.
+
+**Deploy**: Done. Commit `e64a8ec` on `origin/main`. Railway `web` deploy `593ceaec-ff59-47ba-9dae-b4ca844af369` SUCCESS, `sales-note-frontend` deploy `c6f85f5a-47ff-40ca-b787-1e59e49d82e5` SUCCESS. `post_deploy_smoke.py` → **ok (29/29 PASS)**.
+
+---
+
 ## 2026-08-01 파이프라인 시트: 견적/납품 활동에 품목 표시
 
 **Background**: 사용자 요청 — "파이프라인 시트에서 납품 일정 및 견적 일정에서는 어떤 품목을 했는지 명확하게 나와야함". 활동 그리드에는 그동안 일정 메모(`notes`)만 보였고, 실제로 어떤 품목(DeliveryItem)이 견적/납품됐는지는 계정 상세 화면을 따로 열어야만 알 수 있었다.
