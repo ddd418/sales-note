@@ -1,5 +1,26 @@
 # AGENT_PLAN.md
 
+## 2026-08-01 파이프라인 시트: 견적 전환 탭 제거 + 미접촉 계정 → 견적/납품 금액
+
+**Background**: 사용자 요청 2건. (1) "파이프라인 시트에서 견적 전환을 아예 없앨거야 없애버려" — 견적 전환 탭을 프론트/백엔드/엑셀/테스트 전부에서 완전 제거. (2) "미접촉 계정을 싹다 없애고 미접촉 계정 위치에 견적 금액, 미접촉 금액 위치에 납품 금액 넣자 — 현재 선택한 기간의 금액이 반영되면 됨" — 미접촉 계정 경고 블록 + 관련 메트릭 카드 2개를 삭제하고 그 자리에 선택한 주(week_start~week_end)의 견적/납품 금액 합계를 넣음.
+
+**Scope**:
+- `reporting/api/pipeline_sheet.py`: `_quote_rows`/`_quotes_payload`/`pipeline_sheet_quotes_api`/`_write_untouched_sheet`/`_write_quotes_sheet` 전부 삭제. `_weekly_rows`가 quote/delivery 타입 Schedule의 `_schedule_amount()`를 그 주 안에서 누적해 `quoteAmount`/`deliveryAmount`로 반환(기존 미접촉 계산 로직 대체). `_weekly_payload`에서 `untouchedAccounts` 제거, `metrics`를 `{activeAccounts, totalActivities, quoteAmount, deliveryAmount}`로 변경.
+- `reporting/urls.py`: `pipeline_sheet_quotes_api` 라우트 제거.
+- `frontend/src/api/pipelineSheet.ts`: 견적 전환 관련 타입/함수 전부 삭제, `pipelineSheetExportHref`를 단일 인자로 단순화, `metrics`/`PipelineSheetWeeklyData` 타입을 새 필드로 갱신.
+- `frontend/src/pages/pipelineSheet/PipelineSheetPage.tsx`: 탭 스위처 및 견적 전환 UI 전체 제거(이미 이전 세션에서 진행), 이번 세션에서 메트릭 카드 2개를 "견적 금액"/"납품 금액"으로 교체하고 미접촉 계정 경고 블록 삭제.
+- `frontend/src/App.tsx`: `routeMeta.pipelineSheet.actions`에서 "견적 전환" 링크 제거, summary 문구 갱신.
+- `frontend/src/styles.css`: 견적 전환 탭/미접촉 경고 전용 CSS(`pipeline-sheet-untouched*`, `pipeline-sheet-filters`, `pipeline-sheet-chip*`, `pipeline-sheet-quotes-table*`, `pipeline-sheet-account-cell`, `pipeline-sheet-expand`, `pipeline-sheet-rate*`, `pipeline-sheet-quote-detail*`) 삭제.
+- `reporting/tests.py` `PipelineSheetApiTests`: `quotes_url`/`_quote` 픽스처와 견적 전환 테스트 5개, 미접촉 계정 테스트 삭제. 신규 `test_weekly_api_reports_quote_and_delivery_amount_for_the_week` 추가(quote 타입 Schedule의 `expected_revenue`, delivery 타입 Schedule의 `DeliveryItem`이 각각 `metrics.quoteAmount`/`deliveryAmount`에 정확히 반영되는지 검증). 엑셀 export 테스트를 2-시트(`주간 활동`, `다운로드 정보`) 기준으로 갱신.
+
+**DB change required**: No.
+
+**검증**: `py_compile` 통과 → `manage.py check`/`makemigrations --check --dry-run`("No changes detected") → `PipelineSheetApiTests` 13개 전부 PASS → `tsc --noEmit` 클린 → `npm run build` 성공 → 전체 백엔드 회귀 492개, 실패 4건 전부 이번 변경 전부터 있던 기존 무관 결함(세션 저장 기본값/VAT 모드 폼/부서분석 문구/익명유저 엑셀 익스포트)과 동일 — 회귀 없음.
+
+**Deploy**: Done. Commit `136ace7` on `origin/main`. Railway `web` deploy `459be752-af23-41e8-9b82-32533b5e6497` SUCCESS, `sales-note-frontend` deploy `c420850c-73f6-4e52-b6f8-8f67a2fdcba6` SUCCESS. `post_deploy_smoke.py` → **ok (29/29 PASS)**.
+
+---
+
 ## 2026-07-27 메뉴 가지치기 (7개 기능 완전 제거) — 전체 계획
 
 **Background**: 사용자가 대시보드형 UI 대신 "엑셀 파이프라인 한 장 시트" 스타일 신규 메뉴를 만들기로 함. 그 전에 사이드바 20개 메뉴 중 7개(현황/장비/서비스/업무/메일/명함/AI)를 프론트+백엔드 모두 완전히 제거하기로 확정(라우트/뷰/URL/네비/화면 전부 삭제). **DB 테이블은 끝까지 안 건드림** — `reporting` 앱 내 모델(AIWorkspace*/CustomerAsset·ServiceCase·CalibrationRecord/EmailLog·BusinessCard 등)은 클래스 정의만 남기고(고아 상태, 마이그레이션 드랍 없음) 뷰/URL/화면만 제거. 완전히 독립된 `todos` 앱은 통째로 삭제(마이그레이션 관리 대상에서 빠질 뿐 테이블은 안 지워짐).
