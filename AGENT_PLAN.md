@@ -1,5 +1,22 @@
 # AGENT_PLAN.md
 
+## 2026-08-04 파이프라인 보드: 칸반 카드에서 다음 액션 원문 제거
+
+**Background**: 사용자 요청 — "파이프라인에서 카드는 깔끔해야함 지저분한 기록 뜨는거 없어야함". 두 차례 `AskUserQuestion`으로 범위를 좁힘: (1) 상세패널 "최근 활동" 목록이 아니라 보드 위 칸반 카드 자체, (2) 카드에 찍히는 여러 항목 중 영업담당자가 직접 적은 자유서식 "다음 액션" 문장(`deal.nextAction`)이 "지저분한 기록"의 정체.
+
+**Scope**: 순수 프론트엔드 변경, 백엔드/API 계약 변경 없음.
+- `frontend/src/App.tsx`의 `DealCard` 컴포넌트(칸반 카드)에서 `<p>{deal.nextAction}</p>`를 제거. 큐레이션된 `attentionReason`("견적 이력 · 예정 일정" 같은 태그 요약)은 그대로 유지 — 이건 raw 텍스트가 아니라 서버가 만든 짧은 요약이라 지저분해 보이지 않음.
+- `deal.nextAction` 필드 자체는 백엔드(`funnel_views.py`)에서 계속 내려주고, 리스트뷰(`<td>{deal.nextAction}</td>`)와 상세 패널(`<strong>{deal.nextAction}</strong>`)에서는 그대로 보이므로 정보 손실 없음 — 보드 카드에서만 뺀 것.
+- `frontend/src/styles.css`: `.deal-card` 안에 다른 `<p>`가 없어 죽은 코드가 된 `.deal-card p` 규칙 2개 삭제.
+
+**DB change required**: No.
+
+**검증**: `tsc --noEmit` 클린 → `npm run build` 성공 → 로컬 Django+Vite 브라우저로 확인(e2e_salesman 로그인, `/pipeline/` 접속, 수주 단계 카드에서 다음 액션 문장이 사라지고 "견적 이력" 같은 attentionReason만 남는 것, `document.querySelectorAll('.deal-card')`로 `<p>` 태그가 전부 없어진 것을 직접 확인). 백엔드 변경이 없어 Django 회귀 스윕은 생략.
+
+**Deploy**: Done. Commit `5416588` on `origin/main`. Railway `web` deploy `dded5fee-7f52-44dd-bc80-102b5604afa6` SUCCESS, `sales-note-frontend` deploy `46491953-fafe-4bf2-8ac9-4dc6e55a64b4` SUCCESS. `post_deploy_smoke.py` → **ok (29/29 PASS)**.
+
+---
+
 ## 2026-08-01 파이프라인 시트: 품목 목록을 토글로 접기
 
 **Background**: 사용자 요청 — "수주나 견적한거 품목은 숨겨져있다가 열어야 보이는 것으로 하자". 바로 앞 배포에서 견적/납품 활동 행에 품목을 항상 펼쳐서 보여줬더니 그리드가 번잡해졌다는 피드백. 백엔드가 이미 계산해 내려주는 `itemsLabel`은 그대로 두고, 프론트에서만 기본 접힘 + 클릭 시 펼침으로 바꾼다.
