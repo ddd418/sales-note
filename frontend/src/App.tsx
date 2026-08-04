@@ -132,6 +132,7 @@ import {
   loadSchedulesData,
   loadPipelineData,
   moveDealStage,
+  updateDealProbability,
   hideDealCard,
   unhideDealCard,
   toggleEmployeeActive,
@@ -14018,6 +14019,102 @@ function HiddenCardsPanel({
   );
 }
 
+function ProbabilityEditor({
+  deal,
+  canEdit,
+  saving,
+  error,
+  message,
+  onSave,
+}: {
+  deal: Deal;
+  canEdit: boolean;
+  saving: boolean;
+  error: string;
+  message: string;
+  onSave: (deal: Deal, probability: number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [inputError, setInputError] = useState('');
+
+  const startEdit = () => {
+    setValue(deal.probability !== null && deal.probability !== undefined ? String(deal.probability) : '');
+    setInputError('');
+    setEditing(true);
+  };
+  const cancelEdit = () => {
+    setEditing(false);
+    setInputError('');
+  };
+  const save = () => {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      onSave(deal, null);
+      setEditing(false);
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+      setInputError('0~100 사이의 숫자를 입력하세요.');
+      return;
+    }
+    onSave(deal, Math.round(parsed));
+    setEditing(false);
+  };
+
+  if (!canEdit) {
+    return null;
+  }
+
+  if (!editing) {
+    return (
+      <div className="probability-edit-row">
+        <button className="probability-edit-trigger" onClick={startEdit} type="button">
+          <Pencil size={13} />
+          확률 수정
+        </button>
+        {deal.probabilityOverridden ? (
+          <button className="probability-reset" onClick={() => onSave(deal, null)} type="button">
+            자동 계산으로 되돌리기
+          </button>
+        ) : null}
+        {message ? <small className="move-status success">{message}</small> : null}
+        {error ? <small className="move-status error">{error}</small> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="probability-edit-box">
+      <input
+        autoFocus
+        max={100}
+        min={0}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            save();
+          } else if (event.key === 'Escape') {
+            cancelEdit();
+          }
+        }}
+        type="number"
+        value={value}
+      />
+      <span>%</span>
+      <button disabled={saving} onClick={save} type="button">
+        {saving ? '저장중' : '저장'}
+      </button>
+      <button disabled={saving} onClick={cancelEdit} type="button">
+        취소
+      </button>
+      {inputError ? <small className="move-status error">{inputError}</small> : null}
+    </div>
+  );
+}
+
 function DetailPanel({
   deal,
   stages,
@@ -14030,6 +14127,10 @@ function DetailPanel({
   removing,
   removeError,
   removeMessage,
+  probabilitySaving,
+  probabilityError,
+  probabilityMessage,
+  onUpdateProbability,
 }: {
   deal?: Deal;
   stages: StageSummary[];
@@ -14042,6 +14143,10 @@ function DetailPanel({
   removing: boolean;
   removeError: string;
   removeMessage: string;
+  probabilitySaving: boolean;
+  probabilityError: string;
+  probabilityMessage: string;
+  onUpdateProbability: (deal: Deal, probability: number | null) => void;
 }) {
   if (!deal) {
     return (
@@ -14160,6 +14265,14 @@ function DetailPanel({
         <div className="progress-track">
           <div style={{ width: `${dealProbabilityPercent(deal.probability)}%` }} />
         </div>
+        <ProbabilityEditor
+          canEdit={canMove}
+          deal={deal}
+          error={probabilityError}
+          message={probabilityMessage}
+          onSave={onUpdateProbability}
+          saving={probabilitySaving}
+        />
       </div>
       {sidebarQuote ? (
         <div className="detail-box quote pipeline-quote-summary">
@@ -14479,6 +14592,9 @@ export function App() {
   const [removeError, setRemoveError] = useState('');
   const [removeMessage, setRemoveMessage] = useState('');
   const [restoringDealId, setRestoringDealId] = useState<number | null>(null);
+  const [probabilityDealId, setProbabilityDealId] = useState<number | null>(null);
+  const [probabilityError, setProbabilityError] = useState('');
+  const [probabilityMessage, setProbabilityMessage] = useState('');
   const scheduleCalendarRange = useMemo(() => getScheduleCalendarRange(scheduleCalendarMonth), [scheduleCalendarMonth]);
 
   useEffect(() => {
@@ -15152,6 +15268,23 @@ export function App() {
       setMoveError(error instanceof Error ? error.message : '단계 변경에 실패했습니다.');
     } finally {
       setMovingDealId(null);
+    }
+  };
+  const handleUpdateProbability = async (deal: Deal, probability: number | null) => {
+    if (pipelineData.source !== 'django') {
+      return;
+    }
+    setProbabilityDealId(deal.id);
+    setProbabilityError('');
+    setProbabilityMessage('');
+    try {
+      await updateDealProbability(deal.id, probability);
+      await refreshPipelineData(deal.id);
+      setProbabilityMessage(probability === null ? '자동 계산 확률로 되돌렸습니다.' : '확률이 저장되었습니다.');
+    } catch (error) {
+      setProbabilityError(error instanceof Error ? error.message : '확률 저장에 실패했습니다.');
+    } finally {
+      setProbabilityDealId(null);
     }
   };
   const handleRemoveDeal = async (deal: Deal) => {
@@ -16624,6 +16757,10 @@ export function App() {
             removing={Boolean(visibleSelectedDeal && removingDealId === visibleSelectedDeal.id)}
             removeError={removeError}
             removeMessage={removeMessage}
+            probabilitySaving={Boolean(visibleSelectedDeal && probabilityDealId === visibleSelectedDeal.id)}
+            probabilityError={probabilityError}
+            probabilityMessage={probabilityMessage}
+            onUpdateProbability={handleUpdateProbability}
           />
         )}
       </div>

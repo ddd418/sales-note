@@ -441,7 +441,12 @@ class FollowUp(models.Model):
         verbose_name="파이프라인 숨김",
         help_text="True이면 파이프라인 보드에서 카드를 숨김(데이터는 보존, 복원 가능)"
     )
-    
+    pipeline_probability_override = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name="파이프라인 확률 수동 입력",
+        help_text="설정하면 견적/일정 기반 자동 계산 확률보다 우선 적용됨(0~100)",
+    )
+
     # AI 기반 고객 등급 시스템
     customer_grade = models.CharField(
         max_length=10, 

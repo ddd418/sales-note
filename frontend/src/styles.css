@@ -9732,6 +9732,70 @@ tbody tr:hover {
   background: var(--gradient-primary);
 }
 
+.probability-edit-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.probability-edit-trigger,
+.probability-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.probability-edit-trigger:hover,
+.probability-reset:hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
+.probability-edit-box {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.probability-edit-box input {
+  width: 64px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.probability-edit-box span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.probability-edit-box button {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.probability-edit-box button:not(:disabled):hover {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+}
+
 .tag-row {
   display: flex;
   flex-wrap: wrap;

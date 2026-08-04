@@ -7026,6 +7026,30 @@ export async function moveDealStage(dealId: number, stage: PipelineStage): Promi
   }
 }
 
+export async function updateDealProbability(dealId: number, probability: number | null): Promise<void> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/funnel/api/pipeline-probability/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ followup_id: dealId, probability }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Pipeline probability API unavailable: ${response.status}`);
+  }
+  const payload = (await response.json()) as PipelineMoveResponse;
+  redirectIfLoginRequired(response, payload);
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || `Pipeline probability update failed: ${response.status}`);
+  }
+}
+
 async function setPipelineHidden(url: string, dealId: number): Promise<void> {
   const csrfToken = getCookie('csrftoken');
   const response = await fetch(url, {

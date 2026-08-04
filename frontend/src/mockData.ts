@@ -34,6 +34,7 @@ export type Deal = {
   stageLabel?: string;
   value: number;
   probability: number | null;
+  probabilityOverridden?: boolean;
   nextAction: string;
   due: string;
   risk: 'low' | 'medium' | 'high';

@@ -10736,7 +10736,13 @@ class PipelineApiTests(TestCase):
         self.assertEqual(deal['quoteComparison']['deltaRate'], 400.0)
         self.assertEqual(deal['quoteComparison']['status'], 'over')
 
-    def test_pipeline_api_groups_same_department_contacts_into_account_deal(self):
+    def test_pipeline_api_keeps_same_department_followups_as_separate_deals(self):
+        """부서가 같아도 건(FollowUp)마다 카드가 따로 나와야 한다 — 부서 단위로 합치지 않는다.
+
+        예: 같은 연구실에 이미 수주한 건과 새로 시작한 견적 건이 같이 있으면
+        둘 다 각자의 카드로 보여야 한다(예전에는 '수주'가 대표로 뽑혀 나머지가
+        묻혔다).
+        """
         from reporting.models import FollowUp
 
         professor = self._create_pipeline_customer(self.user, '같은연구실교수', stage='quote')
@@ -10757,27 +10763,28 @@ class PipelineApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        account_deals = [
-            deal
-            for deal in payload['deals']
-            if deal['accountType'] == 'department' and deal['accountId'] == professor.department_id
-        ]
-        self.assertEqual(len(account_deals), 1)
-        deal = account_deals[0]
-        self.assertEqual(deal['id'], researcher.id)
-        self.assertEqual(deal['stage'], 'won')
-        self.assertEqual(deal['value'], 184800)
-        self.assertEqual(deal['latestQuote']['source'], '실제 납품 매출')
-        self.assertEqual(deal['latestQuote']['basisType'], 'delivery')
-        self.assertEqual(deal['quoteComparison']['quotedAmount'], 184800)
-        self.assertEqual(deal['quoteComparison']['actualAmount'], 184800)
-        self.assertEqual(deal['contactCount'], 2)
-        self.assertCountEqual(deal['contactIds'], [professor.id, researcher.id])
-        self.assertIn('김종환 연구원', deal['contact'])
-        self.assertIn('외 1명', deal['contact'])
+        deal_ids = {deal['id'] for deal in payload['deals']}
+        self.assertIn(professor.id, deal_ids)
+        self.assertIn(researcher.id, deal_ids)
+
+        professor_deal = next(deal for deal in payload['deals'] if deal['id'] == professor.id)
+        researcher_deal = next(deal for deal in payload['deals'] if deal['id'] == researcher.id)
+        self.assertEqual(professor_deal['stage'], 'quote')
+        self.assertEqual(researcher_deal['stage'], 'won')
+        self.assertEqual(researcher_deal['value'], 184800)
+        self.assertEqual(researcher_deal['latestQuote']['source'], '실제 납품 매출')
+        self.assertEqual(researcher_deal['latestQuote']['basisType'], 'delivery')
+        self.assertEqual(researcher_deal['contactCount'], 1)
+        self.assertEqual(professor_deal['contactCount'], 1)
+        # accountKey는 이제 건(FollowUp) 단위 — 부서가 같아도 겹치면 안 된다.
+        self.assertEqual(professor_deal['accountKey'], f'followup:{professor.id}')
+        self.assertEqual(researcher_deal['accountKey'], f'followup:{researcher.id}')
+        self.assertNotEqual(professor_deal['accountKey'], researcher_deal['accountKey'])
+
         stages = {stage['id']: stage for stage in payload['stages']}
         self.assertEqual(stages['won']['count'], 1)
-        self.assertEqual(payload['metrics']['activeCount'], 1)
+        self.assertEqual(stages['quote']['count'], 1)
+        self.assertEqual(payload['metrics']['activeCount'], 2)
 
     def test_pipeline_api_marks_potential_overflow_after_top_ten(self):
         for index in range(12):
@@ -10813,7 +10820,8 @@ class PipelineApiTests(TestCase):
         self.assertEqual(schedule.activity_type, 'quote')
         self.assertEqual(schedule.status, 'scheduled')
 
-    def test_pipeline_move_updates_same_department_followup_stages(self):
+    def test_pipeline_move_only_updates_the_moved_followup(self):
+        """카드는 건 단위다 — 같은 부서의 다른 건은 드래그해도 같이 움직이면 안 된다."""
         from reporting.models import FollowUp
 
         followup = self._create_pipeline_customer(self.user, '계정이동고객', stage='potential')
@@ -10835,13 +10843,13 @@ class PipelineApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()['success'])
-        self.assertEqual(response.json()['updatedCount'], 2)
+        self.assertEqual(response.json()['updatedCount'], 1)
         followup.refresh_from_db()
         related.refresh_from_db()
         self.assertEqual(followup.pipeline_stage, 'quote')
-        self.assertEqual(related.pipeline_stage, 'quote')
+        self.assertEqual(related.pipeline_stage, 'contact')
         self.assertTrue(followup.pipeline_manually_set)
-        self.assertTrue(related.pipeline_manually_set)
+        self.assertFalse(related.pipeline_manually_set)
 
     def test_pipeline_move_rejects_invalid_stage(self):
         followup = self._create_pipeline_customer(self.user, '잘못된단계', stage='potential')
@@ -10872,6 +10880,96 @@ class PipelineApiTests(TestCase):
         self.assertFalse(response.json()['success'])
         followup.refresh_from_db()
         self.assertEqual(followup.pipeline_stage, 'potential')
+
+    # ------------------------------------------------------------ 확률 수동 입력
+
+    def test_pipeline_probability_override_wins_over_automatic_calculation(self):
+        followup = self._create_pipeline_customer(self.user, '확률오버라이드', stage='quote')
+        self.client.force_login(self.user)
+        probability_url = reverse('reporting:funnel_pipeline_probability')
+
+        response = self.client.post(
+            probability_url,
+            data=json.dumps({'followup_id': followup.id, 'probability': 42}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(response.json()['probability'], 42)
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_probability_override, 42)
+
+        board_response = self.client.get(self.url)
+        deal = next(deal for deal in board_response.json()['deals'] if deal['id'] == followup.id)
+        self.assertEqual(deal['probability'], 42)
+        self.assertTrue(deal['probabilityOverridden'])
+
+    def test_pipeline_probability_clear_reverts_to_automatic(self):
+        followup = self._create_pipeline_customer(self.user, '확률해제', stage='quote')
+        followup.pipeline_probability_override = 77
+        followup.save(update_fields=['pipeline_probability_override'])
+        self.client.force_login(self.user)
+        probability_url = reverse('reporting:funnel_pipeline_probability')
+
+        response = self.client.post(
+            probability_url,
+            data=json.dumps({'followup_id': followup.id, 'probability': None}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertIsNone(response.json()['probability'])
+        followup.refresh_from_db()
+        self.assertIsNone(followup.pipeline_probability_override)
+
+        board_response = self.client.get(self.url)
+        deal = next(deal for deal in board_response.json()['deals'] if deal['id'] == followup.id)
+        self.assertFalse(deal['probabilityOverridden'])
+
+    def test_pipeline_probability_rejects_out_of_range(self):
+        followup = self._create_pipeline_customer(self.user, '확률범위', stage='quote')
+        self.client.force_login(self.user)
+        probability_url = reverse('reporting:funnel_pipeline_probability')
+
+        response = self.client.post(
+            probability_url,
+            data=json.dumps({'followup_id': followup.id, 'probability': 150}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+        followup.refresh_from_db()
+        self.assertIsNone(followup.pipeline_probability_override)
+
+    def test_pipeline_probability_requires_login(self):
+        followup = self._create_pipeline_customer(self.user, '확률로그인', stage='quote')
+        probability_url = reverse('reporting:funnel_pipeline_probability')
+
+        response = self.client.post(
+            probability_url,
+            data=json.dumps({'followup_id': followup.id, 'probability': 50}),
+            content_type='application/json',
+        )
+
+        self.assertIn(response.status_code, [301, 302, 401])
+
+    def test_pipeline_probability_rejects_manager(self):
+        followup = self._create_pipeline_customer(self.user, '확률매니저차단', stage='quote')
+        self.client.force_login(self.manager)
+        probability_url = reverse('reporting:funnel_pipeline_probability')
+
+        response = self.client.post(
+            probability_url,
+            data=json.dumps({'followup_id': followup.id, 'probability': 50}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        followup.refresh_from_db()
+        self.assertIsNone(followup.pipeline_probability_override)
 
 
 class SchedulePipelineBackfillCommandTests(TestCase):
@@ -13000,6 +13098,19 @@ class PipelineHideCardTests(TestCase):
     def test_manager_cannot_hide(self):
         self.client.force_login(self.manager)
         self.assertEqual(self._post('reporting:funnel_pipeline_hide').status_code, 403)
+
+    def test_hide_only_affects_the_targeted_followup_not_the_whole_department(self):
+        """카드는 건 단위다 — 같은 부서의 다른 건은 숨기면 같이 숨겨지면 안 된다."""
+        sibling = FollowUp.objects.create(
+            user=self.owner, customer_name='같은부서다른건',
+            company=self.company, department=self.department,
+        )
+        self.client.force_login(self.owner)
+        self.assertEqual(self._post('reporting:funnel_pipeline_hide').status_code, 200)
+        self.followup.refresh_from_db()
+        sibling.refresh_from_db()
+        self.assertTrue(self.followup.pipeline_hidden)
+        self.assertFalse(sibling.pipeline_hidden)
 
     def test_inactive_contact_does_not_dominate_account_stage(self):
         # 같은 계정: 활성 견적 연락처 + 비활성 수주 연락처 → 계정 단계는 '견적'(수주가 지배 X).

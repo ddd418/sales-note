@@ -1595,6 +1595,18 @@ def _actual_delivery_revenue(followup):
 
 
 def _select_pipeline_pricing(followup, stage):
+    """자동 계산된 가격 정보 위에 영업담당이 직접 입력한 확률(override)을 얹는다.
+
+    override는 계정(건) 속성이라 이 함수를 쓰는 모든 화면(파이프라인 보드,
+    파이프라인 시트)에 똑같이 반영돼야 한다 — 화면마다 확률이 갈라지면 안 됨.
+    """
+    pricing = _select_pipeline_pricing_impl(followup, stage)
+    if followup.pipeline_probability_override is not None:
+        pricing = {**pricing, 'probability': followup.pipeline_probability_override}
+    return pricing
+
+
+def _select_pipeline_pricing_impl(followup, stage):
     """
     Return the object and amount that should drive the pipeline card value.
 
@@ -1860,9 +1872,14 @@ def pipeline_command_center_api(request):
     stage_overdue_counts = {stage_key: 0 for stage_key, *_ in PIPELINE_STAGES}
     deals = []
 
-    for account_followups in _pipeline_account_groups(followups):
-        stage = _pipeline_account_stage(account_followups)
-        fu = _pipeline_account_followup(account_followups, stage)
+    # 카드는 건(FollowUp) 하나당 하나다 — 부서로 합치지 않는다. 같은 부서에
+    # 이미 끝난 건(수주/실주)과 새로 시작한 건(잠재~협상)이 같이 있어도 둘 다
+    # 그대로 보여야 한다(부서 단위로 합치면 "가장 나중 단계"만 남아 새 건이
+    # 묻혀버림). `_pipeline_account_groups`(부서 그룹핑)는 파이프라인 시트가
+    # 그대로 쓰므로 여기서는 우회만 하고 공유 헬퍼 자체는 건드리지 않는다.
+    for raw_followup in followups:
+        stage = _pipeline_account_stage([raw_followup])
+        fu = _pipeline_account_followup([raw_followup], stage)
         next_schedule = fu.upcoming_schedules[0] if fu.upcoming_schedules else None
         last_history = fu.all_histories[0] if fu.all_histories else None
         pricing = _select_pipeline_pricing(fu, stage)
@@ -1936,9 +1953,15 @@ def pipeline_command_center_api(request):
             stage, pricing_amount > 0, next_schedule, last_history, has_overdue_action, today
         )
 
+        metadata = _pipeline_account_metadata(fu)
+        # 부서가 있으면 metadata의 accountKey가 department:<id>가 되는데, 이제
+        # 한 부서에 카드가 여러 개 동시에 있을 수 있어 그대로 두면 React
+        # key/카드 식별이 충돌한다 — 건(FollowUp) 단위로 강제한다.
+        metadata['accountKey'] = f'followup:{fu.id}'
+
         deal = {
             'id': fu.id,
-            **_pipeline_account_metadata(fu),
+            **metadata,
             'company': str(fu.company) if fu.company else fu.customer_name or '고객명 미정',
             'contact': _pipeline_contact_label(fu),
             'department': str(fu.department) if fu.department else '',
@@ -1947,6 +1970,7 @@ def pipeline_command_center_api(request):
             'stageLabel': dict(FollowUp.PIPELINE_STAGE_CHOICES).get(stage, stage),
             'value': _money_int(pricing_amount),
             'probability': int(probability) if probability is not None else None,
+            'probabilityOverridden': fu.pipeline_probability_override is not None,
             'nextAction': next_action[:80],
             'due': _date_label(due_date, today),
             'risk': risk,
@@ -1995,7 +2019,7 @@ def pipeline_command_center_api(request):
     overdue_count = sum(1 for deal in deals if deal['risk'] == 'high')
     contact_count = sum(1 for deal in deals if deal['stage'] == 'contact')
 
-    # 숨긴 카드(복원 패널용) — 계정(부서) 단위로 대표 하나씩.
+    # 숨긴 카드(복원 패널용) — 카드가 건 단위이므로 복원도 건 단위로 한다.
     hidden_seen = set()
     hidden_deals = []
     hidden_followups = (
@@ -2005,7 +2029,7 @@ def pipeline_command_center_api(request):
         .order_by('company__name', 'customer_name')
     )
     for hf in hidden_followups:
-        key = f'dept:{hf.department_id}' if hf.department_id else f'fu:{hf.id}'
+        key = f'fu:{hf.id}'
         if key in hidden_seen:
             continue
         hidden_seen.add(key)
@@ -2064,10 +2088,8 @@ def funnel_pipeline_move(request):
         if not fu:
             return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
 
-        if fu.department_id:
-            targets = accessible.filter(department_id=fu.department_id)
-        else:
-            targets = accessible.filter(pk=fu.pk)
+        # 카드는 건 단위다 — 같은 부서의 다른 건까지 같이 옮기지 않는다.
+        targets = accessible.filter(pk=fu.pk)
 
         updated_count = targets.update(
             pipeline_stage=new_stage,
@@ -2075,6 +2097,42 @@ def funnel_pipeline_move(request):
             updated_at=timezone.now(),
         )
         return JsonResponse({'success': True, 'updatedCount': updated_count})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def funnel_pipeline_probability(request):
+    """카드의 영업담당 확률(수동 override)을 설정하거나 해제한다."""
+    try:
+        # Manager는 파이프라인 카드 이동 불가 (뷰어 권한) — 확률 수정도 같은 정책.
+        profile = _get_user_profile(request.user)
+        if profile.is_manager():
+            return JsonResponse({'success': False, 'error': '권한이 없습니다. Manager는 파이프라인 카드를 변경할 수 없습니다.'}, status=403)
+
+        data = json.loads(request.body)
+        followup_id = data.get('followup_id')
+        raw_probability = data.get('probability')
+
+        accessible = _get_accessible_followups(request.user, request)
+        fu = accessible.filter(pk=followup_id).first()
+        if not fu:
+            return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+        if raw_probability is None:
+            fu.pipeline_probability_override = None
+        else:
+            try:
+                probability = int(raw_probability)
+            except (TypeError, ValueError):
+                return JsonResponse({'success': False, 'error': '확률은 숫자여야 합니다.'}, status=400)
+            if not (0 <= probability <= 100):
+                return JsonResponse({'success': False, 'error': '확률은 0~100 사이여야 합니다.'}, status=400)
+            fu.pipeline_probability_override = probability
+
+        fu.save(update_fields=['pipeline_probability_override'])
+        return JsonResponse({'success': True, 'probability': fu.pipeline_probability_override})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
@@ -2188,14 +2246,14 @@ def funnel_pipeline_sync(request):
 @login_required
 @require_POST
 def funnel_pipeline_hide(request):
-    """카드를 파이프라인 보드에서 숨김(데이터 보존, 복원 가능). 부서 그룹 전체 적용."""
+    """카드를 파이프라인 보드에서 숨김(데이터 보존, 복원 가능). 건 단위 적용."""
     return _funnel_pipeline_set_hidden(request, True)
 
 
 @login_required
 @require_POST
 def funnel_pipeline_unhide(request):
-    """숨긴 카드를 파이프라인 보드에 복원. 부서 그룹 전체 적용."""
+    """숨긴 카드를 파이프라인 보드에 복원. 건 단위 적용."""
     return _funnel_pipeline_set_hidden(request, False)
 
 
@@ -2215,10 +2273,8 @@ def _funnel_pipeline_set_hidden(request, hidden):
         if not fu:
             return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
 
-        if fu.department_id:
-            targets = accessible.filter(department_id=fu.department_id)
-        else:
-            targets = accessible.filter(pk=fu.pk)
+        # 카드는 건 단위다 — 같은 부서의 다른 건까지 같이 숨기지/복원하지 않는다.
+        targets = accessible.filter(pk=fu.pk)
 
         updated_count = targets.update(pipeline_hidden=hidden, updated_at=timezone.now())
         return JsonResponse({'success': True, 'updatedCount': updated_count, 'hidden': hidden})
