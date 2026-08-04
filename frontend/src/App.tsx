@@ -13751,7 +13751,6 @@ function DealCard({ deal, selected, onSelect }: { deal: Deal; selected: boolean;
           <span>견적일 {quoteDateLabel}</span>
         </div>
       ) : null}
-      <p>{deal.nextAction}</p>
       {deal.attentionReason ? <small className="attention-reason">{deal.attentionReason}</small> : null}
       <div className="deal-meta">
         <span>{deal.owner}</span>

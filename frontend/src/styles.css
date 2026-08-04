@@ -9043,15 +9043,9 @@ h2 {
 }
 
 .deal-contact,
-.deal-meta,
-.deal-card p {
+.deal-meta {
   color: var(--muted);
   font-size: 12px;
-}
-
-.deal-card p {
-  margin: 0;
-  line-height: 1.45;
 }
 
 .attention-reason {
