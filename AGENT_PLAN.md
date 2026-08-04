@@ -1,5 +1,29 @@
 # AGENT_PLAN.md
 
+## 2026-08-04 파이프라인 보드: 카드를 건(deal) 단위로 분리 + 확률 수동 입력
+
+**Background**: 사용자 요청 — "수주에 건국대학교 김지훈이 있는데 나중에 같은 김지훈이랑 다른 협상을 또 할 수도 있으니 카드가 두 개여도 된다. 잠재에서 김지훈이 빠져도 접촉미팅에 또 들어갈 수 있게." + "확률(%)도 파이프라인에서 직접 수정/추가할 수 있게 하자."
+
+조사 결과 파이프라인 보드는 FollowUp을 **부서(연구실) 단위**로 그룹핑해 카드 하나로 합치고(`_pipeline_account_key`가 `department_id`로 그룹핑), 같은 부서에 단계가 다른 FollowUp이 여러 개 있으면 `PIPELINE_ACCOUNT_STAGE_PRIORITY`가 항상 가장 나중 단계(수주 등)를 대표로 뽑아 하나의 카드로만 보여주고 있었다 — 그래서 이미 수주한 건과 같은 연구실의 새 건이 카드 하나에 묻혔다. 드래그 이동/숨김도 부서 전체의 FollowUp을 한꺼번에 옮기는 부작용이 있었다(`funnel_pipeline_move`/`_funnel_pipeline_set_hidden`).
+
+`AskUserQuestion`으로 두 가지를 확정: (1) 카드 분리 방식은 "아예 안 합치기 — 팔로우업(건)마다 카드 1개씩"(부서 단위 자동 병합 완전 폐지), (2) 확률 저장 위치는 "팔로우업에 '영업담당 확률' 필드 새로 추가"(견적/일정 자동 계산값보다 항상 우선).
+
+**Scope**:
+- `reporting/funnel_views.py` `pipeline_command_center_api`: 메인 루프를 `_pipeline_account_groups(followups)` 대신 `followups`를 직접 순회하도록 변경, 기존 헬퍼(`_pipeline_account_stage`/`_pipeline_account_followup`/`_pipeline_account_metadata`)는 원소 1개짜리 리스트로 그대로 재사용(수정 없음). `accountKey`만 `followup:{id}`로 강제 — 부서가 같아도 카드 식별이 겹치지 않게.
+- **중요한 제약**: `_pipeline_account_groups`/`_pipeline_account_key`(공유 헬퍼) 자체는 건드리지 않음 — 파이프라인 시트(`reporting/api/pipeline_sheet.py`)가 그대로 부서 단위로 묶어서 보여주는 기존 동작을 유지해야 하기 때문. 보드에서만 그룹핑을 우회.
+- `funnel_pipeline_move`/`_funnel_pipeline_set_hidden`(숨김/복원): "부서 전체에 적용" 분기를 제거하고 항상 대상 FollowUp 하나만 업데이트. 숨긴 카드 복원 패널 dedup 키도 `fu:{id}` 고정.
+- `FollowUp.pipeline_probability_override`(nullable, 0~100) 필드 추가(마이그레이션 `0124_followup_pipeline_probability_override`). `_select_pipeline_pricing`을 얇은 wrapper로 바꿔 override가 있으면 자동 계산 확률 위에 덮어씀 — 이 함수는 파이프라인 시트도 쓰므로 두 화면 모두 일관되게 반영됨.
+- 신규 API `funnel_pipeline_probability`(`POST /reporting/funnel/api/pipeline-probability/`) — `funnel_pipeline_move`와 동일한 패턴(로그인 필요, manager 차단, 0~100 검증, `probability: null`이면 override 해제).
+- 프론트: `Deal.probabilityOverridden` 타입 추가, `updateDealProbability` API 함수, `DetailPanel`의 "수주 가능성" 블록에 `ProbabilityEditor`(클릭 편집 + "자동 계산으로 되돌리기") 추가.
+
+**DB change required**: Yes. `reporting.0124_followup_pipeline_probability_override` — `FollowUp`에 nullable `PositiveSmallIntegerField` 추가만 하는 단순 마이그레이션(백필 없음, 컬럼 추가 즉시 반영).
+
+**검증**: `py_compile`/`manage.py check`/`makemigrations --check --dry-run`("No changes detected") 통과 → `PipelineApiTests`(26개, 카드 분리·이동 스코프·확률 override 신규 테스트 포함) + `PipelineHideCardTests`(건 단위 숨김 신규 테스트 포함) + `PipelineSheetApiTests`(14개, 영향 없음 재확인) 전부 PASS → `tsc --noEmit` 클린 → `npm run build` 성공 → 로컬 Django+Vite 브라우저로 실제 확인: 같은 부서(건국대학교 화학과 연구실)에 수주 건 + 잠재 건을 심어 보드에 카드 2개로 정확히 분리되어 뜨는 것, 잠재 카드만 드래그해서 접촉/미팅으로 옮겨도 수주 카드는 그대로인 것(DB 직접 조회로 확인), 확률 수정 → 저장 → 카드/상세패널 숫자 즉시 반영, "자동 계산으로 되돌리기"로 원래 값 복구까지 전부 확인 후 테스트 데이터 정리 → 전체 백엔드 회귀 499개, 실패 4건은 기존 무관 결함(전과 동일)으로 회귀 없음.
+
+**Deploy**: Done. Commit `110ca90` on `origin/main`. Railway `web` deploy `1717b068-9302-4bd2-8bbb-cf7580e06c4a` SUCCESS(배포 로그에 `Applying reporting.0124_followup_pipeline_probability_override... OK` 확인), `sales-note-frontend` deploy `1f026068-3599-40a6-a55a-a985d45cde48` SUCCESS. `post_deploy_smoke.py` → **ok (29/29 PASS)**.
+
+---
+
 ## 2026-08-04 파이프라인 보드: 칸반 카드에서 다음 액션 원문 제거
 
 **Background**: 사용자 요청 — "파이프라인에서 카드는 깔끔해야함 지저분한 기록 뜨는거 없어야함". 두 차례 `AskUserQuestion`으로 범위를 좁힘: (1) 상세패널 "최근 활동" 목록이 아니라 보드 위 칸반 카드 자체, (2) 카드에 찍히는 여러 항목 중 영업담당자가 직접 적은 자유서식 "다음 액션" 문장(`deal.nextAction`)이 "지저분한 기록"의 정체.
