@@ -1,5 +1,37 @@
 # AGENT_PLAN.md
 
+## 2026-08-08 Railway 비용 누수 점검 및 정리
+
+**Background**: 사용자 요청 — "railway 비용 누수가 있는지 확인해보고 쓸데없는 비용누수가 확인되면 개선해줘".
+
+네 서비스(web/Postgres/sales-note-frontend/salesnote-mcp) 전부 CPU는 거의 0, 메모리는 0.07~0.17GB로 런타임 자체는 이미 최소 수준. 실제 낭비는 **빌드 쪽**에 있었다.
+
+**발견 1 (수정함) — 프론트만 바뀐 커밋이 web을 통째로 재빌드**:
+루트 `railway.toml`의 web `watchPatterns`에 `/frontend/**`가 들어 있어, 프론트만 바뀐 커밋에도 Django 이미지(nix로 libreoffice·unoconv·nodejs_23·나눔폰트 설치 + pip install + `npm ci --include=optional` + vite build)를 다시 만들고 프로덕션 web을 재시작(+`manage.py migrate` 재실행)해 왔다. 최근 web 빌드 12건을 git과 대조한 결과 **3건(ffb74af, e64a8ec, 5416588)이 전부 `frontend/`만 변경**된 헛빌드였다(25%). 비용보다 **매 프론트 배포마다 프로덕션 Django가 재시작되던 안정성 문제가 더 컸다**.
+
+- 조치: web `watchPatterns`에서 `/frontend/**` 제거. 근거를 주석으로 남김 — web 이미지도 SPA를 서빙하지만, **백엔드가 그대로인 동안 web이 이전 SPA를 들고 있는 건 "직전 릴리스" 조합이라 그 자체로 정상 동작**하고, 백엔드가 바뀌는 순간 web이 재빌드되며 최신 SPA를 같이 가져간다. 사용자 진입점(안드로이드 앱·README)은 `sales-note-frontend`다.
+- 검증: 이후 배포에서 프론트 서비스가 백엔드 전용 커밋(450ea8e)을 정확히 SKIPPED 처리 — watchPatterns 분리가 양방향으로 동작함을 확인.
+
+**발견 2 (수정함) — 죽은 환경변수 7개**:
+- `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` — 메일 메뉴 제거(Phase 5) 때 남은 찌꺼기. gmail OAuth 라우트도, `settings.GMAIL_*` 소비 코드도 전혀 없음(grep 확인). `REDIRECT_URI`는 **존재하지도 않는 옛 호스트**(`web-production-5096`, 실제는 `web-production-8a820`)를 가리키고 있었다.
+- `SCHEDULED_EMAIL_INLINE_WORKER` — 코드 어디에도 없음.
+- `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` — `settings.py`는 dispatcher라 Railway에서는 `settings_production`을 import하는데, 거기엔 cloudinary가 INSTALLED_APPS에도 없고 `DEFAULT_FILE_STORAGE`는 `FileSystemStorage`, `MEDIA_ROOT='/data/media'`(볼륨). cloudinary 분기는 로컬 dev 전용이고 그마저 `USE_CLOUDINARY`(미설정, 기본 false)로 꺼져 있다.
+- 조치: `railway variable delete`로 7개 삭제(38→31). 대응하는 죽은 `GMAIL_*` settings 읽기도 `settings.py`/`settings_production.py`에서 제거.
+
+**DB change required**: No.
+
+**남긴 것 / 사용자 확인 사항**:
+- `salesnote-mcp` 서비스는 **유지**. 사용자가 claude.ai에서 "오늘 있었던 일 영업노트에 써줘" 식으로 쓰는 경로가 이 서비스의 `salesnote_write` 도구다(Claude Code 세션의 `salesnote-readonly`는 읽기 전용이라 별개). access_log를 끈 설계라 트래픽 로그로는 확인이 안 되니 로그만 보고 지우면 안 됨.
+- web/frontend가 SPA를 **동일 번들 해시로 중복 서빙** 중. web에서 SPA를 빼고 리다이렉트하면 빌드가 더 가벼워지지만, 안드로이드 앱·북마크 진입 경로를 건드리는 변경이라 이득 대비 위험이 커서 보류(사용자도 보류 선택).
+- 구글 클라우드 콘솔의 Gmail OAuth 클라이언트는 아직 살아있음 — 기능이 없어졌으니 거기서도 삭제 권장.
+- `cloudinary==1.41.0`, `django-cloudinary-storage==0.3.0`이 `requirements.txt`에 남아 프로덕션에 설치되지만 로드되지 않음(로컬 dev INSTALLED_APPS에서만 참조). 제거하면 이미지가 조금 더 가벼워짐 — 미조치.
+
+**검증**: `py_compile` → `manage.py check`(0 issues) → 로컬/프로덕션 settings 모듈 import 확인 → 배포 후 `post_deploy_smoke.py` 전항목 PASS, `/healthz/`·`/readyz/` 200.
+
+**Deploy**: Done. Commit `530025e`(watchPatterns) + `450ea8e`(죽은 GMAIL settings 제거) on `origin/main`. Railway `web` deploy `6502272b-c061-4aaf-9cb0-fbb4b1254079`, `a4cb4f9e-944e-4cf2-a38b-8fa21f35c441` 둘 다 SUCCESS. `sales-note-frontend`는 두 커밋 모두 SKIPPED(백엔드 전용 변경이라 정상). 환경변수 7개 삭제는 `railway variable delete`로 반영. `post_deploy_smoke.py` → **ok (전항목 PASS)**.
+
+---
+
 ## 2026-08-04 파이프라인 보드: 카드를 건(deal) 단위로 분리 + 확률 수동 입력
 
 **Background**: 사용자 요청 — "수주에 건국대학교 김지훈이 있는데 나중에 같은 김지훈이랑 다른 협상을 또 할 수도 있으니 카드가 두 개여도 된다. 잠재에서 김지훈이 빠져도 접촉미팅에 또 들어갈 수 있게." + "확률(%)도 파이프라인에서 직접 수정/추가할 수 있게 하자."
