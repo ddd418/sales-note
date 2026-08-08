@@ -297,11 +297,6 @@ FRONTEND_PIPELINE_URL = os.environ.get(
 )
 FRONTEND_DIST_DIR = Path(os.environ.get('FRONTEND_DIST_DIR', BASE_DIR / 'frontend' / 'dist'))
 
-# Gmail API 설정
-GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
-GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
-GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI')
-
 # 이메일 비밀번호 암호화 키 (IMAP/SMTP)
 # Railway 환경변수 EMAIL_ENCRYPTION_KEY 에 Fernet 키를 설정해야 합니다.
 # 키 생성: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

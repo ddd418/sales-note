@@ -135,11 +135,6 @@ else:
     DATA_UPLOAD_MAX_MEMORY_SIZE = 26214400  # 25MB
     FILE_UPLOAD_MAX_MEMORY_SIZE = 26214400  # 25MB
     
-    # Gmail API 설정
-GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID')
-GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET')
-GMAIL_REDIRECT_URI = os.environ.get('GMAIL_REDIRECT_URI')
-
 # 이메일 비밀번호 암호화 키 (IMAP/SMTP)
 _email_encryption_key_raw = os.environ.get('EMAIL_ENCRYPTION_KEY')
 if _email_encryption_key_raw:
