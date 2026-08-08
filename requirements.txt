@@ -23,12 +23,6 @@ tzdata==2024.1
 urllib3==2.2.3
 whitenoise==6.9.0
 
-# Gmail API 연동
-google-auth==2.34.0
-google-auth-oauthlib==1.2.1
-google-auth-httplib2==0.2.0
-google-api-python-client==2.147.0
-
 # IMAP/SMTP 이메일 암호화
 cryptography==43.0.3
 
@@ -39,9 +33,12 @@ redis==5.2.0
 # OpenAI (AI PainPoint 분석)
 openai>=1.68.0
 
-# Cloudinary (미디어 파일 스토리지)
+# Cloudinary 스토리지는 더는 쓰지 않는다(업로드는 /data 볼륨 + FileSystemStorage).
+# 그런데 마이그레이션 0067/0072 가 모듈 로드 시점에 `import cloudinary.models` 를 하고,
+# 프로덕션은 부팅할 때마다 `manage.py migrate` 를 돌린다 — 이 패키지를 빼면 앱이 아예
+# 안 뜬다. 두 마이그레이션을 손대는 건 이미 적용된 이력을 고치는 일이라 위험 대비
+# 이득이 없어 패키지만 남겨 둔다. django-cloudinary-storage 는 참조가 없어 제거함.
 cloudinary==1.41.0
-django-cloudinary-storage==0.3.0
 
 # HTML Sanitizer (주간보고 리치 텍스트 에디터 서버 사이드 정화)
 bleach==6.2.0
