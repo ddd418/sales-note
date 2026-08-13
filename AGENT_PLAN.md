@@ -1,5 +1,25 @@
 # AGENT_PLAN.md
 
+## 2026-08-14 영업노트: 노트 날짜가 "다음 일정" 날짜로 끌려가던 문제 수정
+
+**Background**: 사용자 보고 — "영업노트에서 다음일정을 27년도로 잡으면 소팅할때 27년도로 잡혀서 검색하기가 애매함. 영업노트 적을 때 자동으로 지금 일자로 저장되게 하고(어차피 다음일정은 일정기록에 남으니까) 소팅도 그렇게 되게하자."
+
+원인은 `notes_create_api`(views.py). 노트를 저장하면 `next_action_date` 로 후속 미팅 `Schedule` 을 자동 생성한 뒤, **그 미래 일정을 노트의 `history.schedule` 로 걸어버리고** 있었다. 그러면 노트가 자기 작성일 대신 미래 일정 날짜를 갖게 되는데, 목록의 `sort_date`(`schedule__visit_date` 우선)와 표시용 `activity_date`(`_notes_history_payload`)가 둘 다 그 날짜를 쓰므로 노트가 2027/2028년으로 표시·정렬됐다. 기본 조회 구간이 "최근 한 달~오늘"이라 **오늘 적은 노트가 목록에서 아예 사라졌다** — 사용자가 말한 "검색하기가 애매함"의 실체.
+
+**Scope**: 백엔드만 변경(프론트는 서버가 준 `activityDate` 를 그대로 표시하고 정렬도 서버가 하므로 손댈 것 없음).
+- `notes_create_api`: 후속 미팅 일정은 **그대로 만들되**(일정기록에 남는다) 노트의 `schedule` 로 걸지 않는다. 사용자가 명시적으로 고른 기존 일정(`linked_schedule`)은 실제 활동 일정이므로 기존대로 연결 유지.
+- `notes_summary_api` 의 `sort_date_expression` 과 `_notes_history_payload` 의 `activity_date`: 연결된 일정이 **미래면 그 날짜를 쓰지 않는다**(`__lte=today` 가드). 덕분에 **이미 그렇게 저장된 노트들도 조회 시점에 자동 교정**돼 데이터 마이그레이션이 필요 없다. 명시적으로 고른 미래 일정에 묶인 노트도 기본 구간에서 사라지지 않게 되는 부수 효과.
+- 같이 발견한 시차 버그: `history.created_at.date()` 는 UTC 기준이라 **한국시간 오전 9시 전에 적은 노트가 어제 날짜로 표시**됐다. 정렬은 ORM 의 `created_at__date`(TIME_ZONE 변환 적용)를 쓰고 있어 표시와 정렬이 서로 어긋나 있었다 — `timezone.localtime()` 으로 통일.
+- `_schedules_report_payload`(일정 리포트)는 일정 날짜를 쓰는 게 설계상 맞아 손대지 않음. 레거시 Django 뷰 2곳(`followup_detail_view`, `history_list_view`)도 같은 정렬식을 갖고 있으나 둘 다 `react_page_redirect` 로 감싸여 사용자에게 도달하지 않아 제외.
+
+**DB change required**: No. (조회 시점 교정이라 기존 데이터 손대지 않음)
+
+**검증**: `py_compile` → `manage.py check`(0 issues) → `NotesSummaryApiTests` 39개 전부 PASS(기존 링크 동작을 고정하던 테스트 3개 갱신 + 신규 회귀 테스트 2개 추가: 먼 미래 다음일정 시나리오, 이미 미래 일정에 묶여 저장된 노트의 조회 시점 교정) → 로컬 서버에 실제 로그인 세션으로 API 호출해 재현 검증: `nextActionDate=2028-03-15` 로 노트 생성 시 `activityDate` 가 오늘(2026-08-14)로 남고, 기본 조회 구간(2026-07-14~2026-08-14) 목록에 정상 노출되며, 후속 일정(2028-03-15)은 `Schedule` 로 그대로 남고 노트의 `schedule_id` 는 None 인 것을 확인(검증 데이터 정리 완료) → 전체 백엔드 회귀 501개, 실패 4건은 기존 무관 결함(전과 동일)으로 회귀 없음.
+
+**Deploy**: Done. Commit `5a6f48e` on `origin/main`. Railway `web` deploy `17057d61-e821-43b1-8c0e-627076a59e13` SUCCESS. `sales-note-frontend` 는 `1a60af1f-4904-48ff-aae1-5008917e511b` SKIPPED — 백엔드 전용 커밋이라 정상이며, 2026-08-08 watchPatterns 정리가 실제로 동작함을 다시 확인. `post_deploy_smoke.py` → **ok (30/30 PASS)**.
+
+---
+
 ## 2026-08-08 Railway 비용 누수 점검 및 정리
 
 **Background**: 사용자 요청 — "railway 비용 누수가 있는지 확인해보고 쓸데없는 비용누수가 확인되면 개선해줘".
