@@ -6512,13 +6512,22 @@ def _notes_history_payload(history, today, can_review=False):
     customer = (
         followup.customer_name or followup.manager or '고객명 미정'
     ) if followup else ('담당자 미등록' if department else '일반 메모')
+    # 노트의 날짜는 "그 활동이 있었던 날"이다 — 연결된 일정이 미래(다음 일정)면
+    # 그 날짜를 쓰지 않는다. 쓰면 오늘 적은 노트가 미래 날짜로 표시되고, 목록
+    # 정렬/조회 구간에서도 튀어나가 찾을 수 없게 된다. 다음 일정 자체는 일정기록에
+    # 남으므로 노트가 그 날짜를 대신 들고 있을 이유가 없다.
     activity_date = history.meeting_date or history.delivery_date
     if not activity_date and history.schedule_id and history.schedule:
-        activity_date = history.schedule.visit_date
+        if history.schedule.visit_date and history.schedule.visit_date <= today:
+            activity_date = history.schedule.visit_date
     if not activity_date and history.personal_schedule_id and history.personal_schedule:
-        activity_date = history.personal_schedule.schedule_date
+        if history.personal_schedule.schedule_date and history.personal_schedule.schedule_date <= today:
+            activity_date = history.personal_schedule.schedule_date
     if not activity_date:
-        activity_date = history.created_at.date()
+        # created_at 은 UTC 로 저장된다 — `.date()` 를 그냥 쓰면 한국시간 오전 9시
+        # 전에 적은 노트가 어제 날짜로 보인다. 목록 정렬은 ORM 의 `created_at__date`
+        # (TIME_ZONE 기준 변환)를 쓰므로 여기서도 로컬 기준으로 맞춰야 어긋나지 않는다.
+        activity_date = timezone.localtime(history.created_at).date()
 
     next_action = (history.next_action or history.meeting_next_action or '').strip()
     next_action_date = history.next_action_date
@@ -7459,9 +7468,14 @@ def notes_summary_api(request):
         user__in=scope_users,
         parent_history__isnull=True,
     )
+    # 정렬 기준일도 표시용 날짜(`_notes_history_payload`)와 같은 규칙을 쓴다.
+    # 연결된 일정이 미래면 그 날짜로 정렬하지 않는다 — 다음 일정을 2027년으로
+    # 잡았다고 오늘 적은 노트가 2027년으로 밀려나면 기본 조회 구간(최근 한 달)
+    # 에서 사라져 검색이 안 된다. 이미 그렇게 저장된 노트들도 이 규칙으로
+    # 조회 시점에 함께 교정된다.
     sort_date_expression = Case(
-        When(schedule__isnull=False, then=F('schedule__visit_date')),
-        When(personal_schedule__isnull=False, then=F('personal_schedule__schedule_date')),
+        When(schedule__visit_date__lte=today, then=F('schedule__visit_date')),
+        When(personal_schedule__schedule_date__lte=today, then=F('personal_schedule__schedule_date')),
         default=F('created_at__date'),
         output_field=DateField(),
     )
@@ -7799,10 +7813,12 @@ def notes_create_api(request):
 
     with transaction.atomic():
         history = History.objects.create(**history_kwargs)
+        # 후속 미팅 일정은 그대로 만든다(일정기록에 남는다). 다만 그걸 노트의
+        # `schedule` 로 걸지는 않는다 — 걸면 노트가 자기 작성일 대신 미래의 다음
+        # 일정 날짜를 들고 있게 돼서, 목록에서 그 날짜로 표시·정렬되고 기본 조회
+        # 구간(최근 한 달~오늘) 밖으로 사라진다. 사용자가 명시적으로 고른 기존
+        # 일정(`linked_schedule`)은 실제 활동 일정이므로 위에서 이미 연결돼 있다.
         followup_schedule, followup_schedule_created = _notes_create_followup_schedule_for_history(history)
-        if followup_schedule and not linked_schedule:
-            history.schedule = followup_schedule
-            history.save(update_fields=['schedule'])
 
     followup_schedule_payload = _notes_create_schedule_payload(followup_schedule) if followup_schedule else None
     message = '영업노트를 저장했습니다.'

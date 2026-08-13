@@ -4571,7 +4571,9 @@ class NotesSummaryApiTests(TestCase):
         self.assertEqual(followup_schedule.status, 'scheduled')
         self.assertIn('자동 생성: 영업노트 후속 미팅', followup_schedule.notes)
         self.assertIn(f'/notes/{created.id}/', followup_schedule.notes)
-        self.assertEqual(created.schedule_id, followup_schedule.id)
+        # 후속 일정은 만들지만 노트에 걸지는 않는다 — 걸면 노트가 자기 작성일 대신
+        # 다음 일정 날짜를 들고 있게 된다.
+        self.assertIsNone(created.schedule_id)
         self.assertTrue(payload['followupScheduleCreated'])
         self.assertEqual(payload['followupSchedule']['id'], followup_schedule.id)
         self.assertIn('후속 미팅 일정을 생성', payload['message'])
@@ -4637,7 +4639,7 @@ class NotesSummaryApiTests(TestCase):
             visit_date=followup_date,
             activity_type='customer_meeting',
         )
-        self.assertEqual(created.schedule_id, followup_schedule.id)
+        self.assertIsNone(created.schedule_id)
         self.assertEqual(followup_schedule.company, self.company)
         self.assertIn('담당자 만나서 요구사항 확인', followup_schedule.notes)
         self.assertTrue(payload['followupScheduleCreated'])
@@ -4687,10 +4689,88 @@ class NotesSummaryApiTests(TestCase):
             ).count(),
             1,
         )
-        self.assertEqual(created.schedule_id, existing_schedule.id)
+        self.assertIsNone(created.schedule_id)
         self.assertFalse(payload['followupScheduleCreated'])
         self.assertEqual(payload['followupSchedule']['id'], existing_schedule.id)
         self.assertIn('기존 후속 미팅 일정', payload['message'])
+
+    def test_notes_create_api_keeps_note_on_today_when_next_action_is_far_future(self):
+        """다음 일정을 몇 년 뒤로 잡아도 노트는 오늘 날짜로 남아야 한다.
+
+        예전에는 자동 생성된 후속 일정을 노트에 연결해서, 노트의 표시/정렬 날짜가
+        그 미래 날짜로 끌려갔다. 그러면 오늘 적은 노트가 기본 조회 구간(최근 한 달
+        ~오늘) 밖으로 사라져 검색이 안 됐다.
+        """
+        from datetime import date
+        from django.utils import timezone
+        from reporting.models import History, Schedule
+
+        target = self._create_note(self.user, '먼미래일정')
+        today = timezone.localdate()
+        far_future = date(today.year + 2, 3, 15)
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({
+                'followupId': target.followup_id,
+                'actionType': 'quote',
+                'content': '견적 넣고 다음 미팅은 한참 뒤로 잡음',
+                'nextAction': '재견적 협의',
+                'nextActionDate': far_future.isoformat(),
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = History.objects.get(pk=response.json()['historyId'])
+
+        # 후속 일정 자체는 일정기록에 그대로 남는다.
+        self.assertTrue(Schedule.objects.filter(
+            user=self.user,
+            followup=target.followup,
+            visit_date=far_future,
+        ).exists())
+        # 다만 노트가 그 미래 일정을 자기 일정으로 들고 있으면 안 된다.
+        self.assertIsNone(created.schedule_id)
+
+        # 목록 기본 조회(최근 한 달~오늘)에서 오늘 날짜로 보여야 한다.
+        listed = self.client.get(self.url).json()
+        note_item = next(item for item in listed['notes'] if item['id'] == created.id)
+        self.assertEqual(note_item['activityDate'], today.isoformat())
+        self.assertEqual(note_item['nextActionDate'], far_future.isoformat())
+
+    def test_notes_summary_api_ignores_future_schedule_date_for_sorting(self):
+        """이미 미래 일정에 묶여 저장된 노트도 조회 시점에 교정돼야 한다."""
+        from datetime import date, time
+        from django.utils import timezone
+        from reporting.models import Schedule
+
+        target = self._create_note(self.user, '기존미래연결')
+        today = timezone.localdate()
+        far_future = date(today.year + 2, 5, 20)
+        future_schedule = Schedule.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=target.followup,
+            visit_date=far_future,
+            visit_time=time(9, 0),
+            activity_type='customer_meeting',
+            status='scheduled',
+        )
+        # 예전 로직으로 저장된 상태를 그대로 재현한다(노트 → 미래 일정 연결).
+        target.schedule = future_schedule
+        target.meeting_date = None
+        target.save(update_fields=['schedule', 'meeting_date'])
+        self.client.force_login(self.user)
+
+        listed = self.client.get(self.url).json()
+
+        note_item = next(item for item in listed['notes'] if item['id'] == target.id)
+        self.assertEqual(
+            note_item['activityDate'],
+            timezone.localtime(target.created_at).date().isoformat(),
+        )
 
     def test_notes_create_api_requires_customer_when_department_has_contacts(self):
         target = self._create_note(self.user, '고객있는부서')
