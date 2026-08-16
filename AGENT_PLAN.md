@@ -1,5 +1,41 @@
 # AGENT_PLAN.md
 
+## 2026-08-16 Sales-note 서버비용 절감 — 프론트 서비스 통합 + MCP 슬립
+
+**Background**: 사용자 요청 — "서버비용이 너무 많이 나와서 슬립기능을 쓰려하는데 안 쓰고 있을 때는 슬립하게 하는 거 어때". 조사 후 사용자가 범위를 Sales-note 로 한정("다른 워크스페이스까지 볼 거 없고 SalesNote를 줄일 것부터").
+
+**먼저 실측한 비용 구조** (Railway 요금: RAM $10/GB·월, CPU $20/vCPU·월, 볼륨 $0.15/GB·월):
+
+| 서비스 | RAM | 월 |
+|---|---|---|
+| web (Django) | 0.170GB | $1.70 |
+| sales-note-frontend | 0.100GB | $1.00 |
+| salesnote-mcp | 0.086GB | $0.86 |
+| Postgres | 0.073GB | $0.73 |
+| 볼륨(5.14GB 청구 기준) | | $0.77 |
+| **합계** | | **$5.06** |
+
+CPU 는 전 서비스 0에 수렴해 무시 가능. **슬립만으로는 최대 $2 남짓이라, 원래 요청대로 전부 슬립 거는 건 효과 대비 위험이 컸다** — 공식 문서상 (1) 슬립 판정은 *아웃바운드* 트래픽 기준이고, (2) **잠든 서비스의 첫 요청은 502 가 날 수 있으며**, (3) `web` 은 `conn_max_age=600` 으로 DB 연결을 붙잡고 있어 문서가 명시한 "슬립 차단 조건"에 해당해 애초에 잠기지도 않는다. 부팅 시 `manage.py migrate` 까지 도는 것도 콜드스타트를 키운다.
+
+**한 것**:
+- **`sales-note-frontend` 서비스 삭제 (−$1.00/월)** — 두 서비스가 **완전히 동일한 SPA 를 서빙**하고 있었다(번들 해시 동일). 삭제 전 web 이 대체 가능한지 전수 확인: SPA 라우트 15개 전부 200, 제거된 라우트 6개 전부 404, 정적자산 캐시 헤더 동일(`public, max-age=31536000, immutable`), 보호 API 401, `/healthz/` 200. 유일한 차이는 압축(brotli→gzip)인데 스모크가 둘 다 허용하고 실사용 차이가 없다. **코드 변경이 거의 불필요했던 이유**: 프로덕션엔 `FRONTEND_PIPELINE_URL` 환경변수가 없어 기본값 `'/'`(같은 호스트 상대경로)를 쓰므로, 코드 13곳에 박힌 프론트 절대 URL 은 실제로는 안 쓰이는 fallback 이었다. `scripts/post_deploy_smoke.py` 의 `DEFAULT_FRONTEND_URL` 만 web 으로 통일.
+- **`salesnote-mcp` 슬립 활성화 (−약 $0.86/월)** — 4개 중 유일하게 안전한 후보. 상시 사용이 아니고, DB 연결을 붙잡지 않으며(요청 시에만 Django 로 httpx 호출), 콜드스타트가 짧다. 사용자가 "첫 요청이 한 번 실패할 수 있음"을 인지하고 승인.
+- **볼륨 청소는 확인 결과 대상 없음** — 사용자가 "먼저 확인 후"를 조건으로 승인했고, 확인해보니 **실제 사용량은 11MB**였다(`df`: 229G 중 11M 사용). 내역: scheduled_email_attachments 7.3M, generated_documents 1.6M, document_templates 684K, todo_attachments 276K, business_card_logos 80K. 청소 코드(`reporting/tasks.py`, 100일 경과 5MB 초과 파일 삭제)는 Celery worker 미가동으로 한 번도 안 돌았지만, 지울 대상 자체가 없어 **작업하지 않음**.
+
+**DB change required**: No.
+
+**남은 사항 / 사용자 안내**:
+- **접속 주소 변경**: `sales-note-frontend-production.up.railway.app` → **`web-production-8a820.up.railway.app`**. 루트(`/`)는 프론트 서비스와 달리 302 로 로그인 페이지를 거치므로 북마크는 `/dashboard/` 를 권장.
+- 안드로이드 앱(`android-sales-note`)은 옛 주소를 하드코딩하고 있어 동작하지 않는다 — 사용자가 "안 쓴다/PC로만 쓴다"로 확인해 조치하지 않음. 다시 쓸 거면 `MainActivity.java` 의 `HOME_URL` 을 web 주소로 바꿔 재빌드 필요.
+- **볼륨 청구 이슈**: Railway 는 4200MB 사용으로 집계하는데 실제 파일은 11MB 다. 250GB 로 프로비저닝된 ext4 의 메타데이터 오버헤드(약 1.6%)로 보인다. 볼륨 축소는 데이터 손실 위험 대비 이득($0.63/월)이 없어 손대지 않음.
+- 코드에 남은 프론트 절대 URL fallback 13곳과 `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` 의 옛 호스트 항목은 동작에 무해해 그대로 뒀다(정리하려면 별도 작업).
+
+**결과**: 월 **$5.06 → 약 $3.3** (약 35% 절감). 서비스 4개 → 3개.
+
+**검증**: 삭제 후 `post_deploy_smoke.py` → **30/30 PASS**. 새 주소에서 주요 화면 5개 200 확인, 옛 주소 404 확인. `salesnote-mcp` 설정에 `Sleep when inactive: true` 반영 확인. Commit `6f10339`(스모크 스크립트) on `origin/main` — `scripts/` 는 watchPatterns 밖이라 web 재배포는 발생하지 않음.
+
+---
+
 ## 2026-08-14 영업노트: 노트 날짜가 "다음 일정" 날짜로 끌려가던 문제 수정
 
 **Background**: 사용자 보고 — "영업노트에서 다음일정을 27년도로 잡으면 소팅할때 27년도로 잡혀서 검색하기가 애매함. 영업노트 적을 때 자동으로 지금 일자로 저장되게 하고(어차피 다음일정은 일정기록에 남으니까) 소팅도 그렇게 되게하자."
