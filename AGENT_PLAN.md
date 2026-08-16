@@ -1,5 +1,44 @@
 # AGENT_PLAN.md
 
+## 2026-08-16 매출: 선결제 이중계상 제거 (선결제는 납품 시점에만 매출)
+
+**Background**: 사용자 지시 — "선결제 자체는 매출로 잡히면 안 됩니다. 선결제가 매출이 되는 순간은 선결제에서 납품이 실제로 될 때 매출로 전환되는 겁니다."
+
+`dashboard_summary_api`(views.py)와 `revenue_detail_api`(api/revenue_detail.py)가 둘 다 **(완료 납품 + 선결제 등록액)** 을 매출로 합산하고 있었다. 코드 주석에도 "완료된 납품과 선결제만 실제 매출로 센다"고 명시돼 있었다. 그런데 선결제로 납품이 나가면 그 납품이 **완료 납품으로 또 잡히므로**, 같은 돈이 입금 시점과 납품 시점에 두 번 계상됐다.
+
+**프로덕션 실측(올해, 전체 범위)**:
+
+| 항목 | 금액 |
+|---|---|
+| 선결제 3건 (매출 아님) | 7,154,994 |
+| 완료 납품 101품목 | 47,297,827 |
+| 수정 전 표시액 | **54,452,821** |
+| 수정 후(정답) | **47,297,827** |
+
+약 13% 과다 계상. 참고로 그 납품 중 선결제로 결제된 분은 13,487,485원인데, 이건 납품 시점에 이미 정상적으로 1회 잡혀 있었다.
+
+**"선결제를 빼면 매출이 누락되지 않는가" 안전성 검증** (이게 이번 변경의 핵심 전제):
+- 전체 기간 선결제 차감 **38건 / 33,014,254원 전부가 `activity_type='delivery', status='completed'` 일정에 걸려 있고 예외가 0건**이다. 즉 모든 선결제 차감은 이미 완료 납품으로 매출에 반영된다.
+- 올해만 보면 **선결제로 결제된 납품 13,487,485 == 선결제 차감액 13,487,485** 로 원 단위까지 일치.
+- 따라서 선결제 항목만 제거하면 누락 없이 정확해진다(선결제 차감이 비-납품 일정에 걸리는 케이스가 생기면 이 전제가 깨지므로, 그때는 차감분을 별도로 세야 한다 — 현재 데이터에는 그런 케이스가 없다).
+
+**Scope**:
+- `reporting/views.py` `dashboard_summary_api`: 연/분기/월 매출에서 선결제 합산(`*_prepayment_revenue`) 제거. 왜 빼는지 근거를 주석으로 남김.
+- `reporting/api/revenue_detail.py`: `Prepayment` 조회·항목 생성·`prepaymentTotal` 제거, `total = delivery_total`. 두 곳이 같은 기준을 쓰지 않으면 대시보드 숫자와 드릴다운 내역이 어긋나므로 항상 함께 고쳐야 한다.
+- 프론트: `api/revenueDetail.ts` 에서 `prepaymentTotal`·`kind:'prepayment'` 제거, `RevenueDetailPage.tsx` 의 "선결제" 요약 카드와 죽은 분기 제거.
+- 선결제 화면 자체의 집계(`prepayment_total` 등 16곳)는 매출과 무관하므로 그대로 둔다.
+- 테스트: 신규 `test_prepayment_is_not_revenue_until_delivered`(선결제만 있으면 매출 0 → 그 선결제로 납품 나가면 납품분만 매출). 선결제를 매출에 더하던 기존 테스트 2개(`test_includes_prepayment_and_excludes_cancelled` → 위 테스트로 대체, `test_dashboard_summary_api_includes_year_and_quarter_revenue` 의 expected 계산) 갱신. `test_total_matches_dashboard_summary_metric` 에 "선결제가 어느 쪽에도 안 섞인다" 단정 추가.
+
+**DB change required**: No. (계산 방식만 변경, 데이터 그대로)
+
+**검증**: `py_compile`/`manage.py check` → `RevenueDetailApiTests`+`DashboardSummaryApiTests` 11개 PASS → `tsc --noEmit` 클린 → `npm run build` 성공 → 전체 회귀 501개, 실패 4건은 기존 무관 결함(전과 동일)으로 회귀 없음 → 배포 후 **프로덕션 라이브 대조**: readonly 대시보드 API 가 `yearRevenue = 26,846,737` 반환, 같은 범위(user=dkswogus95)의 납품 전용 합계가 정확히 `26,846,737`(선결제 5,966,994 제외, 수정 전이면 32,813,731). 대시보드가 납품만 반영함을 원 단위로 확인.
+
+**Deploy**: Done. Commit `dae2b92` on `origin/main`. Railway `web` deploy `aceb709e-e48b-49ac-9158-a4b529f246cf` SUCCESS. `post_deploy_smoke.py` → **ok (30/30 PASS)**.
+
+**부수 발견 — 08-16 프론트 서비스 삭제의 후속 회귀 (수정 완료)**: 로컬 `salesnote-readonly` MCP 가 삭제된 프론트 URL 을 API base 로 쓰고 있어 404 "Application not found" 로 죽어 있었다. 사용자 환경변수 `SALES_NOTE_API_BASE` 와 MCP 프로젝트(`~/Documents/Codex/2026-05-19/crm/salesnote-readonly-mcp`) 의 4개 파일(`src/server.mjs`, `scripts/start-mcp.ps1`, `scripts/set-token.ps1`, `README.md`) 을 `https://web-production-8a820.up.railway.app/reporting/api/` 로 교체하고, 새 주소에서 bearer 인증 200 을 확인했다. **주의**: 실행 중인 MCP 프로세스는 옛 환경변수로 떠 있어 Claude Code 재시작 후에 반영된다. (Railway 호스팅 `salesnote-mcp` 는 `SALESNOTE_API_BASE` 가 이미 web 을 가리켜 영향 없음.)
+
+---
+
 ## 2026-08-16 Sales-note 서버비용 절감 — 프론트 서비스 통합 + MCP 슬립
 
 **Background**: 사용자 요청 — "서버비용이 너무 많이 나와서 슬립기능을 쓰려하는데 안 쓰고 있을 때는 슬립하게 하는 거 어때". 조사 후 사용자가 범위를 Sales-note 로 한정("다른 워크스페이스까지 볼 거 없고 SalesNote를 줄일 것부터").
