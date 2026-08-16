@@ -1747,23 +1747,17 @@ class DashboardSummaryApiTests(TestCase):
         create_delivery(self.user, followup, date(today.year - 1, 12, 15), 400000)
         create_delivery(self.coworker, coworker_followup, today, 500000)
 
-        monthly_prepayment = create_prepayment(self.user, followup, today, 70000)
-        expected_year += monthly_prepayment
-        expected_quarter += monthly_prepayment
-        expected_month += monthly_prepayment
-
-        quarter_prepayment = create_prepayment(
+        # 선결제는 받아둔 돈일 뿐 매출이 아니다 — 아래 선결제들은 전부 만들어만 두고
+        # expected_* 에는 더하지 않는다. 매출이 되는 건 이 돈으로 실제 납품이 나갈
+        # 때이고, 그건 위 create_delivery 로 이미 잡힌다.
+        create_prepayment(self.user, followup, today, 70000)
+        create_prepayment(
             self.user,
             followup,
             date(today.year, quarter_start_month, 1),
             80000,
             status='depleted',
         )
-        expected_year += quarter_prepayment
-        expected_quarter += quarter_prepayment
-        if today.month == quarter_start_month:
-            expected_month += quarter_prepayment
-
         create_prepayment(self.user, followup, today, 90000, status='cancelled')
         create_prepayment(self.user, followup, date(today.year - 1, 12, 15), 100000)
         create_prepayment(self.coworker, coworker_followup, today, 500000)
@@ -13950,26 +13944,52 @@ class RevenueDetailApiTests(TestCase):
         completed_item.refresh_from_db()
         self.assertEqual(payload['summary']['deliveryTotal'], int(completed_item.total_price))
 
-    def test_includes_prepayment_and_excludes_cancelled(self):
-        from reporting.models import Prepayment
+    def test_prepayment_is_not_revenue_until_delivered(self):
+        """선결제 자체는 매출이 아니다 — 그 돈으로 실제 납품이 나갈 때만 매출이다.
+
+        예전에는 선결제 등록액을 매출에 더해서, 같은 돈이 입금 시점과 납품 시점에
+        두 번 잡혔다.
+        """
+        from datetime import time
+        from reporting.models import DeliveryItem, Prepayment, Schedule
 
         today = timezone.localdate()
-        active_prepayment = Prepayment.objects.create(
+        prepayment = Prepayment.objects.create(
             customer=self.followup, company=self.followup.company, department=self.department,
             amount=500000, balance=500000, payment_date=today, created_by=self.user,
         )
-        Prepayment.objects.create(
-            customer=self.followup, company=self.followup.company, department=self.department,
-            amount=700000, balance=700000, payment_date=today, created_by=self.user, status='cancelled',
-        )
 
         self.client.force_login(self.user)
-        response = self.client.get(reverse('reporting:revenue_detail_api'), {'period': 'year'})
+        payload = self.client.get(
+            reverse('reporting:revenue_detail_api'), {'period': 'year'},
+        ).json()
 
-        payload = response.json()
-        self.assertEqual(payload['summary']['prepaymentTotal'], int(active_prepayment.amount))
-        prepayment_hrefs = [item['href'] for item in payload['items'] if item['kind'] == 'prepayment']
-        self.assertEqual(prepayment_hrefs, [f'/prepayments/{active_prepayment.id}/'])
+        # 입금만 된 상태 — 매출 0.
+        self.assertEqual(payload['summary']['total'], 0)
+        self.assertNotIn('prepaymentTotal', payload['summary'])
+        self.assertEqual(payload['items'], [])
+
+        # 이제 그 선결제로 납품이 나가면, 그 시점에 매출이 된다.
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='delivery', use_prepayment=True,
+        )
+        delivered = DeliveryItem.objects.create(
+            schedule=schedule, item_name='선결제차감납품', quantity=1, unit_price=400000,
+        )
+        prepayment.balance -= delivered.total_price
+        prepayment.save(update_fields=['balance'])
+
+        payload = self.client.get(
+            reverse('reporting:revenue_detail_api'), {'period': 'year'},
+        ).json()
+
+        delivered.refresh_from_db()
+        # 납품분만 매출 — 선결제 등록액(500,000)이 더해지면 안 된다.
+        self.assertEqual(payload['summary']['total'], int(delivered.total_price))
+        self.assertEqual(payload['summary']['deliveryTotal'], int(delivered.total_price))
+        self.assertEqual([item['kind'] for item in payload['items']], ['delivery'])
 
     def test_total_matches_dashboard_summary_metric(self):
         from datetime import time
@@ -13981,7 +14001,7 @@ class RevenueDetailApiTests(TestCase):
             visit_date=today, visit_time=time(10, 0),
             status='completed', activity_type='delivery',
         )
-        DeliveryItem.objects.create(
+        delivered = DeliveryItem.objects.create(
             schedule=schedule, item_name='매출검증납품', quantity=1, unit_price=1200000,
         )
         Prepayment.objects.create(
@@ -13997,6 +14017,9 @@ class RevenueDetailApiTests(TestCase):
         detail_total = detail_response.json()['summary']['total']
         self.assertEqual(detail_total, dashboard_year_revenue)
         self.assertGreater(detail_total, 0)
+        # 선결제 30만원은 어느 쪽에도 섞이면 안 된다 — 납품분만 매출.
+        delivered.refresh_from_db()
+        self.assertEqual(detail_total, int(delivered.total_price))
 
     def test_month_period_total_matches_dashboard_monthly_metric(self):
         from datetime import time

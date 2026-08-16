@@ -3487,14 +3487,17 @@ def dashboard_summary_api(request):
 
     # 완료(completed)된 납품만 "실제 매출"로 센다 — 예정(scheduled)은 아직
     # 실제로 납품되지 않았으니 취소/변경될 수 있어 실매출이 아니다.
+    #
+    # 선결제는 매출에 넣지 않는다. 선결제는 받아둔 돈일 뿐이고, 매출이 되는
+    # 순간은 그 돈으로 실제 납품이 나갈 때다 — 그 납품은 바로 위 완료 납품으로
+    # 이미 잡힌다. 예전엔 선결제 등록액을 더해서 같은 돈이 입금 시점과 납품
+    # 시점에 두 번 계상됐다. (`reporting/api/revenue_detail.py` 와 같은 기준을
+    # 써야 대시보드 숫자와 드릴다운 내역이 어긋나지 않는다.)
     revenue_items = DeliveryItem.objects.filter(
         schedule__in=schedules,
         schedule__activity_type='delivery',
         schedule__status='completed',
     )
-    prepayment_revenue_items = Prepayment.objects.filter(
-        created_by__in=scope_users,
-    ).exclude(status='cancelled')
     yearly_delivery_revenue = revenue_items.filter(
         schedule__visit_date__gte=year_start,
         schedule__visit_date__lt=next_year_start,
@@ -3507,21 +3510,9 @@ def dashboard_summary_api(request):
         schedule__visit_date__gte=month_start,
         schedule__visit_date__lt=month_end,
     ).aggregate(total=Sum('total_price'))['total'] or 0
-    yearly_prepayment_revenue = prepayment_revenue_items.filter(
-        payment_date__gte=year_start,
-        payment_date__lt=next_year_start,
-    ).aggregate(total=Sum('amount'))['total'] or 0
-    quarterly_prepayment_revenue = prepayment_revenue_items.filter(
-        payment_date__gte=quarter_start,
-        payment_date__lt=quarter_end,
-    ).aggregate(total=Sum('amount'))['total'] or 0
-    monthly_prepayment_revenue = prepayment_revenue_items.filter(
-        payment_date__gte=month_start,
-        payment_date__lt=month_end,
-    ).aggregate(total=Sum('amount'))['total'] or 0
-    yearly_revenue = yearly_delivery_revenue + yearly_prepayment_revenue
-    quarterly_revenue = quarterly_delivery_revenue + quarterly_prepayment_revenue
-    monthly_revenue = monthly_delivery_revenue + monthly_prepayment_revenue
+    yearly_revenue = yearly_delivery_revenue
+    quarterly_revenue = quarterly_delivery_revenue
+    monthly_revenue = monthly_delivery_revenue
     monthly_activity_count = histories.exclude(action_type='memo').filter(
         created_at__date__gte=month_start,
         created_at__date__lt=month_end,

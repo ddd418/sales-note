@@ -3,7 +3,8 @@ import { assertSuccessfulJsonPayload, fetchJson } from './shared';
 export type RevenuePeriod = 'year' | 'quarter' | 'month';
 
 export type RevenueDetailItem = {
-  kind: 'delivery' | 'prepayment';
+  // 선결제는 매출이 아니라 여기 오지 않는다 — 매출은 실제 납품될 때만 잡힌다.
+  kind: 'delivery';
   date: string | null;
   accountLabel: string;
   itemName: string;
@@ -27,7 +28,6 @@ export type RevenueDetailData = {
   summary: {
     total: number;
     deliveryTotal: number;
-    prepaymentTotal: number;
     itemCount: number;
   };
   items: RevenueDetailItem[];
@@ -38,7 +38,7 @@ const emptyRevenueDetailData: RevenueDetailData = {
   source: 'unavailable',
   period: { value: 'year', label: '', start: '', end: '' },
   scope: { label: '' },
-  summary: { total: 0, deliveryTotal: 0, prepaymentTotal: 0, itemCount: 0 },
+  summary: { total: 0, deliveryTotal: 0, itemCount: 0 },
   items: [],
 };
 

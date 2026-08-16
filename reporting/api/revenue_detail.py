@@ -3,8 +3,14 @@
 대시보드 상단 "당해년도 전체 매출"/"현재 분기 매출" 카드를 클릭했을 때 이동하는
 화면의 데이터 소스. `dashboard_summary_api`와 **완전히 같은 기간 경계·완료 기준**으로
 계산해서, 여기서 보여주는 내역 합계가 대시보드 상단 숫자와 항상 일치하게 한다.
-완료(completed)된 납품과 선결제만 "실제 매출"로 센다 — 예정(scheduled) 납품은
-아직 실제로 일어나지 않아 취소·변경될 수 있으므로 제외한다.
+
+매출로 세는 것은 **완료(completed)된 납품뿐**이다.
+- 예정(scheduled) 납품은 아직 일어나지 않아 취소·변경될 수 있으므로 제외한다.
+- **선결제는 그 자체로 매출이 아니다**(받아둔 돈일 뿐이다). 선결제가 매출이 되는
+  순간은 그 돈으로 실제 납품이 나갈 때이고, 그 납품은 이미 완료 납품으로 여기
+  잡힌다. 예전에는 선결제 등록액을 여기에 더해서, 같은 돈이 입금 시점과 납품
+  시점에 **두 번 계상**됐다(프로덕션 확인 결과 선결제 차감 38건 전부가
+  `납품·완료` 일정에 걸려 있어, 선결제 항목을 빼도 누락되는 매출은 없다).
 """
 
 from datetime import date, timedelta
@@ -14,7 +20,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
-from reporting.models import DeliveryItem, Prepayment, Schedule
+from reporting.models import DeliveryItem, Schedule
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -61,7 +67,7 @@ def _account_label(followup, department):
 @never_cache
 @require_http_methods(["GET"])
 def revenue_detail_api(request):
-    """대시보드 매출 카드가 가리키는 실제 내역 — 완료 납품 + 선결제만."""
+    """대시보드 매출 카드가 가리키는 실제 내역 — 완료된 납품만."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -82,14 +88,6 @@ def revenue_detail_api(request):
         'schedule', 'schedule__user',
         'schedule__followup', 'schedule__followup__company', 'schedule__followup__department',
         'schedule__department', 'schedule__department__company',
-    )
-
-    prepayments = Prepayment.objects.filter(
-        created_by__in=scope_users,
-        payment_date__gte=start,
-        payment_date__lt=end,
-    ).exclude(status='cancelled').select_related(
-        'customer', 'customer__company', 'customer__department', 'company', 'department', 'created_by',
     )
 
     items = []
@@ -114,26 +112,6 @@ def revenue_detail_api(request):
             'href': f'/schedules/{schedule.id}/',
         })
 
-    prepayment_total = 0
-    for prepayment in prepayments:
-        followup = prepayment.customer if prepayment.customer_id else None
-        department = (
-            prepayment.department if prepayment.department_id
-            else (followup.department if followup is not None and followup.department_id else None)
-        )
-        amount = _money_int(prepayment.amount)
-        prepayment_total += amount
-        items.append({
-            'kind': 'prepayment',
-            'date': prepayment.payment_date.isoformat() if prepayment.payment_date else None,
-            'accountLabel': _account_label(followup, department),
-            'itemName': f'선결제 · {prepayment.get_payment_method_display()}',
-            'quantity': None,
-            'amount': amount,
-            'owner': _user_display_name(prepayment.created_by) if prepayment.created_by_id else '',
-            'href': f'/prepayments/{prepayment.id}/',
-        })
-
     items.sort(key=lambda entry: entry['date'] or '', reverse=True)
 
     scope_label = (
@@ -153,9 +131,8 @@ def revenue_detail_api(request):
         },
         'scope': {'label': scope_label},
         'summary': {
-            'total': delivery_total + prepayment_total,
+            'total': delivery_total,
             'deliveryTotal': delivery_total,
-            'prepaymentTotal': prepayment_total,
             'itemCount': len(items),
         },
         'items': items,

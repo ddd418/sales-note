@@ -110,10 +110,6 @@ export function RevenueDetailPage() {
           <strong>{formatWon(summary?.deliveryTotal)}</strong>
         </div>
         <div>
-          <span>선결제</span>
-          <strong>{formatWon(summary?.prepaymentTotal)}</strong>
-        </div>
-        <div>
           <span>내역 건수</span>
           <strong>{formatNumber(summary?.itemCount)}건</strong>
         </div>
@@ -143,9 +139,7 @@ export function RevenueDetailPage() {
                 <tr key={`${item.kind}-${item.href}-${index}`}>
                   <td>{formatDateLabel(item.date)}</td>
                   <td>
-                    <span className={`revenue-detail-kind ${item.kind}`}>
-                      {item.kind === 'delivery' ? '납품' : '선결제'}
-                    </span>
+                    <span className={`revenue-detail-kind ${item.kind}`}>납품</span>
                   </td>
                   <td>{item.accountLabel}</td>
                   <td>
