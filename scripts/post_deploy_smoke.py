@@ -11,7 +11,10 @@ import requests
 
 
 DEFAULT_BACKEND_URL = 'https://web-production-8a820.up.railway.app'
-DEFAULT_FRONTEND_URL = 'https://sales-note-frontend-production.up.railway.app'
+# 별도 프론트 서비스(sales-note-frontend)는 제거했다. Django(web)가 SPA·정적자산·
+# API를 모두 서빙하므로 두 URL 이 같은 호스트를 가리킨다. 아래 'frontend ...' 검사들은
+# 이제 "사용자 진입 경로가 web 에서 정상 동작하는가"를 확인하는 용도다.
+DEFAULT_FRONTEND_URL = DEFAULT_BACKEND_URL
 FRONTEND_REACT_ROUTES = (
     '/dashboard/',
     '/customers/',
