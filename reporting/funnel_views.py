@@ -2147,6 +2147,54 @@ def funnel_pipeline_probability(request):
 
 @login_required
 @require_POST
+def funnel_pipeline_duplicate(request):
+    """같은 담당자로 새 카드(영업건)를 하나 더 만든다.
+
+    카드는 건(FollowUp) 단위라, 이미 수주된 담당자와 새로 시작한 건이 같은
+    화면에 별개 카드로 공존해야 한다(예: 수주된 김지훈 + 새로 접촉을 시작한
+    김지훈). 매번 업체·부서·이름을 다시 입력하지 않도록, 연락처 정보만 복사한
+    새 FollowUp을 '잠재' 단계로 만든다. 일정·영업노트·견적 등 실제 활동 기록은
+    특정 건에 딸린 사실이라 복사하지 않는다 — 새 카드는 빈 이력에서 시작한다.
+    """
+    try:
+        # Manager는 파이프라인 카드 이동 불가 (뷰어 권한) — 카드 생성도 같은 정책.
+        profile = _get_user_profile(request.user)
+        if profile.is_manager():
+            return JsonResponse({'success': False, 'error': '권한이 없습니다. Manager는 파이프라인 카드를 만들 수 없습니다.'}, status=403)
+
+        data = json.loads(request.body)
+        followup_id = data.get('followup_id')
+
+        accessible = _get_accessible_followups(request.user, request)
+        source = accessible.filter(pk=followup_id).first()
+        if not source:
+            return JsonResponse({'success': False, 'error': '권한 없음'}, status=403)
+
+        new_followup = FollowUp.objects.create(
+            user=source.user,
+            user_company=source.user_company,
+            customer_name=source.customer_name,
+            company=source.company,
+            department=source.department,
+            manager=source.manager,
+            contact_role=source.contact_role,
+            phone_number=source.phone_number,
+            email=source.email,
+            address=source.address,
+            # pipeline_stage 는 명시하지 않는다 — 모델 기본값('잠재')을 그대로 쓴다.
+            # notes/우선순위/고객등급/AI점수 등은 이 건과 무관한 값이라 복사하지 않는다.
+        )
+        return JsonResponse({
+            'success': True,
+            'followupId': new_followup.id,
+            'message': f'"{new_followup.customer_name or new_followup.company}" 이름으로 새 카드를 만들었습니다.',
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
 def funnel_pipeline_sync(request):
     """
     파이프라인 단계 자동 동기화 API (앞으로만 이동).

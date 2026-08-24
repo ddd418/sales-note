@@ -7050,6 +7050,31 @@ export async function updateDealProbability(dealId: number, probability: number 
   }
 }
 
+export async function duplicateDealCard(dealId: number): Promise<{ followupId: number; message: string }> {
+  const csrfToken = getCookie('csrftoken');
+  const response = await fetch('/reporting/funnel/api/pipeline-duplicate/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+    },
+    body: JSON.stringify({ followup_id: dealId }),
+  });
+  redirectIfLoginRequired(response);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Pipeline duplicate API unavailable: ${response.status}`);
+  }
+  const payload = (await response.json()) as PipelineMoveResponse & { followupId?: number; message?: string };
+  redirectIfLoginRequired(response, payload);
+  if (!response.ok || payload.success === false || !payload.followupId) {
+    throw new Error(payload.error || `Pipeline duplicate failed: ${response.status}`);
+  }
+  return { followupId: payload.followupId, message: payload.message || '' };
+}
+
 async function setPipelineHidden(url: string, dealId: number): Promise<void> {
   const csrfToken = getCookie('csrftoken');
   const response = await fetch(url, {

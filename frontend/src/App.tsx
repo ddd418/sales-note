@@ -133,6 +133,7 @@ import {
   loadPipelineData,
   moveDealStage,
   updateDealProbability,
+  duplicateDealCard,
   hideDealCard,
   unhideDealCard,
   toggleEmployeeActive,
@@ -14131,6 +14132,10 @@ function DetailPanel({
   probabilityError,
   probabilityMessage,
   onUpdateProbability,
+  duplicating,
+  duplicateError,
+  duplicateMessage,
+  onDuplicateDeal,
 }: {
   deal?: Deal;
   stages: StageSummary[];
@@ -14147,6 +14152,10 @@ function DetailPanel({
   probabilityError: string;
   probabilityMessage: string;
   onUpdateProbability: (deal: Deal, probability: number | null) => void;
+  duplicating: boolean;
+  duplicateError: string;
+  duplicateMessage: string;
+  onDuplicateDeal: (deal: Deal) => void;
 }) {
   if (!deal) {
     return (
@@ -14238,6 +14247,24 @@ function DetailPanel({
         {moveMessage ? <small className="move-status success">{moveMessage}</small> : null}
         {moveError ? <small className="move-status error">{moveError}</small> : null}
       </div>
+      {canMove ? (
+        <div className="stage-move-box">
+          <button
+            type="button"
+            className="customer-row-action"
+            disabled={duplicating}
+            onClick={() => onDuplicateDeal(deal)}
+          >
+            {duplicating ? <Loader2 className="spin-icon" size={14} /> : <Copy size={14} />} 같은 담당자로 새 카드 만들기
+          </button>
+          <small className="move-help">
+            {deal.contact} · {deal.company} 정보를 그대로 복사해 '잠재' 단계에 새 카드를 만듭니다.
+            일정·노트·견적 기록은 이 카드로 옮겨오지 않습니다.
+          </small>
+          {duplicateMessage ? <small className="move-status success">{duplicateMessage}</small> : null}
+          {duplicateError ? <small className="move-status error">{duplicateError}</small> : null}
+        </div>
+      ) : null}
       {canMove ? (
         <div className="stage-move-box">
           <button
@@ -14595,6 +14622,9 @@ export function App() {
   const [probabilityDealId, setProbabilityDealId] = useState<number | null>(null);
   const [probabilityError, setProbabilityError] = useState('');
   const [probabilityMessage, setProbabilityMessage] = useState('');
+  const [duplicatingDealId, setDuplicatingDealId] = useState<number | null>(null);
+  const [duplicateError, setDuplicateError] = useState('');
+  const [duplicateMessage, setDuplicateMessage] = useState('');
   const scheduleCalendarRange = useMemo(() => getScheduleCalendarRange(scheduleCalendarMonth), [scheduleCalendarMonth]);
 
   useEffect(() => {
@@ -15285,6 +15315,23 @@ export function App() {
       setProbabilityError(error instanceof Error ? error.message : '확률 저장에 실패했습니다.');
     } finally {
       setProbabilityDealId(null);
+    }
+  };
+  const handleDuplicateDeal = async (deal: Deal) => {
+    if (pipelineData.source !== 'django') {
+      return;
+    }
+    setDuplicatingDealId(deal.id);
+    setDuplicateError('');
+    setDuplicateMessage('');
+    try {
+      const { followupId, message } = await duplicateDealCard(deal.id);
+      await refreshPipelineData(followupId);
+      setDuplicateMessage(message || '새 카드를 만들었습니다.');
+    } catch (error) {
+      setDuplicateError(error instanceof Error ? error.message : '새 카드를 만들지 못했습니다.');
+    } finally {
+      setDuplicatingDealId(null);
     }
   };
   const handleRemoveDeal = async (deal: Deal) => {
@@ -16761,6 +16808,10 @@ export function App() {
             probabilityError={probabilityError}
             probabilityMessage={probabilityMessage}
             onUpdateProbability={handleUpdateProbability}
+            duplicating={Boolean(visibleSelectedDeal && duplicatingDealId === visibleSelectedDeal.id)}
+            duplicateError={duplicateError}
+            duplicateMessage={duplicateMessage}
+            onDuplicateDeal={handleDuplicateDeal}
           />
         )}
       </div>

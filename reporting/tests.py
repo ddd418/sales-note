@@ -11102,6 +11102,93 @@ class PipelineApiTests(TestCase):
         followup.refresh_from_db()
         self.assertIsNone(followup.pipeline_probability_override)
 
+    def test_pipeline_duplicate_creates_independent_card_for_same_contact(self):
+        """수주된 담당자와 같은 이름의 새 카드를 만들 수 있어야 한다.
+
+        연락처 정보만 복사하고, 단계는 항상 '잠재'에서 새로 시작하며, 일정/노트/
+        견적 같은 실제 활동 기록은 새 카드로 옮겨오지 않는다.
+        """
+        from reporting.models import FollowUp
+
+        won = self._create_pipeline_customer(self.user, '복제원본', stage='won')
+        won.customer_name = '김지훈'
+        won.manager = '김지훈 책임'
+        won.phone_number = '010-1234-5678'
+        won.email = 'kim@example.com'
+        won.save()
+        self.client.force_login(self.user)
+        duplicate_url = reverse('reporting:funnel_pipeline_duplicate')
+
+        response = self.client.post(
+            duplicate_url,
+            data=json.dumps({'followup_id': won.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        new_followup = FollowUp.objects.get(id=payload['followupId'])
+        self.assertNotEqual(new_followup.id, won.id)
+        self.assertEqual(new_followup.customer_name, '김지훈')
+        self.assertEqual(new_followup.company_id, won.company_id)
+        self.assertEqual(new_followup.department_id, won.department_id)
+        self.assertEqual(new_followup.manager, '김지훈 책임')
+        self.assertEqual(new_followup.email, 'kim@example.com')
+        # 새 카드는 항상 '잠재'에서 시작한다 — 원본이 수주였어도 상관없다.
+        self.assertEqual(new_followup.pipeline_stage, 'potential')
+        self.assertFalse(new_followup.pipeline_manually_set)
+        self.assertIsNone(new_followup.pipeline_probability_override)
+        # 원본은 그대로 수주로 남는다 — 서로 독립이다.
+        won.refresh_from_db()
+        self.assertEqual(won.pipeline_stage, 'won')
+        # 일정/견적 등 실제 활동 기록은 새 카드로 옮겨오지 않는다.
+        self.assertEqual(new_followup.schedules.count(), 0)
+
+        board = self.client.get(self.url).json()
+        deal_ids = {deal['id'] for deal in board['deals']}
+        self.assertIn(won.id, deal_ids)
+        self.assertIn(new_followup.id, deal_ids)
+
+    def test_pipeline_duplicate_requires_login(self):
+        followup = self._create_pipeline_customer(self.user, '복제로그인', stage='quote')
+        duplicate_url = reverse('reporting:funnel_pipeline_duplicate')
+
+        response = self.client.post(
+            duplicate_url,
+            data=json.dumps({'followup_id': followup.id}),
+            content_type='application/json',
+        )
+
+        self.assertIn(response.status_code, [301, 302, 401])
+
+    def test_pipeline_duplicate_rejects_manager(self):
+        followup = self._create_pipeline_customer(self.user, '복제매니저차단', stage='quote')
+        self.client.force_login(self.manager)
+        duplicate_url = reverse('reporting:funnel_pipeline_duplicate')
+
+        response = self.client.post(
+            duplicate_url,
+            data=json.dumps({'followup_id': followup.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_pipeline_duplicate_rejects_inaccessible_followup(self):
+        other_user = make_user('pipeline_dup_other', role='salesman', company=self.company)
+        other_customer = self._create_pipeline_customer(other_user, '남의고객', stage='quote')
+        self.client.force_login(self.coworker)
+        duplicate_url = reverse('reporting:funnel_pipeline_duplicate')
+
+        response = self.client.post(
+            duplicate_url,
+            data=json.dumps({'followup_id': other_customer.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+
 
 class SchedulePipelineBackfillCommandTests(TestCase):
     """Existing schedule rows can be synced into the pipeline after deployment."""
