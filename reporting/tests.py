@@ -10647,6 +10647,29 @@ class PipelineApiTests(TestCase):
         self.assertIsNone(deals[contact.id]['probability'])
         self.assertEqual(payload['metrics']['weightedPipelineValue'], 0)
 
+    def test_weighted_pipeline_value_excludes_won_stage(self):
+        """'예상 매출(확률 가중)'은 견적/협상/접촉만 더한다 — 수주는 이미 일어난
+        실제 매출이라 '예상'이 아니다."""
+        quote_followup = self._create_pipeline_customer(self.user, '가중견적', stage='quote')
+        won_followup = self._create_pipeline_customer(self.user, '가중수주', stage='won')
+        self._create_delivery_schedule(won_followup, self.user, '수주납품품목', 5000000)
+        self.client.force_login(self.user)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        deals = {deal['id']: deal for deal in payload['deals']}
+        won_deal = deals[won_followup.id]
+        quote_deal = deals[quote_followup.id]
+        self.assertEqual(won_deal['stage'], 'won')
+        self.assertGreater(won_deal['value'], 0)
+        self.assertEqual(won_deal['probability'], 100)
+
+        expected_weighted = int(quote_deal['value'] * (quote_deal['probability'] or 0) / 100)
+        self.assertGreater(expected_weighted, 0)
+        self.assertEqual(payload['metrics']['weightedPipelineValue'], expected_weighted)
+
     def test_pipeline_api_uses_stage_relevant_quote_amount(self):
         from datetime import timedelta
         from django.utils import timezone

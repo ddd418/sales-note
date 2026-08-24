@@ -2015,7 +2015,15 @@ def pipeline_command_center_api(request):
         for stage_key, label, color, _icon in PIPELINE_STAGES
     ]
     total_value = sum(deal['value'] for deal in deals)
-    weighted_value = sum(deal['value'] * ((deal['probability'] or 0) / 100) for deal in deals)
+    # "예상 매출(확률 가중)"은 아직 확정 안 된 금액의 기대값이다 — 견적/협상/접촉
+    # 단계만 더한다. 수주는 이미 일어난 실제 매출(대시보드 매출 카드가 따로
+    # 보여준다)이라 "예상"이 아니고, 실주는 죽은 건이라 넣을 이유가 없다.
+    WEIGHTED_REVENUE_STAGES = ('quote', 'negotiation', 'contact')
+    weighted_value = sum(
+        deal['value'] * ((deal['probability'] or 0) / 100)
+        for deal in deals
+        if deal['stage'] in WEIGHTED_REVENUE_STAGES
+    )
     overdue_count = sum(1 for deal in deals if deal['risk'] == 'high')
     contact_count = sum(1 for deal in deals if deal['stage'] == 'contact')
 
