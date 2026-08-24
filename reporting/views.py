@@ -3344,6 +3344,8 @@ def delivered_schedule_ids(schedules):
 
 def delivered_schedule_amount(schedule):
     """일정 1건의 실매출 금액(위 우선순위 체인). 절대 두 소스를 더하지 않는다."""
+    from decimal import Decimal
+
     item_total = sum(
         (item.total_price or Decimal('0'))
         for item in DeliveryItem.objects.filter(schedule=schedule)

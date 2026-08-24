@@ -14083,6 +14083,39 @@ class RevenueDetailApiTests(TestCase):
         self.assertEqual(payload['summary']['total'], int(on_schedule.total_price))
         self.assertEqual(len(payload['items']), 1)
 
+    def test_handles_delivery_item_with_empty_total_price(self):
+        """금액이 비어 있는 납품품목이 섞여 있어도 죽지 않는다.
+
+        `total_price or Decimal('0')` 의 오른쪽 분기는 금액이 0/None 일 때만
+        평가된다 — 이 케이스가 테스트에 없어서 실제로 프로덕션 대시보드가
+        NameError 로 500 이 났었다.
+        """
+        from datetime import time
+        from reporting.models import DeliveryItem, Schedule
+
+        today = timezone.localdate()
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        priced = DeliveryItem.objects.create(
+            schedule=schedule, item_name='정상품목', quantity=1, unit_price=100000,
+        )
+        blank = DeliveryItem.objects.create(
+            schedule=schedule, item_name='금액없는품목', quantity=1, unit_price=0,
+        )
+        # save() 가 금액을 채우므로, 비어 있는 상태는 update() 로 만든다.
+        DeliveryItem.objects.filter(pk=blank.pk).update(total_price=None)
+
+        self.client.force_login(self.user)
+        payload = self.client.get(
+            reverse('reporting:revenue_detail_api'), {'period': 'year'},
+        ).json()
+
+        priced.refresh_from_db()
+        self.assertEqual(payload['summary']['total'], int(priced.total_price))
+
     def test_counts_delivery_recorded_only_on_the_note(self):
         """일정에 품목이 없고 납품노트에만 금액이 있으면 노트에서 읽어 센다.
 
