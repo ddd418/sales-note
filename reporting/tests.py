@@ -2262,6 +2262,40 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(followup.user_company, self.company)
         self.assertEqual(followup.priority, 'scheduled')
 
+    def test_followup_create_ajax_allows_second_card_for_same_contact(self):
+        """같은 담당자로 두 번째 카드를 만들 수 있어야 한다.
+
+        파이프라인 카드는 "고객"이 아니라 "영업건" 단위다. 수주된 김지훈 카드가
+        있는 상태에서 접촉/미팅에 새 김지훈 카드를 만들 수 있어야 하는데,
+        예전에는 (고객명+업체+부서+담당) 중복을 막아 생성 자체가 거부됐다.
+        """
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name='건국대학교', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company, name='화학과', created_by=self.user,
+        )
+        self.client.force_login(self.user)
+        payload = {
+            'customer_name': '김지훈',
+            'company': str(customer_company.id),
+            'department': str(department.id),
+            'priority': 'urgent',
+        }
+
+        first = self.client.post(reverse('reporting:followup_create_ajax'), payload)
+        second = self.client.post(reverse('reporting:followup_create_ajax'), payload)
+
+        self.assertTrue(first.json()['success'])
+        self.assertTrue(second.json()['success'], second.json().get('error'))
+        self.assertNotEqual(first.json()['followup_id'], second.json()['followup_id'])
+        self.assertEqual(
+            FollowUp.objects.filter(
+                customer_name='김지훈', company=customer_company, department=department,
+            ).count(),
+            2,
+        )
+
     def test_followup_create_ajax_blocks_manager(self):
         from reporting.models import Company, Department
 
@@ -13652,7 +13686,14 @@ class DeliveryPipelineSyncTests(TestCase):
         self.assertEqual(followup.pipeline_stage, 'won')
         self.assertFalse(followup.pipeline_manually_set)
 
-    def test_standalone_delivery_history_without_followup_advances_whole_department(self):
+    def test_department_only_delivery_does_not_move_other_cards(self):
+        """담당자 없이 부서로만 기록된 납품은 어느 카드도 옮기지 않는다.
+
+        카드는 건(FollowUp) 단위다. 부서만 걸린 납품은 그 부서의 **어느 건**인지
+        알 수 없으므로, 예전처럼 부서 전체를 수주로 옮기면 같은 부서에서 새로
+        시작한 접촉/미팅 카드까지 끌려간다(수주 김지훈 + 접촉 김지훈이 공존해야
+        한다는 요구와 정면 충돌). 매출은 단계와 무관하게 잡히므로 손실도 없다.
+        """
         from reporting.models import Company, Department, FollowUp, History
         customer_company = Company.objects.create(name='공용업체', created_by=self.user)
         department = Department.objects.create(
@@ -13664,7 +13705,7 @@ class DeliveryPipelineSyncTests(TestCase):
         )
         followup_b = FollowUp.objects.create(
             user=self.user, user_company=self.company, customer_name='담당자B',
-            company=customer_company, department=department, pipeline_stage='quote',
+            company=customer_company, department=department, pipeline_stage='contact',
         )
 
         History.objects.create(
@@ -13674,8 +13715,43 @@ class DeliveryPipelineSyncTests(TestCase):
 
         followup_a.refresh_from_db()
         followup_b.refresh_from_db()
-        self.assertEqual(followup_a.pipeline_stage, 'won')
-        self.assertEqual(followup_b.pipeline_stage, 'won')
+        self.assertEqual(followup_a.pipeline_stage, 'quote')
+        self.assertEqual(followup_b.pipeline_stage, 'contact')
+
+    def test_same_contact_can_hold_cards_in_different_stages(self):
+        """같은 담당자로 카드가 여러 개 있어도 서로 단계가 독립이어야 한다.
+
+        예: 수주된 김지훈 카드가 있는 상태에서 접촉/미팅에 새 김지훈 카드가
+        공존할 수 있어야 한다. 한쪽 납품이 다른 쪽을 끌고 가면 안 된다.
+        """
+        from datetime import time
+        from reporting.models import Company, Department, DeliveryItem, FollowUp, Schedule
+        customer_company = Company.objects.create(name='건국대학교', created_by=self.user)
+        department = Department.objects.create(
+            company=customer_company, name='화학과', created_by=self.user,
+        )
+        won_card = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='김지훈',
+            company=customer_company, department=department, pipeline_stage='quote',
+        )
+        new_card = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='김지훈',
+            company=customer_company, department=department, pipeline_stage='contact',
+        )
+
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=won_card,
+            visit_date=timezone.localdate(), visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule, item_name='분광광도계', quantity=1, unit_price=900000,
+        )
+
+        won_card.refresh_from_db()
+        new_card.refresh_from_db()
+        self.assertEqual(won_card.pipeline_stage, 'won')
+        self.assertEqual(new_card.pipeline_stage, 'contact')
 
     def test_editing_existing_delivery_history_keeps_pipeline_at_won(self):
         """delivery_schedule 히스토리를 나중에 고쳐도(.save() 경유) '수주'를 다시 반영한다."""

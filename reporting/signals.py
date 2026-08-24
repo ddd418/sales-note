@@ -15,7 +15,7 @@ from .models import FollowUp, History, OpportunityTracking, Schedule, DeliveryIt
 logger = logging.getLogger(__name__)
 
 
-def _move_account_to_won(followup_id, department_id, source_label):
+def _move_account_to_won(followup_id, source_label):
     """납품이 확인된 계정 카드를 '수주'로 옮긴다.
 
     실제 납품은 사실 확인이라 기존 단계나 수동 설정 여부와 무관하게 덮어쓴다.
@@ -23,18 +23,20 @@ def _move_account_to_won(followup_id, department_id, source_label):
     별도 카드로 남는다 — 즉 "납품 끝난 건은 수주" 규칙과 "새 건은 새 카드" 규칙이
     서로 충돌하지 않는다.
 
-    담당자(followup)가 없고 부서만 연결돼 있으면 그 부서의 계정 전체를 옮긴다.
+    담당자(followup)가 없고 부서만 연결된 납품은 **어느 카드의 건인지 알 수 없어**
+    아무 카드도 건드리지 않는다. 예전에는 그 부서의 계정을 전부 옮겼는데, 그러면
+    같은 부서에서 새로 시작한 접촉/미팅 카드까지 수주로 끌려간다 — 카드가 건 단위로
+    분리된 뒤로는(2026-08-04) 명백히 틀린 동작이다. 이동·숨김도 이미 건 단위로
+    바뀌었는데 이 시그널만 부서 단위로 남아 있었다. 매출 집계는 단계와 무관하므로
+    카드를 안 옮겨도 그 납품은 매출로 잡힌다.
     """
     try:
         from .funnel_views import _ensure_pipeline_year_reset
         _ensure_pipeline_year_reset()
 
-        if followup_id:
-            targets = list(FollowUp.objects.filter(id=followup_id))
-        elif department_id:
-            targets = list(FollowUp.objects.filter(department_id=department_id))
-        else:
+        if not followup_id:
             return
+        targets = list(FollowUp.objects.filter(id=followup_id))
         for followup in targets:
             if followup.pipeline_stage == 'won' and not followup.pipeline_manually_set:
                 continue
@@ -56,7 +58,6 @@ def advance_pipeline_stage_on_delivery(sender, instance, created, **kwargs):
         return
     _move_account_to_won(
         instance.followup_id,
-        instance.department_id,
         f'history {getattr(instance, "id", None)}',
     )
 
@@ -76,7 +77,6 @@ def advance_pipeline_stage_on_delivery_schedule(sender, instance, created, **kwa
         return
     _move_account_to_won(
         instance.followup_id,
-        instance.department_id,
         f'schedule {getattr(instance, "id", None)}',
     )
 

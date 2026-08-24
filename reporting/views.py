@@ -26490,19 +26490,12 @@ def followup_create_ajax(request):
                     'error': '회사 정보가 없어 팔로우업을 생성할 수 없습니다.'
                 })
         
-        # 중복 체크 (같은 고객명, 회사, 부서)
-        existing_followup = FollowUp.objects.filter(
-            customer_name=customer_name,
-            company=company,
-            department=department,
-            user=request.user
-        ).first()
-        
-        if existing_followup:
-            return JsonResponse({
-                'success': False,
-                'error': '이미 동일한 팔로우업이 존재합니다.'
-            })
+        # 같은 담당자로 카드를 여러 개 만드는 것을 막지 않는다.
+        # 파이프라인 카드는 "고객"이 아니라 "영업건" 단위다(2026-08-04 건 단위 분리).
+        # 같은 사람과 동시에 여러 건을 진행하거나, 한 건이 수주로 끝난 뒤 같은
+        # 사람에게 새 건을 시작하는 일이 실제로 있다 — 예: 수주에 김지훈 카드가
+        # 있으면서 접촉/미팅에도 다른 김지훈 카드가 있어야 한다. 예전에는
+        # (고객명+업체+부서+담당) 중복을 막아 두 번째 카드를 만들 수 없었다.
         
         # 팔로우업 생성
         followup = FollowUp.objects.create(
