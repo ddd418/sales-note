@@ -1,5 +1,23 @@
 # AGENT_PLAN.md
 
+## 2026-08-24 파이프라인: 같은 담당자로 새 카드 만들기 버튼
+
+**Background**: 사용자 요청 — "고객은 한명이어도 카드는 여러개 만들수 있게 하자." 같은 날 앞서 중복 생성 차단은 이미 제거했지만(`80a14ca`), 두 번째 카드를 만들려면 업체/부서/이름을 매번 손으로 다시 입력해야 하는 마찰이 남아 있었다. 사용자가 원한 건 재입력이 아니라 "기존 고객 정보를 그대로 복사해서 새 건을 시작"하는 것이었다.
+
+**Scope**:
+- 신규 엔드포인트 `funnel_pipeline_duplicate`(`POST /reporting/funnel/api/pipeline-duplicate/`, `reporting/funnel_views.py`) — 선택된 카드의 연락처 정보(company/department/customer_name/manager/contact_role/phone_number/email/address)만 복사해 새 FollowUp을 만든다. 새 카드는 항상 **'잠재'** 단계에서 시작한다(원본이 수주였어도 상관없음). 일정·영업노트·견적 같은 실제 활동 기록은 특정 건에 딸린 사실이라 복사하지 않는다 — 새 카드는 빈 이력에서 시작.
+- 권한: 기존 move/probability 엔드포인트와 같은 패턴 — Manager 차단, `_get_accessible_followups` 로 접근 가능한 FollowUp인지 확인.
+- 프론트: 파이프라인 보드 카드 상세 패널(`DetailPanel`)에 **"같은 담당자로 새 카드 만들기"** 버튼 추가. 성공하면 새 카드를 자동으로 선택한다. API 클라이언트 `duplicateDealCard`(`frontend/src/api/legacy.ts`).
+- 테스트 4개: 연락처 복사 확인 + 잠재 단계로 시작 + 원본은 그대로(수주 유지) + 일정 안 옮겨짐 + 보드에 둘 다 노출 / 로그인 필요 / Manager 차단 / 남의 고객 접근 차단.
+
+**DB change required**: No.
+
+**검증**: 전체 회귀 **514개** — 실패 4건은 기존 무관 결함(익명유저 엑셀 익스포트 / SESSION_SAVE_EVERY_REQUEST / vat_mode 폼 / ai_chat 부서분석 문구)뿐, 신규 회귀 없음. `tsc --noEmit` 클린, `npm run build` 성공. `post_deploy_smoke.py` → **ok (30/30 PASS)**. 대시보드 API **200** 확인.
+
+**Deploy**: Done. Commit `9558daf` on `origin/main`. Railway `web` deploy `9ad8912e-0441-4cd6-bc57-ae3c2dd15ed4` SUCCESS.
+
+---
+
 ## 2026-08-24 파이프라인: 예상 매출(확률 가중)에서 수주 제외
 
 **Background**: 사용자 지적 — 파이프라인 보드 "예상 매출 / 확률 가중" 카드가 ₩24,642,818 로 표시되는데, 수주(won) 단계는 예상 매출이 아니니 견적/협상/접촉 쪽에서만 가져와야 한다.
