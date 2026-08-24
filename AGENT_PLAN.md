@@ -1,5 +1,26 @@
 # AGENT_PLAN.md
 
+## 2026-08-24 파이프라인: 예상 매출(확률 가중)에서 수주 제외
+
+**Background**: 사용자 지적 — 파이프라인 보드 "예상 매출 / 확률 가중" 카드가 ₩24,642,818 로 표시되는데, 수주(won) 단계는 예상 매출이 아니니 견적/협상/접촉 쪽에서만 가져와야 한다.
+
+`weighted_value` 계산이 단계 구분 없이 모든 카드를 `금액 × 확률`로 더하고 있었다. 수주 단계 카드는 실제 납품 매출이라 확률이 사실상 100% 로 잡히므로, 이미 일어난 확정 매출(대시보드 매출 카드가 별도로 보여줌)이 "예상"에 또 섞여 숫자를 부풀리고 있었다.
+
+**Scope**:
+- `reporting/funnel_views.py`: `weighted_value` 를 `stage in ('quote', 'negotiation', 'contact')` 인 카드로만 한정. "총 파이프라인"(`totalPipelineValue`, 단순 합계) 카드는 그대로 둠 — 사용자가 확률 가중 쪽만 언급했다.
+- 신규 테스트 `test_weighted_pipeline_value_excludes_won_stage`: 수주 단계에 실제 납품 매출(확률 100%)이 있어도 `weightedPipelineValue` 에 안 들어가고, 견적 단계 확률 가중치만 반영되는지 검증.
+- 프론트 변경 없음 — `metrics.weightedPipelineValue` 를 그대로 표시만 한다.
+
+**DB change required**: No.
+
+**검증**: `PipelineApiTests` 22개 통과 → 전체 회귀 510개, 실패 4건은 기존 무관 결함(익명유저 엑셀 익스포트 / SESSION_SAVE_EVERY_REQUEST / vat_mode 폼 / ai_chat 부서분석 문구)뿐, 신규 회귀 없음. `post_deploy_smoke.py` → **ok (30/30 PASS)**. 대시보드 API **200** 확인.
+
+**프로덕션 실측**: 예상 매출(확률 가중) **₩24,642,818 → ₩686,908**. 총 파이프라인(단순 합계)은 ₩27,001,700 로 별개 지표라 영향 없음.
+
+**Deploy**: Done. Commit `5168939` on `origin/main`. Railway `web` deploy `599da652-f8d6-468d-9b44-5f2e03564b56` SUCCESS.
+
+---
+
 ## 2026-08-24 파이프라인: 같은 담당자로 카드 여러 개 공존 허용
 
 **Background**: 사용자 요청 — "파이프라인에서 접촉이랑 수주에 중복될 수 있어야 함. 예를 들어 김지훈 연구원한테 수주가 잡혀있지만 접촉에도 다른 카드인 김지훈 연구원이 있을 수 있어야 함."
