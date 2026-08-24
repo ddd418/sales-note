@@ -11084,6 +11084,14 @@ class SchedulePipelineBackfillCommandTests(TestCase):
             unit='EA',
             unit_price=168000,
         )
+        # 이 커맨드는 **레거시 데이터** 백필용이다. 지금은 완료 납품 일정을 저장하면
+        # 시그널(`advance_pipeline_stage_on_delivery_schedule`)이 곧바로 '수주'로
+        # 옮기므로, 시그널이 없던 시절에 쌓인 "납품은 있는데 단계는 그대로"인 행을
+        # 재현하려면 시그널을 안 타는 queryset.update() 로 되돌려 놔야 한다.
+        FollowUp.objects.filter(pk=self.followup.pk).update(
+            pipeline_stage='potential', pipeline_manually_set=True,
+        )
+        self.followup.refresh_from_db()
 
     def test_sync_schedule_pipeline_command_dry_run_reports_delivery_won_without_saving(self):
         from io import StringIO
@@ -13584,6 +13592,53 @@ class DeliveryPipelineSyncTests(TestCase):
             department=department, pipeline_stage=stage,
         )
 
+    def test_completed_delivery_schedule_alone_advances_followup_to_won(self):
+        """영업노트 없이 **일정만으로** 납품을 기록해도 수주로 옮겨져야 한다.
+
+        예전에는 자동 전환이 History 저장에만 걸려 있어, 일정으로만 납품을
+        기록한 계정이 접촉/미팅 단계에 그대로 남았다(운영 데이터 565만원어치).
+        """
+        from datetime import time
+        from reporting.models import DeliveryItem, History, Schedule
+
+        followup = self._account('일정만납품', stage='contact')
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            visit_date=timezone.localdate(), visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        DeliveryItem.objects.create(
+            schedule=schedule, item_name='일정만납품품목', quantity=1, unit_price=700000,
+        )
+        # 이 경로에는 납품 영업노트가 없다.
+        self.assertFalse(
+            History.objects.filter(followup=followup, action_type='delivery_schedule').exists()
+        )
+
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'won')
+        self.assertFalse(followup.pipeline_manually_set)
+
+    def test_scheduled_delivery_does_not_advance_until_completed(self):
+        """아직 '예정'인 납품 일정은 수주로 옮기지 않는다 — 취소될 수 있다."""
+        from datetime import time
+        from reporting.models import Schedule
+
+        followup = self._account('예정납품', stage='contact')
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=followup,
+            visit_date=timezone.localdate(), visit_time=time(10, 0),
+            status='scheduled', activity_type='delivery',
+        )
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'contact')
+
+        # 완료로 바뀌는 순간 옮겨진다.
+        schedule.status = 'completed'
+        schedule.save()
+        followup.refresh_from_db()
+        self.assertEqual(followup.pipeline_stage, 'won')
+
     def test_standalone_delivery_history_advances_followup_to_won(self):
         from reporting.models import History
         followup = self._account('독립납품')
@@ -13990,6 +14045,103 @@ class RevenueDetailApiTests(TestCase):
         self.assertEqual(payload['summary']['total'], int(delivered.total_price))
         self.assertEqual(payload['summary']['deliveryTotal'], int(delivered.total_price))
         self.assertEqual([item['kind'] for item in payload['items']], ['delivery'])
+
+    def test_schedule_and_note_amounts_are_never_double_counted(self):
+        """같은 납품이 일정과 영업노트 양쪽에 적혀 있어도 한 번만 센다.
+
+        운영 데이터에 실제로 있는 형태다(일정 293: 일정 품목과 노트 품목이 같은
+        금액). 두 소스를 더하면 매출이 두 배로 잡힌다.
+        """
+        from datetime import time
+        from reporting.models import DeliveryItem, History, Schedule
+
+        today = timezone.localdate()
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        on_schedule = DeliveryItem.objects.create(
+            schedule=schedule, item_name='중복검증품목', quantity=1, unit_price=1000000,
+        )
+        note = History.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            schedule=schedule, action_type='delivery_schedule',
+            delivery_amount=on_schedule.total_price,
+        )
+        # 같은 납품을 노트 품목으로도 한 번 더 적어둔 상태를 재현한다.
+        DeliveryItem.objects.create(
+            history=note, item_name='중복검증품목', quantity=1, unit_price=1000000,
+        )
+
+        self.client.force_login(self.user)
+        payload = self.client.get(
+            reverse('reporting:revenue_detail_api'), {'period': 'year'},
+        ).json()
+
+        on_schedule.refresh_from_db()
+        self.assertEqual(payload['summary']['total'], int(on_schedule.total_price))
+        self.assertEqual(len(payload['items']), 1)
+
+    def test_counts_delivery_recorded_only_on_the_note(self):
+        """일정에 품목이 없고 납품노트에만 금액이 있으면 노트에서 읽어 센다.
+
+        운영 데이터의 일정 177 형태. 일정 품목만 보면 이 매출이 통째로 사라진다.
+        """
+        from datetime import time
+        from reporting.models import DeliveryItem, History, Schedule
+
+        today = timezone.localdate()
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='delivery',
+        )
+        note = History.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            schedule=schedule, action_type='delivery_schedule',
+        )
+        note_item = DeliveryItem.objects.create(
+            history=note, item_name='노트에만있는품목', quantity=2, unit_price=500000,
+        )
+
+        self.client.force_login(self.user)
+        payload = self.client.get(
+            reverse('reporting:revenue_detail_api'), {'period': 'year'},
+        ).json()
+
+        note_item.refresh_from_db()
+        self.assertEqual(payload['summary']['total'], int(note_item.total_price))
+
+    def test_counts_quote_schedule_used_as_delivery(self):
+        """견적 일정에 품목을 넣고 납품노트를 달아 출고한 건도 매출로 센다.
+
+        운영 데이터의 일정 880/881 형태(72만원). activity_type 만 보면 누락된다.
+        """
+        from datetime import time
+        from reporting.models import DeliveryItem, History, Schedule
+
+        today = timezone.localdate()
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=today, visit_time=time(10, 0),
+            status='completed', activity_type='quote',
+        )
+        shipped = DeliveryItem.objects.create(
+            schedule=schedule, item_name='견적일정출고품목', quantity=1, unit_price=300000,
+        )
+        History.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            schedule=schedule, action_type='delivery_schedule',
+        )
+
+        self.client.force_login(self.user)
+        payload = self.client.get(
+            reverse('reporting:revenue_detail_api'), {'period': 'year'},
+        ).json()
+
+        shipped.refresh_from_db()
+        self.assertEqual(payload['summary']['total'], int(shipped.total_price))
 
     def test_total_matches_dashboard_summary_metric(self):
         from datetime import time

@@ -3308,6 +3308,80 @@ def _dashboard_followup_payload(followup, latest_history=None, overdue=False):
     }
 
 
+# ----------------------------------------------------------------- 실매출 집계
+# 매출은 "완료된 납품 일정 하나당 한 번"만 센다. 금액을 어디서 읽을지는 아래
+# 우선순위 체인을 따른다 — 이 저장소의 실제 업무 규칙이라 단순화하면 안 된다.
+#
+#     일정에 달린 납품품목 → 그 일정에 달린 납품노트의 품목
+#                          → 납품노트의 delivery_amount → 일정의 expected_revenue
+#
+# 왜 체인이 필요한가(운영 데이터에 두 형태가 다 있다):
+#   - 일정 177: 일정 품목 0원, 노트 품목 1,053,800원  → 노트에서 읽어야 안 놓친다.
+#   - 일정 293: 일정 품목 6,735,300원, 노트 품목도 같은 6,735,300원(같은 납품을
+#               양쪽에 적어둔 것) → 더하면 이중계상. 그래서 "먼저 잡히는 하나"만 쓴다.
+#
+# 어떤 일정을 납품으로 볼지도 activity_type 만으로 판단하지 않는다. 견적 일정에
+# 품목을 넣고 납품노트를 달아 출고 처리한 건이 실제로 있다(일정 880/881, 72만원).
+# 그래서 `activity_type='delivery'` 이거나 **납품노트가 달린** 완료 일정을 대상으로 한다.
+#
+# 파이프라인(`funnel_views._delivery_schedule_amount`)이 쓰는 규칙과 같은 것이며,
+# 대시보드·매출 드릴다운이 모두 이 함수를 거쳐야 화면끼리 숫자가 갈라지지 않는다.
+
+def delivered_schedule_ids(schedules):
+    """`schedules` 중 매출로 볼 완료 일정 id 집합."""
+    completed = schedules.filter(status='completed')
+    ids = set(completed.filter(activity_type='delivery').values_list('id', flat=True))
+    ids |= set(
+        History.objects.filter(
+            schedule__in=completed,
+            action_type='delivery_schedule',
+            parent_history__isnull=True,
+        ).values_list('schedule_id', flat=True)
+    )
+    ids.discard(None)
+    return ids
+
+
+def delivered_schedule_amount(schedule):
+    """일정 1건의 실매출 금액(위 우선순위 체인). 절대 두 소스를 더하지 않는다."""
+    item_total = sum(
+        (item.total_price or Decimal('0'))
+        for item in DeliveryItem.objects.filter(schedule=schedule)
+    )
+    if item_total > 0:
+        return item_total
+    for history in History.objects.filter(
+        schedule=schedule,
+        action_type='delivery_schedule',
+        parent_history__isnull=True,
+    ).order_by('-created_at'):
+        history_items = sum(
+            (item.total_price or Decimal('0'))
+            for item in DeliveryItem.objects.filter(history=history)
+        )
+        if history_items > 0:
+            return history_items
+        if history.delivery_amount:
+            return history.delivery_amount
+    return schedule.expected_revenue or Decimal('0')
+
+
+def delivered_revenue_rows(schedules):
+    """[(일정, 금액)] — 금액이 0 보다 큰 완료 납품만."""
+    ids = delivered_schedule_ids(schedules)
+    if not ids:
+        return []
+    rows = []
+    for schedule in Schedule.objects.filter(id__in=ids).select_related(
+        'user', 'followup', 'followup__company', 'followup__department',
+        'department', 'department__company',
+    ):
+        amount = delivered_schedule_amount(schedule)
+        if amount > 0:
+            rows.append((schedule, amount))
+    return rows
+
+
 @never_cache
 @require_http_methods(["GET"])
 def dashboard_summary_api(request):
@@ -3493,26 +3567,19 @@ def dashboard_summary_api(request):
     # 이미 잡힌다. 예전엔 선결제 등록액을 더해서 같은 돈이 입금 시점과 납품
     # 시점에 두 번 계상됐다. (`reporting/api/revenue_detail.py` 와 같은 기준을
     # 써야 대시보드 숫자와 드릴다운 내역이 어긋나지 않는다.)
-    revenue_items = DeliveryItem.objects.filter(
-        schedule__in=schedules,
-        schedule__activity_type='delivery',
-        schedule__status='completed',
-    )
-    yearly_delivery_revenue = revenue_items.filter(
-        schedule__visit_date__gte=year_start,
-        schedule__visit_date__lt=next_year_start,
-    ).aggregate(total=Sum('total_price'))['total'] or 0
-    quarterly_delivery_revenue = revenue_items.filter(
-        schedule__visit_date__gte=quarter_start,
-        schedule__visit_date__lt=quarter_end,
-    ).aggregate(total=Sum('total_price'))['total'] or 0
-    monthly_delivery_revenue = revenue_items.filter(
-        schedule__visit_date__gte=month_start,
-        schedule__visit_date__lt=month_end,
-    ).aggregate(total=Sum('total_price'))['total'] or 0
-    yearly_revenue = yearly_delivery_revenue
-    quarterly_revenue = quarterly_delivery_revenue
-    monthly_revenue = monthly_delivery_revenue
+    # 일정 1건당 한 번만, 우선순위 체인으로 금액을 읽는다(`delivered_revenue_rows`).
+    revenue_rows = delivered_revenue_rows(schedules)
+
+    def _revenue_between(start, end):
+        return int(sum(
+            amount
+            for schedule, amount in revenue_rows
+            if schedule.visit_date and start <= schedule.visit_date < end
+        ))
+
+    yearly_revenue = _revenue_between(year_start, next_year_start)
+    quarterly_revenue = _revenue_between(quarter_start, quarter_end)
+    monthly_revenue = _revenue_between(month_start, month_end)
     monthly_activity_count = histories.exclude(action_type='memo').filter(
         created_at__date__gte=month_start,
         created_at__date__lt=month_end,

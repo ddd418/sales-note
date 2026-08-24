@@ -15,27 +15,24 @@ from .models import FollowUp, History, OpportunityTracking, Schedule, DeliveryIt
 logger = logging.getLogger(__name__)
 
 
-@receiver(post_save, sender=History)
-def advance_pipeline_stage_on_delivery(sender, instance, created, **kwargs):
-    """납품 히스토리가 저장되면 계정 카드를 '수주'로 옮긴다.
+def _move_account_to_won(followup_id, department_id, source_label):
+    """납품이 확인된 계정 카드를 '수주'로 옮긴다.
 
-    History가 어디서 만들어지든(영업노트 API, 레거시 폼, 일정→히스토리 전환,
-    write-proxy, 관리자 화면 등) 여기 한 곳만 거치면 놓치지 않는다. 계정에
-    담당자(followup)가 없고 부서만 연결돼 있으면 그 부서의 계정 전체를 옮긴다
-    — 파이프라인 다른 곳(카드 숨김 등)에서도 부서 단위로 같이 움직이는 것과
-    맞춘 것이다. 실제 납품은 사실 확인이라, 기존 단계나 수동 설정 여부와
-    무관하게 '수주'로 덮어쓴다.
+    실제 납품은 사실 확인이라 기존 단계나 수동 설정 여부와 무관하게 덮어쓴다.
+    카드가 건(FollowUp) 단위이므로, 이 건이 수주로 가도 같은 고객의 새 영업건은
+    별도 카드로 남는다 — 즉 "납품 끝난 건은 수주" 규칙과 "새 건은 새 카드" 규칙이
+    서로 충돌하지 않는다.
+
+    담당자(followup)가 없고 부서만 연결돼 있으면 그 부서의 계정 전체를 옮긴다.
     """
-    if instance.action_type != 'delivery_schedule':
-        return
     try:
         from .funnel_views import _ensure_pipeline_year_reset
         _ensure_pipeline_year_reset()
 
-        if instance.followup_id:
-            targets = [instance.followup]
-        elif instance.department_id:
-            targets = list(FollowUp.objects.filter(department_id=instance.department_id))
+        if followup_id:
+            targets = list(FollowUp.objects.filter(id=followup_id))
+        elif department_id:
+            targets = list(FollowUp.objects.filter(department_id=department_id))
         else:
             return
         for followup in targets:
@@ -45,7 +42,43 @@ def advance_pipeline_stage_on_delivery(sender, instance, created, **kwargs):
             followup.pipeline_manually_set = False
             followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
     except Exception:
-        logger.exception('Failed to advance pipeline stage for history %s', getattr(instance, 'id', None))
+        logger.exception('Failed to advance pipeline stage for %s', source_label)
+
+
+@receiver(post_save, sender=History)
+def advance_pipeline_stage_on_delivery(sender, instance, created, **kwargs):
+    """납품 히스토리가 저장되면 계정 카드를 '수주'로 옮긴다.
+
+    History가 어디서 만들어지든(영업노트 API, 레거시 폼, 일정→히스토리 전환,
+    write-proxy, 관리자 화면 등) 여기 한 곳만 거치면 놓치지 않는다.
+    """
+    if instance.action_type != 'delivery_schedule':
+        return
+    _move_account_to_won(
+        instance.followup_id,
+        instance.department_id,
+        f'history {getattr(instance, "id", None)}',
+    )
+
+
+@receiver(post_save, sender=Schedule)
+def advance_pipeline_stage_on_delivery_schedule(sender, instance, created, **kwargs):
+    """납품 일정이 '완료'되면 계정 카드를 '수주'로 옮긴다.
+
+    History 쪽 시그널만 있으면 **납품을 일정으로만 기록하고 영업노트를 안 쓰는
+    경로**를 통째로 놓친다. 실제로 그렇게 접촉/미팅 단계에 남아 있던 계정들이
+    있었다(운영 데이터에서 565만원어치). 그래서 일정 저장에도 같은 규칙을 건다.
+
+    주의: 대량 `queryset.update()` 로 상태를 바꾸면 Django 시그널이 안 돈다.
+    상태 변경은 인스턴스 save() 로 하는 경로만 여기 걸린다.
+    """
+    if instance.activity_type != 'delivery' or instance.status != 'completed':
+        return
+    _move_account_to_won(
+        instance.followup_id,
+        instance.department_id,
+        f'schedule {getattr(instance, "id", None)}',
+    )
 
 
 @receiver(post_save, sender=History)

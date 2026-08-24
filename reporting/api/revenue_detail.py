@@ -23,6 +23,7 @@ from django.views.decorators.http import require_http_methods
 from reporting.models import DeliveryItem, Schedule
 from reporting.views import (
     _api_login_required_response,
+    delivered_revenue_rows,
     _dashboard_scope_users,
     _money_int,
     _user_display_name,
@@ -78,35 +79,37 @@ def revenue_detail_api(request):
     period = request.GET.get('period') if request.GET.get('period') in ('year', 'quarter', 'month') else 'year'
     start, end, period_label = _period_bounds(period, today)
 
-    delivery_items = DeliveryItem.objects.filter(
-        schedule__in=Schedule.objects.filter(user__in=scope_users),
-        schedule__activity_type='delivery',
-        schedule__status='completed',
-        schedule__visit_date__gte=start,
-        schedule__visit_date__lt=end,
-    ).select_related(
-        'schedule', 'schedule__user',
-        'schedule__followup', 'schedule__followup__company', 'schedule__followup__department',
-        'schedule__department', 'schedule__department__company',
-    )
+    # 대시보드와 **같은 함수**로 집계한다. 여기서 행을 품목 단위로 만들면, 금액을
+    # 노트에서 읽어온 일정(품목 행이 없는 일정)은 내역에 아예 안 나와 합계가
+    # 대시보드와 어긋난다. 그래서 행도 일정 단위로 맞춘다.
+    rows = delivered_revenue_rows(Schedule.objects.filter(user__in=scope_users))
 
     items = []
     delivery_total = 0
-    for delivery_item in delivery_items:
-        schedule = delivery_item.schedule
+    for schedule, raw_amount in rows:
+        if not schedule.visit_date or not (start <= schedule.visit_date < end):
+            continue
         followup = schedule.followup if schedule.followup_id else None
         department = (
             followup.department if followup is not None and followup.department_id
             else (schedule.department if schedule.department_id else None)
         )
-        amount = _money_int(delivery_item.total_price)
+        amount = _money_int(raw_amount)
         delivery_total += amount
+        detail_items = list(DeliveryItem.objects.filter(schedule=schedule))
+        if not detail_items:
+            detail_items = list(DeliveryItem.objects.filter(history__schedule=schedule))
+        names = [item.item_name for item in detail_items if item.item_name]
+        if names:
+            item_name = names[0] if len(names) == 1 else f'{names[0]} 외 {len(names) - 1}건'
+        else:
+            item_name = '납품'
         items.append({
             'kind': 'delivery',
-            'date': schedule.visit_date.isoformat() if schedule.visit_date else None,
+            'date': schedule.visit_date.isoformat(),
             'accountLabel': _account_label(followup, department),
-            'itemName': delivery_item.item_name,
-            'quantity': delivery_item.quantity,
+            'itemName': item_name,
+            'quantity': sum(item.quantity or 0 for item in detail_items) or None,
             'amount': amount,
             'owner': _user_display_name(schedule.user) if schedule.user_id else '',
             'href': f'/schedules/{schedule.id}/',
