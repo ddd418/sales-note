@@ -861,7 +861,10 @@ def funnel_pipeline_view(request):
         pricing_amount = pricing['amount']
         # React 보드(pipeline_command_center_api)와 동일한 규칙 — 근거 없는
         # 진행 단계 카드는 0원으로 남기지 않고 아예 뺀다.
-        if stage in ('quote', 'negotiation', 'won', 'lost') and pricing_amount <= 0:
+        # 협상은 제외한다 — 견적서가 아직 없어도 협상 단계로 올릴 수 있어야 한다.
+        # (사용자 신고: 김정민을 협상으로 옮겼더니 카드 자체가 사라짐.) 금액 근거가
+        # 없으면 0원 카드로 남기고, 금액은 견적이 나오는 시점에 채워진다.
+        if stage in ('quote', 'won', 'lost') and pricing_amount <= 0:
             continue
         quote_reference = _select_quote_reference_pricing(fu, stage)
         quote_comparison = _build_quote_comparison(stage, pricing, quote_reference)
@@ -1888,7 +1891,10 @@ def pipeline_command_center_api(request):
         # 0으로 계산되면) 카드를 아예 보드에서 뺀다 — 0원으로 표시만 하고 남겨두면
         # "올해 것만 보인다"는 원칙이 깨진다. '잠재'는 원래도 근거 없이 시작하는
         # 단계라 이 규칙에서 제외한다.
-        if stage in ('quote', 'negotiation', 'won', 'lost') and pricing_amount <= 0:
+        # 협상은 제외한다 — 견적서가 아직 없어도 협상 단계로 올릴 수 있어야 한다.
+        # (사용자 신고: 김정민을 협상으로 옮겼더니 카드 자체가 사라짐.) 금액 근거가
+        # 없으면 0원 카드로 남기고, 금액은 견적이 나오는 시점에 채워진다.
+        if stage in ('quote', 'won', 'lost') and pricing_amount <= 0:
             continue
         quote_reference = _select_quote_reference_pricing(fu, stage)
         quote_comparison = _build_quote_comparison(stage, pricing, quote_reference)
@@ -2043,10 +2049,12 @@ def pipeline_command_center_api(request):
         }
         for stage_key, label, color, _icon in PIPELINE_STAGES
     ]
-    # 칸 합계의 합 = 총 파이프라인 금액이 되도록 stage_amounts 에서 다시 센다.
-    # 수주 칸을 실제 납품 기준으로 덮어썼으므로, 카드 값을 그대로 더하면 화면에
-    # 보이는 칸 합계들과 총액이 어긋난다.
-    total_value = sum(stage_amounts.values())
+    # "총 파이프라인" 은 **수주만** 센다(사용자 결정, 2026-08-31). 예전엔 모든
+    # 단계를 더해서 죽은 건인 실주(₩4,237,695)까지 총액에 들어가 있었고, 발표용
+    # 숫자로 쓸 수 없었다. 진행 중인 건의 기대값은 바로 아래 "예상 매출(확률
+    # 가중)" 이 따로 보여준다 — 두 카드가 각각 "이미 딴 돈"과 "딸 것 같은 돈"을
+    # 맡는다. 이 값은 수주 칸·대시보드 올해 매출과 항상 같은 수가 된다.
+    total_value = stage_amounts['won']
     # "예상 매출(확률 가중)"은 아직 확정 안 된 금액의 기대값이다 — 견적/협상/접촉
     # 단계만 더한다. 수주는 이미 일어난 실제 매출(대시보드 매출 카드가 따로
     # 보여준다)이라 "예상"이 아니고, 실주는 죽은 건이라 넣을 이유가 없다.

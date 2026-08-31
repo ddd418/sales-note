@@ -10587,11 +10587,9 @@ class PipelineApiTests(TestCase):
         # 핵심은 이 값이 0 이 아니라는 것 — 예전에는 카드가 수주 칸을 떠나는 순간
         # 0 이 됐다.
         self.assertEqual(stages['won']['totalValue'], 550000)
-        # 화면에서 눈으로 검산되는 관계 — 총액은 각 칸 합계의 합이어야 한다.
-        self.assertEqual(
-            payload['metrics']['totalPipelineValue'],
-            sum(stage['totalValue'] for stage in payload['stages']),
-        )
+        # "총 파이프라인" 은 수주만 센다 — 실주 같은 죽은 건이 총액에 섞이면
+        # 발표용 숫자로 쓸 수 없다.
+        self.assertEqual(payload['metrics']['totalPipelineValue'], stages['won']['totalValue'])
 
     def test_won_amount_matches_dashboard_year_revenue(self):
         """파이프라인 수주 칸 == 대시보드 '올해 매출'.
@@ -10611,6 +10609,37 @@ class PipelineApiTests(TestCase):
 
         stages = {stage['id']: stage for stage in pipeline['stages']}
         self.assertEqual(stages['won']['totalValue'], dashboard['metrics']['yearRevenue'])
+
+    def test_negotiation_card_survives_without_quote(self):
+        """견적서가 없어도 협상 단계 카드는 보드에 남아야 한다.
+
+        사용자 신고: 김정민을 협상으로 옮겼더니 카드 자체가 사라졌다. 금액 근거가
+        없다고 카드를 빼버리면 "견적 전에 협상부터 시작"하는 실제 영업 흐름을
+        시스템이 막게 된다.
+        """
+        from reporting.models import Company, Department, FollowUp
+
+        customer_company = Company.objects.create(name='협상만회사', created_by=self.user)
+        followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.user.userprofile.company,
+            customer_name='김정민',
+            company=customer_company,
+            department=Department.objects.create(
+                company=customer_company, name='협상만 연구실', created_by=self.user
+            ),
+            pipeline_stage='negotiation',
+            customer_grade='A',
+        )
+
+        self.client.force_login(self.user)
+        payload = self.client.get(self.url).json()
+
+        deal_ids = [deal['id'] for deal in payload['deals']]
+        self.assertIn(followup.id, deal_ids)
+        card = next(deal for deal in payload['deals'] if deal['id'] == followup.id)
+        self.assertEqual(card['stage'], 'negotiation')
+        self.assertEqual(card['value'], 0)
 
     def test_pipeline_api_requires_login(self):
         response = self.client.get(self.url)
@@ -10643,7 +10672,11 @@ class PipelineApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertGreaterEqual(payload['metrics']['totalPipelineValue'], 1000000)
+        # 총 파이프라인은 수주만 센다 — 이 픽스처는 견적 단계뿐이라 0 이 맞다.
+        stages_by_id = {stage['id']: stage for stage in payload['stages']}
+        self.assertEqual(
+            payload['metrics']['totalPipelineValue'], stages_by_id['won']['totalValue']
+        )
         self.assertEqual(payload['metrics']['activeCount'], 1)
         self.assertEqual(payload['metrics']['overdueCount'], 1)
         self.assertTrue(any(stage['id'] == own.pipeline_stage for stage in payload['stages']))
