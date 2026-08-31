@@ -119,6 +119,97 @@ function ActivityCell({ activity, field, edit, display, placeholder }: ActivityC
   );
 }
 
+// 영업노트 원문은 발표용으로 쓰기엔 너무 길다(운영 데이터 평균 2,200자, 최대 64줄).
+// 다행히 대부분의 노트가 첫 줄에 `[...]` 형태의 요약 헤드라인을 이미 갖고 있어
+// (최근 40건 중 26건), 첫 줄만 보이면 표가 한 줄짜리 행으로 정리된다.
+// 내용을 지우는 게 아니라 접어두는 것이라, 발표 중 설명할 건만 펼치면 된다.
+// 칸마다 폭이 달라서 "한 줄에 들어가는 글자 수"도 다르다. 상황/내용은 넓고
+// (max-width 520px) 장애물·다음 액션은 좁아서(260px) 같은 기준을 쓰면 좁은 칸이
+// 3줄로 접히며 행 높이를 끌어올린다 — 발표용 표에서 제일 거슬리는 부분이다.
+const COLLAPSE_CHAR_LIMIT: Record<EditableField, number> = {
+  body: 60,
+  obstacle: 30,
+  nextAction: 30,
+};
+
+function firstLineOf(text: string): string {
+  return (text || '').split('\n')[0].trim();
+}
+
+function needsCollapse(text: string, field: EditableField): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) {
+    return false;
+  }
+  return trimmed.includes('\n') || trimmed.length > COLLAPSE_CHAR_LIMIT[field];
+}
+
+type CollapsibleActivityCellProps = {
+  activity: PipelineSheetActivity;
+  field: EditableField;
+  edit: ActivityEditBundle;
+  text: string;
+  emptyDisplay: ReactNode;
+  placeholder: string;
+  trailing?: ReactNode;
+  expanded: boolean;
+  onToggle: (key: string) => void;
+};
+
+function CollapsibleActivityCell({
+  activity,
+  field,
+  edit,
+  text,
+  emptyDisplay,
+  placeholder,
+  trailing,
+  expanded,
+  onToggle,
+}: CollapsibleActivityCellProps) {
+  const trimmed = (text || '').trim();
+  const collapsible = needsCollapse(trimmed, field);
+  const isEditing =
+    edit.editing?.activityId === activity.id &&
+    edit.editing.kind === activity.kind &&
+    edit.editing.field === field;
+  const shown = !collapsible || expanded ? trimmed : firstLineOf(trimmed);
+
+  return (
+    <>
+      <ActivityCell
+        activity={activity}
+        display={
+          trimmed ? (
+            <>
+              <span className={collapsible && !expanded ? 'pipeline-sheet-clamp' : undefined}>{shown}</span>
+              {trailing}
+            </>
+          ) : (
+            <>
+              {emptyDisplay}
+              {trailing}
+            </>
+          )
+        }
+        edit={edit}
+        field={field}
+        placeholder={placeholder}
+      />
+      {collapsible && !isEditing ? (
+        <button
+          className="pipeline-sheet-more-toggle"
+          onClick={() => onToggle(activityCellKey(activity.kind, activity.id, field))}
+          type="button"
+        >
+          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {expanded ? '접기' : '더보기'}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 function itemsActivityKey(activity: PipelineSheetActivity): string {
   return `${activity.kind}-${activity.id}`;
 }
@@ -153,9 +244,18 @@ type WeeklyAccountBlockProps = {
   edit: ActivityEditBundle;
   expandedItems: Set<string>;
   onToggleItems: (key: string) => void;
+  expandedText: Set<string>;
+  onToggleText: (key: string) => void;
 };
 
-function WeeklyAccountBlock({ row, edit, expandedItems, onToggleItems }: WeeklyAccountBlockProps) {
+function WeeklyAccountBlock({
+  row,
+  edit,
+  expandedItems,
+  onToggleItems,
+  expandedText,
+  onToggleText,
+}: WeeklyAccountBlockProps) {
   return (
     <tbody className="pipeline-sheet-account">
       <tr className="pipeline-sheet-account-head">
@@ -185,29 +285,42 @@ function WeeklyAccountBlock({ row, edit, expandedItems, onToggleItems }: WeeklyA
             />
           </td>
           <td className="pipeline-sheet-body">
-            <ActivityCell
+            <CollapsibleActivityCell
               activity={activity}
-              display={activity.body || <span className="muted">내용 없음</span>}
               edit={edit}
+              emptyDisplay={<span className="muted">내용 없음</span>}
+              expanded={expandedText.has(activityCellKey(activity.kind, activity.id, 'body'))}
               field="body"
+              onToggle={onToggleText}
               placeholder="상황 / 내용"
+              text={activity.body}
             />
           </td>
           <td className="pipeline-sheet-obstacle">
-            <ActivityCell activity={activity} display={activity.obstacle || '-'} edit={edit} field="obstacle" placeholder="장애물" />
+            <CollapsibleActivityCell
+              activity={activity}
+              edit={edit}
+              emptyDisplay="-"
+              expanded={expandedText.has(activityCellKey(activity.kind, activity.id, 'obstacle'))}
+              field="obstacle"
+              onToggle={onToggleText}
+              placeholder="장애물"
+              text={activity.obstacle}
+            />
           </td>
           <td className="pipeline-sheet-next">
-            <ActivityCell
+            <CollapsibleActivityCell
               activity={activity}
-              display={
-                <>
-                  {activity.nextAction || '-'}
-                  {activity.nextActionDate ? <small>{formatDayLabel(activity.nextActionDate)}</small> : null}
-                </>
-              }
               edit={edit}
+              emptyDisplay="-"
+              expanded={expandedText.has(activityCellKey(activity.kind, activity.id, 'nextAction'))}
               field="nextAction"
+              onToggle={onToggleText}
               placeholder="다음 액션"
+              text={activity.nextAction}
+              trailing={
+                activity.nextActionDate ? <small>{formatDayLabel(activity.nextActionDate)}</small> : null
+              }
             />
           </td>
           <td className="pipeline-sheet-amount">{activity.amount ? `${formatMoney(activity.amount)}원` : '-'}</td>
@@ -237,6 +350,19 @@ export function PipelineSheetPage() {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
   const toggleItems = useCallback((key: string) => {
     setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const [expandedText, setExpandedText] = useState<Set<string>>(() => new Set());
+  const toggleText = useCallback((key: string) => {
+    setExpandedText((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
         next.delete(key);
@@ -439,8 +565,10 @@ export function PipelineSheetPage() {
               <WeeklyAccountBlock
                 edit={activityEdit}
                 expandedItems={expandedItems}
+                expandedText={expandedText}
                 key={row.accountKey}
                 onToggleItems={toggleItems}
+                onToggleText={toggleText}
                 row={row}
               />
             ))
