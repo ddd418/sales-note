@@ -13825,13 +13825,20 @@ function PipelineBoard({
       >
         {stages.map((stage) => {
           const allStageDeals = dealsByStage[stage.id] || [];
+          // 지금 선택된 카드는 어떤 경우에도 화면에서 사라지면 안 된다. 잠재 칸은
+          // 기본이 "접힘 + 상위 10건만" 이라, '같은 담당자로 새 카드 만들기'로 만든
+          // 카드(항상 잠재에서 시작)가 곧바로 숨어버려 복사가 실패한 것처럼 보였다.
           const visibleStageDeals =
             stage.id === 'potential'
-              ? allStageDeals.filter((deal) => !deal.isPotentialOverflow)
+              ? allStageDeals.filter(
+                  (deal) => !deal.isPotentialOverflow || deal.id === selectedDeal?.id,
+                )
               : allStageDeals;
           const stageDeals = visibleStageDeals;
           const total = stage.totalValue ?? stageDeals.reduce((sum, deal) => sum + deal.value, 0);
-          const isCollapsed = Boolean(collapsedStages[stage.id]);
+          // 선택된 카드가 이 칸에 있으면 접힌 상태를 풀어 그 카드를 보여준다.
+          const isCollapsed =
+            Boolean(collapsedStages[stage.id]) && selectedDeal?.stage !== stage.id;
           const hiddenCount =
             stage.id === 'potential'
               ? allStageDeals.filter((deal) => deal.isPotentialOverflow).length
@@ -15285,6 +15292,27 @@ export function App() {
   };
   const handleMoveStage = async (deal: Deal, stage: PipelineStage) => {
     if (pipelineData.source !== 'django' || deal.stage === stage) {
+      return;
+    }
+    // 수주 카드를 다른 단계로 옮기면 이 건이 수주 목록에서 빠진다. 같은 담당자에게
+    // 새 건이 생긴 경우라면 기존 수주 카드는 그대로 두고 "같은 담당자로 새 카드
+    // 만들기"를 쓰는 게 맞다 — 그래야 수주 이력과 새 건이 각각 남는다.
+    // (금액은 실제 납품 기준이라 카드를 옮겨도 올해 매출에서 빠지지 않는다.)
+    if (
+      deal.stage === 'won' &&
+      !window.confirm(
+        [
+          '이 카드는 수주 건입니다.',
+          '',
+          '같은 담당자에게 새로 생긴 건이라면 이 카드를 옮기지 말고, 상세 패널의',
+          '"같은 담당자로 새 카드 만들기"를 쓰세요. 그래야 수주 이력이 그대로 남습니다.',
+          '',
+          '(올해 매출 금액은 실제 납품 기준이라 카드를 옮겨도 줄지 않습니다.)',
+          '',
+          '그래도 이 카드를 옮기시겠습니까?',
+        ].join('\n'),
+      )
+    ) {
       return;
     }
     setMovingDealId(deal.id);

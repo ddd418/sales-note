@@ -161,8 +161,9 @@ export function RevenueDetailPage() {
 
       <p className="revenue-detail-footnote">
         <CircleDollarSign size={14} />
-        완료(completed)된 납품과 취소되지 않은 선결제만 실제 매출로 집계합니다. 예정된 납품은 아직 실제로 일어나지
-        않았으므로 포함하지 않습니다.
+        완료(completed)된 납품만 실제 매출로 집계합니다. 예정된 납품은 아직 실제로 일어나지 않았으므로 포함하지
+        않습니다. 선결제는 받아둔 돈일 뿐이라 그 자체로는 매출이 아니며, 그 돈으로 실제 납품이 나갈 때 위 납품
+        매출로 잡힙니다.
       </p>
     </section>
   );

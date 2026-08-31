@@ -10561,6 +10561,57 @@ class PipelineApiTests(TestCase):
         self._create_delivery_item(schedule, name, unit_price, quantity)
         return schedule
 
+    def test_won_amount_survives_card_moving_off_won_stage(self):
+        """이미 납품된 매출은 카드를 견적 단계로 옮겨도 수주 칸에 그대로 남는다.
+
+        실제 사고(이다민 건): 같은 담당자에게 새 건이 생겨 카드를 견적제출로
+        옮기자, 그 카드에 붙어 있던 실제 납품 매출이 파이프라인에서 통째로
+        사라졌다. 수주 칸 금액은 "카드가 지금 어디 있는지"가 아니라 실제 납품
+        기록에서 나와야 한다.
+        """
+        from reporting.models import FollowUp
+
+        followup = self._create_pipeline_customer(self.user, '납품고객', stage='quote')
+        # days_delta=0 — 연초에 어제가 작년이 되어 테스트가 흔들리지 않게 오늘로 둔다.
+        self._create_delivery_schedule(followup, self.user, '분석기', 500000, days_delta=0)
+
+        # 납품이 저장되면 signal 이 카드를 'won' 으로 올린다. 사용자가 새 건 때문에
+        # 다시 견적으로 내린 상황을 재현한다(update 는 signal 을 타지 않는다).
+        FollowUp.objects.filter(pk=followup.pk).update(pipeline_stage='quote')
+
+        self.client.force_login(self.user)
+        payload = self.client.get(self.url).json()
+
+        stages = {stage['id']: stage for stage in payload['stages']}
+        # 550,000 = 단가 500,000 + 부가세 10%(DeliveryItem.total_price 기준).
+        # 핵심은 이 값이 0 이 아니라는 것 — 예전에는 카드가 수주 칸을 떠나는 순간
+        # 0 이 됐다.
+        self.assertEqual(stages['won']['totalValue'], 550000)
+        # 화면에서 눈으로 검산되는 관계 — 총액은 각 칸 합계의 합이어야 한다.
+        self.assertEqual(
+            payload['metrics']['totalPipelineValue'],
+            sum(stage['totalValue'] for stage in payload['stages']),
+        )
+
+    def test_won_amount_matches_dashboard_year_revenue(self):
+        """파이프라인 수주 칸 == 대시보드 '올해 매출'.
+
+        두 화면이 각자 다른 매출 정의를 쓰면 반드시 갈라진다. 같은 헬퍼·같은
+        범위·같은 기간을 쓰는지 여기서 못 박는다.
+        """
+        from reporting.models import FollowUp
+
+        followup = self._create_pipeline_customer(self.user, '대시보드비교', stage='quote')
+        self._create_delivery_schedule(followup, self.user, '시약', 320000, days_delta=0)
+        FollowUp.objects.filter(pk=followup.pk).update(pipeline_stage='quote')
+
+        self.client.force_login(self.user)
+        pipeline = self.client.get(self.url).json()
+        dashboard = self.client.get(reverse('reporting:dashboard_summary_api')).json()
+
+        stages = {stage['id']: stage for stage in pipeline['stages']}
+        self.assertEqual(stages['won']['totalValue'], dashboard['metrics']['yearRevenue'])
+
     def test_pipeline_api_requires_login(self):
         response = self.client.get(self.url)
         self.assertIn(response.status_code, [301, 302, 401])

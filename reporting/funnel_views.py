@@ -2002,6 +2002,35 @@ def pipeline_command_center_api(request):
         )
     deals.sort(key=lambda item: (item['stage'] != 'potential', item['isPotentialOverflow'], -item['attentionScore'], item['company']))
 
+    # 수주 칸 금액은 "카드가 지금 수주 칸에 있는지"가 아니라 **실제 납품 기록**에서
+    # 뽑는다. 예전에는 `_select_pipeline_pricing`이 stage == 'won' 일 때만 실제
+    # 납품액(`_actual_delivery_revenue`)을 읽어서, 같은 담당자에게 새 건이 생겨
+    # 카드를 견적으로 옮기는 순간 이미 납품된 매출이 파이프라인에서 통째로
+    # 사라졌다(이다민 건: 납품 3건이 전부 카드 68 에 붙어 있는데 그 카드가 견적
+    # 단계로 이동 → 수주 0원).
+    #
+    # 대시보드 매출 카드와 **같은 헬퍼(delivered_revenue_rows) · 같은 사용자 범위
+    # (_dashboard_scope_users) · 같은 기간(올해)** 을 쓴다. 범위를 파이프라인 쪽
+    # `_get_accessible_followups` 로 바꾸면 안 된다 — 일정의 소유자와 그 일정이
+    # 달린 FollowUp 의 소유자가 다른 건이 있어 두 화면이 갈라진다
+    # (프로덕션 실측: 일정 소유자 기준 28,903,407 vs FollowUp 소유자 기준 28,626,207).
+    from .views import _dashboard_scope_users, delivered_revenue_rows
+
+    scope_users, _ = _dashboard_scope_users(request, _get_user_profile(request.user))
+    stage_amounts['won'] = sum(
+        (
+            amount
+            # 연도 필터를 큐리셋에서 먼저 건다 — delivered_revenue_rows 는 일정 1건마다
+            # 품목/활동을 훑으므로, 전 연도를 계산한 뒤 올해만 거르면 파이프라인
+            # 페이지에 헛일이 그대로 붙는다.
+            for schedule, amount in delivered_revenue_rows(
+                Schedule.objects.filter(user__in=scope_users, visit_date__year=today.year)
+            )
+            if schedule.visit_date and schedule.visit_date.year == today.year
+        ),
+        Decimal('0'),
+    )
+
     stages_payload = [
         {
             'id': stage_key,
@@ -2014,7 +2043,10 @@ def pipeline_command_center_api(request):
         }
         for stage_key, label, color, _icon in PIPELINE_STAGES
     ]
-    total_value = sum(deal['value'] for deal in deals)
+    # 칸 합계의 합 = 총 파이프라인 금액이 되도록 stage_amounts 에서 다시 센다.
+    # 수주 칸을 실제 납품 기준으로 덮어썼으므로, 카드 값을 그대로 더하면 화면에
+    # 보이는 칸 합계들과 총액이 어긋난다.
+    total_value = sum(stage_amounts.values())
     # "예상 매출(확률 가중)"은 아직 확정 안 된 금액의 기대값이다 — 견적/협상/접촉
     # 단계만 더한다. 수주는 이미 일어난 실제 매출(대시보드 매출 카드가 따로
     # 보여준다)이라 "예상"이 아니고, 실주는 죽은 건이라 넣을 이유가 없다.
