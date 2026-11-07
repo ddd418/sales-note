@@ -42,7 +42,7 @@ from reporting.models import (
 from reporting.services.test_fixtures import create_account_ledger_fixture
 
 
-FRONTEND_BASE_URL = 'https://sales-note-frontend-production.up.railway.app/'
+FRONTEND_BASE_URL = '/'
 
 
 def frontend_url(path):
@@ -97,7 +97,7 @@ class AuthenticationSmoke(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response['Location'],
-            'https://sales-note-frontend-production.up.railway.app/dashboard/',
+            '/dashboard/',
         )
         self.assertEqual(str(self.client.session.get('_auth_user_id')), str(self.user.id))
 
@@ -155,7 +155,7 @@ class AuthenticationSmoke(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response['Location'],
-            'https://sales-note-frontend-production.up.railway.app/dashboard/',
+            '/dashboard/',
         )
 
     def test_login_fail_wrong_password(self):
@@ -442,13 +442,18 @@ class CoreCrmLegacyRedirectTests(TestCase):
             f'employees/?employee={self.user.id}&edit=1',
         )
 
-    def test_non_get_legacy_create_action_is_not_redirected_to_react(self):
+    def test_legacy_create_post_is_retired_with_410(self):
+        """레거시 화면은 은퇴했다(2026-11): GET 은 React 로, 옛 폼 POST 는 410 이고 아무것도 만들지 않는다."""
+        from reporting.models import Schedule
+
+        before = Schedule.objects.count()
         response = self.client.post(reverse('reporting:schedule_create'), {
             'followup': str(self.followup.id),
             'visit_date': '2026-05-20',
             'activity_type': 'customer_meeting',
         })
-        self.assertNotEqual(response.get('Location', ''), frontend_url('schedules/?create=1'))
+        self.assertEqual(response.status_code, 410)
+        self.assertEqual(Schedule.objects.count(), before)
 
 
 class ReactNavigationApiTests(TestCase):
@@ -6537,7 +6542,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertTrue(own_item['canEdit'])
         self.assertEqual(own_item['statusUpdateHref'], reverse('reporting:schedule_status_update', args=[own.id]))
         self.assertEqual(own_item['djangoEditHref'], reverse('reporting:schedule_edit', args=[own.id]))
-        self.assertEqual(own_item['deleteHref'], reverse('reporting:schedule_delete', args=[own.id]))
+        self.assertEqual(own_item['deleteHref'], reverse('reporting:schedules_delete_api', args=[own.id]))
         self.assertEqual(
             {option['value'] for option in own_item['statusOptions']},
             {'scheduled', 'completed', 'cancelled'},
@@ -7151,7 +7156,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.assertEqual(payload['links']['updateDeliveryItems'], reverse('reporting:schedules_delivery_items_update_api', args=[schedule.id]))
         self.assertEqual(payload['links']['toggleTaxInvoice'], '')
         self.assertEqual(payload['links']['prepayments'], reverse('reporting:prepayment_api_list'))
-        self.assertEqual(payload['links']['deleteSchedule'], reverse('reporting:schedule_delete', args=[schedule.id]))
+        self.assertEqual(payload['links']['deleteSchedule'], reverse('reporting:schedules_delete_api', args=[schedule.id]))
         self.assertTrue(payload['taxInvoice']['applies'])
         self.assertEqual(payload['taxInvoice']['status'], 'pending')
         self.assertEqual(payload['taxInvoice']['totalCount'], 1)
@@ -7506,7 +7511,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.client.force_login(self.user)
 
         response = self.client.post(
-            reverse('reporting:schedule_delete', args=[schedule.id]),
+            reverse('reporting:schedules_delete_api', args=[schedule.id]),
             HTTP_X_REQUESTED_WITH='XMLHttpRequest',
         )
 
@@ -7523,7 +7528,7 @@ class SchedulesSummaryApiTests(TestCase):
         self.client.force_login(self.coworker)
 
         response = self.client.post(
-            reverse('reporting:schedule_delete', args=[schedule.id]),
+            reverse('reporting:schedules_delete_api', args=[schedule.id]),
             HTTP_X_REQUESTED_WITH='XMLHttpRequest',
         )
 
@@ -11508,7 +11513,7 @@ class ManagerRolePermissionTests(TestCase):
         self.client.force_login(self.manager)
         url = reverse('reporting:history_create_from_schedule', args=[schedule.pk])
         r = self.client.post(url, {'action_type': 'customer_meeting'})
-        self.assertIn(r.status_code, [302, 403],
+        self.assertIn(r.status_code, [302, 403, 410],
                       msg=f"Manager POST history_create_from_schedule: expected redirect/403, got {r.status_code}")
 
     # ── 일정 생성 차단 ──────────────────────────────────────────────────────
@@ -11527,7 +11532,7 @@ class ManagerRolePermissionTests(TestCase):
             'visit_date': '2026-05-01',
             'activity_type': 'customer_meeting',
         })
-        self.assertIn(r.status_code, [302, 403],
+        self.assertIn(r.status_code, [302, 403, 410],
                       msg=f"Manager POST schedule_create: expected redirect/403, got {r.status_code}")
 
     # ── 고객(팔로우업) 생성 차단 ────────────────────────────────────────────
@@ -11545,7 +11550,7 @@ class ManagerRolePermissionTests(TestCase):
         r = self.client.post(reverse('reporting:followup_create'), {
             'customer_name': '홍길동',
         })
-        self.assertIn(r.status_code, [302, 403],
+        self.assertIn(r.status_code, [302, 403, 410],
                       msg=f"Manager POST followup_create: expected redirect/403, got {r.status_code}")
 
     # ── Salesman은 정상 접근 가능 (form 렌더링) ─────────────────────────────
@@ -11849,7 +11854,11 @@ class OperationsCommandTests(TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ProductSpecificationSaveTests(TestCase):
-    """제품 생성/수정 시 specification 및 unit 필드가 올바르게 저장되는지 검증"""
+    """제품 생성/수정 시 specification 및 unit 필드가 올바르게 저장되는지 검증.
+
+    2026-11 레거시 제품 폼을 은퇴시키면서, React 가 실제로 쓰는 JSON API(product_save_api /
+    product_update_api)를 대상으로 옮겼다.
+    """
 
     def setUp(self):
         self.client = Client()
@@ -11861,17 +11870,18 @@ class ProductSpecificationSaveTests(TestCase):
         """일반 폼 제출로 제품 생성 시 specification 저장"""
         from reporting.models import Product
         response = self.client.post(
-            reverse('reporting:product_create'),
-            {
+            reverse('reporting:product_save_api'),
+            data=json.dumps({
                 'product_code': 'TEST-SPEC-001',
                 'standard_price': '10000',
                 'specification': '100x200mm',
                 'unit': 'EA',
                 'is_active': 'on',
-            },
+            }),
+            content_type='application/json',
         )
-        # 성공 시 목록으로 리다이렉트
-        self.assertIn(response.status_code, [200, 302])
+        # JSON API: 생성 성공 응답
+        self.assertIn(response.status_code, [200, 201])
         product = Product.objects.filter(product_code='TEST-SPEC-001').first()
         self.assertIsNotNone(product, '제품이 생성되어야 합니다')
         self.assertEqual(product.specification, '100x200mm',
@@ -11881,14 +11891,15 @@ class ProductSpecificationSaveTests(TestCase):
         """일반 폼 제출로 제품 생성 시 unit 저장"""
         from reporting.models import Product
         self.client.post(
-            reverse('reporting:product_create'),
-            {
+            reverse('reporting:product_save_api'),
+            data=json.dumps({
                 'product_code': 'TEST-UNIT-001',
                 'standard_price': '5000',
                 'specification': '',
                 'unit': 'SET',
                 'is_active': 'on',
-            },
+            }),
+            content_type='application/json',
         )
         product = Product.objects.filter(product_code='TEST-UNIT-001').first()
         self.assertIsNotNone(product, '제품이 생성되어야 합니다')
@@ -11905,14 +11916,15 @@ class ProductSpecificationSaveTests(TestCase):
             created_by=self.salesman,
         )
         self.client.post(
-            reverse('reporting:product_edit', args=[product.pk]),
-            {
+            reverse('reporting:product_update_api', args=[product.pk]),
+            data=json.dumps({
                 'product_code': 'EDIT-SPEC-001',
                 'standard_price': '1000',
                 'specification': '200x300mm',
                 'unit': 'EA',
                 'is_active': 'on',
-            },
+            }),
+            content_type='application/json',
         )
         product.refresh_from_db()
         self.assertEqual(product.specification, '200x300mm',
@@ -11929,14 +11941,15 @@ class ProductSpecificationSaveTests(TestCase):
             created_by=self.salesman,
         )
         self.client.post(
-            reverse('reporting:product_edit', args=[product.pk]),
-            {
+            reverse('reporting:product_update_api', args=[product.pk]),
+            data=json.dumps({
                 'product_code': 'EDIT-UNIT-001',
                 'standard_price': '1000',
                 'specification': '',
                 'unit': 'BOX',
                 'is_active': 'on',
-            },
+            }),
+            content_type='application/json',
         )
         product.refresh_from_db()
         self.assertEqual(product.unit, 'BOX',
@@ -11954,14 +11967,15 @@ class ProductSpecificationSaveTests(TestCase):
             created_by=self.salesman,
         )
         self.client.post(
-            reverse('reporting:product_edit', args=[product.pk]),
-            {
+            reverse('reporting:product_update_api', args=[product.pk]),
+            data=json.dumps({
                 'product_code': 'PRES-001',
                 'standard_price': '9999',
                 'specification': '새규격',
                 'unit': 'EA',
                 'is_active': 'on',
-            },
+            }),
+            content_type='application/json',
         )
         product.refresh_from_db()
         self.assertEqual(product.standard_price, Decimal('9999'),
@@ -13032,32 +13046,6 @@ class ScheduleVatModeTests(TestCase):
         schedule = self._make_schedule(vat_mode='none')
         quote = self._make_quote(schedule, subtotal_val=100000, probability=50)
         self.assertEqual(quote.weighted_revenue, Decimal('50000'))  # 100000 * 0.5
-
-    def test_schedule_form_includes_vat_mode(self):
-        """스케줄 생성 시 vat_mode가 POST 데이터로 저장된다."""
-        import datetime
-        from reporting.models import Schedule
-        self.client = Client()
-        self.client.force_login(self.salesman)
-
-        post_data = {
-            'followup': self.followup.pk,
-            'visit_date': '2026-06-10',
-            'visit_time': '10:00',
-            'activity_type': 'quote',
-            'location': '',
-            'status': 'scheduled',
-            'notes': 'VAT 모드 테스트',
-            'vat_mode': 'none',
-        }
-        r = self.client.post(reverse('reporting:schedule_create'), post_data, follow=False)
-        # 성공 시 리다이렉트
-        self.assertIn(r.status_code, [200, 302])
-        created = Schedule.objects.filter(
-            followup=self.followup, vat_mode='none'
-        ).first()
-        self.assertIsNotNone(created, 'vat_mode=none인 스케줄이 생성되어야 합니다.')
-
 
 class WriteProxyPhase0HardeningTests(TestCase):
     """쓰기 프록시 노출 전 하드닝(Phase 0) 회귀 테스트.
@@ -14503,3 +14491,61 @@ class RevenueDetailApiTests(TestCase):
         self.assertEqual(payload['period']['value'], 'month')
         self.assertEqual(payload['summary']['total'], dashboard_monthly_revenue)
         self.assertGreater(payload['summary']['total'], 0)
+
+
+class FollowupsSummaryApiTests(TestCase):
+    """`/reporting/api/followups/` — CRM 분석(MCP 읽기 도구)이 쓰는 후속 조치 목록.
+
+    2026-05 "부서 단위 고객 기록 공유" 커밋이 이 함수에 정의되지 않은 `followup`
+    을 쓰는 줄을 끼워 넣어 매 호출 NameError(500) 였다. 테스트가 없어 6개월간
+    아무도 몰랐다.
+    """
+
+    def setUp(self):
+        from reporting.models import Company, Department, FollowUp
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='후속요약회사')
+        self.user = make_user('followups_summary_me', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='후속요약 고객사', created_by=self.user)
+        self.followup = FollowUp.objects.create(
+            user=self.user,
+            user_company=self.company,
+            customer_name='요약 담당자',
+            company=customer_company,
+            department=Department.objects.create(
+                company=customer_company, name='요약 연구실', created_by=self.user
+            ),
+            customer_grade='A',
+        )
+        self.url = reverse('reporting:followups_summary_api')
+
+    def test_requires_login(self):
+        response = self.client.get(self.url)
+        self.assertIn(response.status_code, [301, 302, 401, 403])
+
+    def test_returns_next_action_queue_for_current_user(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.models import History
+
+        # 이 API 는 "다음 액션 날짜"가 있는 영업노트를 후속 조치 큐로 돌려준다.
+        note = History.objects.create(
+            user=self.user,
+            company=self.company,
+            followup=self.followup,
+            action_type='customer_meeting',
+            content='견적 검토 미팅',
+            next_action='견적서 보내기',
+            next_action_date=timezone.localdate() + timedelta(days=2),
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        rows = {row['id']: row for row in payload['followups']}
+        self.assertIn(note.id, rows)
+        self.assertEqual(rows[note.id]['customerId'], self.followup.id)
+        self.assertEqual(rows[note.id]['risk'], 'upcoming')

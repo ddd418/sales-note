@@ -26,7 +26,7 @@ from urllib.parse import urljoin
 from . import frontend_views, health
 
 
-DEFAULT_FRONTEND_URL = 'https://sales-note-frontend-production.up.railway.app/'
+DEFAULT_FRONTEND_URL = '/'
 
 
 def frontend_url(path=''):

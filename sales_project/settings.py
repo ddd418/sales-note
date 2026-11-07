@@ -95,7 +95,7 @@ else:
     SITE_DOMAIN = "http://127.0.0.1:8000"
     FRONTEND_PIPELINE_URL = os.environ.get(
         "FRONTEND_PIPELINE_URL",
-        "https://sales-note-frontend-production.up.railway.app/",
+        "/",  # web 서비스가 SPA 를 직접 서빙한다(별도 프론트 서비스는 2026-08 삭제)
     )
     
     LOGIN_URL = "/reporting/login/"

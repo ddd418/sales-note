@@ -5,13 +5,58 @@ layer cleanup. A small transitional import of legacy view globals keeps shared
 permission/helpers stable while the remaining backend service code is extracted.
 """
 
-from reporting import views as _legacy_views
+# 예전엔 reporting.views 의 전역을 통째로 globals() 에 복사해 썼다. views 를 정리하면서
+# 그 우회 때문에 선결제 API 가 조용히 깨진 일이 있어(2026-11), 쓰는 이름만 명시적으로 가져온다.
+import json
 
-globals().update({
-    name: getattr(_legacy_views, name)
-    for name in dir(_legacy_views)
-    if not name.startswith('__')
-})
+from django.contrib import messages
+from django.utils import timezone
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+from django.db.models import Count, Q, Sum
+from django.http import JsonResponse
+from django.shortcuts import (
+    get_object_or_404,
+    redirect,
+    render,
+)
+from django.urls import reverse
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_http_methods
+from reporting.account_ledger import account_representative_followup, prepayment_account_filter
+from reporting.models import (
+    Department,
+    FollowUp,
+    Prepayment,
+    PrepaymentLedgerEntry,
+    PrepaymentUsage,
+    Schedule,
+    UserProfile,
+)
+from reporting.services.account_ledger import (
+    prepayment_account_company,
+    prepayment_account_department,
+    prepayment_item_payload as account_prepayment_item_payload,
+    prepayment_usage_drilldown_payload as account_prepayment_usage_drilldown_payload,
+)
+from reporting.views import (
+    _api_login_required_response,
+    _dashboard_scope_users,
+    _date_or_none,
+    _datetime_or_none,
+    _money_int,
+    _parse_iso_date_or_none,
+    _parse_optional_decimal,
+    _schedules_prepayment_options,
+    _user_display_name,
+    can_access_followup,
+    can_access_user_data,
+    get_accessible_users,
+    get_user_profile,
+    logger,
+    manager_core_readonly_message,
+)
 
 # ============================================
 # 선결제 관리

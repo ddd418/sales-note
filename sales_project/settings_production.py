@@ -23,7 +23,6 @@ ALLOWED_HOSTS = [
     'web-production-5096.up.railway.app',  # Railway 명시적 도메인
     'web.railway.internal',
     'healthcheck.railway.app',
-    'sales-note-frontend-production.up.railway.app',
     # *.railway.app 와일드카드는 Django ALLOWED_HOSTS에서 지원되지 않으므로 제거
 ]
 
@@ -31,8 +30,6 @@ ALLOWED_HOSTS = [
 CSRF_TRUSTED_ORIGINS = [
     'https://web-production-5096.up.railway.app',
     'http://web-production-5096.up.railway.app',  # HTTP도 추가
-    'https://sales-note-frontend-production.up.railway.app',
-    'http://sales-note-frontend-production.up.railway.app',
     'http://web.railway.internal',
     'https://*.railway.app',
     'https://*.up.railway.app',
@@ -48,7 +45,6 @@ elif 'RAILWAY_ENVIRONMENT' in os.environ or 'RAILWAY_STATIC_URL' in os.environ:
     railway_domain_keys = (
         'RAILWAY_PUBLIC_DOMAIN',
         'RAILWAY_PRIVATE_DOMAIN',
-        'RAILWAY_SERVICE_SALES_NOTE_FRONTEND_URL',
         'RAILWAY_STATIC_URL',
     )
     for railway_domain_key in railway_domain_keys:

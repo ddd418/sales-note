@@ -9,7 +9,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 
 
-DEFAULT_FRONTEND_URL = "https://sales-note-frontend-production.up.railway.app/"
+DEFAULT_FRONTEND_URL = "/"
 READ_PAGE_METHODS = {"GET", "HEAD"}
 
 

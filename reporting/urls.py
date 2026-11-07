@@ -8,7 +8,6 @@ from .react_redirects import (
     frontend_url,
     id_react_page,
     query_with,
-    react_page_redirect,
     react_page_retired,
     static_react_page,
 )
@@ -56,45 +55,36 @@ def _products_react_page(request, product_id=None, action=None, **kwargs):
 
 urlpatterns = [
     # 팔로우업 URL들
-    path('followups/', react_page_redirect(
-        views.followup_list_view,
+    path('followups/', react_page_retired(
         static_react_page('customers/', rename={'pipeline_stage': 'stage'}),
     ), name='followup_list'),
-    path('followups/<int:pk>/', react_page_redirect(
-        views.followup_detail_view,
+    path('followups/<int:pk>/', react_page_retired(
         id_react_page('customers/{pk}/'),
     ), name='followup_detail'),
-    path('followups/create/', react_page_redirect(
-        views.followup_create_view,
+    path('followups/create/', react_page_retired(
         static_react_page('customers/', extra={'create': '1'}),
     ), name='followup_create'),
-    path('followups/<int:pk>/edit/', react_page_redirect(
-        views.followup_edit_view,
+    path('followups/<int:pk>/edit/', react_page_retired(
         id_react_page('customers/{pk}/'),
     ), name='followup_edit'),
     path('followups/<int:pk>/delete/', views.followup_delete_view, name='followup_delete'),
     path('followups/excel-download/', views.followup_excel_download, name='followup_excel_download'),
     path('followups/basic-excel-download/', views.followup_basic_excel_download, name='followup_basic_excel_download'),
       # 일정 URL들
-    path('schedules/', react_page_redirect(
-        views.schedule_list_view,
+    path('schedules/', react_page_retired(
         static_react_page('schedules/'),
     ), name='schedule_list'),
-    path('schedules/calendar/', react_page_redirect(
-        views.schedule_calendar_view,
+    path('schedules/calendar/', react_page_retired(
         static_react_page('schedules/calendar/'),
     ), name='schedule_calendar'),
     path('schedules/api/', views.schedule_api_view, name='schedule_api'),
-    path('schedules/<int:pk>/', react_page_redirect(
-        views.schedule_detail_view,
+    path('schedules/<int:pk>/', react_page_retired(
         id_react_page('schedules/{pk}/'),
     ), name='schedule_detail'),
-    path('schedules/create/', react_page_redirect(
-        views.schedule_create_view,
+    path('schedules/create/', react_page_retired(
         static_react_page('schedules/', rename={'followup': 'customer'}, extra={'create': '1'}),
     ), name='schedule_create'),  # 캘린더 더블클릭에서 사용
-    path('schedules/<int:pk>/edit/', react_page_redirect(
-        views.schedule_edit_view,
+    path('schedules/<int:pk>/edit/', react_page_retired(
         id_react_page('schedules/{pk}/'),
     ), name='schedule_edit'),
     path('schedules/<int:pk>/update-delivery-items/', views.schedule_update_delivery_items, name='schedule_update_delivery_items'),
@@ -103,8 +93,7 @@ urlpatterns = [
     path('schedules/<int:schedule_id>/status/', views.schedule_status_update_api, name='schedule_status_update'),
     path('schedules/<int:schedule_id>/add-memo/', views.schedule_add_memo_api, name='schedule_add_memo'),
     path('schedules/<int:schedule_id>/histories/', views.schedule_histories_api, name='schedule_histories_api'),
-    path('schedules/<int:pk>/delete/', react_page_redirect(
-        views.schedule_delete_view,
+    path('schedules/<int:pk>/delete/', react_page_retired(
         lambda request, pk: frontend_url(
             f'schedules/{pk}/',
             query_with(request, extra={'delete': '1'}),
@@ -117,28 +106,23 @@ urlpatterns = [
     path('api/employees/<int:user_id>/update/', views.employees_update_api, name='employees_update_api'),
     path('api/employees/<int:user_id>/toggle-active/', views.employees_toggle_active_api, name='employees_toggle_active_api'),
     # 히스토리 URL들
-    path('histories/', react_page_redirect(
-        views.history_list_view,
+    path('histories/', react_page_retired(
         static_react_page('notes/'),
     ), name='history_list'),
-    path('histories/<int:pk>/', react_page_redirect(
-        views.history_detail_view,
+    path('histories/<int:pk>/', react_page_retired(
         id_react_page('notes/{pk}/'),
     ), name='history_detail'),
     # 삭제됨 - 히스토리 직접 추가 불가: path('histories/create/', views.history_create_view, name='history_create'),
-    path('histories/create-from-schedule/<int:schedule_id>/', react_page_redirect(
-        views.history_create_from_schedule,
+    path('histories/create-from-schedule/<int:schedule_id>/', react_page_retired(
         lambda request, schedule_id: frontend_url(
             'notes/',
             query_with(request, extra={'create': '1', 'schedule': schedule_id}),
         ),
     ), name='history_create_from_schedule'),  # 캘린더에서 사용
-    path('histories/<int:pk>/edit/', react_page_redirect(
-        views.history_edit_view,
+    path('histories/<int:pk>/edit/', react_page_retired(
         id_react_page('notes/{pk}/'),
     ), name='history_edit'),
-    path('histories/<int:pk>/delete/', react_page_redirect(
-        views.history_delete_view,
+    path('histories/<int:pk>/delete/', react_page_retired(
         lambda request, pk: frontend_url(
             f'notes/{pk}/',
             query_with(request, extra={'delete': '1'}),
@@ -151,12 +135,10 @@ urlpatterns = [
     path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
     
     # 고객 리포트 URL들
-    path('customer-report/', react_page_redirect(
-        views.customer_report_view,
+    path('customer-report/', react_page_retired(
         static_react_page('customers/'),
     ), name='customer_report'),
-    path('customer-report/<int:followup_id>/', react_page_redirect(
-        views.customer_detail_report_view_simple,
+    path('customer-report/<int:followup_id>/', react_page_retired(
         lambda request, followup_id: frontend_url(f'customers/{followup_id}/', query_with(request)),
     ), name='customer_detail_report'),
     path('customer-report/<int:followup_id>/toggle-all-tax-invoices/', views.toggle_all_tax_invoices, name='toggle_all_tax_invoices'),
@@ -224,78 +206,61 @@ urlpatterns = [
     path('api/departments/<int:pk>/', views.api_department_detail, name='api_department_detail'),
     
     # 업체/부서 관리 URL들
-    path('companies/', react_page_redirect(
-        views.company_list_view,
+    path('companies/', react_page_retired(
         static_react_page('companies/', rename={'search': 'q'}),
     ), name='company_list'),
-    path('companies/create/', react_page_redirect(
-        views.company_create_view,
+    path('companies/create/', react_page_retired(
         static_react_page('companies/', extra={'create': 'company'}),
     ), name='company_create'),
-    path('companies/<int:pk>/', react_page_redirect(
-        views.company_detail_view,
+    path('companies/<int:pk>/', react_page_retired(
         lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk})),
     ), name='company_detail'),
-    path('companies/<int:pk>/edit/', react_page_redirect(
-        views.company_edit_view,
+    path('companies/<int:pk>/edit/', react_page_retired(
         lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk, 'edit': 'company'})),
     ), name='company_edit'),
-    path('companies/<int:pk>/delete/', react_page_redirect(
-        views.company_delete_view,
+    path('companies/<int:pk>/delete/', react_page_retired(
         lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk, 'delete': 'company'})),
     ), name='company_delete'),
-    path('companies/<int:company_pk>/departments/create/', react_page_redirect(
-        views.department_create_view,
+    path('companies/<int:company_pk>/departments/create/', react_page_retired(
         lambda request, company_pk: frontend_url('companies/', query_with(request, extra={'company_id': company_pk, 'create': 'department'})),
     ), name='department_create'),
-    path('departments/<int:pk>/edit/', react_page_redirect(
-        views.department_edit_view,
+    path('departments/<int:pk>/edit/', react_page_retired(
         lambda request, pk: frontend_url('companies/', query_with(request, extra={'department_id': pk, 'edit': 'department'})),
     ), name='department_edit'),
-    path('departments/<int:pk>/delete/', react_page_redirect(
-        views.department_delete_view,
+    path('departments/<int:pk>/delete/', react_page_retired(
         lambda request, pk: frontend_url('companies/', query_with(request, extra={'department_id': pk, 'delete': 'department'})),
     ), name='department_delete'),
 
     # 매니저용 읽기 전용 업체 관리 URL들
-    path('manager/companies/', react_page_redirect(
-        views.manager_company_list_view,
+    path('manager/companies/', react_page_retired(
         static_react_page('companies/', rename={'search': 'q'}),
     ), name='manager_company_list'),
-    path('manager/companies/<int:pk>/', react_page_redirect(
-        views.manager_company_detail_view,
+    path('manager/companies/<int:pk>/', react_page_retired(
         lambda request, pk: frontend_url('companies/', query_with(request, extra={'company_id': pk})),
     ), name='manager_company_detail'),    # 사용자 관리 URL들 (Admin 전용)
-    path('users/', react_page_redirect(
-        views.user_list,
+    path('users/', react_page_retired(
         static_react_page('employees/', rename={'search': 'q'}),
     ), name='user_list'),
-    path('users/create/', react_page_redirect(
-        views.user_create,
+    path('users/create/', react_page_retired(
         static_react_page('employees/', extra={'create': '1'}),
     ), name='user_create'),
-    path('users/<int:user_id>/edit/', react_page_redirect(
-        views.user_edit,
+    path('users/<int:user_id>/edit/', react_page_retired(
         lambda request, user_id: frontend_url('employees/', query_with(request, extra={'employee': user_id, 'edit': '1'})),
     ), name='user_edit'),
-    path('users/<int:user_id>/delete/', react_page_redirect(
-        views.user_delete,
+    path('users/<int:user_id>/delete/', react_page_retired(
         lambda request, user_id: frontend_url('employees/', query_with(request, extra={'employee': user_id})),
     ), name='user_delete'),
     path('users/<int:user_id>/toggle-active/', views.user_toggle_active, name='user_toggle_active'),
     path('users/<int:user_id>/toggle-ai/', views.user_toggle_ai, name='user_toggle_ai'),
     
     # 매니저용 사용자 관리 URL들 (Manager 전용)
-    path('manager/users/', react_page_redirect(
-        views.manager_user_list,
+    path('manager/users/', react_page_retired(
         static_react_page('employees/', rename={'search': 'q'}),
     ), name='manager_user_list'),
-    path('manager/users/create/', react_page_redirect(
-        views.manager_user_create,
+    path('manager/users/create/', react_page_retired(
         static_react_page('employees/', extra={'create': '1'}),
     ), name='manager_user_create'),
-    path('manager/users/<int:user_id>/edit/', react_page_redirect(
-        views.manager_user_edit,
+    path('manager/users/<int:user_id>/edit/', react_page_retired(
         lambda request, user_id: frontend_url('employees/', query_with(request, extra={'employee': user_id, 'edit': '1'})),
     ), name='manager_user_edit'),
     
@@ -306,18 +271,15 @@ urlpatterns = [
     # 인증 및 기타 URL들
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),
-    path('dashboard/', react_page_redirect(
-        views.dashboard_view,
+    path('dashboard/', react_page_retired(
         static_react_page('dashboard/'),
     ), name='dashboard'),
     
     # 프로필 관리 URL들
-    path('profile/', react_page_redirect(
-        views.profile_view,
+    path('profile/', react_page_retired(
         static_react_page('profile/'),
     ), name='profile'),
-    path('profile/edit/', react_page_redirect(
-        views.profile_edit_view,
+    path('profile/edit/', react_page_retired(
         static_react_page('profile/', extra={'edit': '1'}),
     ), name='profile_edit'),
     
@@ -356,6 +318,7 @@ urlpatterns = [
     path('api/personal-schedules/create/', personal_schedule_views.personal_schedules_create_api, name='personal_schedules_create_api'),
     path('api/personal-schedules/<int:pk>/', personal_schedule_views.personal_schedules_detail_api, name='personal_schedules_detail_api'),
     path('api/personal-schedules/<int:pk>/update/', personal_schedule_views.personal_schedules_update_api, name='personal_schedules_update_api'),
+    path('api/schedules/<int:pk>/delete/', views.schedules_delete_api, name='schedules_delete_api'),
     path('api/personal-schedules/<int:pk>/delete/', personal_schedule_views.personal_schedules_delete_api, name='personal_schedules_delete_api'),
     path('api/companies/change-creator/', views.api_change_company_creator, name='api_change_company_creator'),
     path('api/companies/<int:company_id>/departments/', views.api_company_departments, name='api_company_departments'),
@@ -382,38 +345,31 @@ urlpatterns = [
     path('api/demos/<int:demo_id>/delete/', lazy_view('reporting.api.demos.demo_record_delete_api'), name='demo_record_delete_api'),
     
     # 선결제 URL들
-    path('prepayment/', react_page_redirect(
-        lazy_view('reporting.api.prepayments.prepayment_list_view'),
+    path('prepayment/', react_page_retired(
         static_react_page('prepayments/', rename={'search': 'q'}),
     ), name='prepayment_list'),
-    path('prepayment/create/', react_page_redirect(
-        lazy_view('reporting.api.prepayments.prepayment_create_view'),
+    path('prepayment/create/', react_page_retired(
         static_react_page('prepayments/new/'),
     ), name='prepayment_create'),
-    path('prepayment/<int:pk>/', react_page_redirect(
-        lazy_view('reporting.api.prepayments.prepayment_detail_view'),
+    path('prepayment/<int:pk>/', react_page_retired(
         id_react_page('prepayments/{pk}/'),
     ), name='prepayment_detail'),
-    path('prepayment/<int:pk>/edit/', react_page_redirect(
-        lazy_view('reporting.api.prepayments.prepayment_edit_view'),
+    path('prepayment/<int:pk>/edit/', react_page_retired(
         id_react_page('prepayments/{pk}/edit/'),
     ), name='prepayment_edit'),
-    path('prepayment/<int:pk>/delete/', react_page_redirect(
-        lazy_view('reporting.api.prepayments.prepayment_delete_view'),
+    path('prepayment/<int:pk>/delete/', react_page_retired(
         lambda request, pk: frontend_url(
             f'prepayments/{pk}/',
             query_with(request, extra={'delete': '1'}),
         ),
     ), name='prepayment_delete'),
-    path('prepayment/<int:pk>/transfer/', react_page_redirect(
-        lazy_view('reporting.api.prepayments.prepayment_transfer_view'),
+    path('prepayment/<int:pk>/transfer/', react_page_retired(
         lambda request, pk: frontend_url(
             f'prepayments/{pk}/',
             query_with(request, extra={'transfer': '1'}),
         ),
     ), name='prepayment_transfer'),
-    path('prepayment/customer/<int:customer_id>/', react_page_redirect(
-        lazy_view('reporting.api.prepayments.prepayment_customer_view'),
+    path('prepayment/customer/<int:customer_id>/', react_page_retired(
         lambda request, customer_id: frontend_url(
             f'prepayments/customer/{customer_id}/',
             query_with(request),
@@ -438,24 +394,19 @@ urlpatterns = [
     path('api/department/<int:department_id>/memo/', views.department_memo_api, name='department_memo_api'),
     
     # 제품 관리 URL들
-    path('products/', react_page_redirect(
-        views.product_list,
+    path('products/', react_page_retired(
         _products_react_page,
     ), name='product_list'),
-    path('products/create/', react_page_redirect(
-        views.product_create,
+    path('products/create/', react_page_retired(
         lambda request: _products_react_page(request, action='create'),
     ), name='product_create'),
-    path('products/bulk-create/', react_page_redirect(
-        views.product_bulk_create,
+    path('products/bulk-create/', react_page_retired(
         lambda request: _products_react_page(request, action='import'),
     ), name='product_bulk_create'),
-    path('products/<int:product_id>/edit/', react_page_redirect(
-        views.product_edit,
+    path('products/<int:product_id>/edit/', react_page_retired(
         lambda request, product_id: _products_react_page(request, product_id=product_id, action='edit'),
     ), name='product_edit'),
-    path('products/<int:product_id>/delete/', react_page_redirect(
-        views.product_delete,
+    path('products/<int:product_id>/delete/', react_page_retired(
         lambda request, product_id: _products_react_page(request, product_id=product_id, action='delete'),
     ), name='product_delete'),
     
@@ -471,26 +422,22 @@ urlpatterns = [
     path('api/products/import.xlsx', views.products_excel_import_api, name='products_excel_import_api'),
     
     # 개인 일정 URL들
-    path('personal-schedules/create/', react_page_redirect(
-        personal_schedule_views.personal_schedule_create_view,
+    path('personal-schedules/create/', react_page_retired(
         static_react_page('schedules/calendar/', extra={'create': 'personal'}),
     ), name='personal_schedule_create'),
-    path('personal-schedules/<int:pk>/', react_page_redirect(
-        personal_schedule_views.personal_schedule_detail_view,
+    path('personal-schedules/<int:pk>/', react_page_retired(
         lambda request, pk: frontend_url(
             'schedules/calendar/',
             query_with(request, extra={'personal': pk}),
         ),
     ), name='personal_schedule_detail'),
-    path('personal-schedules/<int:pk>/edit/', react_page_redirect(
-        personal_schedule_views.personal_schedule_edit_view,
+    path('personal-schedules/<int:pk>/edit/', react_page_retired(
         lambda request, pk: frontend_url(
             'schedules/calendar/',
             query_with(request, extra={'personal': pk, 'edit': '1'}),
         ),
     ), name='personal_schedule_edit'),
-    path('personal-schedules/<int:pk>/delete/', react_page_redirect(
-        personal_schedule_views.personal_schedule_delete_view,
+    path('personal-schedules/<int:pk>/delete/', react_page_retired(
         lambda request, pk: frontend_url(
             'schedules/calendar/',
             query_with(request, extra={'personal': pk, 'delete': '1'}),
@@ -506,25 +453,20 @@ urlpatterns = [
     path('api/documents/<int:pk>/update/', views.document_template_update_api, name='document_template_api_update'),
     path('api/documents/<int:pk>/delete/', views.document_template_delete_api, name='document_template_api_delete'),
     path('api/documents/<int:pk>/toggle-default/', views.document_template_toggle_default_api, name='document_template_api_toggle_default'),
-    path('documents/', react_page_redirect(
-        views.document_template_list,
+    path('documents/', react_page_retired(
         static_react_page('documents/'),
     ), name='document_template_list'),
-    path('documents/create/', react_page_redirect(
-        views.document_template_create,
+    path('documents/create/', react_page_retired(
         static_react_page('documents/', extra={'create': '1'}),
     ), name='document_template_create'),
-    path('documents/<int:pk>/edit/', react_page_redirect(
-        views.document_template_edit,
+    path('documents/<int:pk>/edit/', react_page_retired(
         lambda request, pk: frontend_url('documents/', query_with(request, extra={'template_id': pk, 'edit': '1'})),
     ), name='document_template_edit'),
-    path('documents/<int:pk>/delete/', react_page_redirect(
-        views.document_template_delete,
+    path('documents/<int:pk>/delete/', react_page_retired(
         lambda request, pk: frontend_url('documents/', query_with(request, extra={'template_id': pk, 'delete': '1'})),
     ), name='document_template_delete'),
     path('documents/<int:pk>/download/', views.document_template_download, name='document_template_download'),
-    path('documents/<int:pk>/toggle-default/', react_page_redirect(
-        views.document_template_toggle_default,
+    path('documents/<int:pk>/toggle-default/', react_page_retired(
         lambda request, pk: frontend_url('documents/', query_with(request, extra={'template_id': pk})),
     ), name='document_template_toggle_default'),
     path('documents/generated/<int:log_id>/download/', views.generated_document_download, name='generated_document_download'),
@@ -548,16 +490,13 @@ urlpatterns = [
     # ============================================
     # 펀넬 관리 URL들
     # ============================================
-    path('funnel/', react_page_redirect(
-        funnel_views.funnel_list_view,
+    path('funnel/', react_page_retired(
         static_react_page('pipeline/'),
     ), name='funnel_list'),
-    path('funnel/pipeline/', react_page_redirect(
-        funnel_views.funnel_pipeline_view,
+    path('funnel/pipeline/', react_page_retired(
         static_react_page('pipeline/'),
     ), name='funnel_pipeline'),
-    path('funnel/<int:department_id>/', react_page_redirect(
-        funnel_views.funnel_detail_view,
+    path('funnel/<int:department_id>/', react_page_retired(
         static_react_page('pipeline/'),
     ), name='funnel_detail'),
     path('api/pipeline/', funnel_views.pipeline_command_center_api, name='pipeline_command_center_api'),

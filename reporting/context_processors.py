@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 from django.conf import settings
 
 
-DEFAULT_FRONTEND_PIPELINE_URL = "https://sales-note-frontend-production.up.railway.app/"
+DEFAULT_FRONTEND_PIPELINE_URL = "/"
 
 
 def _frontend_url(base_url, path=""):
