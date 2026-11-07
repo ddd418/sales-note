@@ -194,7 +194,7 @@ export function AppShell({ activeView, children }: { activeView: MainView; child
           <div className="brand-mark">SN</div>
           <div>
             <strong>영업 보고 시스템</strong>
-            <span>CRM Workspace</span>
+            <span>Sales CRM</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="CRM navigation">

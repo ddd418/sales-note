@@ -13448,7 +13448,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     {
       label: '당해년도 전체 매출',
       value: formatWon(data.metrics.yearRevenue),
-      detail: `${revenueYear}년 완료 납품·선결제 기준`,
+      detail: `${revenueYear}년 완료 납품 기준`,
       icon: CircleDollarSign,
       tone: 'amber' as const,
       href: '/revenue/?period=year',
@@ -13480,7 +13480,7 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     {
       label: '이번 달 매출',
       value: formatWon(data.metrics.monthlyRevenue),
-      detail: '완료 납품·선결제 기준',
+      detail: '완료 납품 기준',
       icon: CircleDollarSign,
       tone: 'amber' as const,
       href: '/revenue/?period=month',

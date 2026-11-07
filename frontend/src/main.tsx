@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 import './styles.css';
 import { CRM_CLIENT_NAVIGATION_EVENT } from './navigationEvents';
 
