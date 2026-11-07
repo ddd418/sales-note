@@ -1,5 +1,23 @@
 # AGENT_PLAN.md
 
+## 2026-11-07 일정 부가세 방식(별도/포함/없음) + 남은 레거시 화면 은퇴 + 검색형 선택 상자 스타일 복구
+
+**Background**: 사용자 "진행해" — 앞 보고의 다음 후보 두 가지. 부가세는 "매출도 같이 반영"으로 결정(AskUserQuestion).
+
+**부가세**: React 에 선택 UI 가 없었고 납품 품목 총액은 항상 ×1.1 → "포함" 건은 서류와 매출이 10% 어긋남. 서류 미리보기·실제 생성도 서로 다른 규칙이었다. `reporting/vat.py` 를 단일 출처로 신설해 흩어진 `* Decimal('1.1')` 약 35곳을 교체(품목 저장·견적·대시보드·외상·파이프라인·고객기록·세금계산서·서류·시그널·AI·선결제 통계). **'별도'는 예전 식 그대로라 기존 숫자 불변.** 등록/수정 API 가 `vatMode` 를 받고(없으면 기존 값 유지 — 방식을 모르는 수정이 '포함'을 '별도'로 덮어쓰지 않게), 방식이 바뀌면 그 일정의 품목·견적을 재계산(`recalculate_schedule_amounts`). 화면: 일정 폼 4곳에 "부가세" 선택, 상세 납품 합계에 "…기준" 표시. Decimal×float TypeError 잠재 버그 4곳 소멸, 이중 정의로 가려져 있던 `schedule_delivery_items_api` 사본 삭제.
+
+**레거시 은퇴(마지막 4개)**: memo_create · followup_delete · history_by_followup · salesman_detail — 서로의 템플릿끼리만 링크된 섬(프론트·서버 응답·테스트 참조 0, memo_create 운영 접속 7일 0). GET → React 대응 화면, POST → 410. 뷰 5개 · 폼 클래스 6개 · 템플릿 6개 삭제. views.py 20,051 → 19,212줄, 템플릿 24 → 15개.
+
+**검색형 선택 상자 스타일 복구**: 예전 커밋 8c44c0e("메일/명함 메뉴 삭제")가 규칙까지 지워 고객·부서 선택 목록이 스타일 없이 펼쳐지던 기존 문제. 지금 코드가 쓰는데 스타일이 사라진 클래스를 전수 비교 — 이것 하나뿐.
+
+**DB change required**: No(스키마). **운영 데이터 1건 재계산 대기**: 기존에 '포함'으로 설정돼 있던 일정 895(hana008, 2026-05-06 납품 예정, 선결제·견적·활동기록 연결 없음)의 품목 2개 총액이 아직 옛 규칙(×1.1) 값(6,528,852 / 4,016,265). 새 규칙 값은 5,935,320 / 3,651,150. 원격 DB 쓰기가 권한 정책에 막혀 사용자 확인 대기 — `recalculate_schedule_amounts(Schedule.objects.get(pk=895))` 또는 화면에서 그 일정의 납품 품목을 한 번 저장하면 반영된다. 이 건은 '예정' 상태라 현재 실제 매출 집계에는 영향 없음.
+
+**검증**: 회귀 **525개** — 실패 3건은 기존 무관 결함뿐. `ScheduleVatModeRevenueTests` 7개. `tsc` 0, 빌드 성공, 로컬에서 일정 수정 폼의 부가세 선택·검색형 선택 상자 확인. `post_deploy_smoke.py` ok. 운영 dashboard/pipeline/followups/schedules API 200, 옛 메모 주소 302 → /notes/?create=1.
+
+**Deploy**: Done. Commit `717943a` on `origin/main`. Railway `web` deploy `83df8b07-346f-43ab-962a-fe291e6fe078` SUCCESS.
+
+---
+
 ## 2026-11-07 최적화 3단계: App.tsx 화면별 분리 + 지연 로딩
 
 **Background**: App.tsx(16k줄)에 화면 18개가 전부 들어 있어 어느 화면을 열든 383KB 를 통째로 내려받았다.
