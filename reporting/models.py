@@ -1564,13 +1564,12 @@ class DeliveryItem(models.Model):
                         (Decimal('1') - (discount_price / unit_price)) * Decimal('100')
                     ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
-        # 총액 자동 계산 (부가세 10% 포함)
+        # 총액(= 매출 기준 금액) 자동 계산 — 연결된 일정의 부가세 모드를 따른다(reporting/vat.py).
         # unit_price가 None이 아니고 quantity가 있을 때만 계산 (0도 유효)
         effective_unit_price = self.get_effective_unit_price()
         if effective_unit_price is not None and self.quantity:
-            from decimal import Decimal
-            subtotal = effective_unit_price * self.quantity
-            self.total_price = subtotal * Decimal('1.1')  # 부가세 10% 추가
+            from reporting.vat import item_gross_total
+            self.total_price = item_gross_total(self, unit_price=effective_unit_price)
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -1795,25 +1794,11 @@ class Quote(models.Model):
 
         taxable_amount = self.subtotal - self.discount_amount
 
-        # 부가세 모드: 연결된 Schedule의 vat_mode를 우선 사용, 없으면 'excluded'
-        vat_mode = 'excluded'
-        if self.schedule_id:
-            try:
-                vat_mode = self.schedule.vat_mode or 'excluded'
-            except Exception:
-                pass
-
-        if vat_mode == 'included':
-            # 입력금액이 부가세 포함 총액 → 공급가 = 총액 / 1.1
-            supply = (taxable_amount / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-            self.tax_amount = taxable_amount - supply
-            self.total_amount = taxable_amount
-        elif vat_mode == 'none':
-            self.tax_amount = Decimal('0')
-            self.total_amount = taxable_amount
-        else:  # 'excluded' 또는 기타 → 기존 동작 유지
-            self.tax_amount = (taxable_amount * Decimal('0.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-            self.total_amount = taxable_amount + self.tax_amount
+        # 부가세 모드: 연결된 Schedule 의 vat_mode (reporting/vat.py 가 단일 출처)
+        from reporting.vat import schedule_vat_mode, split_amount
+        _supply, self.tax_amount, self.total_amount = split_amount(
+            taxable_amount, schedule_vat_mode(self.schedule) if self.schedule_id else 'excluded'
+        )
 
         # 가중매출 계산
         self.weighted_revenue = self.total_amount * (Decimal(str(self.probability)) / Decimal('100'))

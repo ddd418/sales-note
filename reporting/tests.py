@@ -14549,3 +14549,136 @@ class FollowupsSummaryApiTests(TestCase):
         self.assertIn(note.id, rows)
         self.assertEqual(rows[note.id]['customerId'], self.followup.id)
         self.assertEqual(rows[note.id]['risk'], 'upcoming')
+
+
+class ScheduleVatModeRevenueTests(TestCase):
+    """일정 부가세 방식(별도/포함/없음)이 품목 총액 · 매출 · API 에 일관되게 반영되는지.
+
+    예전엔 납품 품목 총액이 일정 방식과 무관하게 항상 ×1.1 이라 "부가세 포함" 건은
+    서류와 매출이 10% 어긋났다. 규칙은 reporting/vat.py 한 곳에 있다.
+    """
+
+    def setUp(self):
+        from datetime import time
+        from django.utils import timezone
+        from reporting.models import Company, Department, FollowUp, Schedule
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='부가세회사')
+        self.user = make_user('vat_mode_me', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='부가세 고객사', created_by=self.user)
+        self.department = Department.objects.create(company=customer_company, name='부가세 연구실', created_by=self.user)
+        self.followup = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='부가세 담당자',
+            company=customer_company, department=self.department, customer_grade='A',
+        )
+        self.today = timezone.localdate()
+
+        def make_schedule(vat_mode, status='completed'):
+            return Schedule.objects.create(
+                user=self.user, company=self.company, followup=self.followup,
+                visit_date=self.today, visit_time=time(10, 0),
+                activity_type='delivery', status=status, vat_mode=vat_mode,
+            )
+
+        self.make_schedule = make_schedule
+
+    def _item(self, schedule, unit_price=500000, quantity=1):
+        from reporting.models import DeliveryItem
+
+        return DeliveryItem.objects.create(schedule=schedule, item_name='분석기', quantity=quantity, unit_price=unit_price)
+
+    def test_vat_module_rules(self):
+        from decimal import Decimal
+        from reporting import vat
+
+        # 별도는 예전 계산식 그대로(× 1.1, 반올림 없음) — 기존 숫자가 1원도 바뀌면 안 된다.
+        self.assertEqual(vat.gross_amount(Decimal('500000'), 'excluded'), Decimal('500000') * Decimal('1.1'))
+        self.assertEqual(vat.gross_amount(500000, 'included'), Decimal('500000'))
+        self.assertEqual(vat.gross_amount(500000, 'none'), Decimal('500000'))
+        self.assertEqual(vat.split_amount(550000, 'included'), (Decimal('500000'), Decimal('50000'), Decimal('550000')))
+        self.assertEqual(vat.split_amount(500000, 'none'), (Decimal('500000'), Decimal('0'), Decimal('500000')))
+        self.assertEqual(vat.split_amount(500000, 'excluded'), (Decimal('500000'), Decimal('50000'), Decimal('550000')))
+        self.assertEqual(vat.normalize_vat_mode('이상한값'), 'excluded')
+        with self.assertRaises(ValueError):
+            vat.parse_vat_mode({'vatMode': 'weird'})
+
+    def test_delivery_item_total_follows_schedule_vat_mode(self):
+        self.assertEqual(self._item(self.make_schedule('excluded')).total_price, 550000)
+        self.assertEqual(self._item(self.make_schedule('included')).total_price, 500000)
+        self.assertEqual(self._item(self.make_schedule('none')).total_price, 500000)
+
+    def test_history_linked_item_follows_its_schedule(self):
+        from reporting.models import DeliveryItem, History
+
+        schedule = self.make_schedule('included')
+        note = History.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            schedule=schedule, action_type='delivery_schedule', content='납품',
+        )
+        item = DeliveryItem.objects.create(history=note, item_name='시약', quantity=2, unit_price=100000)
+        self.assertEqual(item.total_price, 200000)
+
+    def test_dashboard_year_revenue_uses_included_amount_as_is(self):
+        self._item(self.make_schedule('included'), unit_price=1000000)
+        self._item(self.make_schedule('excluded'), unit_price=1000000)
+        self.client.force_login(self.user)
+        dashboard = self.client.get(reverse('reporting:dashboard_summary_api')).json()
+        # 포함 100만 + 별도 100만×1.1 = 210만
+        self.assertEqual(dashboard['metrics']['yearRevenue'], 2100000)
+
+    def test_create_api_accepts_vat_mode_and_rejects_unknown(self):
+        from reporting.models import Schedule
+
+        self.client.force_login(self.user)
+        base = {
+            'followupId': self.followup.id, 'activityType': 'customer_meeting',
+            'visitDate': self.today.isoformat(), 'visitTime': '10:00',
+        }
+        ok = self.client.post(reverse('reporting:schedules_create_api'),
+                              data=json.dumps({**base, 'vatMode': 'none'}), content_type='application/json')
+        self.assertIn(ok.status_code, [200, 201])
+        self.assertEqual(Schedule.objects.filter(followup=self.followup).latest('id').vat_mode, 'none')
+
+        bad = self.client.post(reverse('reporting:schedules_create_api'),
+                               data=json.dumps({**base, 'vatMode': 'weird'}), content_type='application/json')
+        self.assertEqual(bad.status_code, 400)
+
+        default = self.client.post(reverse('reporting:schedules_create_api'),
+                                   data=json.dumps(base), content_type='application/json')
+        self.assertIn(default.status_code, [200, 201])
+        self.assertEqual(Schedule.objects.filter(followup=self.followup).latest('id').vat_mode, 'excluded')
+
+    def _update(self, schedule, **extra):
+        payload = {
+            'followupId': self.followup.id, 'activityType': 'delivery', 'status': 'completed',
+            'visitDate': self.today.isoformat(), 'visitTime': '10:00', **extra,
+        }
+        return self.client.post(reverse('reporting:schedules_update_api', args=[schedule.id]),
+                                data=json.dumps(payload), content_type='application/json')
+
+    def test_changing_vat_mode_recalculates_items(self):
+        schedule = self.make_schedule('excluded')
+        item = self._item(schedule)
+        self.assertEqual(item.total_price, 550000)
+        self.client.force_login(self.user)
+
+        response = self._update(schedule, vatMode='included')
+        self.assertEqual(response.status_code, 200)
+        schedule.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(schedule.vat_mode, 'included')
+        self.assertEqual(item.total_price, 500000)
+        self.assertEqual(response.json()['schedule']['vatMode'], 'included')
+
+    def test_update_without_vat_mode_keeps_current(self):
+        """캘린더 등 vatMode 를 모르는 수정 요청이 '포함'을 몰래 '별도'로 덮어쓰면 안 된다."""
+        schedule = self.make_schedule('included')
+        item = self._item(schedule)
+        self.client.force_login(self.user)
+
+        self.assertEqual(self._update(schedule).status_code, 200)
+        schedule.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(schedule.vat_mode, 'included')
+        self.assertEqual(item.total_price, 500000)

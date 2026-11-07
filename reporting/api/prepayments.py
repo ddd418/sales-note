@@ -34,6 +34,7 @@ from reporting.models import (
     Schedule,
     UserProfile,
 )
+from reporting.vat import item_gross_total
 from reporting.services.account_ledger import (
     prepayment_account_company,
     prepayment_account_department,
@@ -968,7 +969,7 @@ def prepayment_customer_excel(request, customer_id):
                 if delivery_items.exists():
                     for item in delivery_items:
                         # 금액 계산
-                        item_amount = item.total_price if item.total_price else (float(item.quantity) * float(item.unit_price) * 1.1)
+                        item_amount = item.total_price if item.total_price else float(item_gross_total(item, unit_price=item.unit_price or 0))
                         
                         # 통계 업데이트
                         item_stats[item.item_name]['quantity'] += float(item.quantity)

@@ -67,7 +67,9 @@ urlpatterns = [
     path('followups/<int:pk>/edit/', react_page_retired(
         id_react_page('customers/{pk}/'),
     ), name='followup_edit'),
-    path('followups/<int:pk>/delete/', views.followup_delete_view, name='followup_delete'),
+    path('followups/<int:pk>/delete/', react_page_retired(
+        id_react_page('customers/{pk}/'),
+    ), name='followup_delete'),
     path('followups/excel-download/', views.followup_excel_download, name='followup_excel_download'),
     path('followups/basic-excel-download/', views.followup_basic_excel_download, name='followup_basic_excel_download'),
       # 일정 URL들
@@ -112,7 +114,6 @@ urlpatterns = [
     path('histories/<int:pk>/', react_page_retired(
         id_react_page('notes/{pk}/'),
     ), name='history_detail'),
-    # 삭제됨 - 히스토리 직접 추가 불가: path('histories/create/', views.history_create_view, name='history_create'),
     path('histories/create-from-schedule/<int:schedule_id>/', react_page_retired(
         lambda request, schedule_id: frontend_url(
             'notes/',
@@ -132,7 +133,9 @@ urlpatterns = [
     path('histories/<int:history_id>/toggle-tax-invoice/', views.toggle_tax_invoice, name='toggle_tax_invoice'),
     path('histories/<int:pk>/update-tax-invoice/', views.history_update_tax_invoice, name='history_update_tax_invoice'),
     path('histories/<int:history_id>/delivery-items-api/', views.history_delivery_items_api, name='history_delivery_items_api'),
-    path('followups/<int:followup_pk>/histories/', views.history_by_followup_view, name='history_by_followup'),
+    path('followups/<int:followup_pk>/histories/', react_page_retired(
+        lambda request, followup_pk: frontend_url(f'customers/{followup_pk}/'),
+    ), name='history_by_followup'),
     
     # 고객 리포트 URL들
     path('customer-report/', react_page_retired(
@@ -151,7 +154,9 @@ urlpatterns = [
     path('departments/<int:department_id>/assign-category/', views.department_assign_category, name='department_assign_category'),
     
     # 메모 URL들
-    path('memo/create/', views.memo_create_view, name='memo_create'),
+    path('memo/create/', react_page_retired(
+        static_react_page('notes/', extra={'create': '1'}, drop=['followup']),
+    ), name='memo_create'),
     
     # 히스토리 API 엔드포인트들
     path('api/histories/<int:history_id>/', views.history_detail_api, name='history_detail_api'),
@@ -266,7 +271,9 @@ urlpatterns = [
     
     # Manager 전용 URL들
     path('manager/', views.manager_dashboard, name='manager_dashboard'),
-    path('manager/salesman/<int:user_id>/', views.salesman_detail, name='salesman_detail'),
+    path('manager/salesman/<int:user_id>/', react_page_retired(
+        lambda request, user_id: frontend_url('dashboard/'),
+    ), name='salesman_detail'),
 
     # 인증 및 기타 URL들
     path('login/', views.CustomLoginView.as_view(), name='login'),

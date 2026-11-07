@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import FollowUp, History, Prepayment, PrepaymentUsage, Quote, Schedule
+from reporting.vat import item_gross_total
 
 
 DELIVERY_PAYMENT_NORMAL = Schedule.DELIVERY_PAYMENT_TYPE_NORMAL
@@ -218,7 +219,7 @@ def schedule_items_total(items) -> int:
     for item in items:
         item_total = item.total_price
         if item_total is None and item.unit_price is not None:
-            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
+            item_total = item_gross_total(item, unit_price=(item.get_effective_unit_price() or item.unit_price))
         if item_total is not None:
             total_amount += item_total
     return money_int(total_amount)

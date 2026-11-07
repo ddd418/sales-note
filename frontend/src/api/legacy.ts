@@ -2275,6 +2275,7 @@ export type DocumentTemplateMutationResponse = {
 };
 
 export type ScheduleCreatePayload = {
+  vatMode?: string;
   activityType: string;
   departmentId?: number;
   expectedRevenue?: string;
@@ -2313,6 +2314,7 @@ export type ScheduleStatusUpdateResponse = {
 };
 
 export type ScheduleEditPayload = {
+  vatMode?: string;
   activityType: string;
   expectedCloseDate?: string;
   expectedRevenue?: string;

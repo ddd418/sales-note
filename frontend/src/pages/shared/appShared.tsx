@@ -47,6 +47,8 @@ export type NoteCreateFormState = {
 
 export type ScheduleCreateFormState = {
   activityType: string;
+  /** 'excluded' | 'included' | 'none'. 빈 값이면 서버가 기존 값을 유지한다. */
+  vatMode: string;
   departmentId: string;
   expectedRevenue: string;
   followupId: string;
@@ -206,6 +208,7 @@ export const makeEmptyScheduleCreateForm = (visitDate = localDateInputValue()): 
   location: '',
   notes: '',
   probability: '',
+  vatMode: 'excluded',
   visitDate,
   visitTime: '09:00',
 });
@@ -881,4 +884,37 @@ export function SchedulesCompactList({
 
 export function PrepaymentStatusBadge({ status, label }: { status: string; label: string }) {
   return <span className={`prepayment-status ${status || 'unknown'}`}>{label || status || '상태 없음'}</span>;
+}
+
+// ---- 부가세 방식(일정 단위) ------------------------------------------------
+// 서버 규칙(reporting/vat.py)과 같다: 별도 = 입력 금액 + 10%, 포함 = 입력 금액이 곧 총액,
+// 없음 = 세액 0. 이 값에 따라 납품 품목 총액과 매출(대시보드·파이프라인)이 계산된다.
+export const VAT_MODE_OPTIONS = [
+  { value: 'excluded', label: '부가세 별도', hint: '입력 금액에 10%를 더함' },
+  { value: 'included', label: '부가세 포함', hint: '입력 금액이 이미 부가세 포함' },
+  { value: 'none', label: '부가세 없음', hint: '세액 0원' },
+] as const;
+
+export const vatModeLabel = (mode?: string | null) =>
+  VAT_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? '부가세 별도';
+
+/** 공급가(입력 금액) → 매출 총액. 서버 reporting/vat.py 의 gross_amount 와 같은 규칙. */
+export const grossFromSubtotal = (amount: number, vatMode?: string | null) =>
+  vatMode === 'included' || vatMode === 'none' ? amount : amount * 1.1;
+
+export function VatModeField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const selected = VAT_MODE_OPTIONS.find((option) => option.value === value);
+  return (
+    <label>
+      <span>부가세</span>
+      <select onChange={(event) => onChange(event.target.value)} value={value || 'excluded'}>
+        {VAT_MODE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <small className="field-hint">{(selected ?? VAT_MODE_OPTIONS[0]).hint}</small>
+    </label>
+  );
 }

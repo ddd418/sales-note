@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from .models import Department, FollowUp, PipelineYearResetLog, Schedule, History, FunnelTarget, Quote
 from .readonly_api import readonly_bearer_or_login_required
+from reporting.vat import item_gross_total
 
 logger = logging.getLogger(__name__)
 
@@ -640,7 +641,7 @@ def _delivery_item_total(items):
         if item.total_price is not None:
             total += item.total_price
         elif item.unit_price is not None and item.quantity:
-            total += item.unit_price * item.quantity * Decimal('1.1')
+            total += item_gross_total(item, unit_price=item.unit_price)
     return total
 
 

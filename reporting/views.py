@@ -5,6 +5,7 @@ from django.contrib import messages
 from django import forms
 from django.http import JsonResponse, HttpResponseForbidden, Http404, FileResponse
 from django.db import transaction
+from . import vat
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
 from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceMemory, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, FunnelTarget, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, normalize_probability_to_five
@@ -307,34 +308,6 @@ def validate_file_upload(file):
 
     return True, "유효한 파일입니다."
 
-def handle_file_uploads(files, history, user):
-    """여러 파일 업로드를 처리"""
-    MAX_FILES = 5
-    uploaded_files = []
-    errors = []
-    
-    if len(files) > MAX_FILES:
-        return [], [f"최대 {MAX_FILES}개의 파일만 업로드할 수 있습니다."]
-    
-    for file in files:
-        is_valid, message = validate_file_upload(file)
-        if not is_valid:
-            errors.append(f"{file.name}: {message}")
-            continue
-            
-        try:
-            history_file = HistoryFile.objects.create(
-                history=history,
-                file=file,
-                original_filename=file.name,
-                file_size=file.size,
-                uploaded_by=user
-            )
-            uploaded_files.append(history_file)
-        except Exception as e:
-            errors.append(f"{file.name}: 업로드 중 오류가 발생했습니다.")
-    
-    return uploaded_files, errors
 
 def can_modify_user_data(request_user, target_user):
     """현재 사용자가 대상 사용자의 데이터를 수정/추가/삭제할 수 있는지 확인"""
@@ -460,389 +433,11 @@ def get_accessible_products(request):
         Q(created_by=request.user) | Q(created_by__isnull=True)
     )
 
-# 팔로우업 폼 클래스
-class FollowUpForm(forms.ModelForm):
-    # 자동완성을 위한 hidden 필드들
-    company = forms.ModelChoiceField(
-        queryset=Company.objects.all(),
-        widget=forms.HiddenInput(),
-        required=True,
-        error_messages={'required': '업체/학교를 선택해주세요.'}
-    )
-    department = forms.ModelChoiceField(
-        queryset=Department.objects.all(),
-        widget=forms.HiddenInput(),
-        required=True,
-        error_messages={'required': '부서/연구실명은 필수 입력사항입니다.'}
-    )
-    
-    category = forms.ModelChoiceField(
-        queryset=CustomerCategory.objects.none(),
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'}),
-        label='카테고리'
-    )
-    
-    class Meta:
-        model = FollowUp
-        fields = ['customer_name', 'company', 'department', 'manager', 'phone_number', 'email', 'address', 'notes', 'priority', 'category']
-        widgets = {
-            'customer_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '고객명을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
-            'manager': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '책임자명을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
-            'phone_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '010-0000-0000 (선택사항)', 'autocomplete': 'off'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'example@company.com (선택사항)', 'autocomplete': 'off'}),
-            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '상세주소를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
-            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '상세 내용을 입력하세요 (선택사항)', 'autocomplete': 'off'}),
-            'priority': forms.Select(attrs={'class': 'form-control'}),
-        }
-        labels = {
-            'customer_name': '고객명',
-            'company': '업체/학교명',
-            'department': '부서/연구실명',
-            'manager': '책임자',
-            'phone_number': '핸드폰 번호',
-            'email': '메일 주소',
-            'address': '상세주소',
-            'notes': '상세 내용',
-            'priority': '우선순위',
-            'category': '카테고리',
-        }
-    
-    def __init__(self, *args, **kwargs):
-        user = kwargs.pop('user', None)
-        super().__init__(*args, **kwargs)
-        if user:
-            # 카테고리를 계층 구조로 표시
-            categories = CustomerCategory.objects.filter(user=user).select_related('parent').order_by('order', 'name')
-            self.fields['category'].queryset = categories
-            # 선택 옵션을 계층적으로 표시
-            choices = [('', '---------')]
-            for cat in categories:
-                if cat.parent:
-                    choices.append((cat.id, f'  └ {cat.name}'))
-                else:
-                    choices.append((cat.id, cat.name))
-            self.fields['category'].choices = choices
-        
-    def clean_company(self):
-        company = self.cleaned_data.get('company')
-        if not company:
-            raise forms.ValidationError('업체/학교를 선택해주세요.')
-        return company
 
-    def clean_department(self):
-        department = self.cleaned_data.get('department')
-        if not department:
-            raise forms.ValidationError('부서/연구실명은 필수 입력사항입니다.')
-        return department
-
-# 일정 폼 클래스
-class ScheduleForm(forms.ModelForm):
-    followup = forms.ModelChoiceField(
-        queryset=FollowUp.objects.none(),  # 초기에는 비어있음
-        widget=forms.Select(attrs={
-            'class': 'form-control followup-autocomplete',
-            'data-placeholder': '팔로우업을 검색하세요...',
-            'data-url': '',  # JavaScript에서 설정됨
-        }),
-        label='관련 팔로우업',
-        help_text='고객명, 업체명 또는 부서명으로 검색할 수 있습니다.'
-    )
     
-    # 선결제 관련 필드
-    prepayment = forms.ModelChoiceField(
-        queryset=Prepayment.objects.none(),
-        required=False,
-        widget=forms.Select(attrs={
-            'class': 'form-control',
-            'id': 'id_prepayment',
-        }),
-        label='사용할 선결제',
-        help_text='고객의 선결제 잔액에서 차감할 선결제를 선택하세요.'
-    )
-    
-    # status 필드를 명시적으로 선언 (required=False)
-    status = forms.ChoiceField(
-        choices=Schedule.STATUS_CHOICES,
-        required=False,
-        initial='scheduled',
-        widget=forms.Select(attrs={'class': 'form-control'}),
-        label='일정 상태'
-    )
-    
-    
-    class Meta:
-        model = Schedule
-        fields = ['followup', 'visit_date', 'visit_time', 'activity_type', 'location', 'status', 'notes',
-                  'probability', 'use_prepayment', 'prepayment', 'prepayment_amount', 'vat_mode']
-        widgets = {
-            'visit_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'visit_time': forms.TimeInput(attrs={'class': 'form-control', 'type': 'time'}),
-            'activity_type': forms.Select(attrs={'class': 'form-control'}),
-            'location': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '방문 장소를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
-            # status는 위에서 명시적으로 선언했으므로 여기서 제거
-            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '메모를 입력하세요 (선택사항)', 'autocomplete': 'off'}),
-            'probability': forms.NumberInput(attrs={'class': 'form-control', 'min': '0', 'max': '100', 'step': '5', 'placeholder': '0-100, 5% 단위'}),
-            'use_prepayment': forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'id_use_prepayment'}),
-            'prepayment_amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '차감할 금액 (원)', 'min': '0', 'id': 'id_prepayment_amount'}),
-        }
-        labels = {
-            'visit_date': '방문 날짜',
-            'visit_time': '방문 시간',
-            'activity_type': '일정 유형',
-            'location': '장소',
-            'status': '상태',
-            'notes': '메모',
-            'probability': '성공 확률 (%)',
-            'use_prepayment': '선결제 사용',
-            'prepayment_amount': '선결제 차감 금액 (원)',
-        }
-
-    def __init__(self, *args, **kwargs):
-        user = kwargs.pop('user', None)
-        request = kwargs.pop('request', None)
-        super().__init__(*args, **kwargs)
-        
-        # 새 일정 생성 시 기본값 설정
-        if not self.instance.pk:
-            self.initial['status'] = 'scheduled'
-            self.fields['status'].initial = 'scheduled'
-        
-        if user:
-            # 사용자 소속 회사(UserCompany)의 모든 팔로우업을 선택할 수 있도록 필터링
-            if user.is_staff or user.is_superuser:
-                base_queryset = FollowUp.objects.all()
-            else:
-                # 사용자의 UserCompany를 가져옴
-                user_company = user.userprofile.company
-                if user_company:
-                    # 같은 UserCompany에 속한 모든 사용자의 팔로우업
-                    base_queryset = FollowUp.objects.filter(user__userprofile__company=user_company)
-                else:
-                    # UserCompany가 없으면 본인 팔로우업만
-                    base_queryset = FollowUp.objects.filter(user=user)
-                
-            # 기존 인스턴스가 있는 경우 해당 팔로우업도 포함
-            if self.instance.pk and self.instance.followup:
-                # Q 객체를 사용하여 기존 팔로우업과 사용자 팔로우업을 OR 조건으로 결합
-                if user.is_staff or user.is_superuser:
-                    queryset_filter = Q()  # 모든 팔로우업
-                else:
-                    user_company = user.userprofile.company
-                    if user_company:
-                        queryset_filter = Q(user__userprofile__company=user_company) | Q(pk=self.instance.followup.pk)
-                    else:
-                        queryset_filter = Q(user=user) | Q(pk=self.instance.followup.pk)
-                self.fields['followup'].queryset = FollowUp.objects.filter(queryset_filter).select_related('company', 'department').distinct()
-            else:
-                self.fields['followup'].queryset = base_queryset.select_related('company', 'department')
-                
-            # 자동완성 URL 설정
-            from django.urls import reverse
-            self.fields['followup'].widget.attrs['data-url'] = reverse('reporting:followup_autocomplete')
-        
-        # 선결제 필드 설정 (같은 부서 내 모든 고객의 선결제를 공유)
-        if self.instance.pk and self.instance.followup:
-            # 수정 시: 같은 부서의 모든 고객 선결제 목록
-            department = self.instance.followup.department
-            self.fields['prepayment'].queryset = Prepayment.objects.filter(
-                Q(department=department) | Q(department__isnull=True, customer__department=department),
-                status='active',
-                balance__gt=0
-            ).select_related('customer').order_by('payment_date')
-            # 선결제 옵션 라벨 설정 (고객명 포함)
-            self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
-        elif 'followup' in self.data:
-            # 생성 시 followup이 선택된 경우
-            try:
-                followup_id = int(self.data.get('followup'))
-                followup = FollowUp.objects.get(pk=followup_id)
-                # 생성 시: 같은 부서의 모든 고객 선결제 목록
-                department = followup.department
-                self.fields['prepayment'].queryset = Prepayment.objects.filter(
-                    Q(department=department) | Q(department__isnull=True, customer__department=department),
-                    status='active',
-                    balance__gt=0
-                ).select_related('customer').order_by('payment_date')
-                # 선결제 옵션 라벨 설정 (고객명 포함)
-                self.fields['prepayment'].label_from_instance = lambda obj: f"{obj.payment_date.strftime('%Y-%m-%d')} - {obj.customer.customer_name or ''} / {obj.payer_name or '미지정'} (잔액: {obj.balance:,}원)"
-            except (ValueError, TypeError, FollowUp.DoesNotExist):
-                pass
-            
-        # 하나과학이 아닌 경우 activity_type에서 서비스 제거
-        if request and not getattr(request, 'is_hanagwahak', False):
-            self.fields['activity_type'].choices = [
-                choice for choice in self.fields['activity_type'].choices 
-                if choice[0] != 'service'
-            ]
-        
-        # 견적 일정 수정 시 상태 선택지 제한 (예정→완료 불가, 취소만 가능)
-        if self.instance.pk and self.instance.activity_type == 'quote':
-            # 견적은 예정됨, 취소만 선택 가능 (완료 제외)
-            self.fields['status'].choices = [
-                ('scheduled', '예정됨'),
-                ('cancelled', '취소됨'),
-            ]
-
-    def clean(self):
-        cleaned_data = super().clean()
-        activity_type = cleaned_data.get('activity_type')
-        probability = cleaned_data.get('probability')
-        if activity_type == 'quote' and probability is None:
-            self.add_error('probability', '견적 성공 확률은 필수입니다.')
-        if probability is not None:
-            cleaned_data['probability'] = normalize_probability_to_five(probability)
-        return cleaned_data
-    
-# 히스토리 폼 클래스
-class HistoryForm(forms.ModelForm):
-    # 파일 업로드 필드 (JavaScript로 여러 파일 처리)
-    files = forms.FileField(
-        required=False,
-        widget=forms.FileInput(attrs={
-            'class': 'form-control',
-            'accept': '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.zip,.rar'
-        }),
-        label='첨부파일',
-        help_text='최대 10MB, 최대 5개 파일까지 업로드 가능'
-    )
-    
-    class Meta:
-        model = History
-        fields = ['followup', 'schedule', 'action_type', 'service_status', 'content', 'delivery_amount', 'delivery_items', 'delivery_date', 'meeting_date',
-                  'meeting_situation', 'meeting_researcher_quote', 'meeting_confirmed_facts', 'meeting_obstacles', 'meeting_next_action',
-                  'next_action', 'next_action_date']
-        widgets = {
-            'followup': forms.Select(attrs={'class': 'form-control'}),
-            'schedule': forms.Select(attrs={'class': 'form-control'}),
-            'action_type': forms.Select(attrs={'class': 'form-control'}),
-            'service_status': forms.Select(attrs={'class': 'form-control'}),
-            'content': forms.Textarea(attrs={'class': 'form-control', 'rows': 4, 'placeholder': '활동 내용을 입력하세요', 'autocomplete': 'off'}),
-            'delivery_amount': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '납품 금액을 입력하세요 (원)', 'min': '0', 'autocomplete': 'off'}),
-            'delivery_items': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '납품 품목을 입력하세요 (예: 제품A 10개, 제품B 5개)', 'autocomplete': 'off'}),
-            'delivery_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date', 'placeholder': 'YYYY-MM-DD'}),
-            'meeting_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date', 'placeholder': 'YYYY-MM-DD'}),
-            'meeting_situation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '오늘 미팅에서 파악한 전반적인 상황을 기록하세요', 'autocomplete': 'off'}),
-            'meeting_researcher_quote': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '연구원이 직접 한 말을 인용하여 기록하세요 (예: "이번 프로젝트에 꼭 필요합니다")', 'autocomplete': 'off'}),
-            'meeting_confirmed_facts': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '미팅에서 직접 확인한 사실을 기록하세요', 'autocomplete': 'off'}),
-            'meeting_obstacles': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '영업 진행에 장애물이나 반대 의견을 기록하세요', 'autocomplete': 'off'}),
-            'meeting_next_action': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '미팅 이후 수행할 다음 액션을 기록하세요', 'autocomplete': 'off'}),
-            'next_action': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': '이번 활동 이후 수행할 다음 액션을 기록하세요', 'autocomplete': 'off'}),
-            'next_action_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-        }
-        labels = {
-            'followup': '관련 고객 정보',
-            'schedule': '관련 일정',
-            'action_type': '활동 유형',
-            'service_status': '상태',
-            'content': '활동 내용',
-            'delivery_amount': '납품 금액 (원)',
-            'delivery_items': '납품 품목',
-            'delivery_date': '납품 날짜',
-            'meeting_date': '미팅 날짜',
-            'meeting_situation': '오늘 상황',
-            'meeting_researcher_quote': '연구원이 한 말(직접 인용)',
-            'meeting_confirmed_facts': '내가 확인한 사실',
-            'meeting_obstacles': '장애물/반대',
-            'meeting_next_action': '다음 액션',
-            'next_action': '다음 할 일',
-            'next_action_date': '다음 예정일',
-        }
-
-    def __init__(self, *args, **kwargs):
-        user = kwargs.pop('user', None)
-        request = kwargs.pop('request', None)
-        super().__init__(*args, **kwargs)
-        if user:
-            # 같은 회사 사용자들의 팔로우업도 선택 가능하도록 필터링
-            if user.is_staff or user.is_superuser:
-                self.fields['followup'].queryset = FollowUp.objects.all()
-            else:
-                # 같은 회사 소속 모든 사용자의 고객 선택 가능
-                same_company_users = get_same_company_users(user)
-                self.fields['followup'].queryset = FollowUp.objects.filter(user__in=same_company_users)
-            
-            # 일정 필드를 빈 상태로 초기화 (JavaScript에서 동적으로 로드)
-            self.fields['schedule'].queryset = Schedule.objects.none()
-            
-            # 선택된 팔로우업이 있으면 해당 팔로우업의 일정만 표시
-            if 'followup' in self.data:
-                try:
-                    followup_id = int(self.data.get('followup'))
-                    self.fields['schedule'].queryset = Schedule.objects.filter(followup_id=followup_id, user=user)
-                except (ValueError, TypeError):
-                    pass  # 잘못된 입력인 경우 무시
-            elif self.instance.pk:
-                # 수정 시에는 해당 인스턴스의 팔로우업에 연결된 일정들을 표시
-                if self.instance.followup:
-                    self.fields['schedule'].queryset = self.instance.followup.schedules.all()
-                else:
-                    # 팔로우업이 없는 경우 (일반 메모 등) 빈 쿼리셋 유지
-                    self.fields['schedule'].queryset = Schedule.objects.none()
-                
-            # 선택된 일정이 있으면 해당 일정의 activity_type에 맞게 action_type 매핑
-            if 'schedule' in self.data and self.data.get('schedule'):
-                try:
-                    schedule_id = int(self.data.get('schedule'))
-                    selected_schedule = Schedule.objects.get(id=schedule_id)
-                    # 일정의 activity_type을 히스토리의 action_type으로 매핑
-                    activity_mapping = {
-                        'customer_meeting': 'customer_meeting',
-                        'quote': 'quote',
-                        'delivery': 'delivery_schedule',
-                        'service': 'service',
-                    }
-                    # Schedule 모델의 activity_type을 확인하여 매핑
-                    if hasattr(selected_schedule, 'activity_type'):
-                        mapped_action = activity_mapping.get(selected_schedule.activity_type, 'customer_meeting')
-                        self.fields['action_type'].initial = mapped_action
-                except (ValueError, TypeError, Schedule.DoesNotExist):
-                    pass
-        
-        # 일정은 선택사항으로 설정
-        self.fields['schedule'].required = False
-        self.fields['schedule'].empty_label = "관련 일정 없음"
-        
-        # 활동 유형에서 메모 제외 (메모는 별도 폼에서만 생성 가능)
-        # 하나과학이 아닌 경우 서비스도 제외
-        excluded_types = ['memo']
-        if request and not getattr(request, 'is_hanagwahak', False):
-            excluded_types.append('service')
-            
-        self.fields['action_type'].choices = [
-            choice for choice in self.fields['action_type'].choices 
-            if choice[0] not in excluded_types
-        ]
-        
-        # 납품 금액은 선택사항으로 설정
-        self.fields['delivery_amount'].required = False
 
 
 # 여기에 앞으로 팔로우업 상세, 생성, 수정, 삭제 등의 뷰 함수를 추가할 예정입니다.
-
-
-@login_required
-def followup_delete_view(request, pk):
-    """팔로우업 삭제"""
-    followup = get_object_or_404(FollowUp, pk=pk)
-    
-    # 권한 체크: 삭제 권한이 있는 경우만 삭제 가능 (Manager는 읽기 전용)
-    if not can_modify_user_data(request.user, followup.user):
-        messages.error(request, '삭제 권한이 없습니다. Manager는 읽기 전용입니다.')
-        return redirect('reporting:followup_list')
-    
-    if request.method == 'POST':
-        customer_name = followup.customer_name or "고객명 미정"
-        company_name = followup.company or "업체명 미정"
-        followup.delete()
-        messages.success(request, f'{customer_name} ({company_name}) 팔로우업이 삭제되었습니다.')
-        return redirect('reporting:followup_list')
-    
-    context = {
-        'followup': followup,
-        'page_title': f'팔로우업 삭제 - {followup.customer_name or "고객명 미정"}'
-    }
-    return render(request, 'reporting/followup_delete.html', context)
 
 
 def _api_login_required_response(request):
@@ -4854,7 +4449,7 @@ def _delivery_item_entries_summary(item_entries):
         if Decimal(str(quantity or 0)) != Decimal(str(item.quantity or 0)):
             item_total = _schedules_quote_item_total_for_quantity(item, quantity)
         elif item_total is None and item.unit_price is not None:
-            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
+            item_total = vat.item_gross_total(item, unit_price=(item.get_effective_unit_price() or item.unit_price))
         if item_total is not None:
             total_amount += item_total
 
@@ -6953,6 +6548,7 @@ def schedules_create_api(request):
     expected_revenue = _parse_optional_decimal(payload.get('expectedRevenue'))
     try:
         probability = _parse_schedule_probability(activity_type, payload.get('probability'))
+        vat_mode = vat.parse_vat_mode(payload)
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
@@ -6969,6 +6565,7 @@ def schedules_create_api(request):
         notes=notes,
         expected_revenue=expected_revenue,
         probability=probability,
+        vat_mode=vat_mode,
     )
     _sync_schedule_pipeline(schedule)
 
@@ -7857,7 +7454,7 @@ def _schedules_quote_item_total_for_quantity(item, quantity):
                     original_quantity
                 ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         return Decimal('0')
-    return unit_price * Decimal(str(quantity)) * Decimal('1.1')
+    return vat.item_gross_total(item, unit_price=unit_price, quantity=quantity)
 
 
 def _schedules_quote_item_imported_quantities(
@@ -8270,7 +7867,7 @@ def _schedules_delivery_items_summary(schedule):
     for item in schedule.delivery_items_set.all().order_by('id'):
         item_total = item.total_price
         if item_total is None and item.unit_price is not None:
-            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
+            item_total = vat.item_gross_total(item, unit_price=(item.get_effective_unit_price() or item.unit_price))
         if item_total is not None:
             total_amount += item_total
 
@@ -9198,6 +8795,11 @@ def schedules_update_api(request, schedule_id):
     schedule.expected_close_date = expected_close_date
     schedule.purchase_confirmed = purchase_confirmed
     try:
+        previous_vat_mode = schedule.vat_mode
+        schedule.vat_mode = vat.parse_vat_mode(payload, current=schedule.vat_mode)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    try:
         with transaction.atomic():
             schedule.save(update_fields=[
                 'followup',
@@ -9215,8 +8817,12 @@ def schedules_update_api(request, schedule_id):
                 'probability',
                 'expected_close_date',
                 'purchase_confirmed',
+                'vat_mode',
                 'updated_at',
             ])
+            if schedule.vat_mode != previous_vat_mode:
+                # 품목 총액·견적 합계는 저장 시점에 부가세 모드를 반영하므로 다시 계산한다.
+                vat.recalculate_schedule_amounts(schedule)
             if prepayment_requested:
                 if use_prepayment:
                     _schedules_apply_prepayments(schedule, request.user, payload.get('prepayments'))
@@ -11368,8 +10974,8 @@ def schedule_update_delivery_items(request, pk):
                     
                     # unit_price가 None이 아니고 0보다 클 때만 금액 표시
                     if item.unit_price is not None and item.unit_price > 0:
-                        # 부가세 포함 총액 계산 (단가 * 수량 * 1.1)
-                        total_amount = int(float(item.unit_price) * item.quantity * 1.1)
+                        # 매출 총액 — 일정의 부가세 모드 반영(reporting/vat.py)
+                        total_amount = int(vat.item_gross_total(item, unit_price=item.unit_price))
                         total_delivery_amount += total_amount
                         delivery_lines.append(f"{item.item_name}: {item.quantity}개 ({total_amount:,}원)")
                     elif item.unit_price is not None and item.unit_price == 0:
@@ -11539,7 +11145,7 @@ def schedule_api_view(request):
                     for item in schedule_delivery_items:
                         # unit_price가 None이면 0으로 처리 (Decimal 타입 유지)
                         unit_price = item.unit_price if item.unit_price is not None else Decimal('0')
-                        item_total = item.total_price or (item.quantity * unit_price * Decimal('1.1'))
+                        item_total = item.total_price or vat.item_gross_total(item, unit_price=unit_price)
                         total_amount += item_total
                         
                         # 실제 품목 데이터 추가
@@ -11622,55 +11228,6 @@ def schedule_api_view(request):
 
 
 @login_required
-def history_create_view(request):
-    """히스토리 생성"""
-    # Manager는 데이터 생성 불가 (뷰어 권한)
-    user_profile = get_user_profile(request.user)
-    if user_profile.is_manager():
-        messages.error(request, '권한이 없습니다. Manager는 활동을 기록할 수 없습니다.')
-        return redirect('reporting:history_list')
-
-    if request.method == 'POST':
-        form = HistoryForm(request.POST, request.FILES, user=request.user, request=request)
-        if form.is_valid():
-            history = form.save(commit=False)
-            history.user = request.user
-            history.save()
-
-            # 납품 품목 저장
-            save_delivery_items(request, history)
-            
-            # 파일 업로드 처리
-            uploaded_files = request.FILES.getlist('files')
-            if uploaded_files:
-                uploaded_file_objects, file_errors = handle_file_uploads(uploaded_files, history, request.user)
-                
-                if uploaded_file_objects:
-                    file_count = len(uploaded_file_objects)
-                    messages.success(request, f'활동 히스토리가 성공적으로 기록되었습니다. ({file_count}개 파일 업로드됨)')
-                else:
-                    messages.success(request, '활동 히스토리가 성공적으로 기록되었습니다.')
-                
-                # 파일 업로드 오류가 있는 경우 경고 메시지 표시
-                for error in file_errors:
-                    messages.warning(request, f'파일 업로드 오류: {error}')
-            else:
-                messages.success(request, '활동 히스토리가 성공적으로 기록되었습니다.')
-            
-            return redirect('reporting:history_detail', pk=history.pk)
-        else:
-            messages.error(request, '입력 정보를 확인해주세요.')
-    else:
-        form = HistoryForm(user=request.user, request=request)
-    
-    context = {
-        'form': form,
-        'page_title': '새 활동 기록'
-    }
-    return render(request, 'reporting/history_form.html', context)
-
-
-@login_required
 @require_POST
 def history_toggle_reviewed(request, pk):
     """보고서 매니저 검토 완료 토글 (소속 회사 manager만)."""
@@ -11697,25 +11254,6 @@ def history_toggle_reviewed(request, pk):
         'reviewer': request.user.get_full_name() or request.user.username if is_reviewed else None,
     })
 
-
-@login_required
-def history_by_followup_view(request, followup_pk):
-    """특정 팔로우업의 히스토리 목록"""
-    followup = get_object_or_404(FollowUp, pk=followup_pk)
-    
-    # 권한 체크
-    if not (request.user.is_staff or request.user.is_superuser or followup.user == request.user):
-        messages.error(request, '접근 권한이 없습니다.')
-        return redirect('reporting:followup_list')
-    
-    histories = History.objects.filter(followup=followup)
-    
-    context = {
-        'histories': histories,
-        'followup': followup,
-        'page_title': f'{followup.customer_name} 활동 히스토리'
-    }
-    return render(request, 'reporting/history_list.html', context)
 
 # ============ API 엔드포인트들 ============
 
@@ -11809,7 +11347,7 @@ def schedule_histories_api(request, schedule_id):
                     total_amount = 0
                     
                     for item in delivery_items:
-                        item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                        item_total = item.total_price or vat.item_gross_total(item, unit_price=item.unit_price)
                         total_amount += item_total
                         text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
                         delivery_text_parts.append(text_part)
@@ -11825,7 +11363,7 @@ def schedule_histories_api(request, schedule_id):
                         total_amount = 0
                         
                         for item in schedule_delivery_items:
-                            item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                            item_total = item.total_price or vat.item_gross_total(item, unit_price=item.unit_price)
                             total_amount += item_total
                             text_part = f"{item.item_name}: {item.quantity}개 ({int(item_total):,}원)"
                             delivery_text_parts.append(text_part)
@@ -12090,15 +11628,15 @@ def followup_tax_invoices_api(request, followup_id):
                     'error': f'이미 {existing.get_status_display()} 상태의 요청이 있습니다.',
                 }, status=400)
 
-        # 금액 계산: 납품 품목 기준
+        # 금액 계산: 납품 품목 기준. total_price 는 일정의 부가세 모드가 반영된 총액이다.
         supply_amount = Decimal('0')
+        vat_mode = vat.schedule_vat_mode(schedule)
         if schedule:
             for item in schedule.delivery_items_set.all():
                 if item.total_price:
-                    # total_price는 부가세 포함이므로 1.1로 나누어 공급가액 산출
-                    supply_amount += item.total_price / Decimal('1.1')
-        tax_amount = (supply_amount * Decimal('0.1')).quantize(Decimal('1'))
+                    supply_amount += vat.supply_from_gross(item.total_price, vat_mode)
         supply_amount = supply_amount.quantize(Decimal('1'))
+        tax_amount = Decimal('0') if vat_mode == vat.VAT_NONE else (supply_amount * vat.VAT_RATE).quantize(Decimal('1'))
         total_amount = supply_amount + tax_amount
 
         tax_req = TaxInvoiceRequest.objects.create(
@@ -12467,183 +12005,6 @@ class CustomLogoutView(LogoutView):
 
 # ============ 사용자 관리 뷰들 ============
 
-# 사용자 생성 폼 (Admin 전용)
-class UserCreationForm(forms.Form):
-    username = forms.CharField(
-        max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ID를 입력하세요', 'autocomplete': 'off'}),
-        label='사용자 ID'
-    )
-    company = forms.CharField(
-        max_length=100,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '회사명을 입력하세요 (예: 하나과학)'}),
-        label='소속 회사',
-        help_text='사용자가 속할 회사명을 직접 입력하세요'
-    )
-    password1 = forms.CharField(
-        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
-        label='비밀번호'
-    )
-    password2 = forms.CharField(
-        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
-        label='비밀번호 확인'
-    )
-    role = forms.ChoiceField(
-        choices=[('manager', 'Manager (뷰어)'), ('salesman', 'SalesMan (실무자)')],
-        widget=forms.Select(attrs={'class': 'form-control'}),
-        label='권한'
-    )
-    can_download_excel = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        label='엑셀 다운로드 권한',
-        help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다'
-    )
-    can_use_ai = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        label='AI 분석 권한',
-        help_text='체크 시 AI PainPoint 분석 기능을 사용할 수 있습니다'
-    )
-    first_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
-        label='이름'
-    )
-    last_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
-        label='성'
-    )
-    
-    def clean_password2(self):
-        password1 = self.cleaned_data.get("password1")
-        password2 = self.cleaned_data.get("password2")
-        if password1 and password2 and password1 != password2:
-            raise forms.ValidationError("비밀번호가 일치하지 않습니다.")
-        return password2
-
-# 매니저용 사용자 생성 폼 (Manager 전용)
-class ManagerUserCreationForm(forms.Form):
-    username = forms.CharField(
-        max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ID를 입력하세요', 'autocomplete': 'off'}),
-        label='사용자 ID'
-    )
-    password1 = forms.CharField(
-        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
-        label='비밀번호'
-    )
-    password2 = forms.CharField(
-        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
-        label='비밀번호 확인'
-    )
-    # 매니저는 실무자만 생성할 수 있음
-    role = forms.CharField(
-        initial='salesman',
-        widget=forms.HiddenInput(),
-        label='권한'
-    )
-    can_download_excel = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        label='엑셀 다운로드 권한',
-        help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다'
-    )
-    first_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
-        label='이름'
-    )
-    last_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
-        label='성'
-    )
-    
-    def clean_password2(self):
-        password1 = self.cleaned_data.get("password1")
-        password2 = self.cleaned_data.get("password2")
-        if password1 and password2 and password1 != password2:
-            raise forms.ValidationError("비밀번호가 일치하지 않습니다.")
-        return password2
-
-# 사용자 편집 폼 클래스
-class UserEditForm(forms.Form):
-    username = forms.CharField(
-        max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ID를 입력하세요', 'autocomplete': 'off'}),
-        label='사용자 ID'
-    )
-    company = forms.CharField(
-        max_length=100,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '회사명을 입력하세요 (예: 하나과학)'}),
-        label='소속 회사',
-        help_text='사용자가 속할 회사명을 직접 입력하세요'
-    )
-    role = forms.ChoiceField(
-        choices=[('admin', 'Admin (최고권한자)'), ('manager', 'Manager (뷰어)'), ('salesman', 'SalesMan (실무자)')],
-        widget=forms.Select(attrs={'class': 'form-control'}),
-        label='권한'
-    )
-    can_download_excel = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        label='엑셀 다운로드 권한',
-        help_text='체크 시 팔로우업 엑셀 다운로드가 가능합니다 (관리자는 항상 가능)'
-    )
-    can_use_ai = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        label='AI 분석 권한',
-        help_text='체크 시 AI PainPoint 분석 기능을 사용할 수 있습니다'
-    )
-    first_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '이름 (선택사항)', 'autocomplete': 'off'}),
-        label='이름'
-    )
-    last_name = forms.CharField(
-        max_length=30,
-        required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '성 (선택사항)', 'autocomplete': 'off'}),
-        label='성'
-    )
-    change_password = forms.BooleanField(
-        required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        label='비밀번호 변경'
-    )
-    password1 = forms.CharField(
-        required=False,
-        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
-        label='새 비밀번호'
-    )
-    password2 = forms.CharField(
-        required=False,
-        widget=forms.PasswordInput(attrs={'class': 'form-control', 'autocomplete': 'new-password'}),
-        label='새 비밀번호 확인'
-    )
-    
-    def clean(self):
-        cleaned_data = super().clean()
-        change_password = cleaned_data.get('change_password')
-        password1 = cleaned_data.get('password1')
-        password2 = cleaned_data.get('password2')
-        
-        if change_password:
-            if not password1:
-                raise forms.ValidationError("비밀번호 변경을 선택했으면 새 비밀번호를 입력해야 합니다.")
-            if password1 != password2:
-                raise forms.ValidationError("비밀번호가 일치하지 않습니다.")
-        
-        return cleaned_data
-
 
 # ============ 매니저용 사용자 관리 뷰들 ============
 
@@ -12661,105 +12022,6 @@ def manager_dashboard(request):
     else:
         return redirect('reporting:dashboard')
 
-
-@role_required(['manager'])
-def salesman_detail(request, user_id):
-    """특정 Salesman의 상세 정보 조회 (Manager, Admin 전용)"""
-    try:
-        # 먼저 user_id가 유효한 정수인지 확인
-        try:
-            user_id = int(user_id)
-        except (ValueError, TypeError):
-            messages.error(request, '잘못된 사용자 ID입니다.')
-            return redirect('reporting:manager_dashboard')
-        
-        # 접근 권한 확인
-        accessible_users = get_accessible_users(request.user, request)
-        
-        # 해당 사용자가 존재하고 접근 가능한지 확인
-        try:
-            selected_user = accessible_users.get(id=user_id)
-        except User.DoesNotExist:
-            messages.error(request, '해당 사용자를 찾을 수 없거나 접근 권한이 없습니다.')
-            return redirect('reporting:manager_dashboard')
-        
-        # 사용자 프로필 확인
-        try:
-            user_profile = selected_user.userprofile
-        except UserProfile.DoesNotExist:
-            messages.error(request, '사용자 프로필이 설정되지 않았습니다.')
-            return redirect('reporting:manager_dashboard')
-        
-        # 해당 사용자의 데이터만 필터링 (select_related로 성능 최적화)
-        followups = FollowUp.objects.filter(user=selected_user).select_related('user')
-        schedules = Schedule.objects.filter(user=selected_user).select_related('user', 'followup')
-        histories = History.objects.filter(user=selected_user).select_related('user', 'followup', 'schedule')
-        
-        # 검색 및 필터링
-        search_query = request.GET.get('search', '').strip()
-        status_filter = request.GET.get('status', '').strip()
-        
-        if search_query:
-            followups = followups.filter(
-                Q(customer_name__icontains=search_query) |
-                Q(company__icontains=search_query)
-            )
-        
-        if status_filter and status_filter in ['initial', 'in_progress', 'visited', 'closed']:
-            followups = followups.filter(status=status_filter)
-        
-        # 정렬 추가
-        followups = followups.order_by('-updated_at')
-        
-        # 페이지네이션 전에 총 개수 계산 (안전하게)
-        try:
-            total_followups = followups.count()
-        except Exception as e:
-            total_followups = 0
-        
-        # 페이지네이션 처리 (단순화)
-        try:
-            from django.core.paginator import Paginator
-            paginator = Paginator(followups, 10)
-            page_number = request.GET.get('page', 1)
-            try:
-                page_number = int(page_number)
-            except (ValueError, TypeError):
-                page_number = 1
-            followups = paginator.get_page(page_number)
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"페이지네이션 처리 중 오류: {str(e)}")
-            # 페이지네이션 실패 시 원본 쿼리셋 유지하되 첫 10개만
-            followups = followups[:10]
-        
-        # 집계 값들을 안전하게 계산
-        try:
-            total_schedules = schedules.count()
-            total_histories = histories.count()
-        except Exception as e:
-            total_schedules = 0
-            total_histories = 0
-        
-        context = {
-            'selected_user': selected_user,
-            'followups': followups,
-            'search_query': search_query,
-            'status_filter': status_filter,
-            'total_followups': total_followups,
-            'total_schedules': total_schedules,
-            'total_histories': total_histories,
-            'page_title': f'{selected_user.username} 상세 정보'
-        }
-        return render(request, 'reporting/salesman_detail.html', context)
-        
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"salesman_detail 오류 - user_id: {user_id}, user: {request.user}, error: {str(e)}")
-        messages.error(request, f'사용자 상세 정보를 불러오는 중 오류가 발생했습니다. 관리자에게 문의하세요.')
-        return redirect('reporting:manager_dashboard')
 
 @role_required(['admin'])
 @require_POST
@@ -13835,70 +13097,6 @@ def history_update_api(request, history_id):
 
 # ============ 메모 관련 뷰들 ============
 
-@login_required
-def memo_create_view(request):
-    """메모 생성 (팔로우업 연결 선택사항)"""
-    followup_id = request.GET.get('followup') or request.POST.get('followup')
-    followup = None
-    
-    if followup_id:
-        try:
-            followup = get_object_or_404(FollowUp, pk=followup_id)
-            # 권한 체크 (팔로우업이 있는 경우만)
-            if not can_modify_user_data(request.user, followup.user):
-                if request.method == 'POST':
-                    return JsonResponse({
-                        'success': False,
-                        'error': '메모 작성 권한이 없습니다.'
-                    }, status=403)
-                messages.error(request, '메모 작성 권한이 없습니다.')
-                return redirect('reporting:followup_detail', pk=followup.pk)
-        except FollowUp.DoesNotExist:
-            followup = None
-    
-    if request.method == 'POST':
-        content = request.POST.get('content', '').strip()
-        
-        if not content:
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/x-www-form-urlencoded':
-                return JsonResponse({
-                    'success': False,
-                    'error': '메모 내용을 입력해주세요.'
-                }, status=400)
-            messages.error(request, '메모 내용을 입력해주세요.')
-        else:
-            # 메모 히스토리 생성
-            history = History.objects.create(
-                user=request.user,
-                company=request.user.userprofile.company,
-                followup=followup,  # followup이 None일 수도 있음
-                action_type='memo',
-                content=content,
-                schedule=None  # 메모는 일정과 연결되지 않음
-            )
-            
-            # AJAX 요청인 경우 JSON 응답
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/x-www-form-urlencoded':
-                return JsonResponse({
-                    'success': True,
-                    'message': '메모가 성공적으로 추가되었습니다.',
-                    'history_id': history.id
-                })
-            
-            messages.success(request, '메모가 성공적으로 추가되었습니다.')
-            
-            # 팔로우업이 있으면 팔로우업 상세로, 없으면 히스토리 목록으로
-            if followup:
-                return redirect('reporting:followup_detail', pk=followup.pk)
-            else:
-                return redirect('reporting:history_list')
-    
-    context = {
-        'followup': followup,
-        'page_title': f'메모 추가{" - " + followup.customer_name if followup else ""}',
-    }
-    return render(request, 'reporting/memo_form.html', context)
-
 
 # ============ 인라인 메모 편집 API ============
 
@@ -14791,74 +13989,6 @@ def customer_priority_update(request, followup_id):
 
 
 @login_required
-def schedule_delivery_items_api(request, schedule_id):
-    """Schedule의 DeliveryItem 정보를 가져오는 API"""
-    try:
-        schedule = get_object_or_404(Schedule, pk=schedule_id)
-        
-        # 권한 체크: Schedule의 followup을 통해 사용자 확인
-        if schedule.followup and schedule.followup.user:
-            if not can_access_user_data(request.user, schedule.followup.user):
-                return JsonResponse({
-                    'success': False,
-                    'error': '접근 권한이 없습니다.'
-                }, status=403)
-        
-        # 연결된 History가 있는지 확인 (History 기준 세금계산서 상태 적용을 위해)
-        related_history = None
-        try:
-            related_history = History.objects.filter(schedule=schedule).first()  # 이 Schedule에 연결된 첫 번째 History
-        except:
-            pass
-        
-        # DeliveryItem 정보 가져오기
-        delivery_items = schedule.delivery_items_set.all().order_by('id')
-        
-        items_data = []
-        for item in delivery_items:
-            effective_unit_price = item.get_effective_unit_price() or item.unit_price or 0
-            item_total = item.total_price or (item.quantity * effective_unit_price * 1.1)
-            
-            # History가 있으면 History 기준, 없으면 Schedule DeliveryItem 기준
-            tax_invoice_status = related_history.tax_invoice_issued if related_history else item.tax_invoice_issued
-            
-            items_data.append({
-                'id': item.id,
-                'item_name': item.item_name,
-                'quantity': item.quantity,
-                'unit_price': float(item.unit_price or 0),
-                'discount_rate': float(item.discount_rate or 0),
-                'discount_unit_price': (
-                    float(_schedules_discount_unit_price_or_none(item))
-                    if _schedules_discount_unit_price_or_none(item) is not None
-                    else None
-                ),
-                'effective_unit_price': float(effective_unit_price),
-                'total_price': float(item_total),
-                'tax_invoice_issued': tax_invoice_status,
-                'notes': item.notes or '',
-                'option_description': item.option_description or '',
-                'optionDescription': item.option_description or '',
-            })
-        
-        return JsonResponse({
-            'success': True,
-            'items': items_data,
-            'schedule_id': schedule.id,
-            'visit_date': schedule.visit_date.strftime('%Y-%m-%d'),
-            'has_related_history': related_history is not None,  # History 연결 여부
-            'history_tax_status': related_history.tax_invoice_issued if related_history else None,  # History 세금계산서 상태
-        })
-        
-    except Exception as e:
-        logger.error(f"Schedule delivery items API error: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': 'DeliveryItem 정보를 가져오는 중 오류가 발생했습니다.'
-        }, status=500)
-
-
-@login_required
 def history_delivery_items_api(request, history_id):
     """History의 DeliveryItem 정보를 가져오는 API"""
     import re
@@ -14887,7 +14017,7 @@ def history_delivery_items_api(request, history_id):
             has_history_items = True
             for item in delivery_items:
                 effective_unit_price = item.get_effective_unit_price() or item.unit_price or 0
-                item_total = item.total_price or (item.quantity * effective_unit_price * 1.1)
+                item_total = item.total_price or vat.item_gross_total(item, unit_price=effective_unit_price)
                 # History의 세금계산서 상태를 기준으로 함 (동기화)
                 items_data.append({
                     'id': item.id,
@@ -14983,7 +14113,7 @@ def history_delivery_items_api(request, history_id):
             if schedule_items.exists():
                 has_schedule_items = True
                 for item in schedule_items:
-                    item_total = item.total_price or (item.quantity * item.unit_price * 1.1)
+                    item_total = item.total_price or vat.item_gross_total(item, unit_price=item.unit_price)
                     
                     items_data.append({
                         'id': f'schedule_{item.id}',
@@ -15752,7 +14882,7 @@ def followup_quote_items_api(request, followup_id):
                         from decimal import ROUND_HALF_UP
 
                         fallback_effective_unit_price = (
-                            item_total / Decimal(str(remaining_quantity or 0)) / Decimal('1.1')
+                            vat.supply_from_gross(item_total, vat.item_vat_mode(item)) / Decimal(str(remaining_quantity or 0))
                         ).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
                     product = item.product if item.product_id else None
                     unit_price = float(
@@ -16118,7 +15248,7 @@ def _product_delivery_items_summary(items):
     for item in items:
         item_total = item.total_price
         if item_total is None and item.unit_price is not None:
-            item_total = (item.get_effective_unit_price() or item.unit_price) * item.quantity * Decimal('1.1')
+            item_total = vat.item_gross_total(item, unit_price=(item.get_effective_unit_price() or item.unit_price))
         if item_total is not None:
             total_amount += item_total
 
@@ -18652,13 +17782,12 @@ def get_document_template_data(request, document_type, schedule_id):
             quote_group_selected=quote_group_selected,
         )
         
-        # 총액 계산
-        subtotal = sum([
+        # 총액 계산 — 일정의 부가세 모드 반영(실제 서류 생성과 같은 규칙, reporting/vat.py)
+        _vat_mode = vat.schedule_vat_mode(schedule)
+        subtotal, tax, total = vat.split_amount(sum([
             _document_item_prices(item)['effective_unit_price'] * item.quantity
             for item in delivery_items
-        ], Decimal('0'))
-        tax = subtotal * Decimal('0.1')
-        total = subtotal + tax
+        ], Decimal('0')), _vat_mode)
         
         # 총액을 한글로 변환
         def number_to_korean(number):
@@ -18810,11 +17939,11 @@ def get_document_template_data(request, document_type, schedule_id):
                 ),
                 f'품목{idx}_할인율': _document_discount_rate_label(price_info['discount_rate']),
                 f'품목{idx}_할인단가': _document_money(price_info['discount_unit_price']) if price_info['discount_unit_price'] is not None else '',
-                f'품목{idx}_공급가액': f"{int(item_subtotal):,}",
+                f'품목{idx}_공급가액': f"{int(vat.split_amount(item_subtotal, _vat_mode)[0]):,}",
                 f'품목{idx}_단가': _document_money(price_info['effective_unit_price']),
-                f'품목{idx}_부가세액': f"{int(item_subtotal * Decimal('0.1')):,}",
+                f'품목{idx}_부가세액': f"{int(vat.split_amount(item_subtotal, _vat_mode)[1]):,}",
                 f'품목{idx}_금액': f"{int(item_subtotal):,}",
-                f'품목{idx}_총액': f"{int(item_subtotal * Decimal('1.1')):,}",
+                f'품목{idx}_총액': f"{int(vat.split_amount(item_subtotal, _vat_mode)[2]):,}",
             }
             data_map.update(item_data)
             items_data.append({
@@ -19032,22 +18161,8 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     _document_item_prices(item)['effective_unit_price'] * item.quantity
                     for item in delivery_items
                 ], Decimal('0'))
-                _vat_mode = getattr(schedule, 'vat_mode', 'excluded') or 'excluded'
-
-                from decimal import ROUND_HALF_UP
-                if _vat_mode == 'included':
-                    # 입력 금액이 부가세 포함 총액 → 공급가 분리
-                    subtotal = (_raw_subtotal / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                    tax = _raw_subtotal - subtotal
-                    total = _raw_subtotal
-                elif _vat_mode == 'none':
-                    subtotal = _raw_subtotal
-                    tax = Decimal('0')
-                    total = _raw_subtotal
-                else:  # 'excluded' (default)
-                    subtotal = _raw_subtotal
-                    tax = (_raw_subtotal * Decimal('0.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                    total = _raw_subtotal + tax
+                _vat_mode = vat.schedule_vat_mode(schedule)
+                subtotal, tax, total = vat.split_amount(_raw_subtotal, _vat_mode)
                 
                 # 총액을 한글로 변환
                 def number_to_korean(number):
@@ -19203,19 +18318,7 @@ def generate_document_pdf(request, document_type, schedule_id, output_format='xl
                     item_option_description = item.option_description or ''
 
                     # 품목별 부가세 계산 (schedule의 vat_mode 반영)
-                    if _vat_mode == 'included':
-                        _item_supply = (item_subtotal / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                        _item_tax = item_subtotal - _item_supply
-                        _item_total = item_subtotal
-                        _item_supply_display = _item_supply
-                    elif _vat_mode == 'none':
-                        _item_supply_display = item_subtotal
-                        _item_tax = Decimal('0')
-                        _item_total = item_subtotal
-                    else:
-                        _item_supply_display = item_subtotal
-                        _item_tax = (item_subtotal * Decimal('0.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                        _item_total = item_subtotal + _item_tax
+                    _item_supply_display, _item_tax, _item_total = vat.split_amount(item_subtotal, _vat_mode)
 
                     data_map[f'품목{idx}_이름'] = item.item_name
                     data_map[f'품목{idx}_품목명'] = item.item_name
@@ -19693,7 +18796,7 @@ def customer_records_api(request, followup_id):
                     item_total = Decimal(str(item.total_price))
                 else:
                     unit_price = item.unit_price if item.unit_price else Decimal('0')
-                    item_total = Decimal(str(item.quantity)) * Decimal(str(unit_price)) * Decimal('1.1')
+                    item_total = vat.item_gross_total(item, unit_price=unit_price)
                 items.append({
                     'item_name': item.item_name,
                     'quantity': item.quantity,
@@ -19818,7 +18921,7 @@ def customer_records_api(request, followup_id):
                     item_total = Decimal(str(item.total_price))
                 else:
                     unit_price = item.unit_price if item.unit_price else Decimal('0')
-                    item_total = Decimal(str(item.quantity)) * Decimal(str(unit_price)) * Decimal('1.1')
+                    item_total = vat.item_gross_total(item, unit_price=unit_price)
                 items.append({
                     'item_name': item.item_name,
                     'quantity': item.quantity,

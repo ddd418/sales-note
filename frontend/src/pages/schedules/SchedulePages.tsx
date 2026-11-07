@@ -94,7 +94,7 @@ import {
     formatNumber,
     formatWon
 } from '../../components/shared/formatters';
-import { CustomerDetailNoteList, NoteCreateFormState, ScheduleCreateFormState, SchedulesCompactList, SearchableSelect, customersForDepartment, getCreateDateParam, getScheduleCalendarRange, isQuoteProbabilityRequired, localDateInputValue, makeCustomerSelectOption, makeDepartmentSelectOption, makeEmptyScheduleCreateForm, normalizeProbabilityInputValue, normalizeQuoteGroupKey, parseLocalDate, quoteGroupLabel, useGuidedPanelFocus } from '../shared/appShared';
+import { CustomerDetailNoteList, NoteCreateFormState, ScheduleCreateFormState, SchedulesCompactList, SearchableSelect, VatModeField, grossFromSubtotal, vatModeLabel, customersForDepartment, getCreateDateParam, getScheduleCalendarRange, isQuoteProbabilityRequired, localDateInputValue, makeCustomerSelectOption, makeDepartmentSelectOption, makeEmptyScheduleCreateForm, normalizeProbabilityInputValue, normalizeQuoteGroupKey, parseLocalDate, quoteGroupLabel, useGuidedPanelFocus } from '../shared/appShared';
 
 
 type ScheduleEditFormState = ScheduleCreateFormState & {
@@ -198,6 +198,7 @@ const makeScheduleEditForm = (schedule: ScheduleDetailItem | null): ScheduleEdit
   location: schedule?.location || '',
   notes: schedule?.notesFull || schedule?.notes || '',
   probability: probabilityInputValueFromSchedule(schedule?.probability),
+  vatMode: schedule?.vatMode || '',
   purchaseConfirmed: Boolean(schedule?.purchaseConfirmed),
   status: schedule?.status || 'scheduled',
   usePrepayment: Boolean(schedule?.usePrepayment),
@@ -254,6 +255,7 @@ const scheduleCreateFormToPayload = (form: ScheduleCreateFormState): { payload?:
       activityType: form.activityType,
       departmentId: departmentId || undefined,
       expectedRevenue: form.expectedRevenue.trim() || undefined,
+      vatMode: form.vatMode || undefined,
       followupId: followupId || undefined,
       location: form.location.trim() || undefined,
       notes: form.notes.trim() || undefined,
@@ -312,6 +314,7 @@ const scheduleEditFormToPayload = (form: ScheduleEditFormState): { payload?: Sch
       activityType: form.activityType,
       expectedCloseDate: form.expectedCloseDate || undefined,
       expectedRevenue: form.expectedRevenue.trim() || undefined,
+      vatMode: form.vatMode || undefined,
       followupId,
       location: form.location.trim() || undefined,
       notes: form.notes.trim() || undefined,
@@ -434,7 +437,7 @@ const discountRateFromUnit = (base: number, discountUnit: number) => (
   base > 0 ? Math.max(Math.min((1 - discountUnit / base) * 100, 100), 0) : 0
 );
 
-const scheduleDeliveryEditRowsTotal = (rows: ScheduleDeliveryEditRow[]) => (
+const scheduleDeliveryEditRowsTotal = (rows: ScheduleDeliveryEditRow[], vatMode?: string) => (
   rows.reduce((total, row) => {
     const quantity = Number(row.quantity);
     const unitPrice = parsePositiveFormNumber(row.unitPrice);
@@ -449,7 +452,7 @@ const scheduleDeliveryEditRowsTotal = (rows: ScheduleDeliveryEditRow[]) => (
     } else if (discountRate !== null) {
       effectiveUnitPrice = discountUnitFromRate(unitPrice, Math.min(Math.max(discountRate, 0), 100));
     }
-    return total + Math.round(quantity * effectiveUnitPrice * 1.1);
+    return total + Math.round(grossFromSubtotal(quantity * effectiveUnitPrice, vatMode));
   }, 0)
 );
 
@@ -1589,6 +1592,7 @@ export function ScheduleCalendarPage({
                         value={calendarCreateForm.expectedRevenue}
                       />
                     </label>
+                    <VatModeField onChange={(value) => handleCalendarCreateFieldChange('vatMode', value)} value={calendarCreateForm.vatMode} />
                     <label>
                       <span>성공 확률</span>
                       <input
@@ -1788,6 +1792,7 @@ export function ScheduleCalendarPage({
                         value={calendarEditForm.expectedRevenue}
                       />
                     </label>
+                    <VatModeField onChange={(value) => handleCalendarEditFieldChange('vatMode', value)} value={calendarEditForm.vatMode} />
                     <label>
                       <span>성공 확률</span>
                       <input
@@ -2970,6 +2975,7 @@ export function ScheduleDetailPage({
       activityType: editForm.activityType,
       expectedCloseDate: editForm.expectedCloseDate || undefined,
       expectedRevenue: editForm.expectedRevenue.trim() || undefined,
+      vatMode: editForm.vatMode || undefined,
       followupId,
       location: editForm.location.trim() || undefined,
       notes: editForm.notes.trim() || undefined,
@@ -3626,7 +3632,7 @@ export function ScheduleDetailPage({
     return row.selected && Number.isFinite(amount) && amount > 0 ? total + amount : total;
   }, 0);
   const payableAfterPrepayment = Math.max(prepaymentBaseAmount - selectedPrepaymentAmount, 0);
-  const deliveryEditTotalAmount = scheduleDeliveryEditRowsTotal(deliveryRows);
+  const deliveryEditTotalAmount = scheduleDeliveryEditRowsTotal(deliveryRows, schedule.vatMode);
   const deliveryPrepaymentBaseAmount = deliveryEditOpen
     ? deliveryEditTotalAmount
     : prepaymentBaseAmount;
@@ -3900,6 +3906,7 @@ export function ScheduleDetailPage({
                     value={editForm.expectedRevenue}
                   />
                 </label>
+                <VatModeField onChange={(value) => handleEditFieldChange('vatMode', value)} value={editForm.vatMode} />
                 <label>
                   <span>성공 확률</span>
                   <input
@@ -3987,7 +3994,7 @@ export function ScheduleDetailPage({
                         <DashboardEmpty label="사용 가능한 선결제가 없습니다" />
                       )}
                       <div className="schedule-prepayment-totals">
-                        <span>납품 합계 <strong>{formatWon(prepaymentBaseAmount)}</strong></span>
+                        <span>납품 합계 <strong>{formatWon(prepaymentBaseAmount)}</strong> <small>{vatModeLabel(schedule.vatMode)} 기준</small></span>
                         <span>차감 <strong>{formatWon(selectedPrepaymentAmount)}</strong></span>
                         <span>실결제 <strong>{formatWon(payableAfterPrepayment)}</strong></span>
                       </div>
@@ -4512,7 +4519,7 @@ export function ScheduleDetailPage({
                         <DashboardEmpty label="사용 가능한 선결제가 없습니다" />
                       )}
                       <div className="schedule-prepayment-totals">
-                        <span>납품 합계 <strong>{formatWon(deliveryPrepaymentBaseAmount)}</strong></span>
+                        <span>납품 합계 <strong>{formatWon(deliveryPrepaymentBaseAmount)}</strong> <small>{vatModeLabel(schedule.vatMode)} 기준</small></span>
                         <span>차감 <strong>{formatWon(selectedDeliveryPrepaymentAmount)}</strong></span>
                         <span>실결제 <strong>{formatWon(deliveryPayableAfterPrepayment)}</strong></span>
                       </div>
@@ -4794,6 +4801,7 @@ export function SchedulesPage({
                     value={createForm.expectedRevenue}
                   />
                 </label>
+                <VatModeField onChange={(value) => onCreateFormChange('vatMode', value)} value={createForm.vatMode} />
                 <label>
                   <span>성공 확률</span>
                   <input

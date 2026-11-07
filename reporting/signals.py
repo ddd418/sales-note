@@ -11,6 +11,7 @@ from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from datetime import date
 from .models import FollowUp, History, OpportunityTracking, Schedule, DeliveryItem
+from reporting.vat import item_gross_total
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ def update_opportunity_on_schedule_change(sender, instance, **kwargs):
                     total_delivery_amount += item.total_price
                 elif item.unit_price and item.quantity:
                     from decimal import Decimal
-                    total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+                    total_delivery_amount += item_gross_total(item, unit_price=item.unit_price)
             
             if total_delivery_amount > 0:
                 opportunity.actual_revenue = total_delivery_amount
@@ -403,7 +404,7 @@ def update_product_sales_count_on_create(sender, instance, created, **kwargs):
                 if item.total_price:
                     total_delivery_amount += item.total_price
                 elif item.unit_price and item.quantity:
-                    total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+                    total_delivery_amount += item_gross_total(item, unit_price=item.unit_price)
             
             # History의 DeliveryItem
             for history in target_schedule.histories.all():
@@ -411,7 +412,7 @@ def update_product_sales_count_on_create(sender, instance, created, **kwargs):
                     if item.total_price:
                         total_delivery_amount += item.total_price
                     elif item.unit_price and item.quantity:
-                        total_delivery_amount += item.unit_price * item.quantity * Decimal('1.1')
+                        total_delivery_amount += item_gross_total(item, unit_price=item.unit_price)
             
             # OpportunityTracking의 actual_revenue 업데이트
             if total_delivery_amount > 0:

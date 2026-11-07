@@ -29,6 +29,7 @@ from reporting.views import (
     get_accessible_users,
     get_user_profile,
 )
+from reporting.vat import item_gross_total
 
 
 RECEIVABLE_STATUSES = {'open', 'all', 'settled', 'card'}
@@ -55,7 +56,7 @@ def _receivables_item_amount(item):
         unit_price = item.get_effective_unit_price()
         if unit_price is None:
             unit_price = item.unit_price or 0
-        return _money_int(Decimal(str(unit_price)) * Decimal(str(item.quantity or 0)) * Decimal('1.1'))
+        return _money_int(item_gross_total(item, unit_price=unit_price, quantity=item.quantity or 0))
     except Exception:
         return 0
 

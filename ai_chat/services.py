@@ -10,6 +10,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from openai import OpenAI
+from reporting.vat import item_gross_total
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +225,7 @@ def _delivery_item_total_value(item):
     if item.total_price is not None:
         return Decimal(str(item.total_price))
     if item.unit_price is not None and item.quantity:
-        return Decimal(str(item.unit_price)) * Decimal(str(item.quantity)) * Decimal('1.1')
+        return item_gross_total(item, unit_price=item.unit_price)
     return None
 
 
