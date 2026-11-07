@@ -1,4 +1,4 @@
-import { emptyPipelineData, PipelineData, PipelineStage } from '../mockData';
+import { emptyPipelineData, PipelineData, PipelineStage } from '../pipelineTypes';
 import { emptyCustomerDemoSummary, normalizeCustomerDemoSummary, type CustomerDemoSummary } from './demos';
 import { getCookie, normalizeCoreCrmHref, normalizeHrefFields, redirectIfLoginRequired } from './shared';
 
@@ -2845,71 +2845,6 @@ export type EmployeeMutationResponse = {
   employee?: EmployeeManagementItem;
 };
 
-const emptyDashboardData: DashboardData = {
-  success: false,
-  source: 'unavailable',
-  generatedAt: new Date().toISOString(),
-  canManage: false,
-  scope: {
-    label: '',
-    userCount: 0,
-    canViewAll: false,
-    selectedUserId: null,
-  },
-  currentUser: {
-    id: null,
-    name: '',
-    role: '',
-    roleLabel: '',
-    company: '',
-  },
-  metrics: {
-    totalCustomers: 0,
-    activeCustomers: 0,
-    todaySchedules: 0,
-    weeklySchedules: 0,
-    overdueActions: 0,
-    dueTodayActions: 0,
-    recentNotes: 0,
-    pendingReviews: 0,
-    monthlyActivity: 0,
-    yearRevenue: 0,
-    quarterRevenue: 0,
-    monthlyRevenue: 0,
-  },
-  revenuePeriod: {
-    year: new Date().getFullYear(),
-    quarter: Math.floor(new Date().getMonth() / 3) + 1,
-    yearStart: '',
-    yearEnd: '',
-    quarterStart: '',
-    quarterEnd: '',
-    monthStart: '',
-    monthEnd: '',
-  },
-  links: {
-    operationalDashboard: '/dashboard/',
-    createNote: '/notes/?create=1',
-    customers: '/customers/',
-    customerReport: '/customers/',
-    notes: '/notes/',
-    schedules: '/schedules/',
-    calendar: '/schedules/calendar/',
-    pipeline: '/pipeline/',
-    pendingReviews: '/notes/?review=unreviewed',
-  },
-  today: {
-    date: '',
-    items: [],
-  },
-  upcomingSchedules: [],
-  overdueActions: [],
-  dueTodayActions: [],
-  recentActivities: [],
-  priorityCustomers: [],
-  pipelineSummary: [],
-  teamActivity: [],
-};
 
 const emptyProfileData: ProfileData = {
   success: false,
@@ -3803,27 +3738,6 @@ const emptyPrepaymentCustomerData: PrepaymentCustomerData = {
   ledgerEntries: [],
 };
 
-const emptyNavigationData: NavigationData = {
-  success: false,
-  source: 'unavailable',
-  generatedAt: new Date().toISOString(),
-  currentUser: {
-    id: null,
-    name: '',
-    username: '',
-    role: '',
-    roleLabel: '',
-    company: '',
-    canUseAi: false,
-  },
-  capabilities: {
-    canManageEmployees: false,
-    canManageUsers: false,
-    canUseAi: false,
-    canViewAllUsers: false,
-  },
-  items: [],
-};
 
 const emptyEmployeesData: EmployeesData = {
   success: false,
@@ -3921,85 +3835,6 @@ function normalizeCustomerLinks<T extends CustomerItem | DashboardCustomerItem>(
     normalized.upcomingSchedule = normalizeHrefFields(normalized.upcomingSchedule, ['href', 'createHistoryHref']);
   }
   return normalized as T;
-}
-
-export async function loadDashboardData(): Promise<DashboardData> {
-  try {
-    const response = await fetch('/reporting/api/dashboard/', {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Dashboard API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as DashboardData;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || payload.message || `Dashboard API unavailable: ${response.status}`);
-    }
-    return {
-      ...emptyDashboardData,
-      ...payload,
-      scope: {
-        ...emptyDashboardData.scope,
-        ...(payload.scope ?? {}),
-      },
-      currentUser: {
-        ...emptyDashboardData.currentUser,
-        ...(payload.currentUser ?? {}),
-      },
-      metrics: {
-        ...emptyDashboardData.metrics,
-        ...(payload.metrics ?? {}),
-      },
-      revenuePeriod: {
-        ...emptyDashboardData.revenuePeriod,
-        ...(payload.revenuePeriod ?? {}),
-      },
-      today: {
-        ...emptyDashboardData.today,
-        ...(payload.today ?? {}),
-        items: (payload.today?.items ?? emptyDashboardData.today.items).map(normalizeScheduleLinks),
-      },
-      links: normalizeHrefFields({
-        ...emptyDashboardData.links,
-        ...(payload.links ?? {}),
-      }, [
-        'operationalDashboard',
-        'createNote',
-        'customers',
-        'customerReport',
-        'notes',
-        'schedules',
-        'calendar',
-        'pipeline',
-        'pendingReviews',
-      ]),
-      upcomingSchedules: (payload.upcomingSchedules ?? emptyDashboardData.upcomingSchedules).map(normalizeScheduleLinks),
-      overdueActions: (payload.overdueActions ?? emptyDashboardData.overdueActions).map((item) => (
-        normalizeHrefFields(item, ['href', 'customerHref'])
-      )),
-      dueTodayActions: (payload.dueTodayActions ?? emptyDashboardData.dueTodayActions).map((item) => (
-        normalizeHrefFields(item, ['href', 'customerHref'])
-      )),
-      recentActivities: (payload.recentActivities ?? emptyDashboardData.recentActivities).map((item) => (
-        normalizeHrefFields(item, ['href', 'customerHref'])
-      )),
-      priorityCustomers: (payload.priorityCustomers ?? emptyDashboardData.priorityCustomers).map(normalizeCustomerLinks),
-      pipelineSummary: payload.pipelineSummary ?? emptyDashboardData.pipelineSummary,
-      teamActivity: payload.teamActivity ?? emptyDashboardData.teamActivity,
-    };
-  } catch (error) {
-    return {
-      ...emptyDashboardData,
-      generatedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Dashboard API unavailable',
-    };
-  }
 }
 
 export async function loadProfileData(): Promise<ProfileData> {
@@ -4224,47 +4059,6 @@ export async function loadCompanyManagementData(params: {
       error: error instanceof Error ? error.message : 'Companies API unavailable',
     };
   }
-}
-
-export async function createCustomer(
-  payload: CustomerCreatePayload,
-  submitUrl = '/reporting/api/followups/create/',
-): Promise<CustomerCreateResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const body = new URLSearchParams();
-  body.set('customer_name', payload.customerName);
-  body.set('company', String(payload.companyId));
-  body.set('department', String(payload.departmentId));
-  if (payload.manager) body.set('manager', payload.manager);
-  if (payload.phoneNumber) body.set('phone_number', payload.phoneNumber);
-  if (payload.email) body.set('email', payload.email);
-  if (payload.address) body.set('address', payload.address);
-  if (payload.notes) body.set('notes', payload.notes);
-
-  const response = await fetch(submitUrl, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-    body,
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Customer create API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as CustomerCreateResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Customer create failed: ${response.status}`);
-  }
-  return {
-    ...data,
-    href: data.href || (data.followup_id ? `/customers/${data.followup_id}/` : ''),
-  };
 }
 
 export async function updateCustomer(
@@ -6760,29 +6554,6 @@ export async function deleteScheduleFile(deleteUrl: string): Promise<ScheduleFil
   return data;
 }
 
-export async function toggleScheduleTaxInvoice(toggleUrl: string): Promise<ScheduleTaxInvoiceToggleResponse> {
-  const csrfToken = getCookie('csrftoken');
-  const response = await fetch(toggleUrl, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-    },
-  });
-  redirectIfLoginRequired(response);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Schedule tax invoice API unavailable: ${response.status}`);
-  }
-  const data = (await response.json()) as ScheduleTaxInvoiceToggleResponse;
-  redirectIfLoginRequired(response, data);
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || data.message || `Schedule tax invoice update failed: ${response.status}`);
-  }
-  return data;
-}
-
 export async function deleteSchedule(deleteUrl: string): Promise<ScheduleDeleteResponse> {
   const csrfToken = getCookie('csrftoken');
   const response = await fetch(deleteUrl, {
@@ -6830,46 +6601,6 @@ export async function generateScheduleAICoach(scheduleId: number): Promise<Sched
     throw new Error(data.error || data.message || `Schedule AI coach failed: ${response.status}`);
   }
   return data;
-}
-
-export async function loadNavigationData(): Promise<NavigationData> {
-  try {
-    const response = await fetch('/reporting/api/navigation/', {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-    redirectIfLoginRequired(response);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Navigation API unavailable: ${response.status}`);
-    }
-    const payload = (await response.json()) as Partial<NavigationData>;
-    redirectIfLoginRequired(response, payload);
-    if (!response.ok || payload.success === false || payload.source !== 'django') {
-      throw new Error(payload.error || `Navigation API unavailable: ${response.status}`);
-    }
-    return {
-      ...emptyNavigationData,
-      ...payload,
-      currentUser: {
-        ...emptyNavigationData.currentUser,
-        ...(payload.currentUser ?? {}),
-      },
-      capabilities: {
-        ...emptyNavigationData.capabilities,
-        ...(payload.capabilities ?? {}),
-      },
-      items: payload.items ?? [],
-    };
-  } catch (error) {
-    return {
-      ...emptyNavigationData,
-      generatedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : 'Navigation API unavailable',
-    };
-  }
 }
 
 export async function loadEmployeesData(params: { q?: string; role?: string; status?: string; company?: string } = {}): Promise<EmployeesData> {

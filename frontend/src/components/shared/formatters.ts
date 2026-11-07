@@ -13,7 +13,6 @@ export const formatSignedWon = (value: number) => {
 
 export const formatNumber = (value: number) => new Intl.NumberFormat('ko-KR').format(value);
 
-export const formatSignedNumber = (value: number) => `${value > 0 ? '+' : ''}${formatNumber(value)}`;
 
 export const formatDateLabel = (value?: string | null) => {
   if (!value) return '';

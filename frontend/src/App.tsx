@@ -42,11 +42,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { Fragment, Suspense, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  DashboardData,
-  DashboardHistoryItem,
-  DashboardScheduleItem,
   DemoAccountOption,
   DemoRecordItem,
   DemoRecordPayload,
@@ -115,7 +112,6 @@ import {
   deleteDocumentTemplate,
   deleteDemoRecord,
   downloadScheduleDocument,
-  loadDashboardData,
   loadDemoRecordsData,
   loadDocumentTemplatesData,
   loadEmployeesData,
@@ -158,7 +154,6 @@ import type {
   AccountInfoUpdatePayload,
   CustomerAccountContact,
   CustomerAttachmentItem,
-  CustomerCreatePayload,
   CustomerDeliveryRecord,
   CustomerDetailData,
   CustomerEditPayload,
@@ -169,20 +164,13 @@ import type {
   CustomersData,
 } from './api/accounts';
 import {
-  createCompany as createCompanyRecord,
-  createCustomer as createCustomerRecord,
-  createDepartment as createDepartmentRecord,
-  deleteCompanyRecord,
   deleteCustomer as deleteCustomerRecord,
-  deleteDepartmentRecord,
   loadAccountDetailData,
   loadCustomerDetailData,
   loadCustomersData,
   saveAccountContact,
   updateAccountInfo,
-  updateCompany as updateCompanyRecord,
   updateCustomer as updateCustomerRecord,
-  updateDepartment as updateDepartmentRecord,
 } from './api/accounts';
 import type {
   PrepaymentCreateData,
@@ -214,7 +202,7 @@ import type {
 import {
   generateScheduleAICoach,
 } from './api/ai';
-import { emptyPipelineData, type Deal, type HiddenDeal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './mockData';
+import { emptyPipelineData, type Deal, type HiddenDeal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './pipelineTypes';
 import {
   CompanyManagementPage,
   PipelineSheetPage,
@@ -223,7 +211,15 @@ import {
 } from './pages/lazyPages';
 import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
 import { AttachmentManager, type AttachmentManagerFile } from './components/shared/AttachmentManager';
-import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from './components/shared/FeedbackStates';
+import { DashboardApiAlert, DashboardEmpty } from './components/shared/FeedbackStates';
+import { DashboardMetricCard } from './components/shared/DashboardMetricCard';
+import {
+  formatDateLabel,
+  formatDateTimeLabel,
+  formatNumber,
+  formatSignedWon,
+  formatWon,
+} from './components/shared/formatters';
 import { CRM_CLIENT_NAVIGATION_EVENT } from './navigationEvents';
 
 const scheduleCalendarUrl = '/schedules/calendar/';
@@ -367,19 +363,7 @@ type ProductFormState = {
 type ProductSortField = 'code' | 'description' | 'specification' | 'unit' | 'price' | 'status' | 'quoteCount' | 'deliveryCount' | 'updatedAt';
 type ProductSortOrder = 'asc' | 'desc';
 
-type CustomerCreateFormState = {
-  address: string;
-  companyId: string;
-  customerName: string;
-  departmentId: string;
-  email: string;
-  manager: string;
-  notes: string;
-  phoneNumber: string;
-};
 
-type CustomerCompanyManageOption = CustomersData['create']['companies'][number];
-type CustomerDepartmentManageOption = CustomersData['create']['departments'][number];
 
 type CustomerEditFormState = {
   address: string;
@@ -1206,16 +1190,6 @@ const mergeProductOptions = (current: ProductOption[], incoming: ProductOption[]
   return Array.from(optionsById.values()).sort((a, b) => a.productCode.localeCompare(b.productCode));
 };
 
-const makeEmptyCustomerCreateForm = (): CustomerCreateFormState => ({
-  address: '',
-  companyId: '',
-  customerName: '',
-  departmentId: '',
-  email: '',
-  manager: '',
-  notes: '',
-  phoneNumber: '',
-});
 
 const makeCustomerEditForm = (customer: CustomerItem | null): CustomerEditFormState => ({
   address: customer?.address || '',
@@ -1699,66 +1673,16 @@ const savedViews: Array<{ id: SavedView; label: string }> = [
   { id: 'managerReview', label: '매니저 검토' },
 ];
 
-const formatWon = (value: number) =>
-  new Intl.NumberFormat('ko-KR', {
-    style: 'currency',
-    currency: 'KRW',
-    maximumFractionDigits: 0,
-  }).format(value);
 
-const formatSignedWon = (value: number) => {
-  if (value > 0) return `+${formatWon(value)}`;
-  if (value < 0) return `-${formatWon(Math.abs(value))}`;
-  return formatWon(0);
-};
 
 const formatSignedPercent = (value: number) => `${value > 0 ? '+' : ''}${value}%`;
 
-const formatNumber = (value: number) => new Intl.NumberFormat('ko-KR').format(value);
 
-const formatSignedNumber = (value: number) => `${value > 0 ? '+' : ''}${formatNumber(value)}`;
-
-const formatFileSize = (size: number) => {
-  if (size >= 1024 * 1024) {
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  }
-  if (size >= 1024) {
-    return `${Math.round(size / 1024)} KB`;
-  }
-  return `${size} B`;
-};
-
-const formatDateLabel = (value?: string | null) => {
-  if (!value) return '';
-  const datePart = /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : value;
-  const [year, month, day] = datePart.split('-');
-  if (!year || !month || !day) return value;
-  return `${Number(month)}월 ${Number(day)}일`;
-};
 
 const noteNextActionLabel = (note: Pick<NoteItem, 'nextAction' | 'nextActionDate'> & { nextActionDisplay?: string }) => (
   note.nextActionDisplay || note.nextAction || (note.nextActionDate ? '후속 예정' : '')
 );
 
-const formatDateTimeLabel = (value?: string | null) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('ko-KR', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-};
-
-const formatDateTimeLocalInputValue = (date: Date) => {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
-
-const sortScheduleItems = (items: DashboardScheduleItem[]) =>
-  [...items].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
 const riskLabel: Record<Deal['risk'], string> = {
   low: '정상',
@@ -2262,179 +2186,6 @@ function LegacyFallbackRoutePage({ view }: { view: MainView }) {
             <a href="/dashboard/">대시보드<ChevronRight size={15} /></a>
           </div>
         </article>
-      </div>
-    </section>
-  );
-}
-
-function DashboardMetricCard({
-  detail,
-  href,
-  icon: Icon,
-  label,
-  tone,
-  value,
-}: {
-  detail: string;
-  href?: string;
-  icon: typeof LayoutDashboard;
-  label: string;
-  tone: 'blue' | 'green' | 'amber' | 'red' | 'teal';
-  value: string;
-}) {
-  const content = (
-    <>
-      <div className="dashboard-metric-icon">
-        <Icon size={19} />
-      </div>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
-      </div>
-    </>
-  );
-
-  if (href) {
-    return (
-      <a className={`dashboard-metric-card ${tone}`} href={href}>
-        {content}
-      </a>
-    );
-  }
-
-  return <article className={`dashboard-metric-card ${tone}`}>{content}</article>;
-}
-
-function DashboardScheduleList({ items }: { items: DashboardScheduleItem[] }) {
-  if (items.length === 0) {
-    return <DashboardEmpty label="표시할 일정이 없습니다" />;
-  }
-
-  return (
-    <div className="dashboard-list">
-      {sortScheduleItems(items).map((item) => (
-        <a className="dashboard-list-row" href={item.href} key={`${item.type}-${item.id}`}>
-          <div className="dashboard-row-icon">
-            {item.type === 'personal' ? <Clock size={17} /> : <CalendarDays size={17} />}
-          </div>
-          <div className="dashboard-row-main">
-            <strong>{item.customer}</strong>
-            <span>
-              {[item.company, item.department, item.activityLabel].filter(Boolean).join(' · ')}
-            </span>
-            {item.notes ? <small>{item.notes}</small> : null}
-          </div>
-          <time>
-            {formatDateLabel(item.date)}
-            {item.time ? ` ${item.time}` : ''}
-          </time>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function DashboardHistoryList({
-  emptyLabel,
-  items,
-  urgent,
-}: {
-  emptyLabel: string;
-  items: DashboardHistoryItem[];
-  urgent?: boolean;
-}) {
-  if (items.length === 0) {
-    return <DashboardEmpty label={emptyLabel} />;
-  }
-
-  return (
-    <div className="dashboard-list">
-      {items.map((item) => (
-        <a className={`dashboard-list-row ${urgent ? 'urgent' : ''}`} href={item.href} key={item.id}>
-          <div className="dashboard-row-icon">
-            {urgent ? <AlertTriangle size={17} /> : <FileText size={17} />}
-          </div>
-          <div className="dashboard-row-main">
-            <strong>{item.customer}</strong>
-            <span>
-              {[item.company, item.actionLabel, item.owner].filter(Boolean).join(' · ')}
-            </span>
-            <small>{item.nextAction || item.summary || '내용 없음'}</small>
-          </div>
-          <time>{item.nextActionDate ? formatDateLabel(item.nextActionDate) : formatDateTimeLabel(item.createdAt)}</time>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function DashboardCustomerList({ items }: { items: DashboardData['priorityCustomers'] }) {
-  if (items.length === 0) {
-    return <DashboardEmpty label="표시할 우선 고객이 없습니다" />;
-  }
-
-  return (
-    <div className="dashboard-customer-list">
-      {items.map((item) => (
-        <a className={`dashboard-customer-row ${item.overdue ? 'overdue' : ''}`} href={item.href} key={item.id}>
-          <div>
-            <strong>{item.company || item.customer}</strong>
-            <span>
-              {[item.customer, item.department, item.owner].filter(Boolean).join(' · ')}
-            </span>
-            {item.nextAction ? <small>{item.nextAction}</small> : null}
-          </div>
-          <div className="dashboard-customer-meta">
-            <span>{item.priorityLabel}</span>
-            <strong>{Math.round(item.score)}</strong>
-          </div>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function DashboardPipelineSummary({ data }: { data: DashboardData['pipelineSummary'] }) {
-  const maxCount = Math.max(...data.map((item) => item.count), 1);
-  return (
-    <div className="dashboard-pipeline-summary">
-      {data.map((item) => (
-        <a className="dashboard-pipeline-row" href="/pipeline/" key={item.stage}>
-          <div>
-            <span>{item.label}</span>
-            <strong>{formatNumber(item.count)}건</strong>
-          </div>
-          <div className="dashboard-pipeline-bar">
-            <div style={{ width: `${(item.count / maxCount) * 100}%` }} />
-          </div>
-        </a>
-      ))}
-    </div>
-  );
-}
-
-function DashboardTeamActivity({ data }: { data: DashboardData['teamActivity'] }) {
-  if (data.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="dashboard-panel">
-      <div className="dashboard-panel-heading">
-        <div>
-          <span className="eyebrow">Team</span>
-          <h2>팀 활동 현황</h2>
-        </div>
-        <Users size={18} />
-      </div>
-      <div className="dashboard-team-grid">
-        {data.map((item) => (
-          <article className="dashboard-team-row" key={item.userId}>
-            <strong>{item.name}</strong>
-            <span>최근 30일 {formatNumber(item.recentCount)}건</span>
-          </article>
-        ))}
       </div>
     </section>
   );
@@ -3066,7 +2817,7 @@ function CustomerDetailPage({
           <AlertTriangle size={18} />
           <div>
             <strong>고객 상세를 불러오지 못했습니다</strong>
-            <span>{data?.error || '고객 상세 API에 연결되지 않았습니다.'}</span>
+            <span>{data?.error || '고객 상세 정보를 불러오지 못했습니다.'}</span>
           </div>
           <a href="/customers/">목록</a>
         </div>
@@ -3159,14 +2910,7 @@ function CustomerDetailPage({
   return (
     <section className="customers-page customer-detail-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>고객 상세 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="고객 상세 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -3945,25 +3689,10 @@ function CustomerDetailPage({
 }
 
 function CustomersPage({
-  companyCreateName,
-  companyCreating,
-  createDetailHref,
-  createDepartmentName,
-  createError,
-  createForm,
-  createMessage,
-  createOpen,
-  creating,
   data,
-  departmentEditId,
-  departmentEditName,
-  departmentCreating,
   detailData,
   detailLoading,
-  companyEditId,
-  companyEditName,
   loading,
-  managementSavingKey,
   company,
   grade,
   level,
@@ -3974,23 +3703,6 @@ function CustomersPage({
   selectedCustomerId,
   selectedDetailMode,
   stage,
-  onCompanyCreateNameChange,
-  onCompanyCreateSubmit,
-  onCompanyDelete,
-  onCompanyEditCancel,
-  onCompanyEditNameChange,
-  onCompanyEditStart,
-  onCompanyEditSubmit,
-  onCreateFormChange,
-  onCreateOpenChange,
-  onCreateSubmit,
-  onDepartmentDelete,
-  onDepartmentCreateNameChange,
-  onDepartmentCreateSubmit,
-  onDepartmentEditCancel,
-  onDepartmentEditNameChange,
-  onDepartmentEditStart,
-  onDepartmentEditSubmit,
   onDetailRefresh,
   onCompanyFilterChange,
   onGradeChange,
@@ -4001,25 +3713,10 @@ function CustomersPage({
   onRowModeChange,
   onStageChange,
 }: {
-  companyCreateName: string;
-  companyCreating: boolean;
-  createDetailHref: string;
-  createDepartmentName: string;
-  createError: string;
-  createForm: CustomerCreateFormState;
-  createMessage: string;
-  createOpen: boolean;
-  creating: boolean;
   data: CustomersData | null;
-  departmentEditId: number | null;
-  departmentEditName: string;
-  departmentCreating: boolean;
   detailData: CustomerDetailData | null;
   detailLoading: boolean;
-  companyEditId: number | null;
-  companyEditName: string;
   loading: boolean;
-  managementSavingKey: string;
   company: string;
   grade: string;
   level: string;
@@ -4030,23 +3727,6 @@ function CustomersPage({
   selectedCustomerId: number | null;
   selectedDetailMode: CustomerDetailMode;
   stage: string;
-  onCompanyCreateNameChange: (value: string) => void;
-  onCompanyCreateSubmit: () => void;
-  onCompanyDelete: (company: CustomerCompanyManageOption) => void;
-  onCompanyEditCancel: () => void;
-  onCompanyEditNameChange: (value: string) => void;
-  onCompanyEditStart: (company: CustomerCompanyManageOption) => void;
-  onCompanyEditSubmit: (company: CustomerCompanyManageOption) => void;
-  onCreateFormChange: (field: keyof CustomerCreateFormState, value: string) => void;
-  onCreateOpenChange: (open: boolean) => void;
-  onCreateSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onDepartmentDelete: (department: CustomerDepartmentManageOption) => void;
-  onDepartmentCreateNameChange: (value: string) => void;
-  onDepartmentCreateSubmit: () => void;
-  onDepartmentEditCancel: () => void;
-  onDepartmentEditNameChange: (value: string) => void;
-  onDepartmentEditStart: (department: CustomerDepartmentManageOption) => void;
-  onDepartmentEditSubmit: (department: CustomerDepartmentManageOption) => void;
   onDetailRefresh: () => Promise<CustomerDetailData | null>;
   onCompanyFilterChange: (value: string) => void;
   onGradeChange: (value: string) => void;
@@ -4096,27 +3776,10 @@ function CustomersPage({
     { label: '담당자', value: `${formatNumber(data.metrics.totalCustomers)}명`, detail: rowModeDetail, icon: Building2, tone: 'amber' as const },
     { label: '예정 일정 고객', value: `${formatNumber(data.metrics.scheduledCustomers)}건`, detail: '미래 일정 보유', icon: CalendarDays, tone: 'green' as const },
   ];
-  const createConfig = data.create;
-  const canCreateCustomers = createConfig.canCreate;
-  const createCompanies = createConfig.companies;
-  const createDepartments = createForm.companyId
-    ? createConfig.departments.filter((department) => String(department.companyId) === createForm.companyId)
-    : createConfig.departments;
-  const manageableCompanies = createCompanies.filter((company) => company.canManage);
-  const manageableDepartments = createDepartments.filter((department) => department.canManage);
-  const departmentCreateDisabled = !createForm.companyId || departmentCreating;
-
   return (
     <section className="customers-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>고객 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="고객 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -4735,14 +4398,7 @@ function ProfileSettingsPage({
   return (
     <section className="profile-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>프로필 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="프로필 정보를 불러오지 못했습니다" />
       ) : null}
       {message ? <div className="form-success-message">{message}</div> : null}
       {error ? <div className="form-error-message">{error}</div> : null}
@@ -5281,7 +4937,7 @@ function NoteDetailPage({
           <AlertTriangle size={18} />
           <div>
             <strong>영업노트 상세를 불러오지 못했습니다</strong>
-            <span>{data?.error || '영업노트 상세 API에 연결되지 않았습니다.'}</span>
+            <span>{data?.error || '영업노트 상세 정보를 불러오지 못했습니다.'}</span>
           </div>
           <a href="/notes/">목록</a>
         </div>
@@ -5301,14 +4957,7 @@ function NoteDetailPage({
   return (
     <section className="notes-page note-detail-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>영업노트 상세 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="영업노트 상세 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -5762,14 +5411,7 @@ function NotesPage({
   return (
     <section className="notes-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>영업노트 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="영업노트 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -6899,14 +6541,7 @@ function ScheduleCalendarPage({
   return (
     <section className="schedules-page schedule-calendar-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>일정 캘린더 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="일정 캘린더 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band schedule-calendar-summary">
@@ -9155,7 +8790,7 @@ function ScheduleDetailPage({
           <AlertTriangle size={18} />
           <div>
             <strong>일정 상세를 불러오지 못했습니다</strong>
-            <span>{data?.error || '일정 상세 API에 연결되지 않았습니다.'}</span>
+            <span>{data?.error || '일정 상세 정보를 불러오지 못했습니다.'}</span>
           </div>
           <a href="/schedules/">목록</a>
         </div>
@@ -9202,14 +8837,7 @@ function ScheduleDetailPage({
   return (
     <section className="schedules-page schedule-detail-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>일정 상세 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="일정 상세 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -10232,14 +9860,7 @@ function SchedulesPage({
   return (
     <section className="schedules-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>일정 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="일정 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -10616,14 +10237,7 @@ function PrepaymentsPage({
   return (
     <section className="prepayments-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>선결제 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="선결제 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -10740,14 +10354,7 @@ function PrepaymentCustomerPage({
   return (
     <section className="prepayments-page prepayment-customer-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>계정 선결제 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="계정 선결제 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -11240,14 +10847,7 @@ function PrepaymentCreatePage({
   return (
     <section className="prepayments-page prepayment-detail-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>선결제 등록 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="선결제 등록 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -11515,7 +11115,7 @@ function PrepaymentDetailPage({
           <AlertTriangle size={18} />
           <div>
             <strong>선결제 상세를 불러오지 못했습니다</strong>
-            <span>{data?.error || '선결제 상세 API에 연결되지 않았습니다.'}</span>
+            <span>{data?.error || '선결제 상세 정보를 불러오지 못했습니다.'}</span>
           </div>
           <a href="/prepayments/">목록</a>
         </div>
@@ -11541,14 +11141,7 @@ function PrepaymentDetailPage({
   return (
     <section className="prepayments-page prepayment-detail-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>선결제 상세 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="선결제 상세 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -11939,14 +11532,7 @@ function EmployeesPage({
   return (
     <section className="employees-page">
       {data.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>직원관리 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'management_required' ? 'Admin 또는 Manager 계정만 사용할 수 있습니다.' : data.message || data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error === 'management_required' ? 'Admin 또는 Manager 계정만 사용할 수 있습니다.' : data.message || data.error} title="직원관리 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-summary-band">
@@ -12355,14 +11941,7 @@ function DocumentsPage({
     <section className="documents-page">
       <WorkspaceRoutePage data={routeData} view="documents" />
       {data?.source !== 'django' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>서류 API에 연결되지 않았습니다</strong>
-            <span>{data?.error === 'login_required' ? '로그인이 필요합니다.' : data?.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data?.error} title="서류 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="documents-layout">
@@ -13051,14 +12630,7 @@ function ProductManagementPage({
     <section className="products-page">
       <WorkspaceRoutePage actions={productRouteActions} data={routeData} view="products" />
       {data?.source === 'unavailable' ? (
-        <div className="dashboard-api-alert">
-          <AlertTriangle size={18} />
-          <div>
-            <strong>제품관리 API에 연결되지 않았습니다</strong>
-            <span>{data.error === 'login_required' ? '로그인이 필요합니다.' : data.error}</span>
-          </div>
-          <a href="/reporting/login/">로그인</a>
-        </div>
+        <DashboardApiAlert message={data.error} title="제품관리 정보를 불러오지 못했습니다" />
       ) : null}
 
       <div className="dashboard-metric-grid customers-metric-grid">
@@ -13421,197 +12993,6 @@ function ProductManagementPage({
         </aside>
         ) : null}
       </div>
-    </section>
-  );
-}
-
-function DashboardPage({ data, loading }: { data: DashboardData | null; loading: boolean }) {
-  if (loading && !data) {
-    return <DashboardLoading label="대시보드 데이터를 불러오는 중입니다" />;
-  }
-
-  if (!data) {
-    return null;
-  }
-
-  const revenueYear = data.revenuePeriod.year || new Date().getFullYear();
-  const revenueQuarter = data.revenuePeriod.quarter || Math.floor(new Date().getMonth() / 3) + 1;
-  const metricCards = [
-    {
-      label: '활성 고객',
-      value: `${formatNumber(data.metrics.activeCustomers)}건`,
-      detail: `전체 ${formatNumber(data.metrics.totalCustomers)}건`,
-      icon: Users,
-      tone: 'blue' as const,
-      href: data.links.customers,
-    },
-    {
-      label: '당해년도 전체 매출',
-      value: formatWon(data.metrics.yearRevenue),
-      detail: `${revenueYear}년 완료 납품 기준`,
-      icon: CircleDollarSign,
-      tone: 'amber' as const,
-      href: '/revenue/?period=year',
-    },
-    {
-      label: '현재 분기 매출',
-      value: formatWon(data.metrics.quarterRevenue),
-      detail: `${revenueYear}년 ${revenueQuarter}분기`,
-      icon: Target,
-      tone: 'green' as const,
-      href: '/revenue/?period=quarter',
-    },
-    {
-      label: '오늘 일정',
-      value: `${formatNumber(data.metrics.todaySchedules)}건`,
-      detail: `이번 주 ${formatNumber(data.metrics.weeklySchedules)}건`,
-      icon: CalendarDays,
-      tone: 'green' as const,
-      href: data.links.calendar,
-    },
-    {
-      label: '이번 달 활동',
-      value: `${formatNumber(data.metrics.monthlyActivity)}건`,
-      detail: data.scope.label || data.currentUser.name || '현재 범위',
-      icon: Activity,
-      tone: 'teal' as const,
-      href: data.links.notes,
-    },
-    {
-      label: '이번 달 매출',
-      value: formatWon(data.metrics.monthlyRevenue),
-      detail: '완료 납품 기준',
-      icon: CircleDollarSign,
-      tone: 'amber' as const,
-      href: '/revenue/?period=month',
-    },
-  ];
-
-  if (data.scope.canViewAll) {
-    metricCards.push({
-      label: '미검토 노트',
-      value: `${formatNumber(data.metrics.pendingReviews)}건`,
-      detail: '매니저 검토 대기',
-      icon: CheckCircle2,
-      tone: 'blue' as const,
-      href: data.links.pendingReviews,
-    });
-  }
-
-  const quickActions = [
-    { label: '영업노트 작성', href: data.links.createNote, icon: Plus, primary: true },
-    { label: '고객 목록', href: data.links.customers, icon: Users },
-    { label: '일정 캘린더', href: data.links.calendar, icon: CalendarDays },
-    { label: '파이프라인', href: data.links.pipeline, icon: MoveUpRight },
-  ];
-
-  return (
-    <section className="dashboard-page">
-      {data.source !== 'django' ? (
-        <DashboardApiAlert
-          title="대시보드 API에 연결되지 않았습니다"
-          message={data.error || '로그인 상태나 Django API 응답을 확인해야 합니다.'}
-        />
-      ) : null}
-
-      <div className="dashboard-summary-band">
-        <div>
-          <span className="eyebrow">Live dashboard</span>
-          <h2>{data.scope.label || '내 영업 현황'}</h2>
-          <p>
-            {data.currentUser.company ? `${data.currentUser.company} · ` : ''}
-            {data.currentUser.roleLabel}
-          </p>
-        </div>
-        <div className={`source-badge ${data.source === 'django' ? 'django' : 'mock'}`}>
-          {data.source === 'django' ? 'Django API 연결됨' : '연결 필요'}
-        </div>
-      </div>
-
-      <section className="dashboard-metric-grid" aria-label="대시보드 핵심 지표">
-        {metricCards.map((metric) => (
-          <DashboardMetricCard
-            detail={metric.detail}
-            href={metric.href}
-            icon={metric.icon}
-            key={metric.label}
-            label={metric.label}
-            tone={metric.tone}
-            value={metric.value}
-          />
-        ))}
-      </section>
-
-      <div className="dashboard-action-strip">
-        {quickActions.map((action) => {
-          const Icon = action.icon;
-          return (
-            <a className={action.primary ? 'primary' : ''} href={action.href} key={action.label}>
-              <Icon size={17} />
-              {action.label}
-            </a>
-          );
-        })}
-      </div>
-
-      <div className="dashboard-layout">
-        <section className="dashboard-panel dashboard-panel-large">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Today</span>
-              <h2>오늘 일정</h2>
-            </div>
-            <CalendarDays size={18} />
-          </div>
-          <DashboardScheduleList items={data.today.items} />
-        </section>
-
-        <section className="dashboard-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Customers</span>
-              <h2>우선 고객</h2>
-            </div>
-            <Building2 size={18} />
-          </div>
-          <DashboardCustomerList items={data.priorityCustomers} />
-        </section>
-
-        <section className="dashboard-panel dashboard-panel-large">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Recent notes</span>
-              <h2>최근 영업노트</h2>
-            </div>
-            <FileText size={18} />
-          </div>
-          <DashboardHistoryList emptyLabel="최근 영업노트가 없습니다" items={data.recentActivities} />
-        </section>
-
-        <section className="dashboard-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">This week</span>
-              <h2>이번 주 예정</h2>
-            </div>
-            <Clock size={18} />
-          </div>
-          <DashboardScheduleList items={data.upcomingSchedules} />
-        </section>
-
-        <section className="dashboard-panel">
-          <div className="dashboard-panel-heading">
-            <div>
-              <span className="eyebrow">Pipeline</span>
-              <h2>파이프라인 현황</h2>
-            </div>
-            <Target size={18} />
-          </div>
-          <DashboardPipelineSummary data={data.pipelineSummary} />
-        </section>
-      </div>
-
-      <DashboardTeamActivity data={data.teamActivity} />
     </section>
   );
 }
@@ -14468,8 +13849,6 @@ export function App() {
   });
   const [pipelineData, setPipelineData] = useState(emptyPipelineData);
   const [pipelineLoading, setPipelineLoading] = useState(routeUsesPipelineData(currentView));
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [dashboardLoading, setDashboardLoading] = useState(currentView === 'dashboard');
   const [customersData, setCustomersData] = useState<CustomersData | null>(null);
   const [customersLoading, setCustomersLoading] = useState(currentView === 'customers');
   const [customerDetailData, setCustomerDetailData] = useState<CustomerDetailData | null>(null);
@@ -14495,8 +13874,8 @@ export function App() {
   const [demoStatus, setDemoStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || 'active');
   const [demoProduct, setDemoProduct] = useState(() => new URLSearchParams(window.location.search).get('product') || '');
   const [demoOwner, setDemoOwner] = useState(() => new URLSearchParams(window.location.search).get('owner') || '');
-  const [demoCustomer, setDemoCustomer] = useState(() => new URLSearchParams(window.location.search).get('customer') || '');
-  const [demoDepartment, setDemoDepartment] = useState(() => new URLSearchParams(window.location.search).get('department') || '');
+  const [demoCustomer] = useState(() => new URLSearchParams(window.location.search).get('customer') || '');
+  const [demoDepartment] = useState(() => new URLSearchParams(window.location.search).get('department') || '');
   const [demoSort, setDemoSort] = useState(() => new URLSearchParams(window.location.search).get('sort') || 'updated');
   const [demoOrder, setDemoOrder] = useState(() => new URLSearchParams(window.location.search).get('order') || 'desc');
   const [demoCreateOpen, setDemoCreateOpen] = useState(currentView === 'demos' && shouldOpenCreatePanel());
@@ -14508,21 +13887,6 @@ export function App() {
   const [demoSaving, setDemoSaving] = useState(false);
   const [demoError, setDemoError] = useState('');
   const [demoMessage, setDemoMessage] = useState('');
-  const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
-  const [customerCreateForm, setCustomerCreateForm] = useState<CustomerCreateFormState>(() => makeEmptyCustomerCreateForm());
-  const [customerCreating, setCustomerCreating] = useState(false);
-  const [customerCreateError, setCustomerCreateError] = useState('');
-  const [customerCreateMessage, setCustomerCreateMessage] = useState('');
-  const [customerCreatedDetailHref, setCustomerCreatedDetailHref] = useState('');
-  const [customerCompanyCreateName, setCustomerCompanyCreateName] = useState('');
-  const [customerDepartmentCreateName, setCustomerDepartmentCreateName] = useState('');
-  const [customerCompanyCreating, setCustomerCompanyCreating] = useState(false);
-  const [customerDepartmentCreating, setCustomerDepartmentCreating] = useState(false);
-  const [customerCompanyEditId, setCustomerCompanyEditId] = useState<number | null>(null);
-  const [customerCompanyEditName, setCustomerCompanyEditName] = useState('');
-  const [customerDepartmentEditId, setCustomerDepartmentEditId] = useState<number | null>(null);
-  const [customerDepartmentEditName, setCustomerDepartmentEditName] = useState('');
-  const [customerManagementSavingKey, setCustomerManagementSavingKey] = useState('');
   const [notesData, setNotesData] = useState<NotesData | null>(null);
   const [notesLoading, setNotesLoading] = useState(currentView === 'notes' && !noteDetailId);
   const [noteDetailData, setNoteDetailData] = useState<NoteDetailData | null>(null);
@@ -14663,24 +14027,6 @@ export function App() {
           setPipelineLoading(false);
         }
       });
-    return () => {
-      alive = false;
-    };
-  }, [currentView]);
-
-  useEffect(() => {
-    if (currentView !== 'dashboard') {
-      return;
-    }
-    let alive = true;
-    setDashboardLoading(true);
-    loadDashboardData().then((data) => {
-      if (!alive) {
-        return;
-      }
-      setDashboardData(data);
-      setDashboardLoading(false);
-    });
     return () => {
       alive = false;
     };
@@ -14876,25 +14222,6 @@ export function App() {
       alive = false;
     };
   }, [accountDetailId, currentView, customerDetailId]);
-
-  useEffect(() => {
-    if (currentView !== 'customers' || customerDetailId || accountDetailId || !customersData?.create.canCreate) {
-      return;
-    }
-    const firstCompanyId = customersData.create.companies[0]?.id;
-    setCustomerCreateForm((previous) => {
-      const companyId = previous.companyId || (firstCompanyId ? String(firstCompanyId) : '');
-      const companyDepartments = customersData.create.departments.filter(
-        (department) => !companyId || String(department.companyId) === companyId,
-      );
-      const previousDepartmentValid = companyDepartments.some((department) => String(department.id) === previous.departmentId);
-      return {
-        ...previous,
-        companyId,
-        departmentId: previousDepartmentValid ? previous.departmentId : (companyDepartments[0]?.id ? String(companyDepartments[0].id) : ''),
-      };
-    });
-  }, [accountDetailId, currentView, customerDetailId, customersData]);
 
   useEffect(() => {
     if (currentView !== 'notes' || noteDetailId) {
@@ -15398,21 +14725,6 @@ export function App() {
       setRestoringDealId(null);
     }
   };
-  const refreshCustomersData = async () => {
-    const data = await loadCustomersData({
-      q: customerQuery,
-      owner: customerOwner,
-      stage: customerStage,
-      company: customerCompany,
-      grade: customerGrade,
-      level: customerLevel,
-      mode: customerRowMode,
-      page: customerPage,
-      pageSize: customerPageSize,
-    });
-    setCustomersData(data);
-    return data;
-  };
   const handleCustomerQueryChange = (value: string) => {
     setCustomerQuery(value);
     setCustomerPage(1);
@@ -15545,292 +14857,6 @@ export function App() {
       : await loadCustomerDetailData(customerDetailId as number);
     setCustomerDetailData(data);
     return data;
-  };
-  const handleCustomerCreateOpenChange = (open: boolean) => {
-    setCustomerCreateOpen(open);
-    setCustomerCreateError('');
-    setCustomerCompanyEditId(null);
-    setCustomerCompanyEditName('');
-    setCustomerDepartmentEditId(null);
-    setCustomerDepartmentEditName('');
-    if (open) {
-      setCustomerCreateMessage('');
-      setCustomerCreatedDetailHref('');
-    }
-  };
-  const handleCustomerCreateFormChange = (field: keyof CustomerCreateFormState, value: string) => {
-    setCustomerCreateForm((previous) => ({
-      ...previous,
-      [field]: value,
-      ...(field === 'companyId' ? { departmentId: '' } : {}),
-    }));
-    setCustomerCreateError('');
-  };
-  const handleCustomerCompanyCreateNameChange = (value: string) => {
-    setCustomerCompanyCreateName(value);
-    setCustomerCreateError('');
-  };
-  const handleCustomerDepartmentCreateNameChange = (value: string) => {
-    setCustomerDepartmentCreateName(value);
-    setCustomerCreateError('');
-  };
-  const handleCreateCustomerCompany = async () => {
-    const name = customerCompanyCreateName.trim();
-    if (!customersData || customerCompanyCreating || !name) {
-      return;
-    }
-    if (!customersData.create.canCreate) {
-      setCustomerCreateError(customersData.create.message || '업체 등록 권한이 없습니다.');
-      return;
-    }
-    setCustomerCompanyCreating(true);
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-    setCustomerCreatedDetailHref('');
-    try {
-      const createdCompany = await createCompanyRecord(name, customersData.create.companySubmitUrl);
-      await refreshCustomersData();
-      if (createdCompany.company) {
-        setCustomerCreateForm((previous) => ({
-          ...previous,
-          companyId: String(createdCompany.company!.id),
-          departmentId: '',
-        }));
-      }
-      setCustomerCompanyCreateName('');
-      setCustomerDepartmentCreateName('');
-      setCustomerCreateMessage(createdCompany.message || '업체/학교를 추가했습니다.');
-    } catch (error) {
-      setCustomerCreateError(error instanceof Error ? error.message : '업체/학교 추가에 실패했습니다.');
-    } finally {
-      setCustomerCompanyCreating(false);
-    }
-  };
-  const handleCreateCustomerDepartment = async () => {
-    const name = customerDepartmentCreateName.trim();
-    const companyId = Number(customerCreateForm.companyId);
-    if (!customersData || customerDepartmentCreating || !name) {
-      return;
-    }
-    if (!customersData.create.canCreate) {
-      setCustomerCreateError(customersData.create.message || '부서 등록 권한이 없습니다.');
-      return;
-    }
-    if (!companyId) {
-      setCustomerCreateError('업체/학교를 먼저 선택하세요.');
-      return;
-    }
-    setCustomerDepartmentCreating(true);
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-    setCustomerCreatedDetailHref('');
-    try {
-      const createdDepartment = await createDepartmentRecord(companyId, name, customersData.create.departmentSubmitUrl);
-      await refreshCustomersData();
-      if (createdDepartment.department) {
-        setCustomerCreateForm((previous) => ({
-          ...previous,
-          companyId: String(createdDepartment.department!.company_id),
-          departmentId: String(createdDepartment.department!.id),
-        }));
-      }
-      setCustomerDepartmentCreateName('');
-      setCustomerCreateMessage(createdDepartment.message || '부서/연구실을 추가했습니다.');
-    } catch (error) {
-      setCustomerCreateError(error instanceof Error ? error.message : '부서/연구실 추가에 실패했습니다.');
-    } finally {
-      setCustomerDepartmentCreating(false);
-    }
-  };
-  const handleCustomerCompanyEditStart = (company: CustomerCompanyManageOption) => {
-    setCustomerCompanyEditId(company.id);
-    setCustomerCompanyEditName(company.name);
-    setCustomerDepartmentEditId(null);
-    setCustomerDepartmentEditName('');
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-  };
-  const handleCustomerCompanyEditCancel = () => {
-    setCustomerCompanyEditId(null);
-    setCustomerCompanyEditName('');
-  };
-  const handleUpdateCustomerCompany = async (company: CustomerCompanyManageOption) => {
-    const name = customerCompanyEditName.trim();
-    if (!customersData || customerManagementSavingKey || !company.canManage || !name) {
-      return;
-    }
-    setCustomerManagementSavingKey(`company-${company.id}`);
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-    setCustomerCreatedDetailHref('');
-    try {
-      const result = await updateCompanyRecord(company.id, name, company.updateUrl);
-      await refreshCustomersData();
-      setCustomerCompanyEditId(null);
-      setCustomerCompanyEditName('');
-      setCustomerCreateMessage(result.message || '업체/학교 정보가 수정되었습니다.');
-    } catch (error) {
-      setCustomerCreateError(error instanceof Error ? error.message : '업체/학교 수정에 실패했습니다.');
-    } finally {
-      setCustomerManagementSavingKey('');
-    }
-  };
-  const handleDeleteCustomerCompany = async (company: CustomerCompanyManageOption) => {
-    if (!customersData || customerManagementSavingKey || !company.canManage) {
-      return;
-    }
-    if (!company.canDelete) {
-      setCustomerCreateError(company.deleteMessage || '연결 데이터가 있어 삭제할 수 없습니다.');
-      return;
-    }
-    if (!window.confirm(`"${company.name}" 업체/학교를 삭제할까요?`)) {
-      return;
-    }
-    setCustomerManagementSavingKey(`company-${company.id}`);
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-    setCustomerCreatedDetailHref('');
-    try {
-      const result = await deleteCompanyRecord(company.id, company.deleteUrl);
-      await refreshCustomersData();
-      setCustomerCompanyEditId(null);
-      setCustomerCompanyEditName('');
-      setCustomerDepartmentEditId(null);
-      setCustomerDepartmentEditName('');
-      setCustomerCreateForm((previous) => (
-        previous.companyId === String(company.id)
-          ? { ...previous, companyId: '', departmentId: '' }
-          : previous
-      ));
-      setCustomerCreateMessage(result.message || '업체/학교가 삭제되었습니다.');
-    } catch (error) {
-      setCustomerCreateError(error instanceof Error ? error.message : '업체/학교 삭제에 실패했습니다.');
-    } finally {
-      setCustomerManagementSavingKey('');
-    }
-  };
-  const handleCustomerDepartmentEditStart = (department: CustomerDepartmentManageOption) => {
-    setCustomerDepartmentEditId(department.id);
-    setCustomerDepartmentEditName(department.name);
-    setCustomerCompanyEditId(null);
-    setCustomerCompanyEditName('');
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-  };
-  const handleCustomerDepartmentEditCancel = () => {
-    setCustomerDepartmentEditId(null);
-    setCustomerDepartmentEditName('');
-  };
-  const handleUpdateCustomerDepartment = async (department: CustomerDepartmentManageOption) => {
-    const name = customerDepartmentEditName.trim();
-    if (!customersData || customerManagementSavingKey || !department.canManage || !name) {
-      return;
-    }
-    setCustomerManagementSavingKey(`department-${department.id}`);
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-    setCustomerCreatedDetailHref('');
-    try {
-      const result = await updateDepartmentRecord(department.id, name, department.updateUrl);
-      await refreshCustomersData();
-      setCustomerDepartmentEditId(null);
-      setCustomerDepartmentEditName('');
-      setCustomerCreateMessage(result.message || '부서/연구실 정보가 수정되었습니다.');
-    } catch (error) {
-      setCustomerCreateError(error instanceof Error ? error.message : '부서/연구실 수정에 실패했습니다.');
-    } finally {
-      setCustomerManagementSavingKey('');
-    }
-  };
-  const handleDeleteCustomerDepartment = async (department: CustomerDepartmentManageOption) => {
-    if (!customersData || customerManagementSavingKey || !department.canManage) {
-      return;
-    }
-    if (!department.canDelete) {
-      setCustomerCreateError(department.deleteMessage || '연결 데이터가 있어 삭제할 수 없습니다.');
-      return;
-    }
-    if (!window.confirm(`"${department.companyName} - ${department.name}" 부서/연구실을 삭제할까요?`)) {
-      return;
-    }
-    setCustomerManagementSavingKey(`department-${department.id}`);
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-    setCustomerCreatedDetailHref('');
-    try {
-      const result = await deleteDepartmentRecord(department.id, department.deleteUrl);
-      await refreshCustomersData();
-      setCustomerDepartmentEditId(null);
-      setCustomerDepartmentEditName('');
-      setCustomerCreateForm((previous) => (
-        previous.departmentId === String(department.id)
-          ? { ...previous, departmentId: '' }
-          : previous
-      ));
-      setCustomerCreateMessage(result.message || '부서/연구실이 삭제되었습니다.');
-    } catch (error) {
-      setCustomerCreateError(error instanceof Error ? error.message : '부서/연구실 삭제에 실패했습니다.');
-    } finally {
-      setCustomerManagementSavingKey('');
-    }
-  };
-  const resetCustomerCreateForm = (data: CustomersData | null) => {
-    const nextForm = makeEmptyCustomerCreateForm();
-    nextForm.companyId = data?.create.companies[0]?.id ? String(data.create.companies[0].id) : '';
-    const firstDepartment = data?.create.departments.find((department) => String(department.companyId) === nextForm.companyId);
-    nextForm.departmentId = firstDepartment?.id ? String(firstDepartment.id) : '';
-    setCustomerCreateForm(nextForm);
-  };
-  const handleCreateCustomerSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!customersData || customerCreating) {
-      return;
-    }
-    if (!customersData.create.canCreate) {
-      setCustomerCreateError(customersData.create.message || '고객 등록 권한이 없습니다.');
-      return;
-    }
-    const companyId = Number(customerCreateForm.companyId);
-    const departmentId = Number(customerCreateForm.departmentId);
-    if (!companyId) {
-      setCustomerCreateError('업체/학교를 선택하세요.');
-      return;
-    }
-    if (!departmentId) {
-      setCustomerCreateError('부서/연구실을 선택하세요.');
-      return;
-    }
-    if (!customerCreateForm.customerName.trim()) {
-      setCustomerCreateError('고객명을 입력하세요.');
-      return;
-    }
-
-    const payload: CustomerCreatePayload = {
-      address: customerCreateForm.address.trim() || undefined,
-      companyId,
-      customerName: customerCreateForm.customerName.trim(),
-      departmentId,
-      email: customerCreateForm.email.trim() || undefined,
-      manager: customerCreateForm.manager.trim() || undefined,
-      notes: customerCreateForm.notes.trim() || undefined,
-      phoneNumber: customerCreateForm.phoneNumber.trim() || undefined,
-    };
-
-    setCustomerCreating(true);
-    setCustomerCreateError('');
-    setCustomerCreateMessage('');
-    setCustomerCreatedDetailHref('');
-    try {
-      const createdCustomer = await createCustomerRecord(payload, customersData.create.submitUrl);
-      const refreshedData = await refreshCustomersData();
-      resetCustomerCreateForm(refreshedData);
-      setCustomerCreateMessage(createdCustomer.message || '고객을 등록했습니다.');
-      setCustomerCreatedDetailHref(createdCustomer.href || '');
-    } catch (error) {
-      setCustomerCreateError(error instanceof Error ? error.message : '고객 등록에 실패했습니다.');
-    } finally {
-      setCustomerCreating(false);
-    }
   };
   const refreshNotesData = async () => {
     const data = await loadNotesData({
@@ -16304,42 +15330,18 @@ export function App() {
     }
   };
 
-  if (currentView === 'dashboard') {
-    return (
-      <AppShell activeView={currentView}>
-        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
-        <DashboardPage data={dashboardData} loading={dashboardLoading} />
-      </AppShell>
-    );
-  }
-
   if (currentView === 'customers') {
     return (
       <AppShell activeView={currentView}>
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <CustomersPage
-          companyCreateName={customerCompanyCreateName}
-          companyCreating={customerCompanyCreating}
-          createDetailHref={customerCreatedDetailHref}
-          createDepartmentName={customerDepartmentCreateName}
-          createError={customerCreateError}
-          createForm={customerCreateForm}
-          createMessage={customerCreateMessage}
-          createOpen={customerCreateOpen}
-          creating={customerCreating}
           data={customersData}
-          departmentEditId={customerDepartmentEditId}
-          departmentEditName={customerDepartmentEditName}
-          departmentCreating={customerDepartmentCreating}
           detailData={customerDetailData}
           detailLoading={customerDetailLoading}
-          companyEditId={customerCompanyEditId}
-          companyEditName={customerCompanyEditName}
           company={customerCompany}
           grade={customerGrade}
           level={customerLevel}
           loading={customersLoading}
-          managementSavingKey={customerManagementSavingKey}
           owner={customerOwner}
           page={customerPage}
           query={customerQuery}
@@ -16347,23 +15349,6 @@ export function App() {
           selectedCustomerId={customerDetailId || accountDetailId}
           selectedDetailMode={accountDetailId ? 'account' : 'customer'}
           stage={customerStage}
-          onCompanyCreateNameChange={handleCustomerCompanyCreateNameChange}
-          onCompanyCreateSubmit={handleCreateCustomerCompany}
-          onCompanyDelete={handleDeleteCustomerCompany}
-          onCompanyEditCancel={handleCustomerCompanyEditCancel}
-          onCompanyEditNameChange={setCustomerCompanyEditName}
-          onCompanyEditStart={handleCustomerCompanyEditStart}
-          onCompanyEditSubmit={handleUpdateCustomerCompany}
-          onCreateFormChange={handleCustomerCreateFormChange}
-          onCreateOpenChange={handleCustomerCreateOpenChange}
-          onCreateSubmit={handleCreateCustomerSubmit}
-          onDepartmentDelete={handleDeleteCustomerDepartment}
-          onDepartmentCreateNameChange={handleCustomerDepartmentCreateNameChange}
-          onDepartmentCreateSubmit={handleCreateCustomerDepartment}
-          onDepartmentEditCancel={handleCustomerDepartmentEditCancel}
-          onDepartmentEditNameChange={setCustomerDepartmentEditName}
-          onDepartmentEditStart={handleCustomerDepartmentEditStart}
-          onDepartmentEditSubmit={handleUpdateCustomerDepartment}
           onDetailRefresh={refreshCustomerDetailData}
           onCompanyFilterChange={handleCustomerCompanyFilterChange}
           onGradeChange={handleCustomerGradeChange}

@@ -11,7 +11,6 @@ import {
   Plus,
   Target,
   Users,
-  type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -20,51 +19,13 @@ import {
   type DashboardScheduleItem,
   loadDashboardData,
 } from './api/dashboard';
-import { AppShell, TopBar, type MainView } from './components/shared/CrmShell';
+import { AppShell, TopBar } from './components/shared/CrmShell';
 import { DashboardApiAlert, DashboardEmpty, DashboardLoading } from './components/shared/FeedbackStates';
+import { DashboardMetricCard } from './components/shared/DashboardMetricCard';
 import { formatDateLabel, formatDateTimeLabel, formatNumber, formatWon } from './components/shared/formatters';
 
 const sortScheduleItems = (items: DashboardScheduleItem[]) =>
   [...items].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-
-function DashboardMetricCard({
-  detail,
-  href,
-  icon: Icon,
-  label,
-  tone,
-  value,
-}: {
-  detail: string;
-  href?: string;
-  icon: LucideIcon;
-  label: string;
-  tone: 'blue' | 'green' | 'amber' | 'red' | 'teal';
-  value: string;
-}) {
-  const content = (
-    <>
-      <div className="dashboard-metric-icon">
-        <Icon size={19} />
-      </div>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
-      </div>
-    </>
-  );
-
-  if (href) {
-    return (
-      <a className={`dashboard-metric-card ${tone}`} href={href}>
-        {content}
-      </a>
-    );
-  }
-
-  return <article className={`dashboard-metric-card ${tone}`}>{content}</article>;
-}
 
 function DashboardScheduleList({ items }: { items: DashboardScheduleItem[] }) {
   if (items.length === 0) {
@@ -285,8 +246,8 @@ function DashboardPage({ data, loading }: { data: DashboardData | null; loading:
     <section className="dashboard-page">
       {data.source !== 'django' ? (
         <DashboardApiAlert
-          title="대시보드 API에 연결되지 않았습니다"
-          message={data.error || '로그인 상태나 Django API 응답을 확인해야 합니다.'}
+          title="대시보드 정보를 불러오지 못했습니다"
+          message={data.error || ''}
         />
       ) : null}
 

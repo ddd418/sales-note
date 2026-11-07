@@ -90,7 +90,7 @@ export async function fetchJson<T>(
   return { response, payload };
 }
 
-export function getPayloadMessage(payload: unknown): string {
+function getPayloadMessage(payload: unknown): string {
   if (!payload || typeof payload !== 'object') {
     return '';
   }

@@ -213,11 +213,13 @@ export function AppShell({ activeView, children }: { activeView: MainView; child
             );
           })}
         </nav>
-        <div className="sidebar-note">
-          <span>{navigation?.currentUser.roleLabel || '운영 기준'}</span>
-          <strong>{navigation?.currentUser.name || '프론트가 메인 화면'}</strong>
-          <p>{navigation?.currentUser.company || '조회와 이동은 React CRM에서 시작합니다.'}</p>
-        </div>
+        {navigation?.currentUser.name ? (
+          <div className="sidebar-note">
+            <span>{navigation.currentUser.roleLabel}</span>
+            <strong>{navigation.currentUser.name}</strong>
+            {navigation.currentUser.company ? <p>{navigation.currentUser.company}</p> : null}
+          </div>
+        ) : null}
       </aside>
       <main className="workspace">{children}</main>
     </div>
