@@ -1,5 +1,88 @@
 # AGENT_PLAN.md
 
+## 2026-11-07 최적화 3단계: App.tsx 화면별 분리 + 지연 로딩
+
+**Background**: App.tsx(16k줄)에 화면 18개가 전부 들어 있어 어느 화면을 열든 383KB 를 통째로 내려받았다.
+
+**Scope**: ts-morph 로 최상위 선언 214개의 의존 그래프를 만들고 화면 그룹(고객·노트·일정·선결제·데모·프로필·직원·서류·제품)별 도달 집합을 계산 — 한 그룹만 쓰는 선언은 `pages/<그룹>/`, 둘 이상이 쓰는 것은 `pages/shared/appShared.tsx`, 라우팅·전역 상태를 쥔 루트만 App.tsx 에 남김. 선언 텍스트는 그대로 옮기고 import 는 언어 서비스로 채움/정리. 화면은 `lazyPage(() => import(...))`(`pages/lazyPage.tsx`)로 열 때만 내려받는다. 동작 변경 없음.
+
+**결과**: App.tsx 15,938 → 3,298줄. App 청크 363KB → 66KB. 화면 청크: 일정 112KB · 고객 50KB · 선결제 34KB · 노트 31KB · 제품 21KB 등.
+
+**검증**: tsc 0 · `--noUnusedLocals` 0 · 13개 메뉴 + 고객/일정/선결제 상세 로컬 확인, JS 런타임 오류 0. 프로덕션 스모크 30/30.
+
+**Deploy**: Done. Commit `02e851b`(백엔드 `b4f52d6` 과 같은 배포). Railway `web` deploy `2f81072c-2e28-43af-8e10-9e0fc366e6f2` SUCCESS.
+
+---
+
+## 2026-11-07 최적화 2단계: 레거시 Django 화면 은퇴 + 고아 코드 삭제
+
+**Background**: 사용자 요청 — "코드 최적화 좀 하자, 안 쓰는 거 다 지우고 캡슐화해서 가볍게". 진단 결과 가장 큰 덩어리는 백엔드 레거시였다. `react_page_redirect` 로 감싼 레거시 화면 61개 경로는 GET 은 이미 React 로 보내고 있었지만 **POST 는 여전히 옛 Django 뷰가 처리**하도록 열려 있었고, 그 뷰 본문과 템플릿이 그대로 남아 있었다.
+
+**삭제 근거(사용자 승인 후 진행)**: 레거시 경로로의 POST 가 두 갈래 증거 모두 0 —
+- React 코드: Django URL 해석기로 프론트의 `/reporting/...` 호출을 전부 실제 뷰에 매핑. 61개 경로 중 POST 대상 0, 링크(GET→리다이렉트)만 22곳.
+- 프로덕션 HTTP 로그(최근 7일): POST 는 전부 `/reporting/api/*`(React · MCP python-httpx)와 로그인뿐.
+
+**Scope**:
+- `reporting/urls.py`: 61개 `react_page_redirect(옛뷰, 대상)` → `react_page_retired(대상)`. 옛 주소는 계속 살아 있다(GET → React 리다이렉트, 북마크·옛 링크 보호). 옛 폼 POST 는 410. `write_api.WRITE_DENY_URL_NAMES` 는 URL 이름 차단 목록이라 그대로 둔다.
+- 레거시 뷰 54개 삭제(AST 로 데코레이터·바로 위 주석까지). 이어서 vulture + 저장소 전체 문자열 교차검증으로 **고아 함수 150개**를 안정될 때까지 반복 삭제(7회차) — 대부분 화면에서 사라진 "AI 워크스페이스" 내부 함수.
+- `manager_dashboard`: 맨 앞 무조건 리다이렉트 뒤 도달 불가 코드 572줄 삭제(정의 안 된 변수 26곳이 전부 여기 있었다).
+- 템플릿 48개 삭제(Python·템플릿 include/extends 어디서도 참조 안 됨, 동적 로딩 `render_to_string`/`get_template` 없음 확인).
+- 미사용 import 정리. `views.file_*` 처럼 `urls.py` 가 `views.` 로 꺼내 쓰는 재수출 8개는 유지.
+- `android-sales-note/` 삭제 — 8월에 삭제한 옛 프론트 주소를 하드코딩해 404 였고, 사용자가 "안 씀"으로 확인.
+- 삭제된 `sales-note-frontend-production` 주소를 가리키던 기본값 5곳(settings · react_redirects · urls · context_processors · 로그인 뷰)을 `/` 로 통일, `settings_production` 의 ALLOWED_HOSTS/CSRF/환경변수 키에서 제거. 운영은 원래 환경변수로 올바른 값이었고 로컬·테스트만 죽은 주소로 리다이렉트하고 있었다.
+
+**함께 고친 실제 버그**: `/reporting/api/followups/`(MCP `salesnote_get_followups` 가 쓰는 후속 조치 큐)가 2026-05 `97f65c9` 부터 **매 호출 500**(`NameError: followup`). 같은 줄을 여러 함수에 일괄 삽입하다 `followup` 이 없는 함수에도 들어간 것 — 대입만 되고 쓰이지 않는 줄이라 삭제. 테스트가 하나도 없어 6개월간 몰랐다 → `FollowupsSummaryApiTests` 추가.
+
+**결과**: views.py 32,348 → 20,051줄, funnel_views.py 2,379 → 1,814줄, 템플릿 74 → 24개. pyflakes "undefined name" 26 → 0.
+
+**남은 레거시 화면(이번 범위 밖)**: 아직 실제로 화면을 그리는 5개 — `memo_create_view`, `followup_delete_view`, `history_by_followup_view`, `history_create_view`, `salesman_detail`. React 에 같은 기능이 있는지 확인 후 다음에 정리.
+
+**DB change required**: No.
+
+**검증**: 전체 회귀 **518개** — 실패 3건은 기존 무관 결함뿐(익명유저 엑셀 익스포트 / SESSION_SAVE_EVERY_REQUEST / ai_chat 납품 활동 문구). 옛 부가세 폼 테스트(기존 결함 4번째)는 은퇴한 폼을 검증하던 것이라 삭제 — React 에는 부가세 모드 선택 자체가 없다. `post_deploy_smoke.py` → **ok (30/30 PASS)**. 프로덕션: dashboard/pipeline/followups/prepayments/customers API **200**(followups 는 500 → 200), 옛 주소 GET 302 → React, 옛 폼 POST 410, `schedules_delete_api` 존재(GET 405).
+
+**배포 전에 잡은 회귀 2건**: (1) 일정 삭제 — React 는 서버가 내려준 `links.deleteSchedule` / 목록 `deleteHref` 로 POST 하는데 값이 레거시 `schedule_delete` 였다(React 코드 문자열만 본 첫 분석이 놓침). 전용 API `schedules_delete_api` 로 옮기고(선결제 차감 되돌림·원장·관련 활동 삭제 그대로, 트랜잭션) 두 링크 교체. 서버가 내려주는 나머지 POST 주소는 전부 살아 있는 전용 API 임을 전수 확인. (2) `api/prepayments.py` 의 `globals().update(views 전역)` 우회 때문에 views 미사용 import 정리로 4개 이름이 끊김 → 우회 제거, 44개 이름 명시적 import.
+
+**교훈**: 레거시 경로 은퇴 전 확인 대상은 ①프론트 코드의 주소 문자열 ②**서버가 응답으로 내려주는 주소(reverse)** ③프로덕션 로그 — 셋 다 봐야 한다.
+
+**Deploy**: Done. Commit `b4f52d6` on `origin/main`. Railway `web` deploy `2f81072c-2e28-43af-8e10-9e0fc366e6f2` SUCCESS.
+
+---
+
+## 2026-11-07 최적화 1단계: 프론트 죽은 코드 · 사본 정리
+
+**Scope**: styles.css 13,480 → 9,054줄(postcss 선택자 단위 — 존재하지 않는 클래스를 요구하는 선택자는 절대 매칭되지 않음). App.tsx 안 대시보드 사본(도달 불가: main.tsx 가 /dashboard/ 를 항상 DashboardApp 으로 보냄) 삭제 — 두 사본은 이미 어긋나 있었다. DashboardMetricCard 3벌 → 1벌. 고객 화면의 끊긴 props 32개 + 상태·핸들러 38개 + 아무도 안 읽는 폼 초기화 effect 삭제. 포매터 사본 5개 → 공용 import. legacy.ts 의 dashboard.ts 중복 구현 삭제. mockData.ts → pipelineTypes.ts(가짜 거래 170줄이 운영 번들에 있었음). 오류 알림 사본 15곳 → 공용 DashboardApiAlert + `humanizeApiError`("Customers API unavailable: 502" 같은 기술 원문을 사람 말로).
+
+**결과**: App.tsx 16,848 → 15,938줄, legacy.ts 7,108 → 6,839줄. 빌드 App 383 → 363KB, CSS 241 → 177KB(gzip 42.5 → 34.2KB). tsc --noUnusedLocals --noUnusedParameters 0건.
+
+**검증**: 13개 메뉴 로컬 순회 · 런타임 콘솔 오류 0. `post_deploy_smoke.py` ok.
+
+**Deploy**: Done. Commit `891736b`. Railway `web` deploy `d28129f6-b38f-43d5-9290-6ac50cb8af9d` SUCCESS.
+
+---
+
+## 2026-11-07 디자인: 모노크롬 프리미엄 디자인 시스템
+
+**Background**: 사용자 요청 — "CRM UI/UX 가 너무 별로야 완전 고급지게". 방향은 사용자가 고른 "모노크롬 프리미엄"(거의 흑백 + 딥 네이비 포인트 하나).
+
+**싸 보이던 원인 → 처리**: 폰트가 실제로 로드되지 않았다(이름만 있고 불러오는 코드 없음 → 윈도우 맑은 고딕) → Pretendard Variable 자체 호스팅. Tailwind 기본 slate+blue · 파랑→보라 그라데이션 → 토큰 교체 + 하드코딩 색 174곳 치환(상태색은 유지). 모서리 7종 → 4종, 굵기 800/900 위주 → 600/700. 개발자 문구 노출("Django API 연결됨", 영어 장식 라벨 98곳, "CRM Workspace") 제거. KPI 6개가 5칸 그리드에서 혼자 떨어지던 문제 → 헤어라인 한 줄 표. 기존 규칙은 지우지 않고 styles.css 끝 "premium layer" 로 덮어씀.
+
+**Deploy**: Done. Commit `0152801`. Railway `web` deploy `d1fd4593-e0bb-4e2f-8ddd-697a4ce57a0e` SUCCESS.
+
+---
+
+## 2026-08-31 파이프라인: 총 파이프라인 = 수주만 · 견적 없는 협상 카드 유지
+
+**Background**: 사용자 지적(발표 직전) — 총 파이프라인에 죽은 건인 실주(₩4,237,695)까지 들어가 ₩38,214,577 이 찍힘 / 김정민을 협상으로 옮겼더니 카드가 사라짐.
+
+**Scope**: `totalPipelineValue` = 수주 칸만(사용자 결정) → 대시보드 올해 매출과 항상 같은 수. 협상을 "금액 0 이면 카드 제외" 대상에서 뺌(템플릿 뷰 · React 보드 API 양쪽).
+
+**프로덕션 실측**: 총 파이프라인 ₩28,903,407 = 대시보드 올해 매출. 협상 2건 → 6건.
+
+**Deploy**: Done. Commit `c226124`. Railway `web` deploy `ea5f1935-e669-41c1-a70e-7334a7610d12` SUCCESS.
+
+---
+
 ## 2026-08-31 파이프라인: 수주 금액을 카드 위치가 아닌 실제 납품 기준으로
 
 **Background**: 사용자 신고 — "이다민이 꾸준히 수주되고 있는데 견적제출로 이동되니까 수주가 아예 전부 없어짐. 실제 매출은 28,903,407원인데 파이프라인에서는 24,892,736원."
