@@ -462,6 +462,7 @@ def navigation_api(request):
         {'id': 'demos', 'label': '데모관리', 'href': '/demos/'},
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
         {'id': 'pipelineSheet', 'label': '파이프라인 시트', 'href': '/pipeline-sheet/'},
+        {'id': 'pipelineMeeting', 'label': '아침회의', 'href': '/pipeline-meeting/'},
         {'id': 'notes', 'label': '영업노트', 'href': '/notes/'},
         {'id': 'schedules', 'label': '일정', 'href': '/schedules/calendar/'},
     ]

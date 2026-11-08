@@ -13,6 +13,14 @@ const CrmApp = React.lazy(async () => ({
   default: (await import('./App')).App,
 }));
 
+const PipelineMeetingPage = React.lazy(async () => ({
+  default: (await import('./pages/pipelineMeeting/PipelineMeetingPage')).PipelineMeetingPage,
+}));
+
+function isMeetingRoute() {
+  return window.location.pathname.startsWith('/pipeline-meeting');
+}
+
 function isDashboardRoute() {
   const pathname = window.location.pathname.replace(/\/+$/, '/') || '/';
   return pathname.startsWith('/dashboard/');
@@ -31,7 +39,7 @@ function RootRouter() {
     };
   }, []);
 
-  const RootComponent = isDashboardRoute() ? DashboardApp : CrmApp;
+  const RootComponent = isMeetingRoute() ? PipelineMeetingPage : isDashboardRoute() ? DashboardApp : CrmApp;
   return (
     <Suspense fallback={null}>
       <RootComponent />

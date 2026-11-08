@@ -14749,3 +14749,271 @@ class PipelineStageChangeTests(TestCase):
             activity_type='delivery', status='completed',
         )
         self.assertEqual(self._changes()[-1], ('contact', 'won', 'auto'))
+
+
+class PipelineMeetingApiTests(TestCase):
+    """아침회의 모드 — 숫자는 다른 화면과 같아야 하고, 약속은 끝낼 때까지 이월된다."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.api.pipeline_sheet import week_bounds
+        from reporting.models import Company, Department, FollowUp
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='회의회사')
+        self.user = make_user('meeting_me', role='salesman', company=self.company)
+        self.other = make_user('meeting_other', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='회의 고객사', created_by=self.user)
+        self.department = Department.objects.create(company=customer_company, name='회의 연구실', created_by=self.user)
+        self.make_followup = lambda name, stage='quote', owner=None: FollowUp.objects.create(
+            user=owner or self.user, user_company=self.company, customer_name=name,
+            company=customer_company, department=self.department, pipeline_stage=stage, customer_grade='A',
+        )
+        self.followup = self.make_followup('회의 담당자')
+        self.today = timezone.localdate()
+        self.this_monday = week_bounds(self.today)[0]
+        self.review_monday = self.this_monday - timedelta(days=7)
+        self.url = reverse('reporting:pipeline_meeting_api')
+        self.client.force_login(self.user)
+
+    def _get(self):
+        response = self.client.get(self.url, {'week': self.review_monday.isoformat()})
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def _delivery(self, followup, visit_date, unit_price=1000000):
+        from datetime import time
+        from reporting.models import DeliveryItem, Schedule
+
+        schedule = Schedule.objects.create(
+            user=followup.user, company=self.company, followup=followup, visit_date=visit_date,
+            visit_time=time(10, 0), activity_type='delivery', status='completed',
+        )
+        DeliveryItem.objects.create(schedule=schedule, item_name='분석기', quantity=1, unit_price=unit_price)
+        return schedule
+
+    def _stage_change(self, followup, from_stage, to_stage, day):
+        from datetime import datetime, time
+        from django.utils import timezone
+        from reporting.models import PipelineStageChange
+
+        change = PipelineStageChange.objects.create(followup=followup, from_stage=from_stage, to_stage=to_stage)
+        moment = timezone.make_aware(datetime.combine(day, time(11, 0)))
+        PipelineStageChange.objects.filter(pk=change.pk).update(changed_at=moment)
+        return change
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+
+    def test_year_revenue_matches_dashboard(self):
+        self._delivery(self.followup, self.today)
+        payload = self._get()
+        dashboard = self.client.get(reverse('reporting:dashboard_summary_api')).json()
+        self.assertEqual(payload['summary']['yearRevenue'], dashboard['metrics']['yearRevenue'])
+
+    def test_week_revenue_and_delta_compare_with_previous_week(self):
+        from datetime import timedelta
+
+        self._delivery(self.followup, self.review_monday, unit_price=2000000)
+        self._delivery(self.followup, self.review_monday - timedelta(days=7), unit_price=500000)
+        summary = self._get()['summary']
+        self.assertEqual(summary['weekRevenue'], 2200000)
+        self.assertEqual(summary['previousWeekRevenue'], 550000)
+        self.assertEqual(summary['weekDelta'], 1650000)
+        self.assertEqual(summary['deliveryCount'], 1)
+
+    def test_movement_uses_net_change_per_card(self):
+        forward = self.make_followup('전진')
+        back = self.make_followup('후퇴')
+        round_trip = self.make_followup('왕복')
+        day = self.review_monday
+        self._stage_change(forward, 'contact', 'quote', day)
+        self._stage_change(forward, 'quote', 'negotiation', day)
+        self._stage_change(back, 'negotiation', 'contact', day)
+        self._stage_change(round_trip, 'contact', 'quote', day)
+        self._stage_change(round_trip, 'quote', 'contact', day)
+
+        movement = self._get()['movement']
+        self.assertTrue(movement['tracked'])
+        advanced = {row['followupId']: row for row in movement['advanced']['items']}
+        self.assertEqual((advanced[forward.id]['fromStage'], advanced[forward.id]['toStage']), ('contact', 'negotiation'))
+        self.assertEqual([row['followupId'] for row in movement['regressed']['items']], [back.id])
+        self.assertNotIn(round_trip.id, advanced)
+
+    def test_movement_before_tracking_is_unknown_not_empty(self):
+        from reporting.models import PipelineStageChange
+
+        PipelineStageChange.objects.all().delete()
+        self.assertFalse(self._get()['movement']['tracked'])
+
+    def test_next_action_promise_detects_later_note(self):
+        from datetime import timedelta
+        from reporting.models import History
+
+        due = self.review_monday + timedelta(days=1)
+        kept = self.make_followup('약속지킴')
+        missed = self.make_followup('약속놓침')
+        for followup in (kept, missed):
+            History.objects.create(
+                user=self.user, company=self.company, followup=followup, action_type='customer_meeting',
+                content='미팅', next_action='견적서 보내기', next_action_date=due,
+            )
+        later = History.objects.create(
+            user=self.user, company=self.company, followup=kept, action_type='customer_meeting', content='후속',
+        )
+        self.assertIsNotNone(later.pk)
+        rows = {row['customer']: row for row in self._get()['promises']['nextActions']}
+        self.assertTrue(rows['약속지킴']['followedUp'])
+        self.assertFalse(rows['약속놓침']['followedUp'])
+
+    def test_blocked_lists_obstacles_and_skips_cards_with_next_step(self):
+        from datetime import time, timedelta
+        from reporting.models import Company, History, Schedule
+
+        blocked = self.make_followup('막힘')
+        History.objects.create(
+            user=self.user, company=self.company, followup=blocked, action_type='customer_meeting',
+            content='미팅', meeting_obstacles='예산 확정이 3월로 밀림\n세부 내용',
+        )
+        active = self.make_followup('다음일정있음')
+        History.objects.create(
+            user=self.user, company=self.company, followup=active, action_type='customer_meeting',
+            content='미팅', meeting_date=self.today - timedelta(days=40),
+        )
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=active,
+            visit_date=self.today + timedelta(days=3), visit_time=time(9, 0),
+            activity_type='customer_meeting', status='scheduled',
+        )
+        self.assertIsNotNone(Company.objects.first())
+        items = {row['followupId']: row for row in self._get()['blocked']['items']}
+        self.assertEqual(items[blocked.id]['obstacle'], '예산 확정이 3월로 밀림')
+        self.assertNotIn(active.id, items)
+
+    def test_plan_groups_following_week_schedules_by_owner(self):
+        from datetime import time, timedelta
+        from reporting.models import DeliveryItem, Schedule
+
+        plan_day = self.this_monday + timedelta(days=1)
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup, visit_date=plan_day,
+            visit_time=time(9, 0), activity_type='customer_meeting', status='scheduled',
+        )
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup, visit_date=plan_day,
+            visit_time=time(11, 0), activity_type='customer_meeting', status='cancelled',
+        )
+        delivery = Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup, visit_date=plan_day,
+            visit_time=time(13, 0), activity_type='delivery', status='scheduled',
+        )
+        DeliveryItem.objects.create(schedule=delivery, item_name='분석기', quantity=1, unit_price=1000000)
+        plan = self._get()['plan']
+        self.assertEqual(plan['total'], 2)
+        self.assertEqual(plan['byOwner'][0]['ownerId'], self.user.id)
+        amounts = {row['id']: row['amount'] for row in plan['byOwner'][0]['items']}
+        self.assertEqual(amounts[delivery.id], 1100000)
+
+    def _create_action(self, **extra):
+        body = {'title': '견적 재발송', 'ownerId': self.user.id, **extra}
+        return self.client.post(
+            reverse('reporting:meeting_action_create_api'), data=json.dumps(body), content_type='application/json',
+        )
+
+    def test_action_item_carries_over_until_done(self):
+        created = self._create_action(dueDate=self.today.isoformat(), followupId=self.followup.id)
+        self.assertEqual(created.status_code, 201)
+        item_id = created.json()['item']['id']
+        self.assertIn(item_id, [row['id'] for row in self._get()['promises']['actionItems']])
+
+        toggled = self.client.post(reverse('reporting:meeting_action_toggle_api', args=[item_id]))
+        self.assertEqual(toggled.json()['item']['status'], 'done')
+        self.assertEqual(self.client.post(reverse('reporting:meeting_action_toggle_api', args=[item_id])).json()['item']['status'], 'open')
+
+    def test_action_item_validation_and_scope(self):
+        self.assertEqual(self._create_action(title='  ').status_code, 400)
+        self.assertEqual(self._create_action(dueDate='내일').status_code, 400)
+        # 영업담당은 다른 사람에게 약속을 배정할 수 없다(범위 밖)
+        self.assertEqual(self._create_action(ownerId=self.other.id).status_code, 400)
+
+        item_id = self._create_action().json()['item']['id']
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(reverse('reporting:meeting_action_delete_api', args=[item_id])).status_code, 403)
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(reverse('reporting:meeting_action_delete_api', args=[item_id])).status_code, 200)
+
+
+class PipelineMeetingBriefTests(TestCase):
+    """AI 요약은 권한자만, 같은 내용은 한 번만, 실패해도 회의가 멈추지 않게."""
+
+    def setUp(self):
+        from reporting.models import Company, Department, FollowUp, History
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='브리핑회사')
+        self.user = make_user('brief_me', role='salesman', company=self.company)
+        UserProfile.objects.filter(user=self.user).update(can_use_ai=True)
+        self.other = make_user('brief_other', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='브리핑 고객사', created_by=self.user)
+        followup = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='브리핑 담당자', company=customer_company,
+            department=Department.objects.create(company=customer_company, name='브리핑 연구실', created_by=self.user),
+            customer_grade='A',
+        )
+        self.note = History.objects.create(
+            user=self.user, company=self.company, followup=followup, action_type='customer_meeting',
+            content='장문의 미팅 내용', meeting_obstacles='예산 미확정',
+        )
+        self.url = reverse('reporting:meeting_briefs_api')
+        self.client.force_login(self.user)
+
+    def _post(self, ids=None):
+        return self.client.post(self.url, data=json.dumps({'noteIds': ids or [self.note.id]}), content_type='application/json')
+
+    def _fake_response(self):
+        from types import SimpleNamespace
+
+        content = json.dumps({'situation': '견적 검토 중', 'blocker': '예산 미확정', 'next_step': '3월 재연락'}, ensure_ascii=False)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+    def test_generates_once_then_uses_cache(self):
+        from unittest import mock
+
+        with mock.patch('ai_chat.services.get_openai_client'), \
+                mock.patch('ai_chat.services.create_openai_chat_completion', return_value=self._fake_response()) as call:
+            first = self._post().json()['briefs'][str(self.note.id)]
+            second = self._post().json()['briefs'][str(self.note.id)]
+        self.assertEqual(first, {'situation': '견적 검토 중', 'blocker': '예산 미확정', 'nextStep': '3월 재연락'})
+        self.assertEqual(second, first)
+        self.assertEqual(call.call_count, 1)
+
+    def test_changed_note_is_summarized_again(self):
+        from unittest import mock
+
+        with mock.patch('ai_chat.services.get_openai_client'), \
+                mock.patch('ai_chat.services.create_openai_chat_completion', return_value=self._fake_response()) as call:
+            self._post()
+            self.note.meeting_obstacles = '담당자 변경'
+            self.note.save()
+            self._post()
+        self.assertEqual(call.call_count, 2)
+
+    def test_ai_failure_returns_empty_not_error(self):
+        from unittest import mock
+
+        with mock.patch('ai_chat.services.get_openai_client', side_effect=ValueError('no key')):
+            response = self._post()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['briefs'], {})
+
+    def test_requires_ai_permission_and_scope(self):
+        from unittest import mock
+
+        with mock.patch('ai_chat.services.create_openai_chat_completion') as call:
+            self.client.force_login(self.other)
+            self.assertEqual(self._post().status_code, 403)
+            UserProfile.objects.filter(user=self.other).update(can_use_ai=True)
+            self.assertEqual(self._post().json()['briefs'], {})
+        self.assertEqual(call.call_count, 0)

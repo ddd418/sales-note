@@ -1,0 +1,770 @@
+/* 아침회의 모드 — 프로젝터로 보는 화면이라 글자는 화면 크기에 맞춰 키우고, 색은 상태를 뜻할 때만 쓴다.
+   전역 토큰을 이 안에서 다시 정의해 공용 입력 요소도 무대 색을 따르게 한다. */
+.meeting-root {
+  --bg: #0b0b0c;
+  --panel: #161618;
+  --panel-soft: #1f1f22;
+  --panel-hover: #242427;
+  --text: #f5f5f4;
+  --muted: #a1a1a6;
+  --muted-soft: #6e6e73;
+  --line: #2a2a2e;
+  --line-strong: #3a3a3f;
+  --meeting-up: #4ade80;
+  --meeting-down: #f87171;
+  --meeting-warn: #fbbf24;
+  --meeting-accent: #f5f5f4;
+  --meeting-on-accent: #0b0b0c;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--bg);
+  color: var(--text);
+  font-size: clamp(14px, 1.05vw, 22px);
+}
+
+.meeting-root.light {
+  --bg: #fafaf9;
+  --panel: #ffffff;
+  --panel-soft: #f5f5f4;
+  --panel-hover: #f0f0ee;
+  --text: #0a0a0a;
+  --muted: #6b6b6b;
+  --muted-soft: #a3a3a3;
+  --line: #e8e8e6;
+  --line-strong: #d4d4d2;
+  --meeting-up: #15803d;
+  --meeting-down: #b91c1c;
+  --meeting-warn: #b45309;
+  --meeting-accent: #0a0a0a;
+  --meeting-on-accent: #ffffff;
+}
+
+.meeting-root a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.meeting-root h1,
+.meeting-root h2,
+.meeting-root h3,
+.meeting-root p {
+  margin: 0;
+  color: var(--text);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+.meeting-root small {
+  color: var(--muted);
+}
+
+/* ---- 상단 · 하단 ---- */
+.meeting-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 1.1em 2.4em 0;
+}
+
+.meeting-title {
+  display: flex;
+  align-items: baseline;
+  gap: 1em;
+}
+
+.meeting-title h1 {
+  font-size: 1.15em;
+  font-weight: 600;
+}
+
+.meeting-title span {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.meeting-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.meeting-controls select,
+.meeting-action-form input,
+.meeting-action-form select {
+  height: 2.5em;
+  padding: 0 0.7em;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85em;
+  color-scheme: dark;
+}
+
+.meeting-root.light .meeting-controls select,
+.meeting-root.light .meeting-action-form input,
+.meeting-root.light .meeting-action-form select {
+  color-scheme: light;
+}
+
+.meeting-controls button,
+.meeting-controls a,
+.meeting-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.2em;
+  height: 2.2em;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.meeting-controls button:hover,
+.meeting-controls a:hover,
+.meeting-icon:hover {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.meeting-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0.5em 2.4em 1.1em;
+}
+
+.meeting-nav > button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.2em;
+  height: 2.2em;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.meeting-nav > button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.meeting-nav ol {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meeting-nav ol button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.4em 0.9em;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-soft);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.meeting-nav ol button span {
+  font-size: 0.85em;
+}
+
+.meeting-nav ol button:hover {
+  color: var(--text);
+}
+
+.meeting-nav ol button.active {
+  background: var(--meeting-accent);
+  color: var(--meeting-on-accent);
+  font-weight: 600;
+}
+
+/* ---- 장면 ---- */
+.meeting-stage {
+  position: relative;
+  min-height: 0;
+  padding: 1.2em 2.4em 0.8em;
+}
+
+.meeting-scene {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.9em;
+  height: 100%;
+  animation: meeting-enter 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  transition: opacity 180ms;
+}
+
+.meeting-scene.dim {
+  opacity: 0.45;
+}
+
+.meeting-scene-title {
+  font-size: 2em;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.meeting-scene-title small {
+  margin-left: 0.6em;
+  font-size: 0.5em;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+@keyframes meeting-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+.meeting-label {
+  color: var(--muted);
+  font-size: 1em;
+}
+
+.meeting-empty {
+  padding: 0.8em 0;
+  color: var(--muted-soft) !important;
+  font-size: 0.9em;
+}
+
+.meeting-notice {
+  display: grid;
+  place-content: center;
+  gap: 0.6em;
+  height: 100%;
+  text-align: center;
+}
+
+.meeting-notice h2 {
+  font-size: 1.8em;
+  font-weight: 600;
+}
+
+.meeting-notice p {
+  color: var(--muted);
+  font-size: 1.05em;
+}
+
+/* 요약 */
+.meeting-summary {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 1.2em 2.4em;
+  min-height: 0;
+}
+
+.meeting-hero,
+.meeting-year {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5em;
+}
+
+.meeting-hero-number {
+  font-size: 6.4em;
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+
+.meeting-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 1.3em;
+  font-weight: 600;
+}
+
+.meeting-delta.up { color: var(--meeting-up); }
+.meeting-delta.down { color: var(--meeting-down); }
+
+.meeting-year strong {
+  font-size: 3.2em;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.meeting-gauge {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-soft);
+}
+
+.meeting-gauge div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--meeting-accent);
+  transform-origin: left;
+  animation: meeting-gauge 1500ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes meeting-gauge {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.meeting-stats {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+
+.meeting-stats div {
+  display: grid;
+  gap: 0.25em;
+  padding: 1em 0;
+}
+
+.meeting-stats span {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.meeting-stats strong {
+  font-size: 1.7em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* 열 공통(움직임 · 계획) */
+.meeting-movement,
+.meeting-plan {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 1em;
+  min-height: 0;
+}
+
+.meeting-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  animation: meeting-enter 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.meeting-column header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8em 1em;
+  border-bottom: 1px solid var(--line);
+}
+
+.meeting-column h3 {
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
+.meeting-column header strong {
+  font-size: 1.5em;
+  font-weight: 700;
+}
+
+.meeting-column.won header strong { color: var(--meeting-up); }
+.meeting-column.regressed header strong { color: var(--meeting-down); }
+
+.meeting-column-body,
+.meeting-scroll {
+  display: grid;
+  align-content: start;
+  gap: 0.5em;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.7em;
+}
+
+.meeting-move-card {
+  display: grid;
+  gap: 0.25em;
+  padding: 0.7em 0.8em;
+  border-radius: 8px;
+  background: var(--panel-soft);
+  animation: meeting-enter 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.meeting-move-card b,
+.meeting-plan-item b,
+.meeting-next b,
+.meeting-action b {
+  font-weight: 600;
+}
+
+.meeting-move-card small {
+  font-size: 0.8em;
+}
+
+.meeting-move-flow {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  margin-top: 0.2em;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.meeting-move-flow em {
+  font-style: normal;
+}
+
+.meeting-move-flow em.to {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.meeting-move-flow strong {
+  margin-left: auto;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 수주 축하 */
+.meeting-burst {
+  position: absolute;
+  inset: -2em 0 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.meeting-burst i {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--meeting-up);
+  animation: meeting-fall linear both;
+}
+
+.meeting-burst i:nth-child(3n) { background: var(--meeting-accent); }
+.meeting-burst i:nth-child(4n) { background: var(--meeting-warn); }
+
+@keyframes meeting-fall {
+  to { transform: translateY(105vh) rotate(540deg); opacity: 0; }
+}
+
+/* 약속 */
+.meeting-promises {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 1em;
+  min-height: 0;
+}
+
+.meeting-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.meeting-panel header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 0.8em 1em;
+  border-bottom: 1px solid var(--line);
+}
+
+.meeting-panel h3 {
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
+.meeting-panel header small {
+  font-size: 0.8em;
+}
+
+.meeting-action {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.55em 0.5em;
+  border-radius: 8px;
+}
+
+.meeting-action > div {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.meeting-action small,
+.meeting-next small {
+  font-size: 0.8em;
+}
+
+.meeting-action.done b {
+  color: var(--muted-soft);
+  text-decoration: line-through;
+}
+
+.meeting-check {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.4em;
+  height: 1.4em;
+  padding: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--meeting-up);
+  cursor: pointer;
+}
+
+.meeting-tag {
+  flex: 0 0 auto;
+  padding: 0.15em 0.6em;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.78em;
+  font-style: normal;
+}
+
+.meeting-tag.warn { color: var(--meeting-warn); }
+.meeting-tag.danger { color: var(--meeting-down); }
+
+.meeting-action-form {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) auto minmax(0, 1.4fr) auto;
+  gap: 6px;
+  padding: 0.7em;
+  border-top: 1px solid var(--line);
+}
+
+.meeting-action-form button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  height: 2.5em;
+  padding: 0 0.9em;
+  border: 0;
+  border-radius: 8px;
+  background: var(--meeting-accent);
+  color: var(--meeting-on-accent);
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.meeting-error {
+  padding: 0 1em 0.7em;
+  color: var(--meeting-down) !important;
+  font-size: 0.85em;
+}
+
+.meeting-next {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.5em;
+  border-radius: 8px;
+}
+
+.meeting-next:hover,
+.meeting-plan-item:hover {
+  background: var(--panel-hover);
+}
+
+.meeting-next > div {
+  display: grid;
+  min-width: 0;
+}
+
+.meeting-next i {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.4em;
+  height: 1.4em;
+  border-radius: 50%;
+  background: var(--panel-soft);
+}
+
+.meeting-next i.ok { color: var(--meeting-up); }
+.meeting-next i.miss { color: var(--meeting-down); }
+
+/* 막힌 건 */
+.meeting-blocked {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 1em;
+  min-height: 0;
+}
+
+.meeting-blocked-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.2em;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  animation: meeting-enter 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.meeting-blocked-card header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.meeting-blocked-card header span {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.meeting-blocked-card header strong {
+  font-size: 1.6em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.meeting-blocked-card h3 {
+  font-size: 1.5em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.meeting-reason {
+  margin-top: 0.7em !important;
+  font-size: 1.1em;
+  line-height: 1.5;
+}
+
+.meeting-brief {
+  display: grid;
+  gap: 0.6em;
+  margin: 0.7em 0 0;
+}
+
+.meeting-brief dt {
+  color: var(--muted);
+  font-size: 0.8em;
+}
+
+.meeting-brief dd {
+  margin: 0;
+  font-size: 1.05em;
+  line-height: 1.4;
+}
+
+.meeting-blocked-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em;
+  margin-top: auto;
+  padding-top: 1em;
+}
+
+.meeting-blocked-card footer em {
+  color: var(--muted);
+  font-size: 0.85em;
+  font-style: normal;
+}
+
+.meeting-blocked-card footer em.danger {
+  color: var(--meeting-down);
+}
+
+.meeting-blocked-card footer button {
+  flex: 0 0 auto;
+  padding: 0.45em 0.8em;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.meeting-blocked-card footer button:hover {
+  background: var(--meeting-accent);
+  color: var(--meeting-on-accent);
+}
+
+.meeting-more {
+  grid-column: 1 / -1;
+  color: var(--muted-soft) !important;
+  font-size: 0.85em;
+  text-align: center;
+}
+
+/* 계획 */
+.meeting-plan-item {
+  display: grid;
+  grid-template-columns: 4.6em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.55em 0.5em;
+  border-radius: 8px;
+}
+
+.meeting-plan-item time {
+  display: grid;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.meeting-plan-item div {
+  display: grid;
+  min-width: 0;
+}
+
+.meeting-plan-item small {
+  font-size: 0.8em;
+}
+
+.meeting-plan-item > strong {
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meeting-root *,
+  .meeting-root *::before {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .meeting-burst {
+    display: none;
+  }
+}

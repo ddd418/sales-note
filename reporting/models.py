@@ -1970,6 +1970,57 @@ class PipelineStageChange(models.Model):
         ]
 
 
+class MeetingActionItem(models.Model):
+    """아침회의에서 정한 약속(누가, 언제까지, 무엇을). 끝낼 때까지 다음 회의로 이월된다."""
+
+    STATUS_OPEN = 'open'
+    STATUS_DONE = 'done'
+    STATUS_CHOICES = [(STATUS_OPEN, '진행 중'), (STATUS_DONE, '완료')]
+
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='meeting_action_items', verbose_name="담당자",
+    )
+    followup = models.ForeignKey(
+        FollowUp, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='meeting_action_items', verbose_name="관련 고객",
+    )
+    title = models.CharField(max_length=200, verbose_name="약속 내용")
+    due_date = models.DateField(null=True, blank=True, verbose_name="기한")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_OPEN, verbose_name="상태")
+    done_at = models.DateTimeField(null=True, blank=True, verbose_name="완료 시각")
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_meeting_action_items', verbose_name="입력한 사람",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+
+    def __str__(self):
+        return f'{self.owner_id}: {self.title}'
+
+    class Meta:
+        verbose_name = "회의 약속"
+        verbose_name_plural = "회의 약속"
+        ordering = ['status', 'due_date', 'id']
+        indexes = [models.Index(fields=['owner', 'status'], name='meeting_action_owner_idx')]
+
+
+class PipelineNoteBrief(models.Model):
+    """영업노트 AI 한 줄 요약 캐시. 노트 내용이 그대로면 다시 호출하지 않는다."""
+
+    history = models.OneToOneField(
+        History, on_delete=models.CASCADE, related_name='meeting_brief', verbose_name="영업노트",
+    )
+    content_hash = models.CharField(max_length=64, verbose_name="원문 해시")
+    situation = models.CharField(max_length=200, blank=True, verbose_name="상황")
+    blocker = models.CharField(max_length=200, blank=True, verbose_name="막힌 점")
+    next_step = models.CharField(max_length=200, blank=True, verbose_name="다음 할 일")
+    created_at = models.DateTimeField(auto_now=True, verbose_name="생성 시각")
+
+    class Meta:
+        verbose_name = "영업노트 AI 요약"
+        verbose_name_plural = "영업노트 AI 요약"
+
+
 # 영업 기회 추적 (OpportunityTracking) 모델
 class OpportunityTracking(models.Model):
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='opportunities', verbose_name="관련 고객")
