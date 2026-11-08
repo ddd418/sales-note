@@ -1932,6 +1932,44 @@ class PipelineYearResetLog(models.Model):
         ordering = ['-year']
 
 
+class PipelineStageChange(models.Model):
+    """카드(건)의 파이프라인 단계가 바뀐 이력. 아침회의 "이번 주 움직임"의 원본.
+
+    `from_stage` 가 빈 값이면 새로 만들어진 카드다. 기록 경로는 reporting/pipeline_stage_log.py.
+    """
+
+    SOURCE_MANUAL = 'manual'
+    SOURCE_AUTO = 'auto'
+    SOURCE_CHOICES = [
+        (SOURCE_MANUAL, '사용자 변경'),
+        (SOURCE_AUTO, '자동 변경'),
+    ]
+
+    followup = models.ForeignKey(
+        FollowUp, on_delete=models.CASCADE, related_name='stage_changes', verbose_name="카드(건)",
+    )
+    from_stage = models.CharField(max_length=20, blank=True, default='', verbose_name="이전 단계")
+    to_stage = models.CharField(max_length=20, verbose_name="변경 단계")
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_AUTO, verbose_name="변경 경로")
+    changed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pipeline_stage_changes', verbose_name="변경한 사람",
+    )
+    changed_at = models.DateTimeField(auto_now_add=True, verbose_name="변경 시각")
+
+    def __str__(self):
+        return f'{self.followup_id}: {self.from_stage or "신규"} -> {self.to_stage}'
+
+    class Meta:
+        verbose_name = "파이프라인 단계 변경 기록"
+        verbose_name_plural = "파이프라인 단계 변경 기록"
+        ordering = ['-changed_at', '-id']
+        indexes = [
+            models.Index(fields=['changed_at'], name='stage_change_at_idx'),
+            models.Index(fields=['followup', '-changed_at'], name='stage_change_fu_idx'),
+        ]
+
+
 # 영업 기회 추적 (OpportunityTracking) 모델
 class OpportunityTracking(models.Model):
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='opportunities', verbose_name="관련 고객")

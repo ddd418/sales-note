@@ -18,6 +18,7 @@ from django.utils import timezone
 from .models import Department, FollowUp, PipelineYearResetLog, Schedule, History, FunnelTarget, Quote
 from .readonly_api import readonly_bearer_or_login_required
 from reporting.vat import item_gross_total
+from reporting.pipeline_stage_log import record_stage_change
 
 logger = logging.getLogger(__name__)
 
@@ -1575,11 +1576,15 @@ def funnel_pipeline_move(request):
         # 카드는 건 단위다 — 같은 부서의 다른 건까지 같이 옮기지 않는다.
         targets = accessible.filter(pk=fu.pk)
 
+        previous_stage = fu.pipeline_stage
         updated_count = targets.update(
             pipeline_stage=new_stage,
             pipeline_manually_set=True,
             updated_at=timezone.now(),
         )
+        # update() 는 시그널을 타지 않으므로 여기서 직접 남긴다.
+        if updated_count:
+            record_stage_change(fu, previous_stage, new_stage, actor=request.user)
         return JsonResponse({'success': True, 'updatedCount': updated_count})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)

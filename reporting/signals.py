@@ -12,6 +12,7 @@ from django.dispatch import receiver
 from datetime import date
 from .models import FollowUp, History, OpportunityTracking, Schedule, DeliveryItem
 from reporting.vat import item_gross_total
+from reporting.pipeline_stage_log import record_stage_change
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,33 @@ def _move_account_to_won(followup_id, source_label):
             followup.save(update_fields=['pipeline_stage', 'pipeline_manually_set'])
     except Exception:
         logger.exception('Failed to advance pipeline stage for %s', source_label)
+
+
+@receiver(pre_save, sender=FollowUp)
+def remember_pipeline_stage_before_save(sender, instance, raw=False, update_fields=None, **kwargs):
+    """저장 전 단계를 기억해 둔다. 단계를 건드리지 않는 저장은 조회 없이 건너뛴다."""
+    instance._stage_before_save = None
+    instance._stage_tracked = False
+    if raw or (update_fields is not None and 'pipeline_stage' not in update_fields):
+        return
+    instance._stage_tracked = True
+    if instance.pk and not instance._state.adding:
+        instance._stage_before_save = (
+            FollowUp.objects.filter(pk=instance.pk).values_list('pipeline_stage', flat=True).first()
+        )
+
+
+@receiver(post_save, sender=FollowUp)
+def log_pipeline_stage_change(sender, instance, created, raw=False, **kwargs):
+    """`.save()` 를 거치는 모든 단계 변경을 기록한다. 사람이 바꾼 경로는 뷰가 actor 를 표시한다."""
+    if raw or not getattr(instance, '_stage_tracked', False):
+        return
+    record_stage_change(
+        instance,
+        '' if created else instance._stage_before_save,
+        instance.pipeline_stage,
+        actor=getattr(instance, '_stage_change_actor', None),
+    )
 
 
 @receiver(post_save, sender=History)

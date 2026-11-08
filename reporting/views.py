@@ -4050,6 +4050,7 @@ def account_contact_save_api(request, department_id, followup_id=None):
         contact.notes = request.POST.get('notes', '').strip()
         contact.status = status
         contact.pipeline_stage = pipeline_stage
+        contact._stage_change_actor = request.user
         contact.is_active = is_active
         contact.company = target_department.company
         contact.department = target_department
@@ -4266,6 +4267,7 @@ def customer_update_api(request, followup_id):
     followup.notes = request.POST.get('notes', '').strip()
     followup.status = status
     followup.pipeline_stage = pipeline_stage
+    followup._stage_change_actor = request.user
     if pipeline_changed:
         followup.pipeline_manually_set = True
     followup.save(update_fields=[

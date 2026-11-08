@@ -14682,3 +14682,70 @@ class ScheduleVatModeRevenueTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(schedule.vat_mode, 'included')
         self.assertEqual(item.total_price, 500000)
+
+
+class PipelineStageChangeTests(TestCase):
+    """카드 단계 변경 이력 — 아침회의 "이번 주 움직임"의 원본 데이터."""
+
+    def setUp(self):
+        from reporting.models import Company, Department, FollowUp
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='단계기록회사')
+        self.user = make_user('stage_log_me', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='단계기록 고객사', created_by=self.user)
+        self.followup = FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name='단계 담당자',
+            company=customer_company,
+            department=Department.objects.create(company=customer_company, name='단계 연구실', created_by=self.user),
+            pipeline_stage='contact', customer_grade='A',
+        )
+        self.move_url = reverse('reporting:funnel_pipeline_move')
+
+    def _changes(self):
+        return list(self.followup.stage_changes.order_by('id').values_list('from_stage', 'to_stage', 'source'))
+
+    def _move(self, stage):
+        return self.client.post(
+            self.move_url, data=json.dumps({'followup_id': self.followup.id, 'stage': stage}),
+            content_type='application/json',
+        )
+
+    def test_new_card_is_logged_as_created(self):
+        self.assertEqual(self._changes(), [('', 'contact', 'auto')])
+
+    def test_board_move_is_logged_with_actor(self):
+        """카드 끌기는 update() 라 시그널을 타지 않는다 — 가장 흔한 경로라 빠지면 안 된다."""
+        self.client.force_login(self.user)
+        self.assertEqual(self._move('quote').status_code, 200)
+        change = self.followup.stage_changes.order_by('-id').first()
+        self.assertEqual((change.from_stage, change.to_stage, change.source), ('contact', 'quote', 'manual'))
+        self.assertEqual(change.changed_by, self.user)
+
+    def test_move_to_same_stage_is_not_logged(self):
+        self.client.force_login(self.user)
+        self.assertEqual(self._move('contact').status_code, 200)
+        self.assertEqual(len(self._changes()), 1)
+
+    def test_save_changing_stage_is_logged_once(self):
+        self.followup.pipeline_stage = 'negotiation'
+        self.followup.save(update_fields=['pipeline_stage'])
+        self.followup.save()
+        self.assertEqual(self._changes(), [('', 'contact', 'auto'), ('contact', 'negotiation', 'auto')])
+
+    def test_save_without_stage_field_is_ignored(self):
+        self.followup.notes = '메모만 변경'
+        self.followup.save(update_fields=['notes'])
+        self.assertEqual(len(self._changes()), 1)
+
+    def test_completed_delivery_auto_move_to_won_is_logged(self):
+        from datetime import time
+        from django.utils import timezone
+        from reporting.models import Schedule
+
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=self.followup,
+            visit_date=timezone.localdate(), visit_time=time(10, 0),
+            activity_type='delivery', status='completed',
+        )
+        self.assertEqual(self._changes()[-1], ('contact', 'won', 'auto'))
