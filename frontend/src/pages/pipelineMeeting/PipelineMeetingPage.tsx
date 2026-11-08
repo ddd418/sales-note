@@ -31,7 +31,7 @@ import { humanizeApiError } from '../../components/shared/FeedbackStates';
 import { formatNumber, formatWon } from '../../components/shared/formatters';
 import './pipelineMeeting.css';
 
-const SCENES = ['요약', '움직임', '약속', '막힌 건', '이번 주 계획'] as const;
+const SCENES = ['요약', '활동', '약속', '장애물', '이번 주 계획'] as const;
 const PROMISES_SCENE = 2;
 
 const shortDate = (iso: string | null | undefined) => {
@@ -346,7 +346,7 @@ function BlockedScene({ data, briefs, briefsLoading, onPromise }: {
   if (blocked.items.length === 0) {
     return (
       <div className="meeting-notice">
-        <h2>막힌 건이 없습니다</h2>
+        <h2>장애물이 없습니다</h2>
         <p>최근 장애물이 기록되었거나 {`2주 이상`} 조용한 진행 건이 없습니다.</p>
       </div>
     );
@@ -366,7 +366,7 @@ function BlockedScene({ data, briefs, briefsLoading, onPromise }: {
             {brief ? (
               <dl className="meeting-brief">
                 {brief.situation ? <div><dt>상황</dt><dd>{brief.situation}</dd></div> : null}
-                {brief.blocker ? <div><dt>막힌 점</dt><dd>{brief.blocker}</dd></div> : null}
+                {brief.blocker ? <div><dt>장애물</dt><dd>{brief.blocker}</dd></div> : null}
                 {brief.nextStep ? <div><dt>다음 할 일</dt><dd>{brief.nextStep}</dd></div> : null}
               </dl>
             ) : (

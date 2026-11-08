@@ -347,7 +347,7 @@
   letter-spacing: -0.02em;
 }
 
-/* 열 공통(움직임 · 계획) */
+/* 열 공통(활동 · 계획) */
 .meeting-movement,
 .meeting-plan {
   position: relative;
@@ -616,7 +616,7 @@
 .meeting-next i.ok { color: var(--meeting-up); }
 .meeting-next i.miss { color: var(--meeting-down); }
 
-/* 막힌 건 */
+/* 장애물 */
 .meeting-blocked {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
