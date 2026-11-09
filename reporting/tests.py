@@ -15164,3 +15164,59 @@ class PipelineMeetingReportTests(TestCase):
         self.client.force_login(manager)
         item_id = self._create().json()['item']['id']
         self.assertIn(item_id, [item['id'] for item in self._items()])
+
+
+class PipelineMeetingEditTests(TestCase):
+    """회의 약속·서비스 수정과 서비스 순서 변경."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.api.pipeline_sheet import week_bounds
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='수정회사')
+        self.user = make_user('edit_me', role='salesman', company=self.company)
+        self.other = make_user('edit_other', role='salesman', company=self.company)
+        self.monday = week_bounds(timezone.localdate())[0] - timedelta(days=7)
+        self.client.force_login(self.user)
+
+    def _post(self, name, body, *args):
+        return self.client.post(reverse(f'reporting:{name}', args=args), data=json.dumps(body), content_type='application/json')
+
+    def _service(self, content):
+        return self._post('meeting_service_create_api', {'institution': '건국대학교', 'content': content, 'week': self.monday.isoformat()}).json()['record']['id']
+
+    def _order(self):
+        data = self.client.get(reverse('reporting:pipeline_meeting_api'), {'week': self.monday.isoformat()}).json()
+        return [row['content'] for row in data['services']]
+
+    def test_action_title_can_be_edited(self):
+        item_id = self._post('meeting_action_create_api', {'title': '처음 내용'}).json()['item']['id']
+        self.assertEqual(self._post('meeting_action_update_api', {'title': '고친 내용'}, item_id).json()['item']['title'], '고친 내용')
+        self.assertEqual(self._post('meeting_action_update_api', {'title': '  '}, item_id).status_code, 400)
+        self.client.force_login(self.other)
+        self.assertEqual(self._post('meeting_action_update_api', {'title': '남의 것'}, item_id).status_code, 403)
+
+    def test_service_can_be_edited(self):
+        record_id = self._service('처음')
+        record = self._post('meeting_service_update_api', {'institution': '서울대학교', 'content': '고침'}, record_id).json()['record']
+        self.assertEqual((record['institution'], record['content']), ('서울대학교', '고침'))
+        self.assertEqual(self._post('meeting_service_update_api', {'institution': '', 'content': '고침'}, record_id).status_code, 400)
+        self.client.force_login(self.other)
+        self.assertEqual(self._post('meeting_service_update_api', {'institution': '가', 'content': '나'}, record_id).status_code, 403)
+
+    def test_reorder_persists_and_new_record_goes_last(self):
+        first, second, third = self._service('가'), self._service('나'), self._service('다')
+        self.assertEqual(self._order(), ['가', '나', '다'])
+        self.assertEqual(self._post('meeting_service_reorder_api', {'week': self.monday.isoformat(), 'ids': [third, first, second]}).status_code, 200)
+        self.assertEqual(self._order(), ['다', '가', '나'])
+        self._service('라')
+        self.assertEqual(self._order(), ['다', '가', '나', '라'])
+
+    def test_reorder_ignores_records_outside_scope(self):
+        first, second = self._service('가'), self._service('나')
+        self.client.force_login(self.other)
+        self.assertEqual(self._post('meeting_service_reorder_api', {'week': self.monday.isoformat(), 'ids': [second, first]}).status_code, 200)
+        self.client.force_login(self.user)
+        self.assertEqual(self._order(), ['가', '나'])

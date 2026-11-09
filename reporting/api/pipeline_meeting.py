@@ -11,7 +11,8 @@
 import json
 from datetime import date, datetime, time, timedelta
 
-from django.db.models import Prefetch, Q
+from django.db import transaction
+from django.db.models import Max, Prefetch, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -303,7 +304,7 @@ def _service_records(request, scope_users, week_start):
     # 매니저 본인은 영업담당 범위에 안 들어갈 수 있으므로, 직접 적은 기록은 항상 보이게 한다
     records = MeetingServiceRecord.objects.filter(
         Q(owner__in=scope_users) | Q(created_by=request.user), week_start=week_start,
-    ).order_by('id').distinct()
+    ).order_by('position', 'id').distinct()
     ids = set(scope_users.values_list('id', flat=True))
     return [_service_payload(record, request.user, ids) for record in records]
 
@@ -516,6 +517,27 @@ def meeting_action_toggle_api(request, item_id):
 
 
 @require_POST
+def meeting_action_update_api(request, item_id):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    item, error, ids = _editable_item_or_error(request, item_id)
+    if error:
+        return error
+    payload = _parse_payload(request)
+    if payload is None:
+        return _error('잘못된 요청 형식입니다.')
+    title = str(payload.get('title') or '').strip()
+    if not title:
+        return _error('내용을 입력하세요.')
+    if len(title) > 200:
+        return _error('내용은 200자 이내로 입력하세요.')
+    item.title = title
+    item.save(update_fields=['title'])
+    return JsonResponse({'success': True, 'item': _action_item_payload(item, request.user, ids, timezone.localdate())})
+
+
+@require_POST
 def meeting_action_delete_api(request, item_id):
     auth_response = _api_login_required_response(request)
     if auth_response:
@@ -586,15 +608,30 @@ def meeting_service_create_api(request):
 
     profile = get_user_profile(request.user)
     scope_users, selected_user = _dashboard_scope_users(request, profile)
+    week_start = _parse_week_start(str(payload['week']), timezone.localdate())
+    last_position = (
+        MeetingServiceRecord.objects.filter(week_start=week_start).aggregate(last=Max('position'))['last'] or 0
+    )
     record = MeetingServiceRecord.objects.create(
-        week_start=_parse_week_start(str(payload['week']), timezone.localdate()),
+        week_start=week_start,
         owner=selected_user or request.user,
         institution=institution,
         content=content,
+        position=last_position + 1,
         created_by=request.user,
     )
     ids = set(scope_users.values_list('id', flat=True))
     return JsonResponse({'success': True, 'record': _service_payload(record, request.user, ids)}, status=201)
+
+
+def _editable_service_or_error(request, record_id):
+    profile = get_user_profile(request.user)
+    scope_users, _selected = _dashboard_scope_users(request, profile)
+    record = get_object_or_404(MeetingServiceRecord, pk=record_id)
+    ids = set(scope_users.values_list('id', flat=True))
+    if record.owner_id not in ids and record.created_by_id != request.user.id:
+        return None, _error('이 기록을 변경할 권한이 없습니다.', status=403), ids
+    return record, None, ids
 
 
 @require_POST
@@ -602,10 +639,67 @@ def meeting_service_delete_api(request, record_id):
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
+    record, error, _ids = _editable_service_or_error(request, record_id)
+    if error:
+        return error
+    record.delete()
+    return JsonResponse({'success': True})
+
+
+@require_POST
+def meeting_service_update_api(request, record_id):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    record, error, ids = _editable_service_or_error(request, record_id)
+    if error:
+        return error
+    payload = _parse_payload(request)
+    if payload is None:
+        return _error('잘못된 요청 형식입니다.')
+    institution = str(payload.get('institution') or '').strip()
+    content = str(payload.get('content') or '').strip()
+    if not institution:
+        return _error('기관을 입력하세요.')
+    if len(institution) > 100:
+        return _error('기관은 100자 이내로 입력하세요.')
+    if not content:
+        return _error('서비스 내용을 입력하세요.')
+    record.institution = institution
+    record.content = content
+    record.save(update_fields=['institution', 'content'])
+    return JsonResponse({'success': True, 'record': _service_payload(record, request.user, ids)})
+
+
+@require_POST
+def meeting_service_reorder_api(request):
+    """화면에서 끌어 놓은 순서를 저장한다. 볼 수 없는 기록의 id 는 무시한다."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    payload = _parse_payload(request)
+    if payload is None or not isinstance(payload.get('ids'), list) or not payload.get('week'):
+        return _error('잘못된 요청 형식입니다.')
+    try:
+        ordered_ids = [int(value) for value in payload['ids']]
+    except (TypeError, ValueError):
+        return _error('잘못된 요청 형식입니다.')
+
     profile = get_user_profile(request.user)
     scope_users, _selected = _dashboard_scope_users(request, profile)
-    record = get_object_or_404(MeetingServiceRecord, pk=record_id)
-    if not scope_users.filter(pk=record.owner_id).exists() and record.created_by_id != request.user.id:
-        return _error('이 기록을 삭제할 권한이 없습니다.', status=403)
-    record.delete()
+    week_start = _parse_week_start(str(payload['week']), timezone.localdate())
+    records = {
+        record.id: record
+        for record in MeetingServiceRecord.objects.filter(
+            Q(owner__in=scope_users) | Q(created_by=request.user), week_start=week_start, pk__in=ordered_ids,
+        )
+    }
+    changed = []
+    for position, record_id in enumerate(ordered_ids, start=1):
+        record = records.get(record_id)
+        if record is not None:
+            record.position = position
+            changed.append(record)
+    with transaction.atomic():
+        MeetingServiceRecord.objects.bulk_update(changed, ['position'])
     return JsonResponse({'success': True})

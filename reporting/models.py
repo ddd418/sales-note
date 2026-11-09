@@ -2036,6 +2036,7 @@ class MeetingServiceRecord(models.Model):
     )
     institution = models.CharField(max_length=100, verbose_name="기관")
     content = models.TextField(verbose_name="내용")
+    position = models.PositiveIntegerField(default=0, verbose_name="표시 순서")
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='created_meeting_service_records', verbose_name="입력한 사람",

@@ -720,11 +720,6 @@
 }
 
 /* 서비스 */
-.meeting-service header strong {
-  font-size: 1.5em;
-  font-weight: 700;
-}
-
 .meeting-service-group {
   display: grid;
   gap: 0.4em;
@@ -735,18 +730,62 @@
 }
 
 .meeting-service-group h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
   margin: 0;
   color: var(--text);
   font-size: 1.05em;
   font-weight: 600;
+  cursor: grab;
 }
 
-.meeting-service-group h4 em {
-  margin-left: 0.6em;
-  color: var(--muted);
-  font-size: 0.8em;
-  font-style: normal;
-  font-weight: 400;
+.meeting-service-group h4 svg {
+  color: var(--muted-soft);
+}
+
+.meeting-service-item[draggable='true'] {
+  cursor: grab;
+}
+
+.meeting-service-group.dragging,
+.meeting-service-item.dragging {
+  opacity: 0.4;
+}
+
+.meeting-service-group.drop-before,
+.meeting-service-item.drop-before {
+  box-shadow: 0 -2px 0 var(--meeting-accent);
+}
+
+.meeting-service-group.drop-after,
+.meeting-service-item.drop-after {
+  box-shadow: 0 2px 0 var(--meeting-accent);
+}
+
+.meeting-row-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.meeting-service-edit {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+}
+
+.meeting-service-edit input,
+.meeting-service-edit textarea,
+.meeting-inline-edit {
+  width: 100%;
+  padding: 0.5em 0.7em;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
 }
 
 .meeting-service-item {

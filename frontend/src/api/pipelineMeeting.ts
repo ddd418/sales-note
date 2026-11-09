@@ -183,6 +183,20 @@ export async function createMeetingService(body: {
   return result.record;
 }
 
+export async function updateMeetingService(id: number, body: { institution: string; content: string }): Promise<MeetingServiceRecord> {
+  const result = await postJson<{ record: MeetingServiceRecord }>(`${API}services/${id}/update/`, body, '서비스 기록을 수정하지 못했습니다.');
+  return result.record;
+}
+
+export async function reorderMeetingServices(week: string, ids: number[]): Promise<void> {
+  await postJson(`${API}services/reorder/`, { week, ids }, '순서를 저장하지 못했습니다.');
+}
+
+export async function updateMeetingAction(id: number, title: string): Promise<MeetingActionItem> {
+  const result = await postJson<{ item: MeetingActionItem }>(`${API}actions/${id}/update/`, { title }, '내용을 수정하지 못했습니다.');
+  return result.item;
+}
+
 export async function deleteMeetingService(id: number): Promise<void> {
   await postJson(`${API}services/${id}/delete/`, {}, '서비스 기록을 삭제하지 못했습니다.');
 }
