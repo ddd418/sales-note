@@ -17,18 +17,22 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   createMeetingAction,
   deleteMeetingAction,
+  dismissMeetingNextAction,
   loadMeetingBriefs,
   loadPipelineMeeting,
+  restoreMeetingNextAction,
   toggleMeetingAction,
   type MeetingActionItem,
   type MeetingBlockedItem,
   type MeetingBrief,
   type MeetingMovementGroup,
   type MeetingMovementItem,
+  type MeetingNextAction,
   type PipelineMeetingData,
 } from '../../api/pipelineMeeting';
 import { humanizeApiError } from '../../components/shared/FeedbackStates';
 import { formatNumber, formatWon } from '../../components/shared/formatters';
+import { SearchableSelect } from '../shared/appShared';
 import './pipelineMeeting.css';
 
 const SCENES = ['요약', '활동', '약속', '장애물', '이번 주 계획'] as const;
@@ -125,8 +129,8 @@ function SummaryScene({ data }: { data: PipelineMeetingData }) {
       <section className="meeting-stats">
         <div><span>납품 완료</span><strong>{formatNumber(summary.deliveryCount)}건</strong></div>
         <div><span>견적 금액</span><strong>{formatWon(summary.quoteAmount)}</strong></div>
+        <div><span>실주 금액</span><strong>{summary.lostAmount === null ? '기록 없음' : formatWon(summary.lostAmount)}</strong></div>
         <div><span>활동한 계정</span><strong>{formatNumber(summary.activeAccounts)}곳</strong></div>
-        <div><span>총 활동</span><strong>{formatNumber(summary.totalActivities)}건</strong></div>
       </section>
     </div>
   );
@@ -184,6 +188,7 @@ function MovementScene({ data }: { data: PipelineMeetingData }) {
       <MovementColumn
         group={{
           count: movement.regressed.count + movement.lost.count,
+          amount: movement.regressed.amount + movement.lost.amount,
           items: [...movement.regressed.items, ...movement.lost.items],
         }}
         startIndex={4}
@@ -197,18 +202,24 @@ function MovementScene({ data }: { data: PipelineMeetingData }) {
 
 type ActionDraft = { title: string; ownerId: string; dueDate: string; followupId: string };
 
-function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRemoved }: {
+function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRemoved, onNextActionsChange }: {
   data: PipelineMeetingData;
   draft: ActionDraft;
   onDraftChange: (draft: ActionDraft) => void;
   onCreated: (item: MeetingActionItem) => void;
   onChanged: (item: MeetingActionItem) => void;
   onRemoved: (id: number) => void;
+  onNextActionsChange: (rows: MeetingNextAction[]) => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [lastDismissed, setLastDismissed] = useState<MeetingNextAction | null>(null);
   const [error, setError] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
   const { actionItems, nextActions } = data.promises;
+  const customerOptions = useMemo(
+    () => data.form.customers.map((customer) => ({ value: String(customer.id), label: customer.label })),
+    [data.form.customers],
+  );
 
   useEffect(() => {
     if (draft.followupId) titleRef.current?.focus();
@@ -302,10 +313,15 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
             {data.form.owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
           </select>
           <input aria-label="기한" onChange={(event) => onDraftChange({ ...draft, dueDate: event.target.value })} type="date" value={draft.dueDate} />
-          <select aria-label="관련 고객" onChange={(event) => onDraftChange({ ...draft, followupId: event.target.value })} value={draft.followupId}>
-            <option value="">고객 선택 안 함</option>
-            {data.form.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.label}</option>)}
-          </select>
+          <SearchableSelect
+            allowEmpty
+            ariaLabel="관련 고객"
+            emptyLabel="고객 선택 안 함"
+            onChange={(value) => onDraftChange({ ...draft, followupId: value })}
+            options={customerOptions}
+            placeholder="고객 검색"
+            value={draft.followupId}
+          />
           <button disabled={saving} type="submit">
             {saving ? <Loader2 className="spin-icon" size={16} /> : <Plus size={16} />}추가
           </button>
@@ -317,18 +333,47 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
           <h3>{weekNameOf(data.week.start)} 다음 액션</h3>
           <small>
             후속 기록 있음 {nextActions.filter((row) => row.followedUp).length} · 없음 {nextActions.filter((row) => !row.followedUp).length}
+            {lastDismissed ? (
+              <button
+                className="meeting-undo"
+                onClick={() => run(async () => {
+                  await restoreMeetingNextAction(lastDismissed.id);
+                  onNextActionsChange([...nextActions, lastDismissed]);
+                  setLastDismissed(null);
+                })}
+                type="button"
+              >
+                되돌리기
+              </button>
+            ) : null}
           </small>
         </header>
         <div className="meeting-scroll">
           {nextActions.length === 0 ? <p className="meeting-empty">이 주가 기한인 다음 액션이 없습니다.</p> : null}
           {nextActions.map((row) => (
-            <a className="meeting-next" href={row.href} key={row.id}>
-              <i className={row.followedUp ? 'ok' : 'miss'}>{row.followedUp ? <Check size={14} /> : <X size={14} />}</i>
-              <div>
+            <div className="meeting-next" key={row.id}>
+              {row.followedUp ? (
+                <i className="ok"><Check size={14} /></i>
+              ) : (
+                <button
+                  aria-label="아침회의 목록에서 숨기기"
+                  className="meeting-next-dismiss"
+                  onClick={() => run(async () => {
+                    await dismissMeetingNextAction(row.id);
+                    onNextActionsChange(nextActions.filter((other) => other.id !== row.id));
+                    setLastDismissed(row);
+                  })}
+                  title="아침회의 목록에서만 숨깁니다. 노트 기록은 그대로입니다."
+                  type="button"
+                >
+                  <X size={14} />
+                </button>
+              )}
+              <a href={row.href}>
                 <b>{row.text}</b>
                 <small>{row.company} {row.customer} · {row.owner} · {shortDate(row.dueDate)}</small>
-              </div>
-            </a>
+              </a>
+            </div>
           ))}
         </div>
       </section>
@@ -575,6 +620,7 @@ export function PipelineMeetingPage() {
             <h2 className="meeting-scene-title">
               {scene === 4 && weekNameOf(data.week.start) !== '지난주' ? `${shortDate(data.plan.start)} 주 계획` : SCENES[scene]}
               {scene === 4 ? <small>{shortDate(data.plan.start)} – {shortDate(data.plan.end)}</small> : null}
+              {scene === 1 && data.movement.restored ? <small>일정 기록으로 복원한 주입니다 · 보드에서 직접 옮긴 건은 빠져 있을 수 있습니다</small> : null}
             </h2>
             {scene === 0 ? <SummaryScene data={data} /> : null}
             {scene === 1 ? <MovementScene data={data} /> : null}
@@ -585,6 +631,9 @@ export function PipelineMeetingPage() {
                 onChanged={(item) => updateActions((items) => items.map((row) => (row.id === item.id ? item : row)))}
                 onCreated={(item) => updateActions((items) => [...items, item])}
                 onDraftChange={setDraft}
+                onNextActionsChange={(rows) => setData((current) => (current
+                  ? { ...current, promises: { ...current.promises, nextActions: rows } }
+                  : current))}
                 onRemoved={(id) => updateActions((items) => items.filter((row) => row.id !== id))}
               />
             ) : null}

@@ -15017,3 +15017,141 @@ class PipelineMeetingBriefTests(TestCase):
             UserProfile.objects.filter(user=self.other).update(can_use_ai=True)
             self.assertEqual(self._post().json()['briefs'], {})
         self.assertEqual(call.call_count, 0)
+
+
+class PipelineMeetingRound2Tests(TestCase):
+    """지난주 복원 · 다음 액션 숨기기 · 실주 금액."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.api.pipeline_sheet import week_bounds
+        from reporting.models import Company, Department, FollowUp
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='복원회사')
+        self.user = make_user('restore_me', role='salesman', company=self.company)
+        self.other = make_user('restore_other', role='salesman', company=self.company)
+        customer_company = Company.objects.create(name='복원 고객사', created_by=self.user)
+        department = Department.objects.create(company=customer_company, name='복원 연구실', created_by=self.user)
+        self.make_followup = lambda name: FollowUp.objects.create(
+            user=self.user, user_company=self.company, customer_name=name,
+            company=customer_company, department=department, pipeline_stage='contact', customer_grade='A',
+        )
+        self.today = timezone.localdate()
+        self.monday = week_bounds(self.today)[0] - timedelta(days=7)
+        self.client.force_login(self.user)
+
+    def _schedule(self, followup, kind, status, day):
+        from datetime import time
+        from reporting.models import Schedule
+
+        return Schedule.objects.create(
+            user=self.user, company=self.company, followup=followup, visit_date=day,
+            visit_time=time(10, 0), activity_type=kind, status=status,
+        )
+
+    def _set_stage(self, followup, stage):
+        from reporting.models import FollowUp, PipelineStageChange
+
+        FollowUp.objects.filter(pk=followup.pk).update(pipeline_stage=stage)
+        PipelineStageChange.objects.all().delete()
+
+    def _run(self, *flags):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command('backfill_stage_changes', '--week', self.monday.isoformat(), *flags, stdout=out)
+        return out.getvalue()
+
+    def _meeting(self):
+        return self.client.get(reverse('reporting:pipeline_meeting_api'), {'week': self.monday.isoformat()}).json()
+
+    def _cancelled_quote(self, followup):
+        from datetime import datetime, time, timedelta
+        from django.utils import timezone
+        from reporting.models import Schedule
+
+        schedule = self._schedule(followup, 'quote', 'cancelled', self.monday - timedelta(days=60))
+        moment = timezone.make_aware(datetime.combine(self.monday + timedelta(days=2), time(9, 0)))
+        Schedule.objects.filter(pk=schedule.pk).update(updated_at=moment)
+
+    def test_preview_saves_nothing_and_apply_is_idempotent(self):
+        from reporting.models import PipelineStageChange
+
+        lost = self.make_followup('실주건')
+        self._cancelled_quote(lost)
+        self._set_stage(lost, 'lost')
+
+        self.assertIn('미리보기: 1건', self._run())
+        self.assertEqual(PipelineStageChange.objects.count(), 0)
+        self.assertIn('저장: 1건', self._run('--apply'))
+        self.assertIn('저장: 0건', self._run('--apply'))
+        change = PipelineStageChange.objects.get()
+        self.assertEqual((change.from_stage, change.to_stage, change.source), ('quote', 'lost', 'backfill'))
+
+    def test_restored_week_is_labelled_and_lost_amount_shown(self):
+        lost = self.make_followup('실주건')
+        self._cancelled_quote(lost)
+        self._set_stage(lost, 'lost')
+        self.assertIsNone(self._meeting()['summary']['lostAmount'])
+        self._run('--apply')
+        payload = self._meeting()
+        self.assertTrue(payload['movement']['restored'])
+        self.assertTrue(payload['movement']['tracked'])
+        self.assertEqual(payload['summary']['lostAmount'], payload['movement']['lost']['amount'])
+
+    def test_first_delivery_counts_but_repeat_customer_does_not(self):
+        from datetime import timedelta
+
+        first = self.make_followup('첫수주')
+        repeat = self.make_followup('재수주')
+        self._schedule(first, 'delivery', 'completed', self.monday)
+        self._schedule(repeat, 'delivery', 'completed', self.monday - timedelta(days=30))
+        self._schedule(repeat, 'delivery', 'completed', self.monday)
+        self._set_stage(first, 'won')
+        self._set_stage(repeat, 'won')
+
+        output = self._run()
+        self.assertIn('첫수주', output)
+        self.assertNotIn('재수주', output)
+
+    def test_week_must_be_monday(self):
+        from datetime import timedelta
+        from io import StringIO
+        from django.core.management import CommandError, call_command
+
+        with self.assertRaises(CommandError):
+            call_command('backfill_stage_changes', '--week', (self.monday + timedelta(days=1)).isoformat(), stdout=StringIO())
+
+    def _note(self):
+        from datetime import timedelta
+        from reporting.models import History
+
+        return History.objects.create(
+            user=self.user, company=self.company, followup=self.make_followup('숨김건'),
+            action_type='customer_meeting', content='미팅',
+            next_action='전화하기', next_action_date=self.monday + timedelta(days=1),
+        )
+
+    def test_dismiss_hides_from_meeting_only_and_can_restore(self):
+        from reporting.models import History
+
+        note = self._note()
+        ids = lambda: [row['id'] for row in self._meeting()['promises']['nextActions']]
+        self.assertIn(note.id, ids())
+
+        self.assertEqual(self.client.post(reverse('reporting:meeting_next_action_dismiss_api', args=[note.id])).status_code, 200)
+        self.assertNotIn(note.id, ids())
+        refreshed = History.objects.get(pk=note.id)
+        self.assertEqual(refreshed.next_action, '전화하기')
+        self.assertEqual(refreshed.next_action_date, note.next_action_date)
+
+        self.assertEqual(self.client.post(reverse('reporting:meeting_next_action_restore_api', args=[note.id])).status_code, 200)
+        self.assertIn(note.id, ids())
+
+    def test_dismiss_is_limited_to_scope(self):
+        note = self._note()
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(reverse('reporting:meeting_next_action_dismiss_api', args=[note.id])).status_code, 403)

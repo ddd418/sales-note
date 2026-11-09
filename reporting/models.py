@@ -1940,9 +1940,11 @@ class PipelineStageChange(models.Model):
 
     SOURCE_MANUAL = 'manual'
     SOURCE_AUTO = 'auto'
+    SOURCE_BACKFILL = 'backfill'
     SOURCE_CHOICES = [
         (SOURCE_MANUAL, '사용자 변경'),
         (SOURCE_AUTO, '자동 변경'),
+        (SOURCE_BACKFILL, '일정 근거 복원'),
     ]
 
     followup = models.ForeignKey(
@@ -2019,6 +2021,23 @@ class PipelineNoteBrief(models.Model):
     class Meta:
         verbose_name = "영업노트 AI 요약"
         verbose_name_plural = "영업노트 AI 요약"
+
+
+class MeetingDismissedNote(models.Model):
+    """아침회의 "다음 액션" 목록에서 숨긴 노트. 노트 자체는 건드리지 않는다."""
+
+    history = models.OneToOneField(
+        History, on_delete=models.CASCADE, related_name='meeting_dismissal', verbose_name="영업노트",
+    )
+    dismissed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='meeting_dismissed_notes', verbose_name="숨긴 사람",
+    )
+    dismissed_at = models.DateTimeField(auto_now_add=True, verbose_name="숨긴 시각")
+
+    class Meta:
+        verbose_name = "회의 다음 액션 숨김"
+        verbose_name_plural = "회의 다음 액션 숨김"
 
 
 # 영업 기회 추적 (OpportunityTracking) 모델

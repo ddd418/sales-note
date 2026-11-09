@@ -598,9 +598,51 @@
   background: var(--panel-hover);
 }
 
-.meeting-next > div {
+.meeting-next > a {
   display: grid;
+  flex: 1;
   min-width: 0;
+}
+
+.meeting-next-dismiss {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.4em;
+  height: 1.4em;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--panel-soft);
+  color: var(--meeting-down);
+  cursor: pointer;
+}
+
+.meeting-next-dismiss:hover {
+  background: var(--meeting-down);
+  color: var(--meeting-on-accent);
+}
+
+.meeting-undo {
+  margin-left: 0.8em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* 입력 줄이 화면 아래쪽이라 고객 검색 목록은 위로 펼친다 */
+.meeting-action-form .searchable-select-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.meeting-action-form .searchable-select-control {
+  min-height: 2.5em;
+  font-size: 0.85em;
 }
 
 .meeting-next i {

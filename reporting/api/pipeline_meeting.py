@@ -42,7 +42,7 @@ from reporting.funnel_views import (
     _select_pipeline_pricing,
     pipeline_followups_queryset,
 )
-from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, PipelineNoteBrief, PipelineStageChange, Schedule
+from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, PipelineNoteBrief, PipelineStageChange, Schedule
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -118,7 +118,6 @@ def _summary(request, scope_users, today, week_start, week_end):
         'deliveryCount': len(week_rows),
         'quoteAmount': quote_amount,
         'activeAccounts': sum(1 for row in sheet_rows if row['activityCount'] > 0),
-        'totalActivities': sum(row['activityCount'] for row in sheet_rows),
     }
 
 
@@ -153,6 +152,7 @@ def _movement(scope_users, week_start, cards):
     amounts = {followup.id: amount for followup, _stage, amount in cards}
 
     first_last = {}
+    restored = False
     changes = (
         PipelineStageChange.objects
         .filter(followup__user__in=scope_users, followup__pipeline_hidden=False, changed_at__gte=start, changed_at__lt=end)
@@ -160,6 +160,7 @@ def _movement(scope_users, week_start, cards):
         .order_by('changed_at', 'id')
     )
     for change in changes:
+        restored = restored or change.source == PipelineStageChange.SOURCE_BACKFILL
         entry = first_last.setdefault(change.followup_id, {'first': change, 'last': change})
         entry['last'] = change
 
@@ -187,7 +188,11 @@ def _movement(scope_users, week_start, cards):
     payload = {}
     for key, rows in groups.items():
         rows.sort(key=lambda row: (-row['amount'], row['company'], row['customer']))
-        payload[key] = {'count': len(rows), 'items': rows[:MOVEMENT_LIMIT]}
+        payload[key] = {
+            'count': len(rows),
+            'amount': sum(row['amount'] for row in rows),
+            'items': rows[:MOVEMENT_LIMIT],
+        }
 
     first_record = PipelineStageChange.objects.order_by('changed_at').values_list('changed_at', flat=True).first()
     tracking_since = timezone.localtime(first_record).date() if first_record else None
@@ -196,6 +201,8 @@ def _movement(scope_users, week_start, cards):
         'trackingSince': tracking_since.isoformat() if tracking_since else None,
         # 기록을 켜기 전 주는 "변화 없음"이 아니라 "알 수 없음"이다. 화면이 구분해서 말해야 한다.
         'tracked': bool(tracking_since and tracking_since <= week_start + timedelta(days=6)),
+        # 일정 근거로 채운 주는 직접 옮긴 건이 빠졌을 수 있다. 화면이 그렇게 밝혀야 한다.
+        'restored': restored,
     }
 
 
@@ -242,6 +249,7 @@ def _next_action_promises(scope_users, today, week_start):
             user__in=scope_users,
             parent_history__isnull=True,
             followup__isnull=False,
+            meeting_dismissal__isnull=True,
             next_action_date__gte=week_start,
             next_action_date__lte=week_start + timedelta(days=6),
         )
@@ -387,6 +395,10 @@ def _meeting_payload(request):
     week_end = week_start + timedelta(days=4)
     plan_start = week_start + timedelta(days=7)
     cards = _card_rows(request, today, scope_users)
+    movement = _movement(scope_users, week_start, cards)
+    summary = _summary(request, scope_users, today, week_start, week_end)
+    # 기록이 없는 주의 실주 금액은 0 이 아니라 '알 수 없음'이다
+    summary['lostAmount'] = movement['lost']['amount'] if movement['tracked'] else None
 
     return {
         'success': True,
@@ -400,8 +412,8 @@ def _meeting_payload(request):
         'weekOptions': _week_options(today),
         'scope': _scope_payload(request, profile, scope_users, selected_user),
         'canUseAi': bool(profile.can_use_ai),
-        'summary': _summary(request, scope_users, today, week_start, week_end),
-        'movement': _movement(scope_users, week_start, cards),
+        'summary': summary,
+        'movement': movement,
         'promises': {
             'actionItems': _action_items(request, scope_users, today, week_start),
             'nextActions': _next_action_promises(scope_users, today, week_start),
@@ -535,6 +547,41 @@ def meeting_action_delete_api(request, item_id):
     if error:
         return error
     item.delete()
+    return JsonResponse({'success': True})
+
+
+# ------------------------------------------------- 다음 액션 숨기기(회의 목록에서만)
+
+def _note_in_scope_or_error(request, note_id):
+    profile = get_user_profile(request.user)
+    scope_users, _selected = _dashboard_scope_users(request, profile)
+    note = get_object_or_404(History, pk=note_id, parent_history__isnull=True)
+    if not scope_users.filter(pk=note.user_id).exists():
+        return None, _error('이 항목을 변경할 권한이 없습니다.', status=403)
+    return note, None
+
+
+@require_POST
+def meeting_next_action_dismiss_api(request, note_id):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    note, error = _note_in_scope_or_error(request, note_id)
+    if error:
+        return error
+    MeetingDismissedNote.objects.get_or_create(history=note, defaults={'dismissed_by': request.user})
+    return JsonResponse({'success': True})
+
+
+@require_POST
+def meeting_next_action_restore_api(request, note_id):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    note, error = _note_in_scope_or_error(request, note_id)
+    if error:
+        return error
+    MeetingDismissedNote.objects.filter(history=note).delete()
     return JsonResponse({'success': True})
 
 

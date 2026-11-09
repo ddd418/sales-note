@@ -14,7 +14,7 @@ export type MeetingMovementItem = {
   href: string;
 };
 
-export type MeetingMovementGroup = { count: number; items: MeetingMovementItem[] };
+export type MeetingMovementGroup = { count: number; amount: number; items: MeetingMovementItem[] };
 
 export type MeetingActionItem = {
   id: number;
@@ -94,7 +94,8 @@ export type PipelineMeetingData = {
     deliveryCount: number;
     quoteAmount: number;
     activeAccounts: number;
-    totalActivities: number;
+    /** 기록이 없는 주는 null */
+    lostAmount: number | null;
   };
   movement: {
     won: MeetingMovementGroup;
@@ -103,6 +104,7 @@ export type PipelineMeetingData = {
     lost: MeetingMovementGroup;
     created: MeetingMovementGroup;
     tracked: boolean;
+    restored: boolean;
     trackingSince: string | null;
   };
   promises: { actionItems: MeetingActionItem[]; nextActions: MeetingNextAction[] };
@@ -169,6 +171,14 @@ export async function toggleMeetingAction(id: number): Promise<MeetingActionItem
 
 export async function deleteMeetingAction(id: number): Promise<void> {
   await postJson(`${API}actions/${id}/delete/`, {}, '약속을 삭제하지 못했습니다.');
+}
+
+export async function dismissMeetingNextAction(noteId: number): Promise<void> {
+  await postJson(`${API}next-actions/${noteId}/dismiss/`, {}, '목록에서 숨기지 못했습니다.');
+}
+
+export async function restoreMeetingNextAction(noteId: number): Promise<void> {
+  await postJson(`${API}next-actions/${noteId}/restore/`, {}, '되돌리지 못했습니다.');
 }
 
 export async function loadMeetingBriefs(noteIds: number[]): Promise<Record<string, MeetingBrief>> {
