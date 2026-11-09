@@ -632,19 +632,21 @@ function ServiceScene({ data, onCreated, onRemoved, onUpdated, onReordered }: {
     const current = drag;
     const after = dropsAfter(event);
     endDrag();
-    if (current?.kind !== 'group' || current.institution === name) return;
+    if (!current || current.institution === name) return;
     const from = groups.findIndex(([group]) => group === current.institution);
     const to = groups.findIndex(([group]) => group === name);
     void applyOrder(moveEntry(groups, from, to, after));
   };
 
   const dropOnItem = (event: DragEvent<HTMLElement>, target: MeetingServiceRecord) => {
+    const current = drag;
+    // 다른 기관 위에 놓으면 기관 순서를 바꾼다 — 바깥 섹션의 dropOnGroup 이 처리하도록 넘긴다.
+    if (current?.kind !== 'item' || current.institution !== target.institution) return;
     event.preventDefault();
     event.stopPropagation();
-    const current = drag;
     const after = dropsAfter(event);
     endDrag();
-    if (current?.kind !== 'item' || current.id === target.id || current.institution !== target.institution) return;
+    if (current.id === target.id) return;
     void applyOrder(groups.map(([name, rows]) => {
       if (name !== target.institution) return [name, rows] as ServiceGroup;
       const from = rows.findIndex((row) => row.id === current.id);
@@ -672,7 +674,7 @@ function ServiceScene({ data, onCreated, onRemoved, onUpdated, onReordered }: {
           <section
             className={`meeting-service-group${dropClass(`group:${name}`)}${drag?.kind === 'group' && drag.institution === name ? ' dragging' : ''}`}
             key={name}
-            onDragOver={(event) => hover(event, `group:${name}`, drag?.kind === 'group' && drag.institution !== name)}
+            onDragOver={(event) => hover(event, `group:${name}`, drag !== null && drag.institution !== name)}
             onDrop={(event) => dropOnGroup(event, name)}
           >
             <h4
