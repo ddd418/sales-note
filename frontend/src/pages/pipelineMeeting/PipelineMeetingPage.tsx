@@ -16,18 +16,18 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   createMeetingAction,
+  createMeetingService,
   deleteMeetingAction,
+  deleteMeetingService,
   dismissMeetingNextAction,
-  loadMeetingBriefs,
   loadPipelineMeeting,
   restoreMeetingNextAction,
   toggleMeetingAction,
   type MeetingActionItem,
-  type MeetingBlockedItem,
-  type MeetingBrief,
   type MeetingMovementGroup,
   type MeetingMovementItem,
   type MeetingNextAction,
+  type MeetingServiceRecord,
   type PipelineMeetingData,
 } from '../../api/pipelineMeeting';
 import { humanizeApiError } from '../../components/shared/FeedbackStates';
@@ -35,8 +35,7 @@ import { formatNumber, formatWon } from '../../components/shared/formatters';
 import { SearchableSelect } from '../shared/appShared';
 import './pipelineMeeting.css';
 
-const SCENES = ['요약', '활동', '약속', '장애물', '이번 주 계획'] as const;
-const PROMISES_SCENE = 2;
+const SCENES = ['요약', '서비스', '활동', '약속', '이번 주 계획'] as const;
 
 const shortDate = (iso: string | null | undefined) => {
   if (!iso) return '';
@@ -50,6 +49,13 @@ const weekNameOf = (weekStart: string) => {
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7) - 7);
   const lastWeek = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
   return weekStart === lastWeek ? '지난주' : `${shortDate(weekStart)} 주`;
+};
+
+// 보고 기한 기본값: 다음 주 월요일(주간 회의 기준)
+const nextMondayIso = () => {
+  const today = new Date();
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + (7 - ((today.getDay() + 6) % 7)));
+  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
 };
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -131,6 +137,7 @@ function SummaryScene({ data }: { data: PipelineMeetingData }) {
         <div><span>견적 금액</span><strong>{formatWon(summary.quoteAmount)}</strong></div>
         <div><span>실주 금액</span><strong>{summary.lostAmount === null ? '기록 없음' : formatWon(summary.lostAmount)}</strong></div>
         <div><span>활동한 계정</span><strong>{formatNumber(summary.activeAccounts)}곳</strong></div>
+        {data.services.length > 0 ? <div><span>서비스</span><strong>{formatNumber(data.services.length)}건</strong></div> : null}
       </section>
     </div>
   );
@@ -213,17 +220,20 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
 }) {
   const [saving, setSaving] = useState(false);
   const [lastDismissed, setLastDismissed] = useState<MeetingNextAction | null>(null);
+  const [reportTitle, setReportTitle] = useState('');
+  const [reportDue, setReportDue] = useState(nextMondayIso);
   const [error, setError] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
   const { actionItems, nextActions } = data.promises;
+  const promises = actionItems.filter((item) => item.kind !== 'report');
+  // 기한이 된 보고를 맨 위로, 그다음 가까운 기한 순
+  const reports = actionItems
+    .filter((item) => item.kind === 'report')
+    .sort((a, b) => Number(b.dueReached) - Number(a.dueReached) || (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
   const customerOptions = useMemo(
     () => data.form.customers.map((customer) => ({ value: String(customer.id), label: customer.label })),
     [data.form.customers],
   );
-
-  useEffect(() => {
-    if (draft.followupId) titleRef.current?.focus();
-  }, [draft.followupId]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -249,6 +259,25 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
     }
   };
 
+  const submitReport = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!reportTitle.trim()) {
+      setError('보고할 내용을 입력하세요.');
+      return;
+    }
+    if (!reportDue) {
+      setError('보고 기한을 선택하세요.');
+      return;
+    }
+    setError('');
+    try {
+      onCreated(await createMeetingAction({ kind: 'report', title: reportTitle.trim(), dueDate: reportDue }));
+      setReportTitle('');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '보고 내용을 저장하지 못했습니다.');
+    }
+  };
+
   const run = async (action: () => Promise<void>) => {
     setError('');
     try {
@@ -263,8 +292,8 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
       <section className="meeting-panel">
         <header><h3>회의 약속</h3><small>끝낼 때까지 다음 회의로 넘어옵니다</small></header>
         <div className="meeting-scroll">
-          {actionItems.length === 0 ? <p className="meeting-empty">아직 약속이 없습니다. 아래에서 오늘 정한 일을 적어 주세요.</p> : null}
-          {actionItems.map((item) => (
+          {promises.length === 0 ? <p className="meeting-empty">아직 약속이 없습니다. 아래에서 오늘 정한 일을 적어 주세요.</p> : null}
+          {promises.map((item) => (
             <div className={`meeting-action ${item.status}`} key={item.id}>
               <button
                 aria-label={item.status === 'done' ? '완료 취소' : '완료 처리'}
@@ -330,7 +359,7 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
       </section>
       <section className="meeting-panel">
         <header>
-          <h3>{weekNameOf(data.week.start)} 다음 액션</h3>
+          <h3>다음 액션</h3>
           <small>
             후속 기록 있음 {nextActions.filter((row) => row.followedUp).length} · 없음 {nextActions.filter((row) => !row.followedUp).length}
             {lastDismissed ? (
@@ -349,7 +378,40 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
           </small>
         </header>
         <div className="meeting-scroll">
-          {nextActions.length === 0 ? <p className="meeting-empty">이 주가 기한인 다음 액션이 없습니다.</p> : null}
+          {reports.length === 0 && nextActions.length === 0 ? <p className="meeting-empty">이 주가 기한인 다음 액션이 없습니다.</p> : null}
+          {reports.map((item) => (
+            <div className={`meeting-action meeting-report ${item.status} ${item.dueReached ? 'due' : ''}`} key={item.id}>
+              <button
+                aria-label={item.status === 'done' ? '완료 취소' : '보고 완료'}
+                className="meeting-check"
+                disabled={!item.canEdit}
+                onClick={() => run(async () => onChanged(await toggleMeetingAction(item.id)))}
+                type="button"
+              >
+                {item.status === 'done' ? <Check size={16} /> : null}
+              </button>
+              <div>
+                <b>{item.title}</b>
+                <small>{item.owner}</small>
+              </div>
+              <em className={`meeting-tag ${item.overdue ? 'danger' : item.dueReached ? 'warn' : ''}`}>
+                {item.overdue ? `${shortDate(item.dueDate)} 기한 지남` : item.dueReached ? '오늘 보고' : `${shortDate(item.dueDate)} 보고`}
+              </em>
+              {item.canEdit ? (
+                <button
+                  aria-label="보고 삭제"
+                  className="meeting-icon"
+                  onClick={() => run(async () => {
+                    await deleteMeetingAction(item.id);
+                    onRemoved(item.id);
+                  })}
+                  type="button"
+                >
+                  <Trash2 size={15} />
+                </button>
+              ) : null}
+            </div>
+          ))}
           {nextActions.map((row) => (
             <div className="meeting-next" key={row.id}>
               {row.followedUp ? (
@@ -376,58 +438,122 @@ function PromisesScene({ data, draft, onDraftChange, onCreated, onChanged, onRem
             </div>
           ))}
         </div>
+        <form className="meeting-report-form" onSubmit={submitReport}>
+          <input
+            aria-label="회의 때 보고할 내용"
+            maxLength={200}
+            onChange={(event) => setReportTitle(event.target.value)}
+            placeholder="회의 때 보고할 내용"
+            value={reportTitle}
+          />
+          <input aria-label="보고 기한" onChange={(event) => setReportDue(event.target.value)} type="date" value={reportDue} />
+          <button type="submit"><Plus size={16} />추가</button>
+        </form>
       </section>
     </div>
   );
 }
 
-function BlockedScene({ data, briefs, briefsLoading, onPromise }: {
+function ServiceScene({ data, onCreated, onRemoved }: {
   data: PipelineMeetingData;
-  briefs: Record<string, MeetingBrief>;
-  briefsLoading: boolean;
-  onPromise: (item: MeetingBlockedItem) => void;
+  onCreated: (record: MeetingServiceRecord) => void;
+  onRemoved: (id: number) => void;
 }) {
-  const { blocked } = data;
-  if (blocked.items.length === 0) {
-    return (
-      <div className="meeting-notice">
-        <h2>장애물이 없습니다</h2>
-        <p>최근 장애물이 기록되었거나 {`2주 이상`} 조용한 진행 건이 없습니다.</p>
-      </div>
-    );
-  }
+  const [institution, setInstitution] = useState('');
+  const [content, setContent] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+
+  const groups = useMemo(() => {
+    const byInstitution = new Map<string, MeetingServiceRecord[]>();
+    data.services.forEach((record) => {
+      byInstitution.set(record.institution, [...(byInstitution.get(record.institution) ?? []), record]);
+    });
+    return [...byInstitution.entries()];
+  }, [data.services]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!institution.trim()) {
+      setError('기관을 입력하세요.');
+      return;
+    }
+    if (!content.trim()) {
+      setError('서비스 내용을 입력하세요.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      onCreated(await createMeetingService({ institution: institution.trim(), content: content.trim(), week: data.week.start }));
+      // 같은 기관 건을 이어서 적는 경우가 많아 기관은 남겨 둔다
+      setContent('');
+      contentRef.current?.focus();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '서비스 기록을 저장하지 못했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    setError('');
+    try {
+      await deleteMeetingService(id);
+      onRemoved(id);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '서비스 기록을 삭제하지 못했습니다.');
+    }
+  };
+
   return (
-    <div className="meeting-blocked">
-      {blocked.items.map((item, index) => {
-        const brief = item.noteId ? briefs[String(item.noteId)] : undefined;
-        return (
-          <article className="meeting-blocked-card" key={item.followupId} style={{ animationDelay: `${index * 120}ms` }}>
-            <header>
-              <span>{item.stageLabel}</span>
-              <strong>{item.amount > 0 ? formatWon(item.amount) : '금액 미정'}</strong>
-            </header>
-            <h3>{item.company || item.customer}</h3>
-            <small>{item.company ? item.customer : ''} · {item.owner}</small>
-            {brief ? (
-              <dl className="meeting-brief">
-                {brief.situation ? <div><dt>상황</dt><dd>{brief.situation}</dd></div> : null}
-                {brief.blocker ? <div><dt>장애물</dt><dd>{brief.blocker}</dd></div> : null}
-                {brief.nextStep ? <div><dt>다음 할 일</dt><dd>{brief.nextStep}</dd></div> : null}
-              </dl>
-            ) : (
-              <p className="meeting-reason">{item.obstacle || (briefsLoading ? '노트를 요약하는 중입니다' : '최근 노트에 장애물 기록이 없습니다')}</p>
-            )}
-            <footer>
-              <em className={item.idleDays >= 14 ? 'danger' : ''}>
-                {item.idleDays === 0 ? '오늘 활동 있음' : `마지막 활동 ${item.idleDays}일 전`}{item.hasNextStep ? '' : ' · 다음 일정 없음'}
-              </em>
-              <button onClick={() => onPromise(item)} type="button">약속으로 남기기</button>
-            </footer>
-          </article>
-        );
-      })}
-      {blocked.total > blocked.items.length ? <p className="meeting-more">금액이 큰 순으로 {blocked.items.length}건만 표시했습니다 (전체 {blocked.total}건)</p> : null}
-    </div>
+    <section className="meeting-panel meeting-service">
+      <header><h3>서비스 기록</h3><strong>{formatNumber(data.services.length)}건</strong></header>
+      <div className="meeting-scroll">
+        {groups.length === 0 ? <p className="meeting-empty">이 주의 서비스 기록이 없습니다. 아래에 기관과 내용을 적어 주세요.</p> : null}
+        {groups.map(([name, records]) => (
+          <section className="meeting-service-group" key={name}>
+            <h4>{name}<em>{records.length}건</em></h4>
+            {records.map((record) => (
+              <article className="meeting-service-item" key={record.id}>
+                <p>{record.content}</p>
+                {record.canEdit ? (
+                  <button aria-label="서비스 기록 삭제" className="meeting-icon" onClick={() => remove(record.id)} type="button">
+                    <Trash2 size={15} />
+                  </button>
+                ) : null}
+              </article>
+            ))}
+          </section>
+        ))}
+      </div>
+      <form className="meeting-service-form" onSubmit={submit}>
+        <input
+          aria-label="기관"
+          list="meeting-institutions"
+          maxLength={100}
+          onChange={(event) => setInstitution(event.target.value)}
+          placeholder="기관"
+          value={institution}
+        />
+        <datalist id="meeting-institutions">
+          {data.form.institutions.map((name) => <option key={name} value={name} />)}
+        </datalist>
+        <textarea
+          aria-label="서비스 내용"
+          onChange={(event) => setContent(event.target.value)}
+          placeholder="내용을 자유롭게 적어 주세요"
+          ref={contentRef}
+          rows={2}
+          value={content}
+        />
+        <button disabled={saving} type="submit">
+          {saving ? <Loader2 className="spin-icon" size={16} /> : <Plus size={16} />}추가
+        </button>
+      </form>
+      {error ? <p className="meeting-error">{error}</p> : null}
+    </section>
   );
 }
 
@@ -473,8 +599,6 @@ export function PipelineMeetingPage() {
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [scene, setScene] = useState(0);
   const [light, setLight] = useState(false);
-  const [briefs, setBriefs] = useState<Record<string, MeetingBrief>>({});
-  const [briefsLoading, setBriefsLoading] = useState(false);
   const [draft, setDraft] = useState<ActionDraft>({ title: '', ownerId: '', dueDate: '', followupId: '' });
 
   useEffect(() => {
@@ -509,26 +633,6 @@ export function PipelineMeetingPage() {
     };
   }, [week, user]);
 
-  useEffect(() => {
-    if (!data?.canUseAi) return undefined;
-    const noteIds = data.blocked.items.map((item) => item.noteId).filter((id): id is number => Boolean(id));
-    if (noteIds.length === 0) return undefined;
-    let alive = true;
-    setBriefsLoading(true);
-    loadMeetingBriefs(noteIds)
-      .then((result) => {
-        if (alive) setBriefs((current) => ({ ...current, ...result }));
-      })
-      // 요약이 없어도 회의는 진행돼야 한다 — 카드는 장애물 원문을 보여 준다
-      .catch(() => undefined)
-      .finally(() => {
-        if (alive) setBriefsLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [data?.canUseAi, data?.blocked.items]);
-
   const go = useCallback((next: number) => {
     setScene(Math.max(0, Math.min(SCENES.length - 1, next)));
   }, []);
@@ -562,20 +666,12 @@ export function PipelineMeetingPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [toggleFullscreen]);
 
+  const dueReports = data?.promises.actionItems.filter((item) => item.kind === 'report' && item.dueReached).length ?? 0;
+
   const updateActions = (update: (items: MeetingActionItem[]) => MeetingActionItem[]) => {
     setData((current) => (current
       ? { ...current, promises: { ...current.promises, actionItems: update(current.promises.actionItems) } }
       : current));
-  };
-
-  const promiseFromBlocked = (item: MeetingBlockedItem) => {
-    setDraft((current) => ({
-      ...current,
-      followupId: String(item.followupId),
-      ownerId: String(item.ownerId),
-      title: '',
-    }));
-    go(PROMISES_SCENE);
   };
 
   return (
@@ -620,11 +716,18 @@ export function PipelineMeetingPage() {
             <h2 className="meeting-scene-title">
               {scene === 4 && weekNameOf(data.week.start) !== '지난주' ? `${shortDate(data.plan.start)} 주 계획` : SCENES[scene]}
               {scene === 4 ? <small>{shortDate(data.plan.start)} – {shortDate(data.plan.end)}</small> : null}
-              {scene === 1 && data.movement.restored ? <small>일정 기록으로 복원한 주입니다 · 보드에서 직접 옮긴 건은 빠져 있을 수 있습니다</small> : null}
+              {scene === 2 && data.movement.restored ? <small>일정 기록으로 복원한 주입니다 · 보드에서 직접 옮긴 건은 빠져 있을 수 있습니다</small> : null}
             </h2>
             {scene === 0 ? <SummaryScene data={data} /> : null}
-            {scene === 1 ? <MovementScene data={data} /> : null}
-            {scene === 2 ? (
+            {scene === 1 ? (
+              <ServiceScene
+                data={data}
+                onCreated={(record) => setData((current) => (current ? { ...current, services: [...current.services, record] } : current))}
+                onRemoved={(id) => setData((current) => (current ? { ...current, services: current.services.filter((row) => row.id !== id) } : current))}
+              />
+            ) : null}
+            {scene === 2 ? <MovementScene data={data} /> : null}
+            {scene === 3 ? (
               <PromisesScene
                 data={data}
                 draft={draft}
@@ -637,7 +740,6 @@ export function PipelineMeetingPage() {
                 onRemoved={(id) => updateActions((items) => items.filter((row) => row.id !== id))}
               />
             ) : null}
-            {scene === 3 ? <BlockedScene briefs={briefs} briefsLoading={briefsLoading} data={data} onPromise={promiseFromBlocked} /> : null}
             {scene === 4 ? <PlanScene data={data} /> : null}
           </div>
         ) : null}
@@ -650,6 +752,7 @@ export function PipelineMeetingPage() {
             <li key={label}>
               <button className={index === scene ? 'active' : ''} onClick={() => go(index)} type="button">
                 <span>{index + 1}</span>{label}
+                {label === '약속' && dueReports > 0 ? <em className="meeting-nav-badge">{dueReports}</em> : null}
               </button>
             </li>
           ))}

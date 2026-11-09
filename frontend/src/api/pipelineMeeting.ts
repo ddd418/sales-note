@@ -18,6 +18,8 @@ export type MeetingMovementGroup = { count: number; amount: number; items: Meeti
 
 export type MeetingActionItem = {
   id: number;
+  kind: 'promise' | 'report';
+  dueReached: boolean;
   title: string;
   ownerId: number;
   owner: string;
@@ -44,20 +46,12 @@ export type MeetingNextAction = {
   href: string;
 };
 
-export type MeetingBlockedItem = {
-  followupId: number;
-  customer: string;
-  company: string;
-  owner: string;
-  ownerId: number;
-  stage: string;
-  stageLabel: string;
-  amount: number;
-  idleDays: number;
-  hasNextStep: boolean;
-  obstacle: string;
-  noteId: number | null;
-  href: string;
+export type MeetingServiceRecord = {
+  id: number;
+  institution: string;
+  content: string;
+  createdAt: string;
+  canEdit: boolean;
 };
 
 export type MeetingPlanItem = {
@@ -84,7 +78,6 @@ export type PipelineMeetingData = {
     selectedUserId: number | null;
     users: { id: number; name: string }[];
   };
-  canUseAi: boolean;
   summary: {
     yearRevenue: number;
     lastYearRevenue: number;
@@ -108,7 +101,7 @@ export type PipelineMeetingData = {
     trackingSince: string | null;
   };
   promises: { actionItems: MeetingActionItem[]; nextActions: MeetingNextAction[] };
-  blocked: { total: number; items: MeetingBlockedItem[] };
+  services: MeetingServiceRecord[];
   plan: {
     start: string;
     end: string;
@@ -116,16 +109,16 @@ export type PipelineMeetingData = {
     byOwner: { ownerId: number; owner: string; items: MeetingPlanItem[] }[];
   };
   form: {
+    institutions: string[];
     owners: { id: number; name: string }[];
     customers: { id: number; label: string }[];
   };
 };
 
-export type MeetingBrief = { situation: string; blocker: string; nextStep: string };
-
 export type MeetingActionPayload = {
   title: string;
-  ownerId: number;
+  kind?: 'promise' | 'report';
+  ownerId?: number;
   dueDate?: string;
   followupId?: number;
 };
@@ -181,7 +174,15 @@ export async function restoreMeetingNextAction(noteId: number): Promise<void> {
   await postJson(`${API}next-actions/${noteId}/restore/`, {}, '되돌리지 못했습니다.');
 }
 
-export async function loadMeetingBriefs(noteIds: number[]): Promise<Record<string, MeetingBrief>> {
-  const result = await postJson<{ briefs: Record<string, MeetingBrief> }>(`${API}briefs/`, { noteIds }, 'AI 요약을 불러오지 못했습니다.');
-  return result.briefs ?? {};
+export async function createMeetingService(body: {
+  institution: string;
+  content: string;
+  week: string;
+}): Promise<MeetingServiceRecord> {
+  const result = await postJson<{ record: MeetingServiceRecord }>(`${API}services/create/`, body, '서비스 기록을 저장하지 못했습니다.');
+  return result.record;
+}
+
+export async function deleteMeetingService(id: number): Promise<void> {
+  await postJson(`${API}services/${id}/delete/`, {}, '서비스 기록을 삭제하지 못했습니다.');
 }

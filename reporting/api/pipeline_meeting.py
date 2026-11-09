@@ -1,16 +1,14 @@
 """아침회의 모드 API — 지난주에 무엇이 달라졌고 오늘 무엇을 정할지 한 번에.
 
 파이프라인(현재 상태)과 파이프라인 시트(활동 목록)를 다시 보여주는 게 아니라, 회의 흐름인
-다섯 장면에 맞춰 묶는다: 요약 → 움직임 → 지난주 약속 → 막힌 건 → 이번 주 계획.
+다섯 장면에 맞춰 묶는다: 요약 → 서비스 → 활동 → 지난주 약속 → 이번 주 계획.
 
 숫자 원칙: 매출은 대시보드와 같은 헬퍼·같은 범위(`delivered_revenue_rows`,
 `_dashboard_scope_users`), 주 경계와 견적 금액은 파이프라인 시트와 같은 규칙을 쓴다.
 회의 화면 숫자가 다른 화면과 갈라지면 발표 자료로 쓸 수 없기 때문이다.
 """
 
-import hashlib
 import json
-import logging
 from datetime import date, datetime, time, timedelta
 
 from django.db.models import Prefetch, Q
@@ -25,7 +23,6 @@ from reporting.api.pipeline_sheet import (
     STAGE_LABELS,
     WEEKDAY_LABELS,
     _account_rows,
-    _activity_body,
     _parse_week_start,
     _schedule_amount,
     _scope_payload,
@@ -34,15 +31,13 @@ from reporting.api.pipeline_sheet import (
     week_bounds,
 )
 from reporting.funnel_views import (
-    _history_pricing_date,
     _money_int,
     _pipeline_account_followup,
     _pipeline_account_stage,
-    _pipeline_contact_label,
     _select_pipeline_pricing,
     pipeline_followups_queryset,
 )
-from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, PipelineNoteBrief, PipelineStageChange, Schedule
+from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, MeetingServiceRecord, PipelineStageChange, Schedule
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -51,15 +46,10 @@ from reporting.views import (
     get_user_profile,
 )
 
-logger = logging.getLogger(__name__)
-
 # 뒤로 갔는지 판단하는 순서. 실주는 순서 밖이라 따로 분류한다.
 STAGE_RANK = {'potential': 0, 'contact': 1, 'quote': 2, 'negotiation': 3, 'won': 4}
 OPEN_STAGES = ('contact', 'quote', 'negotiation')
 
-STALE_DAYS = 14          # 다음 일정 없이 이만큼 조용하면 "막힌 건"으로 본다
-OBSTACLE_WINDOW_DAYS = 30  # 이보다 오래된 장애물 기록은 이미 지난 얘기로 본다
-BLOCKED_LIMIT = 3        # 회의에서 다룰 건 수. 많이 띄우면 아무것도 결정하지 못한다
 MOVEMENT_LIMIT = 12
 
 
@@ -212,11 +202,14 @@ def _action_item_payload(item, viewer, scope_user_ids, today):
     followup = item.followup
     return {
         'id': item.id,
+        'kind': item.kind,
         'title': item.title,
         'ownerId': item.owner_id,
         'owner': _user_display_name(item.owner),
         'dueDate': item.due_date.isoformat() if item.due_date else None,
         'overdue': bool(item.status == MeetingActionItem.STATUS_OPEN and item.due_date and item.due_date < today),
+        # 보고 기한이 되면 회의 화면이 맨 위로 올리고 탭에 건수를 띄운다(완료할 때까지 유지)
+        'dueReached': bool(item.status == MeetingActionItem.STATUS_OPEN and item.due_date and item.due_date <= today),
         'status': item.status,
         'customer': _customer_label(followup),
         'company': _company_label(followup),
@@ -232,7 +225,7 @@ def _action_items(request, scope_users, today, week_start):
     start, _end = _local_day_range(week_start, 7)
     items = (
         MeetingActionItem.objects
-        .filter(owner__in=scope_users)
+        .filter(Q(owner__in=scope_users) | Q(created_by=request.user))
         .filter(Q(status=MeetingActionItem.STATUS_OPEN) | Q(done_at__gte=start))
         .select_related('owner', 'followup', 'followup__company')
         .order_by('status', 'due_date', 'id')
@@ -294,50 +287,25 @@ def _next_action_promises(scope_users, today, week_start):
     return rows
 
 
-# -------------------------------------------------------------- 4. 막힌 건
+# ---------------------------------------------------------------- 서비스
 
-def _blocked(cards, today):
-    rows = []
-    obstacle_since = today - timedelta(days=OBSTACLE_WINDOW_DAYS)
-    for followup, stage, amount in cards:
-        if stage not in OPEN_STAGES:
-            continue
-        histories = getattr(followup, 'all_histories', [])
-        dates = [d for d in (_history_pricing_date(h) for h in histories) if d and d <= today]
-        dates += [s.visit_date for s in getattr(followup, 'recent_schedules', []) if s.visit_date <= today]
-        last_activity = max(dates) if dates else timezone.localtime(followup.created_at).date()
-        idle_days = (today - last_activity).days
-        has_next_step = bool(getattr(followup, 'upcoming_schedules', []))
+def _service_payload(record, viewer, scope_user_ids):
+    return {
+        'id': record.id,
+        'institution': record.institution,
+        'content': record.content,
+        'createdAt': timezone.localtime(record.created_at).date().isoformat(),
+        'canEdit': record.owner_id in scope_user_ids or record.created_by_id == viewer.id,
+    }
 
-        obstacle_note = next(
-            (
-                h for h in histories
-                if (h.meeting_obstacles or '').strip()
-                and (_history_pricing_date(h) or date.min) >= obstacle_since
-            ),
-            None,
-        )
-        stale = not has_next_step and idle_days >= STALE_DAYS
-        if not obstacle_note and not stale:
-            continue
 
-        rows.append({
-            'followupId': followup.id,
-            'customer': _pipeline_contact_label(followup) or _customer_label(followup),
-            'company': _company_label(followup),
-            'owner': _user_display_name(followup.user),
-            'ownerId': followup.user_id,
-            'stage': stage,
-            'stageLabel': STAGE_LABELS.get(stage, stage),
-            'amount': amount,
-            'idleDays': idle_days,
-            'hasNextStep': has_next_step,
-            'obstacle': (obstacle_note.meeting_obstacles or '').strip().split('\n')[0][:160] if obstacle_note else '',
-            'noteId': histories[0].id if histories else None,
-            'href': f'/customers/{followup.id}/',
-        })
-    rows.sort(key=lambda row: (-row['amount'], -row['idleDays']))
-    return {'total': len(rows), 'items': rows[:BLOCKED_LIMIT]}
+def _service_records(request, scope_users, week_start):
+    # 매니저 본인은 영업담당 범위에 안 들어갈 수 있으므로, 직접 적은 기록은 항상 보이게 한다
+    records = MeetingServiceRecord.objects.filter(
+        Q(owner__in=scope_users) | Q(created_by=request.user), week_start=week_start,
+    ).order_by('id').distinct()
+    ids = set(scope_users.values_list('id', flat=True))
+    return [_service_payload(record, request.user, ids) for record in records]
 
 
 # --------------------------------------------------------------- 5. 계획
@@ -411,16 +379,16 @@ def _meeting_payload(request):
         },
         'weekOptions': _week_options(today),
         'scope': _scope_payload(request, profile, scope_users, selected_user),
-        'canUseAi': bool(profile.can_use_ai),
         'summary': summary,
         'movement': movement,
         'promises': {
             'actionItems': _action_items(request, scope_users, today, week_start),
             'nextActions': _next_action_promises(scope_users, today, week_start),
         },
-        'blocked': _blocked(cards, today),
+        'services': _service_records(request, scope_users, week_start),
         'plan': _plan(scope_users, plan_start),
         'form': {
+            'institutions': sorted({_company_label(followup) for followup, _stage, _amount in cards} - {''}),
             'owners': [
                 {'id': user.id, 'name': _user_display_name(user)}
                 for user in scope_users.order_by('username')
@@ -485,14 +453,21 @@ def meeting_action_create_api(request):
     if len(title) > 200:
         return _error('약속 내용은 200자 이내로 입력하세요.')
 
+    kind = str(payload.get('kind') or MeetingActionItem.KIND_PROMISE)
+    if kind not in dict(MeetingActionItem.KIND_CHOICES):
+        return _error('종류를 다시 선택하세요.')
+
     profile = get_user_profile(request.user)
-    scope_users, _selected = _dashboard_scope_users(request, profile)
-    try:
-        owner = scope_users.filter(pk=int(payload.get('ownerId') or request.user.id)).first()
-    except (TypeError, ValueError):
-        owner = None
-    if owner is None:
-        return _error('담당자를 다시 선택하세요.')
+    scope_users, selected_user = _dashboard_scope_users(request, profile)
+    if payload.get('ownerId'):
+        try:
+            owner = scope_users.filter(pk=int(payload['ownerId'])).first()
+        except (TypeError, ValueError):
+            owner = None
+        if owner is None:
+            return _error('담당자를 다시 선택하세요.')
+    else:
+        owner = selected_user or request.user
 
     due_date = None
     if payload.get('dueDate'):
@@ -500,6 +475,8 @@ def meeting_action_create_api(request):
             due_date = date.fromisoformat(str(payload['dueDate']))
         except ValueError:
             return _error('기한 형식이 올바르지 않습니다.')
+    if kind == MeetingActionItem.KIND_REPORT and due_date is None:
+        return _error('보고 기한을 선택하세요.')
 
     followup = None
     if payload.get('followupId'):
@@ -511,7 +488,7 @@ def meeting_action_create_api(request):
             return _error('고객을 다시 선택하세요.')
 
     item = MeetingActionItem.objects.create(
-        owner=owner, followup=followup, title=title, due_date=due_date, created_by=request.user,
+        kind=kind, owner=owner, followup=followup, title=title, due_date=due_date, created_by=request.user,
     )
     ids = set(scope_users.values_list('id', flat=True))
     return JsonResponse(
@@ -585,90 +562,50 @@ def meeting_next_action_restore_api(request, note_id):
     return JsonResponse({'success': True})
 
 
-# ------------------------------------------------------------- AI 한 줄 요약
+# -------------------------------------------------------- 서비스 입력·삭제
 
-BRIEF_NOTE_LIMIT = 5
-BRIEF_SOURCE_CHARS = 4000
-BRIEF_SYSTEM_PROMPT = (
-    "당신은 B2B 영업 회의를 돕는 비서입니다. 영업노트를 읽고 회의에서 바로 말할 수 있게 요약합니다. "
-    "노트에 없는 사실을 만들지 마세요. 해당 내용이 노트에 없으면 빈 문자열로 두세요. "
-    '각 항목은 40자 이내의 한국어 한 문장으로, JSON 으로만 답하세요: '
-    '{"situation": "현재 상황", "blocker": "막힌 점", "next_step": "다음 할 일"}'
-)
+@require_POST
+def meeting_service_create_api(request):
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    payload = _parse_payload(request)
+    if payload is None:
+        return _error('잘못된 요청 형식입니다.')
 
+    institution = str(payload.get('institution') or '').strip()
+    content = str(payload.get('content') or '').strip()
+    if not institution:
+        return _error('기관을 입력하세요.')
+    if len(institution) > 100:
+        return _error('기관은 100자 이내로 입력하세요.')
+    if not content:
+        return _error('서비스 내용을 입력하세요.')
+    if not payload.get('week'):
+        return _error('기준 주가 없습니다.')
 
-def _note_source_text(note):
-    parts = [
-        ('내용', _activity_body(note)),
-        ('장애물', note.meeting_obstacles),
-        ('다음 액션', note.next_action or note.meeting_next_action),
-    ]
-    return '\n'.join(f'[{label}] {text.strip()}' for label, text in parts if (text or '').strip())[:BRIEF_SOURCE_CHARS]
-
-
-def _brief_payload(brief):
-    return {'situation': brief.situation, 'blocker': brief.blocker, 'nextStep': brief.next_step}
-
-
-def _generate_brief(note, source, content_hash):
-    from ai_chat.services import create_openai_chat_completion, get_openai_client, get_standard_openai_model
-
-    response = create_openai_chat_completion(
-        get_openai_client(),
-        'pipeline_meeting_brief',
-        get_standard_openai_model(),
-        [
-            {'role': 'system', 'content': BRIEF_SYSTEM_PROMPT},
-            {'role': 'user', 'content': source},
-        ],
-        response_format={'type': 'json_object'},
-        temperature=0.2,
-        max_tokens=300,
+    profile = get_user_profile(request.user)
+    scope_users, selected_user = _dashboard_scope_users(request, profile)
+    record = MeetingServiceRecord.objects.create(
+        week_start=_parse_week_start(str(payload['week']), timezone.localdate()),
+        owner=selected_user or request.user,
+        institution=institution,
+        content=content,
+        created_by=request.user,
     )
-    parsed = json.loads(response.choices[0].message.content or '{}')
-    brief, _created = PipelineNoteBrief.objects.update_or_create(
-        history=note,
-        defaults={
-            'content_hash': content_hash,
-            'situation': str(parsed.get('situation') or '').strip()[:200],
-            'blocker': str(parsed.get('blocker') or '').strip()[:200],
-            'next_step': str(parsed.get('next_step') or '').strip()[:200],
-        },
-    )
-    return brief
+    ids = set(scope_users.values_list('id', flat=True))
+    return JsonResponse({'success': True, 'record': _service_payload(record, request.user, ids)}, status=201)
 
 
 @require_POST
-def meeting_briefs_api(request):
-    """막힌 건의 최근 노트를 한 줄로 요약한다. 실패한 건은 빠지고 화면은 원문 첫 줄을 쓴다."""
+def meeting_service_delete_api(request, record_id):
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
     profile = get_user_profile(request.user)
-    if not profile.can_use_ai:
-        return _error('AI 기능 사용 권한이 없습니다.', status=403)
-    payload = _parse_payload(request)
-    if payload is None or not isinstance(payload.get('noteIds'), list):
-        return _error('잘못된 요청 형식입니다.')
-    try:
-        note_ids = [int(value) for value in payload['noteIds']][:BRIEF_NOTE_LIMIT]
-    except (TypeError, ValueError):
-        return _error('잘못된 요청 형식입니다.')
-
     scope_users, _selected = _dashboard_scope_users(request, profile)
-    briefs = {}
-    notes = History.objects.filter(pk__in=note_ids, user__in=scope_users).select_related('meeting_brief')
-    for note in notes:
-        source = _note_source_text(note)
-        if not source:
-            continue
-        content_hash = hashlib.sha256(source.encode('utf-8')).hexdigest()
-        cached = getattr(note, 'meeting_brief', None)
-        if cached and cached.content_hash == content_hash:
-            briefs[str(note.id)] = _brief_payload(cached)
-            continue
-        try:
-            briefs[str(note.id)] = _brief_payload(_generate_brief(note, source, content_hash))
-        except Exception:
-            logger.exception('Failed to generate meeting brief for note %s', note.id)
-    return JsonResponse({'success': True, 'briefs': briefs})
+    record = get_object_or_404(MeetingServiceRecord, pk=record_id)
+    if not scope_users.filter(pk=record.owner_id).exists() and record.created_by_id != request.user.id:
+        return _error('이 기록을 삭제할 권한이 없습니다.', status=403)
+    record.delete()
+    return JsonResponse({'success': True})

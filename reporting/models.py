@@ -1978,7 +1978,11 @@ class MeetingActionItem(models.Model):
     STATUS_OPEN = 'open'
     STATUS_DONE = 'done'
     STATUS_CHOICES = [(STATUS_OPEN, '진행 중'), (STATUS_DONE, '완료')]
+    KIND_PROMISE = 'promise'
+    KIND_REPORT = 'report'
+    KIND_CHOICES = [(KIND_PROMISE, '회의 약속'), (KIND_REPORT, '회의 보고')]
 
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=KIND_PROMISE, verbose_name="종류")
     owner = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='meeting_action_items', verbose_name="담당자",
     )
@@ -2006,23 +2010,6 @@ class MeetingActionItem(models.Model):
         indexes = [models.Index(fields=['owner', 'status'], name='meeting_action_owner_idx')]
 
 
-class PipelineNoteBrief(models.Model):
-    """영업노트 AI 한 줄 요약 캐시. 노트 내용이 그대로면 다시 호출하지 않는다."""
-
-    history = models.OneToOneField(
-        History, on_delete=models.CASCADE, related_name='meeting_brief', verbose_name="영업노트",
-    )
-    content_hash = models.CharField(max_length=64, verbose_name="원문 해시")
-    situation = models.CharField(max_length=200, blank=True, verbose_name="상황")
-    blocker = models.CharField(max_length=200, blank=True, verbose_name="막힌 점")
-    next_step = models.CharField(max_length=200, blank=True, verbose_name="다음 할 일")
-    created_at = models.DateTimeField(auto_now=True, verbose_name="생성 시각")
-
-    class Meta:
-        verbose_name = "영업노트 AI 요약"
-        verbose_name_plural = "영업노트 AI 요약"
-
-
 class MeetingDismissedNote(models.Model):
     """아침회의 "다음 액션" 목록에서 숨긴 노트. 노트 자체는 건드리지 않는다."""
 
@@ -2038,6 +2025,31 @@ class MeetingDismissedNote(models.Model):
     class Meta:
         verbose_name = "회의 다음 액션 숨김"
         verbose_name_plural = "회의 다음 액션 숨김"
+
+
+class MeetingServiceRecord(models.Model):
+    """아침회의 기록용 서비스 메모. 기관만 나누고 나머지는 자유 텍스트다. 고객 카드와 연결하지 않는다."""
+
+    week_start = models.DateField(verbose_name="기준 주(월요일)")
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='meeting_service_records', verbose_name="담당자",
+    )
+    institution = models.CharField(max_length=100, verbose_name="기관")
+    content = models.TextField(verbose_name="내용")
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_meeting_service_records', verbose_name="입력한 사람",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+
+    def __str__(self):
+        return f'{self.week_start}: {self.content[:30]}'
+
+    class Meta:
+        verbose_name = "회의 서비스 기록"
+        verbose_name_plural = "회의 서비스 기록"
+        ordering = ['id']
+        indexes = [models.Index(fields=['week_start', 'owner'], name='meeting_service_week_idx')]
 
 
 # 영업 기회 추적 (OpportunityTracking) 모델

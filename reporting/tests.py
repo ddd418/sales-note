@@ -14868,30 +14868,6 @@ class PipelineMeetingApiTests(TestCase):
         self.assertTrue(rows['약속지킴']['followedUp'])
         self.assertFalse(rows['약속놓침']['followedUp'])
 
-    def test_blocked_lists_obstacles_and_skips_cards_with_next_step(self):
-        from datetime import time, timedelta
-        from reporting.models import Company, History, Schedule
-
-        blocked = self.make_followup('막힘')
-        History.objects.create(
-            user=self.user, company=self.company, followup=blocked, action_type='customer_meeting',
-            content='미팅', meeting_obstacles='예산 확정이 3월로 밀림\n세부 내용',
-        )
-        active = self.make_followup('다음일정있음')
-        History.objects.create(
-            user=self.user, company=self.company, followup=active, action_type='customer_meeting',
-            content='미팅', meeting_date=self.today - timedelta(days=40),
-        )
-        Schedule.objects.create(
-            user=self.user, company=self.company, followup=active,
-            visit_date=self.today + timedelta(days=3), visit_time=time(9, 0),
-            activity_type='customer_meeting', status='scheduled',
-        )
-        self.assertIsNotNone(Company.objects.first())
-        items = {row['followupId']: row for row in self._get()['blocked']['items']}
-        self.assertEqual(items[blocked.id]['obstacle'], '예산 확정이 3월로 밀림')
-        self.assertNotIn(active.id, items)
-
     def test_plan_groups_following_week_schedules_by_owner(self):
         from datetime import time, timedelta
         from reporting.models import DeliveryItem, Schedule
@@ -14945,78 +14921,6 @@ class PipelineMeetingApiTests(TestCase):
         self.assertEqual(self.client.post(reverse('reporting:meeting_action_delete_api', args=[item_id])).status_code, 200)
 
 
-class PipelineMeetingBriefTests(TestCase):
-    """AI 요약은 권한자만, 같은 내용은 한 번만, 실패해도 회의가 멈추지 않게."""
-
-    def setUp(self):
-        from reporting.models import Company, Department, FollowUp, History
-
-        self.client = Client()
-        self.company = UserCompany.objects.create(name='브리핑회사')
-        self.user = make_user('brief_me', role='salesman', company=self.company)
-        UserProfile.objects.filter(user=self.user).update(can_use_ai=True)
-        self.other = make_user('brief_other', role='salesman', company=self.company)
-        customer_company = Company.objects.create(name='브리핑 고객사', created_by=self.user)
-        followup = FollowUp.objects.create(
-            user=self.user, user_company=self.company, customer_name='브리핑 담당자', company=customer_company,
-            department=Department.objects.create(company=customer_company, name='브리핑 연구실', created_by=self.user),
-            customer_grade='A',
-        )
-        self.note = History.objects.create(
-            user=self.user, company=self.company, followup=followup, action_type='customer_meeting',
-            content='장문의 미팅 내용', meeting_obstacles='예산 미확정',
-        )
-        self.url = reverse('reporting:meeting_briefs_api')
-        self.client.force_login(self.user)
-
-    def _post(self, ids=None):
-        return self.client.post(self.url, data=json.dumps({'noteIds': ids or [self.note.id]}), content_type='application/json')
-
-    def _fake_response(self):
-        from types import SimpleNamespace
-
-        content = json.dumps({'situation': '견적 검토 중', 'blocker': '예산 미확정', 'next_step': '3월 재연락'}, ensure_ascii=False)
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
-
-    def test_generates_once_then_uses_cache(self):
-        from unittest import mock
-
-        with mock.patch('ai_chat.services.get_openai_client'), \
-                mock.patch('ai_chat.services.create_openai_chat_completion', return_value=self._fake_response()) as call:
-            first = self._post().json()['briefs'][str(self.note.id)]
-            second = self._post().json()['briefs'][str(self.note.id)]
-        self.assertEqual(first, {'situation': '견적 검토 중', 'blocker': '예산 미확정', 'nextStep': '3월 재연락'})
-        self.assertEqual(second, first)
-        self.assertEqual(call.call_count, 1)
-
-    def test_changed_note_is_summarized_again(self):
-        from unittest import mock
-
-        with mock.patch('ai_chat.services.get_openai_client'), \
-                mock.patch('ai_chat.services.create_openai_chat_completion', return_value=self._fake_response()) as call:
-            self._post()
-            self.note.meeting_obstacles = '담당자 변경'
-            self.note.save()
-            self._post()
-        self.assertEqual(call.call_count, 2)
-
-    def test_ai_failure_returns_empty_not_error(self):
-        from unittest import mock
-
-        with mock.patch('ai_chat.services.get_openai_client', side_effect=ValueError('no key')):
-            response = self._post()
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['briefs'], {})
-
-    def test_requires_ai_permission_and_scope(self):
-        from unittest import mock
-
-        with mock.patch('ai_chat.services.create_openai_chat_completion') as call:
-            self.client.force_login(self.other)
-            self.assertEqual(self._post().status_code, 403)
-            UserProfile.objects.filter(user=self.other).update(can_use_ai=True)
-            self.assertEqual(self._post().json()['briefs'], {})
-        self.assertEqual(call.call_count, 0)
 
 
 class PipelineMeetingRound2Tests(TestCase):
@@ -15155,3 +15059,108 @@ class PipelineMeetingRound2Tests(TestCase):
         note = self._note()
         self.client.force_login(self.other)
         self.assertEqual(self.client.post(reverse('reporting:meeting_next_action_dismiss_api', args=[note.id])).status_code, 403)
+
+
+class PipelineMeetingServiceTests(TestCase):
+    """회의 서비스 기록 — 기관 + 자유 텍스트, 기준 주별 건수."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from reporting.api.pipeline_sheet import week_bounds
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='서비스회사')
+        self.user = make_user('service_me', role='salesman', company=self.company)
+        self.other = make_user('service_other', role='salesman', company=self.company)
+        self.monday = week_bounds(timezone.localdate())[0] - timedelta(days=7)
+        self.previous = self.monday - timedelta(days=7)
+        self.client.force_login(self.user)
+
+    def _create(self, **extra):
+        body = {'institution': '건국대학교', 'content': '피펫 교정 무상 지원', 'week': self.monday.isoformat(), **extra}
+        return self.client.post(
+            reverse('reporting:meeting_service_create_api'), data=json.dumps(body), content_type='application/json',
+        )
+
+    def _services(self, week):
+        return self.client.get(reverse('reporting:pipeline_meeting_api'), {'week': week.isoformat()}).json()['services']
+
+    def test_record_keeps_institution_and_appears_only_in_its_week(self):
+        created = self._create(content='첫 줄\n둘째 줄')
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()['record']['institution'], '건국대학교')
+        self.assertEqual(created.json()['record']['content'], '첫 줄\n둘째 줄')
+        self.assertEqual(len(self._services(self.monday)), 1)
+        self.assertEqual(self._services(self.previous), [])
+
+    def test_institution_and_content_are_required(self):
+        self.assertEqual(self._create(institution='  ').status_code, 400)
+        self.assertEqual(self._create(content='  ').status_code, 400)
+
+    def test_manager_sees_record_they_wrote(self):
+        """매니저 본인은 영업담당 범위에 없을 수 있다 — 직접 적은 기록이 사라지면 안 된다."""
+        manager = make_user('service_manager', role='manager', company=self.company)
+        self.client.force_login(manager)
+        self.assertEqual(self._create().status_code, 201)
+        self.assertEqual(len(self._services(self.monday)), 1)
+
+    def test_delete_is_limited_to_scope(self):
+        record_id = self._create().json()['record']['id']
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(reverse('reporting:meeting_service_delete_api', args=[record_id])).status_code, 403)
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(reverse('reporting:meeting_service_delete_api', args=[record_id])).status_code, 200)
+        self.assertEqual(self._services(self.monday), [])
+
+
+class PipelineMeetingReportTests(TestCase):
+    """회의 보고 — 수동 입력하고, 기한이 되면 회의 화면이 알려 준다."""
+
+    def setUp(self):
+        from django.utils import timezone
+
+        self.client = Client()
+        self.company = UserCompany.objects.create(name='보고회사')
+        self.user = make_user('report_me', role='salesman', company=self.company)
+        self.today = timezone.localdate()
+        self.client.force_login(self.user)
+
+    def _create(self, **extra):
+        body = {'title': '교정 결과 보고', 'kind': 'report', 'dueDate': self.today.isoformat(), **extra}
+        return self.client.post(
+            reverse('reporting:meeting_action_create_api'), data=json.dumps(body), content_type='application/json',
+        )
+
+    def _items(self):
+        return self.client.get(reverse('reporting:pipeline_meeting_api')).json()['promises']['actionItems']
+
+    def test_report_is_flagged_only_once_due(self):
+        from datetime import timedelta
+
+        due = self._create().json()['item']
+        later = self._create(dueDate=(self.today + timedelta(days=7)).isoformat()).json()['item']
+        self.assertEqual(due['kind'], 'report')
+        self.assertEqual(due['ownerId'], self.user.id)
+        self.assertTrue(due['dueReached'])
+        self.assertFalse(later['dueReached'])
+
+    def test_report_stays_until_done(self):
+        from datetime import timedelta
+
+        item_id = self._create(dueDate=(self.today - timedelta(days=14)).isoformat()).json()['item']['id']
+        row = next(item for item in self._items() if item['id'] == item_id)
+        self.assertTrue(row['dueReached'])
+        self.assertTrue(row['overdue'])
+        done = self.client.post(reverse('reporting:meeting_action_toggle_api', args=[item_id])).json()['item']
+        self.assertFalse(done['dueReached'])
+
+    def test_report_requires_due_date_and_valid_kind(self):
+        self.assertEqual(self._create(dueDate='').status_code, 400)
+        self.assertEqual(self._create(kind='weird').status_code, 400)
+
+    def test_manager_sees_report_they_wrote(self):
+        manager = make_user('report_manager', role='manager', company=self.company)
+        self.client.force_login(manager)
+        item_id = self._create().json()['item']['id']
+        self.assertIn(item_id, [item['id'] for item in self._items()])
