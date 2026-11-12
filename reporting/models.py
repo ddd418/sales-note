@@ -1479,6 +1479,10 @@ class ServicePart(models.Model):
     """서비스 한 건에서 교체·사용한 부품."""
 
     case = models.ForeignKey(ServiceCase, on_delete=models.CASCADE, related_name='parts', verbose_name="서비스")
+    # 제품 목록에서 고른 부품. 제품이 지워져도 부품명·품번·단가는 남는다.
+    product = models.ForeignKey(
+        'Product', on_delete=models.SET_NULL, null=True, blank=True, related_name='service_parts', verbose_name="제품",
+    )
     name = models.CharField(max_length=200, verbose_name="부품명")
     part_number = models.CharField(max_length=100, blank=True, verbose_name="품번")
     quantity = models.PositiveIntegerField(default=1, verbose_name="수량")

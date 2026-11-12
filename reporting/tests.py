@@ -15450,3 +15450,45 @@ class ServiceMenuApiTests(TestCase):
             list(ServiceEquipment.objects.values_list('case_id', 'name', 'model_name', 'serial_number')),
             [(case.id, '분광기', 'SP-1', 'OLD-1')],
         )
+
+    def _product(self, code, description, price, owner=None, active=True):
+        from reporting.models import Product
+
+        return Product.objects.create(
+            product_code=code, description=description, standard_price=price, unit='EA',
+            is_active=active, created_by=owner or self.user,
+        )
+
+    def test_product_search_lists_accessible_products_as_parts(self):
+        self._product('BR-100', '베어링 세트\n두 번째 줄', 30000)
+        self._product('BR-200', '외부 회사 베어링', 1, owner=self.outsider)
+        self._product('BR-300', '단종 베어링', 1, active=False)
+        url = reverse('reporting:service_product_search_api')
+        items = self.client.get(url, {'q': '베어링'}).json()['items']
+        self.assertEqual([(row['code'], row['name'], row['price']) for row in items], [('BR-100', '베어링 세트', 30000)])
+        self.assertEqual(self.client.get(url, {'q': 'br-1'}).json()['items'][0]['code'], 'BR-100')
+        self.assertEqual(self.client.get(url, {'q': ''}).json()['items'], [])
+
+    def test_part_can_be_picked_from_products(self):
+        from reporting.models import ServicePart
+
+        product = self._product('PUMP-1', '진공 펌프', 500000)
+        foreign = self._product('X-1', '외부 제품', 1, owner=self.outsider)
+        item = self._create(parts=[
+            {'productId': product.id, 'name': '', 'partNumber': '', 'quantity': 1, 'unitPrice': 480000},
+            {'name': '직접 적은 퓨즈', 'quantity': 2},
+        ]).json()['item']
+        self.assertEqual(
+            [(row['productId'], row['name'], row['partNumber'], row['unitPrice']) for row in item['parts']],
+            [(product.id, '진공 펌프', 'PUMP-1', 480000), (None, '직접 적은 퓨즈', '', None)],
+        )
+        self.assertEqual(self._create(parts=[{'productId': foreign.id, 'name': '외부'}]).status_code, 400)
+
+        # 고른 뒤 제품이 판매 중지돼도 그 기록을 고칠 때 연결은 남는다
+        product.is_active = False
+        product.save(update_fields=['is_active'])
+        body = self._body(parts=[{'productId': product.id, 'name': '진공 펌프', 'quantity': 3}])
+        updated = self._post('service_update_api', body, item['id']).json()['item']
+        self.assertEqual([(row['productId'], row['quantity']) for row in updated['parts']], [(product.id, 3)])
+        product.delete()
+        self.assertEqual(ServicePart.objects.get(case_id=item['id']).name, '진공 펌프')

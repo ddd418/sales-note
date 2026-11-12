@@ -788,3 +788,44 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   column-gap: 28px;
 }
+
+/* 교체 부품: 부품명 칸에서 제품 검색 */
+.svc-part-name {
+  position: relative;
+  min-width: 0;
+}
+
+.svc-part-name input {
+  width: 100%;
+}
+
+.svc-part-name:has(.svc-product-tag) input {
+  padding-right: 58px;
+}
+
+.svc-product-tag {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.svc-part-name .svc-picker-list {
+  min-width: min(420px, 90vw);
+}
+
+.svc-hint {
+  margin: 0 0 6px;
+  font-size: 12px;
+}

@@ -22,8 +22,10 @@ import {
   loadServiceForm,
   loadServices,
   searchServiceCustomers,
+  searchServiceProducts,
   updateService,
   type ServiceCustomer,
+  type ServiceProduct,
   type ServiceDetail,
   type ServiceFormOptions,
   type ServiceListData,
@@ -576,7 +578,91 @@ function CustomerPicker({ label, value, onChange, placeholder }: {
   );
 }
 
-type PartRow = { key: number; name: string; partNumber: string; quantity: string; unitPrice: string };
+function PartNameInput({ part, onChange, onPick }: {
+  part: { productId: number | null; name: string };
+  onChange: (value: string) => void;
+  onPick: (product: ServiceProduct | null) => void;
+}) {
+  const [results, setResults] = useState<ServiceProduct[]>([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [term, setTerm] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const query = term.trim();
+    if (!query) {
+      setResults([]);
+      return undefined;
+    }
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      searchServiceProducts(query)
+        .then((rows) => alive && setResults(rows))
+        .catch(() => alive && setResults([]))
+        .finally(() => alive && setSearching(false));
+    }, 250);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [term]);
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  return (
+    <div className="svc-part-name" ref={boxRef}>
+      <input
+        aria-label="부품명"
+        onChange={(event) => {
+          onChange(event.target.value);
+          setTerm(event.target.value);
+          setOpen(true);
+        }}
+        placeholder="부품명 또는 제품 검색"
+        value={part.name}
+      />
+      {part.productId ? (
+        <button aria-label="제품 연결 해제" className="svc-product-tag" onClick={() => onPick(null)} title="제품 연결 해제" type="button">
+          제품<X size={11} />
+        </button>
+      ) : null}
+      {open && term.trim() ? (
+        <ul className="svc-picker-list">
+          {searching && !results.length ? <li className="svc-muted">찾는 중…</li> : null}
+          {!searching && !results.length ? <li className="svc-muted">맞는 제품이 없습니다. 적은 이름 그대로 저장됩니다.</li> : null}
+          {results.map((product) => (
+            <li key={product.id}>
+              <button
+                onClick={() => {
+                  onPick(product);
+                  setTerm('');
+                  setOpen(false);
+                }}
+                type="button"
+              >
+                <strong>{product.name}</strong>
+                <small>
+                  {[product.code, product.specification, product.unit].filter(Boolean).join(' · ')}
+                  {product.price ? ` · ${formatWon(product.price)}` : ''}
+                </small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+type PartRow = { key: number; productId: number | null; name: string; partNumber: string; quantity: string; unitPrice: string };
 type EquipmentRow = { key: number; name: string; modelName: string; serialNumber: string; note: string };
 
 type FormState = {
@@ -607,7 +693,7 @@ const today = () => {
 };
 
 let partKey = 0;
-const emptyPart = (): PartRow => ({ key: ++partKey, name: '', partNumber: '', quantity: '1', unitPrice: '' });
+const emptyPart = (): PartRow => ({ key: ++partKey, productId: null, name: '', partNumber: '', quantity: '1', unitPrice: '' });
 const emptyEquipment = (): EquipmentRow => ({ key: ++partKey, name: '', modelName: '', serialNumber: '', note: '' });
 
 const emptyForm = (): FormState => ({
@@ -662,6 +748,7 @@ function formFromDetail(item: ServiceDetail): FormState {
     chargeAmount: item.chargeAmount !== null ? String(item.chargeAmount) : '',
     parts: item.parts.map((part) => ({
       key: ++partKey,
+      productId: part.productId ?? null,
       name: part.name,
       partNumber: part.partNumber,
       quantity: String(part.quantity),
@@ -693,7 +780,13 @@ function toPayload(form: FormState): ServicePayload {
     chargeAmount: form.chargeType === 'paid' ? form.chargeAmount : '',
     parts: form.parts
       .filter((part) => part.name.trim())
-      .map((part) => ({ name: part.name.trim(), partNumber: part.partNumber.trim(), quantity: Number(part.quantity) || 1, unitPrice: part.unitPrice })),
+      .map((part) => ({
+        productId: part.productId,
+        name: part.name.trim(),
+        partNumber: part.partNumber.trim(),
+        quantity: Number(part.quantity) || 1,
+        unitPrice: part.unitPrice,
+      })),
   };
 }
 
@@ -738,7 +831,18 @@ function ServiceFormView({ id }: { id?: number }) {
     setForm((current) => ({ ...current, equipments: current.equipments.map((row) => (row.key === key ? { ...row, [field]: value } : row)) }));
   };
 
-  const setPart = (key: number, field: keyof Omit<PartRow, 'key'>, value: string) => {
+  const pickProduct = (key: number, product: ServiceProduct | null) => {
+    setForm((current) => ({
+      ...current,
+      parts: current.parts.map((part) => {
+        if (part.key !== key) return part;
+        if (!product) return { ...part, productId: null };
+        return { ...part, productId: product.id, name: product.name, partNumber: product.code, unitPrice: product.price ? String(product.price) : '' };
+      }),
+    }));
+  };
+
+  const setPart = (key: number, field: keyof Omit<PartRow, 'key' | 'productId'>, value: string) => {
     setForm((current) => ({ ...current, parts: current.parts.map((part) => (part.key === key ? { ...part, [field]: value } : part)) }));
   };
 
@@ -898,11 +1002,12 @@ function ServiceFormView({ id }: { id?: number }) {
 
           <section className="svc-card">
             <h3>교체 부품</h3>
+            {form.parts.length ? <p className="svc-muted svc-hint">부품명 칸에 제품 코드나 이름을 치면 제품 목록에서 고를 수 있습니다. 목록에 없으면 그대로 적으세요.</p> : null}
             {form.parts.length ? (
               <div className="svc-part-rows">
                 {form.parts.map((part) => (
                   <div className="svc-part-row" key={part.key}>
-                    <input aria-label="부품명" onChange={(event) => setPart(part.key, 'name', event.target.value)} placeholder="부품명" value={part.name} />
+                    <PartNameInput onChange={(value) => setPart(part.key, 'name', value)} onPick={(product) => pickProduct(part.key, product)} part={part} />
                     <input aria-label="품번" onChange={(event) => setPart(part.key, 'partNumber', event.target.value)} placeholder="품번" value={part.partNumber} />
                     <input aria-label="수량" inputMode="numeric" min={1} onChange={(event) => setPart(part.key, 'quantity', event.target.value)} type="number" value={part.quantity} />
                     <input aria-label="단가" inputMode="numeric" onChange={(event) => setPart(part.key, 'unitPrice', event.target.value)} placeholder="단가(선택)" value={part.unitPrice} />

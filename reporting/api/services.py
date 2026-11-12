@@ -25,6 +25,7 @@ from reporting.views import (
     _dashboard_scope_users,
     _user_display_name,
     can_access_followup,
+    get_accessible_products,
     get_same_company_users,
     get_user_profile,
 )
@@ -33,6 +34,7 @@ OPEN_STATUSES = ('received', 'in_progress', 'waiting')
 LIST_LIMIT = 500
 RELATED_LIMIT = 10
 CUSTOMER_SEARCH_LIMIT = 20
+PRODUCT_SEARCH_LIMIT = 20
 MAX_PARTS = 50
 MAX_EQUIPMENTS = 30
 
@@ -236,6 +238,7 @@ def case_summary_payload(case, viewer, scope_user_ids):
 def _part_payload(part):
     return {
         'id': part.id,
+        'productId': part.product_id,
         'name': part.name,
         'partNumber': part.part_number,
         'quantity': part.quantity,
@@ -491,6 +494,38 @@ def service_customer_search_api(request):
     return JsonResponse({'success': True, 'items': [_customer_payload(followup) for followup in rows]})
 
 
+def product_part_payload(product):
+    """제품을 교체 부품 줄로 옮길 때 쓰는 값. 제품 코드가 품번, 설명 첫 줄이 부품명."""
+    description = (product.description or '').strip().splitlines()[0].strip() if (product.description or '').strip() else ''
+    return {
+        'id': product.id,
+        'code': product.product_code,
+        'name': (description or product.product_code)[:200],
+        'specification': product.specification or '',
+        'unit': product.unit or 'EA',
+        'price': int(product.standard_price or 0),
+    }
+
+
+@never_cache
+@require_GET
+def service_product_search_api(request):
+    """교체 부품으로 고를 제품 검색(제품 메뉴에서 볼 수 있는 활성 제품)."""
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    query = (request.GET.get('q') or '').strip()
+    if not query:
+        return JsonResponse({'success': True, 'items': []})
+    products = get_accessible_products(request)
+    for term in query.split():
+        products = products.filter(
+            Q(product_code__icontains=term) | Q(description__icontains=term) | Q(specification__icontains=term)
+        )
+    rows = products.order_by('product_code')[:PRODUCT_SEARCH_LIMIT]
+    return JsonResponse({'success': True, 'items': [product_part_payload(product) for product in rows]})
+
+
 # ------------------------------------------------------------------ 저장
 
 def _accessible_followup(request, value, message):
@@ -501,6 +536,21 @@ def _accessible_followup(request, value, message):
     if followup is None or not can_access_followup(request.user, followup):
         raise ValueError(message)
     return followup
+
+
+def _part_products(request, case, raw_parts):
+    """부품 줄에 붙은 제품 id → 제품. 볼 수 없는 제품이면 ValueError.
+    이미 이 기록에 붙어 있던 제품은 (나중에 비활성이 됐어도) 그대로 둘 수 있다."""
+    ids = {_int_or_none(raw.get('productId')) for raw in raw_parts if isinstance(raw, dict)} - {None}
+    if not ids:
+        return {}
+    products = {product.id: product for product in get_accessible_products(request).filter(pk__in=ids)}
+    if case.pk:
+        for part in case.parts.select_related('product').filter(product_id__in=ids - set(products)):
+            products[part.product_id] = part.product
+    if ids - set(products):
+        raise ValueError('고를 수 없는 제품이 있습니다.')
+    return products
 
 
 def _apply_payload(case, payload, request, scope_ids, *, creating):
@@ -548,11 +598,15 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
     elif creating:
         case.assigned_to_id = request.user.id
 
+    raw_parts = payload.get('parts') or []
+    raw_parts = raw_parts if isinstance(raw_parts, list) else []
+    products = _part_products(request, case, raw_parts)
     parts = []
-    for index, raw in enumerate(payload.get('parts') or []):
+    for index, raw in enumerate(raw_parts):
         if not isinstance(raw, dict):
             continue
-        name = str(raw.get('name') or '').strip()
+        product = products.get(_int_or_none(raw.get('productId')))
+        name = str(raw.get('name') or '').strip() or (product_part_payload(product)['name'] if product else '')
         if not name:
             continue
         try:
@@ -562,8 +616,9 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
         if quantity < 1:
             raise ValueError('부품 수량은 1 이상이어야 합니다.')
         parts.append(ServicePart(
+            product=product,
             name=name[:200],
-            part_number=str(raw.get('partNumber') or '').strip()[:100],
+            part_number=(str(raw.get('partNumber') or '').strip() or (product.product_code if product else ''))[:100],
             quantity=quantity,
             unit_price=_parse_amount(raw.get('unitPrice')),
             position=index,

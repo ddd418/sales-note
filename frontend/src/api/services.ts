@@ -55,6 +55,7 @@ export type ServiceEquipment = {
 
 export type ServicePart = {
   id?: number;
+  productId?: number | null;
   name: string;
   partNumber: string;
   quantity: number;
@@ -91,6 +92,15 @@ export type ServiceDetail = ServiceSummaryItem & {
   updatedAt: string;
   reportCompany: string;
   related: ServiceRelated;
+};
+
+export type ServiceProduct = {
+  id: number;
+  code: string;
+  name: string;
+  specification: string;
+  unit: string;
+  price: number;
 };
 
 export type ServiceOption = { value: string; label: string };
@@ -150,7 +160,7 @@ export type ServicePayload = {
   equipments: Omit<ServiceEquipment, 'id'>[];
   chargeType: string;
   chargeAmount: string;
-  parts: { name: string; partNumber: string; quantity: number; unitPrice: string }[];
+  parts: { productId: number | null; name: string; partNumber: string; quantity: number; unitPrice: string }[];
 };
 
 async function getJson<T>(href: string, label: string): Promise<T> {
@@ -193,6 +203,14 @@ export async function searchServiceCustomers(q: string): Promise<ServiceCustomer
   const data = await getJson<{ items: ServiceCustomer[] }>(
     `${API}customers/?q=${encodeURIComponent(q)}`,
     '고객을 찾지 못했습니다.',
+  );
+  return data.items;
+}
+
+export async function searchServiceProducts(q: string): Promise<ServiceProduct[]> {
+  const data = await getJson<{ items: ServiceProduct[] }>(
+    `${API}products/?q=${encodeURIComponent(q)}`,
+    '제품을 찾지 못했습니다.',
   );
   return data.items;
 }

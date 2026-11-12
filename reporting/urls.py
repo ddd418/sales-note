@@ -511,6 +511,7 @@ urlpatterns = [
     path('api/services/form/', lazy_view('reporting.api.services.service_form_api'), name='service_form_api'),
     path('api/services/create/', lazy_view('reporting.api.services.service_create_api'), name='service_create_api'),
     path('api/services/customers/', lazy_view('reporting.api.services.service_customer_search_api'), name='service_customer_search_api'),
+    path('api/services/products/', lazy_view('reporting.api.services.service_product_search_api'), name='service_product_search_api'),
     path('api/services/<int:case_id>/', lazy_view('reporting.api.services.service_detail_api'), name='service_detail_api'),
     path('api/services/<int:case_id>/update/', lazy_view('reporting.api.services.service_update_api'), name='service_update_api'),
     path('api/services/<int:case_id>/delete/', lazy_view('reporting.api.services.service_delete_api'), name='service_delete_api'),
