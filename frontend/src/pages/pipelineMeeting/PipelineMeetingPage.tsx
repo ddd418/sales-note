@@ -711,7 +711,13 @@ function ServiceScene({ data, onCreated, onRemoved, onUpdated, onReordered }: {
                       <textarea aria-label="내용 수정" autoFocus onChange={(event) => setEditContent(event.target.value)} rows={3} value={editContent} />
                     </div>
                   ) : (
-                    <p>{record.content}</p>
+                    <div className="meeting-service-text">
+                      <p>{record.content}</p>
+                      <small>
+                        {record.customer ? `${record.customer} · ` : ''}
+                        <a href={record.href} rel="noreferrer" target="_blank">서비스 상세</a>
+                      </small>
+                    </div>
                   )}
                   {record.canEdit ? (
                     <span className="meeting-row-actions">

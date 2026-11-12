@@ -882,3 +882,22 @@
     display: none;
   }
 }
+
+/* 서비스 메뉴와 연결된 기록 — 고객 이름과 상세 링크 */
+.meeting-service-text {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+
+.meeting-service-text small {
+  color: var(--muted);
+  font-size: 0.78em;
+}
+
+.meeting-service-text small a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

@@ -1,0 +1,721 @@
+/* 서비스 메뉴 — 목록·상세·입력. 색은 전역 토큰만 쓴다(밝은/어두운 테마 공통). */
+
+.svc-page {
+  display: grid;
+  gap: 14px;
+}
+
+.svc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.svc-select,
+.svc-field input,
+.svc-field select,
+.svc-field textarea,
+.svc-part-row input {
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.svc-field textarea {
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.svc-select:focus,
+.svc-field input:focus,
+.svc-field select:focus,
+.svc-field textarea:focus,
+.svc-part-row input:focus,
+.svc-search:focus-within {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+.svc-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.svc-tab {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.svc-tab.active {
+  background: var(--ink);
+  color: var(--panel);
+}
+
+.svc-search {
+  display: inline-flex;
+  flex: 1 1 260px;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.svc-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.svc-primary,
+.svc-secondary,
+.svc-danger,
+.svc-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.svc-primary {
+  margin-left: auto;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--panel);
+}
+
+.svc-primary:hover {
+  background: var(--ink-hover);
+}
+
+.svc-primary:disabled,
+.svc-danger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.svc-secondary:hover,
+.svc-ghost:hover {
+  background: var(--panel-hover);
+}
+
+.svc-danger {
+  color: var(--red);
+}
+
+.svc-ghost {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.svc-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.svc-icon:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.svc-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.svc-link:hover {
+  text-decoration: underline;
+}
+
+.svc-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--red);
+  font-size: 13px;
+}
+
+.svc-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.svc-pad {
+  padding: 10px 14px;
+}
+
+.svc-nowrap {
+  white-space: nowrap;
+}
+
+.svc-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 현황 */
+
+.svc-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.svc-stats > div,
+.svc-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.svc-stats > div {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.svc-stats span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.svc-stats strong {
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+.svc-insights {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 10px;
+}
+
+.svc-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 16px;
+}
+
+.svc-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.svc-months {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 6px;
+  height: 120px;
+}
+
+.svc-month {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+.svc-month i {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: var(--ink);
+}
+
+.svc-month b {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.svc-month span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.svc-rank {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.svc-rank li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.svc-rank b {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 목록 */
+
+.svc-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.svc-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.svc-table th {
+  position: sticky;
+  top: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.svc-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.svc-table tbody tr {
+  cursor: pointer;
+}
+
+.svc-table tbody tr:hover {
+  background: var(--panel-hover);
+}
+
+.svc-table td small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.svc-title-cell a {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.svc-empty {
+  margin: 0;
+  padding: 36px 16px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.svc-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.svc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.svc-tone-green { background: var(--success-bg); color: var(--green); }
+.svc-tone-amber { background: var(--warning-bg); color: var(--amber); }
+.svc-tone-blue { background: var(--primary-bg); color: var(--primary); }
+.svc-tone-muted { background: var(--panel-soft); color: var(--muted); }
+
+/* 상세 */
+
+.svc-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.svc-back:hover {
+  color: var(--text);
+}
+
+.svc-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.svc-detail-head h2,
+.svc-form-title {
+  margin: 8px 0 4px;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.svc-detail-head p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.svc-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.svc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.svc-contact strong {
+  font-size: 16px;
+}
+
+.svc-contact > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.svc-contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.svc-equipment dl {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.svc-equipment dt {
+  color: var(--muted);
+}
+
+.svc-equipment dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.svc-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.svc-step h3 b {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--panel);
+  font-size: 11px;
+}
+
+.svc-step p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.svc-parts {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.svc-parts th,
+.svc-parts td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.svc-parts th {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.svc-parts tfoot td {
+  border-bottom: 0;
+  font-weight: 700;
+}
+
+.svc-history {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.svc-history li {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 2px 10px;
+  font-size: 13px;
+}
+
+.svc-history a {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.svc-history small {
+  grid-column: 2;
+  color: var(--muted);
+}
+
+/* 입력 */
+
+.svc-form {
+  display: grid;
+  gap: 12px;
+  max-width: 1100px;
+}
+
+.svc-field {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.svc-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.svc-field small {
+  color: var(--muted-soft);
+  font-size: 11px;
+}
+
+.svc-grid-2,
+.svc-grid-3,
+.svc-grid-4 {
+  display: grid;
+  gap: 10px;
+}
+
+.svc-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.svc-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.svc-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.svc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.svc-picker {
+  position: relative;
+}
+
+.svc-picker-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 20;
+  max-height: 280px;
+  margin: 4px 0 0;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  box-shadow: var(--shadow-pop);
+  list-style: none;
+}
+
+.svc-picker-list li.svc-muted {
+  padding: 8px 10px;
+}
+
+.svc-picker-list button {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.svc-picker-list button:hover {
+  background: var(--panel-hover);
+}
+
+.svc-picker-list small,
+.svc-picked small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.svc-picked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  font-size: 13px;
+}
+
+.svc-picked small {
+  flex: 1;
+}
+
+.svc-part-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.svc-part-row {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 80px 1fr 28px;
+  gap: 6px;
+  align-items: center;
+}
+
+.svc-part-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.svc-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.svc-form-actions .svc-primary {
+  margin-left: 0;
+}
+
+@media (max-width: 960px) {
+  .svc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .svc-insights,
+  .svc-flow,
+  .svc-grid-2,
+  .svc-grid-3,
+  .svc-grid-4 { grid-template-columns: 1fr; }
+  .svc-part-row { grid-template-columns: 1fr 1fr 64px 28px; }
+  .svc-part-row input[aria-label='단가'] { grid-column: 1 / 3; }
+  .svc-primary { margin-left: 0; }
+}
+
+.svc-field .svc-tabs {
+  justify-self: start;
+}
+
+/* 좁은 화면에서 부품 표는 글자를 쪼개지 않고 가로로 넘긴다 */
+.svc-card:has(> .svc-parts) {
+  overflow-x: auto;
+}
+
+.svc-parts th,
+.svc-parts td {
+  white-space: nowrap;
+}

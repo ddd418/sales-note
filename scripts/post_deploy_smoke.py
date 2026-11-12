@@ -21,6 +21,7 @@ FRONTEND_REACT_ROUTES = (
     '/prepayments/',
     '/pipeline-sheet/',
     '/revenue/',
+    '/services/',
 )
 REMOVED_FRONTEND_ROUTES = (
     '/data-cleanup/',
@@ -28,7 +29,6 @@ REMOVED_FRONTEND_ROUTES = (
     '/reports/',
     '/analytics/',
     '/assets/',
-    '/services/',
     '/mailbox/',
     '/business-cards/',
     '/weekly-reports/',
@@ -38,6 +38,7 @@ PROTECTED_DOMAIN_APIS = (
     '/reporting/api/prepayments/',
     '/reporting/api/pipeline-sheet/weekly/',
     '/reporting/api/revenue-detail/',
+    '/reporting/api/services/',
 )
 
 

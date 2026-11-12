@@ -104,6 +104,7 @@ import {
     PipelineSheetPage,
     ReceivablesPage,
     RevenueDetailPage,
+    ServicesPage,
 } from './pages/lazyPages';
 import { customersForDepartment, DemoRecordFormState, getCreateDateParam, getScheduleCalendarRange, isNoteActionAllowed, isQuoteProbabilityRequired, localDateInputValue, makeEmptyScheduleCreateForm, normalizeProbabilityInputValue, NoteCreateFormState, ProductSortField, ProductSortOrder, ProfileFormState, ProfilePasswordFormState, riskLabel, routeMeta, ScheduleCreateFormState, shouldOpenCreatePanel, WorkspaceRoutePage } from './pages/shared/appShared';
 import { emptyPipelineData, type Deal, type HiddenDeal, type PipelineData, type PipelineStage, type PriorityTask, type StageSummary } from './pipelineTypes';
@@ -232,6 +233,7 @@ function getCurrentView(): MainView {
   if (pathname.startsWith('/accounts/')) return 'customers';
   if (pathname.startsWith('/customers/')) return 'customers';
   if (pathname.startsWith('/demos/')) return 'demos';
+  if (pathname.startsWith('/services/')) return 'services';
   if (pathname.startsWith('/notes/')) return 'notes';
   if (pathname.startsWith('/schedules/')) return 'schedules';
   if (pathname.startsWith('/employees/')) return 'employees';
@@ -3065,6 +3067,17 @@ export function App() {
         <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <LazyPageBoundary>
           <PipelineSheetPage />
+        </LazyPageBoundary>
+      </AppShell>
+    );
+  }
+
+  if (currentView === 'services') {
+    return (
+      <AppShell activeView={currentView}>
+        <TopBar activeView={currentView} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+        <LazyPageBoundary>
+          <ServicesPage />
         </LazyPageBoundary>
       </AppShell>
     );

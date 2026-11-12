@@ -17,6 +17,15 @@ const PipelineMeetingPage = React.lazy(async () => ({
   default: (await import('./pages/pipelineMeeting/PipelineMeetingPage')).PipelineMeetingPage,
 }));
 
+const ServiceReportPage = React.lazy(async () => ({
+  default: (await import('./pages/services/ServiceReportPage')).ServiceReportPage,
+}));
+
+// 수리완료보고서는 인쇄용이라 메뉴(셸) 없이 띄운다
+function isServiceReportRoute() {
+  return /^\/services\/\d+\/report\/?$/.test(window.location.pathname);
+}
+
 function isMeetingRoute() {
   return window.location.pathname.startsWith('/pipeline-meeting');
 }
@@ -39,7 +48,9 @@ function RootRouter() {
     };
   }, []);
 
-  const RootComponent = isMeetingRoute() ? PipelineMeetingPage : isDashboardRoute() ? DashboardApp : CrmApp;
+  const RootComponent = isServiceReportRoute()
+    ? ServiceReportPage
+    : isMeetingRoute() ? PipelineMeetingPage : isDashboardRoute() ? DashboardApp : CrmApp;
   return (
     <Suspense fallback={null}>
       <RootComponent />

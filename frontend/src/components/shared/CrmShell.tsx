@@ -15,6 +15,7 @@ import {
   Presentation,
   Table2,
   Users,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { type MouseEvent, type ReactNode, useEffect, useState } from 'react';
@@ -27,6 +28,7 @@ export type MainView =
   | 'customers'
   | 'companies'
   | 'demos'
+  | 'services'
   | 'pipeline'
   | 'pipelineSheet'
   | 'revenue'
@@ -48,6 +50,7 @@ const reactRoutePrefixes = [
   '/accounts/',
   '/customers/',
   '/demos/',
+  '/services/',
   '/pipeline/',
   '/pipeline-sheet/',
   '/revenue/',
@@ -66,6 +69,7 @@ const fallbackNavItems: ShellNavigationItem[] = [
   { id: 'customers', label: '고객', icon: Users, href: '/customers/' },
   { id: 'companies', label: '업체/부서', icon: Building2, href: '/companies/' },
   { id: 'demos', label: '데모관리', icon: Archive, href: '/demos/' },
+  { id: 'services', label: '서비스', icon: Wrench, href: '/services/' },
   { id: 'pipeline', label: '파이프라인', icon: Columns3, href: '/pipeline/' },
   { id: 'pipelineSheet', label: '파이프라인 시트', icon: Table2, href: '/pipeline-sheet/' },
   { id: 'pipelineMeeting', label: '아침회의', icon: Presentation, href: '/pipeline-meeting/' },
@@ -83,6 +87,7 @@ const navIconMap: Record<string, LucideIcon> = {
   customers: Users,
   companies: Building2,
   demos: Archive,
+  services: Wrench,
   pipeline: Columns3,
   pipelineSheet: Table2,
   pipelineMeeting: Presentation,
@@ -102,6 +107,7 @@ const routeShellMeta: Record<MainView, { eyebrow: string; title: string }> = {
   customers: { eyebrow: 'Sales CRM / Customers', title: '고객' },
   companies: { eyebrow: 'Sales CRM / Companies', title: '업체/부서' },
   demos: { eyebrow: 'Sales CRM / Demos', title: '데모관리' },
+  services: { eyebrow: 'Sales CRM / Service', title: '서비스' },
   pipeline: { eyebrow: 'Sales CRM / Pipeline', title: '파이프라인' },
   pipelineSheet: { eyebrow: 'Sales CRM / Pipeline Sheet', title: '파이프라인 시트' },
   revenue: { eyebrow: 'Sales CRM / Revenue', title: '매출 내역' },

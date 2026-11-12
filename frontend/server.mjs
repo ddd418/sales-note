@@ -477,9 +477,6 @@ function isRemovedFrontendRoute(pathname) {
     pathname === '/analytics' ||
     pathname === '/analytics/' ||
     pathname.startsWith('/analytics/') ||
-    pathname === '/services' ||
-    pathname === '/services/' ||
-    pathname.startsWith('/services/') ||
     pathname === '/mailbox' ||
     pathname === '/mailbox/' ||
     pathname.startsWith('/mailbox/') ||

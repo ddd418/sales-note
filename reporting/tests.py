@@ -485,7 +485,8 @@ class ReactNavigationApiTests(TestCase):
         self.assertNotIn('mail', items_by_id)
         self.assertNotIn('businessCards', items_by_id)
         self.assertNotIn('assets', items_by_id)
-        self.assertNotIn('services', items_by_id)
+        # 2026-11 서비스 메뉴를 새 요구(고객 연락·수리완료보고서)로 다시 만들었다
+        self.assertEqual(items_by_id['services']['href'], '/services/')
         self.assertEqual(items_by_id['demos']['href'], '/demos/')
         self.assertEqual(items_by_id['demos']['label'], '데모관리')
         self.assertEqual(items_by_id['receivables']['href'], '/receivables/')
@@ -15108,7 +15109,7 @@ class PipelineMeetingServiceTests(TestCase):
     def test_delete_is_limited_to_scope(self):
         record_id = self._create().json()['record']['id']
         self.client.force_login(self.other)
-        self.assertEqual(self.client.post(reverse('reporting:meeting_service_delete_api', args=[record_id])).status_code, 403)
+        self.assertEqual(self.client.post(reverse('reporting:meeting_service_delete_api', args=[record_id])).status_code, 404)
         self.client.force_login(self.user)
         self.assertEqual(self.client.post(reverse('reporting:meeting_service_delete_api', args=[record_id])).status_code, 200)
         self.assertEqual(self._services(self.monday), [])
@@ -15204,7 +15205,7 @@ class PipelineMeetingEditTests(TestCase):
         self.assertEqual((record['institution'], record['content']), ('서울대학교', '고침'))
         self.assertEqual(self._post('meeting_service_update_api', {'institution': '', 'content': '고침'}, record_id).status_code, 400)
         self.client.force_login(self.other)
-        self.assertEqual(self._post('meeting_service_update_api', {'institution': '가', 'content': '나'}, record_id).status_code, 403)
+        self.assertEqual(self._post('meeting_service_update_api', {'institution': '가', 'content': '나'}, record_id).status_code, 404)
 
     def test_reorder_persists_and_new_record_goes_last(self):
         first, second, third = self._service('가'), self._service('나'), self._service('다')
@@ -15220,3 +15221,167 @@ class PipelineMeetingEditTests(TestCase):
         self.assertEqual(self._post('meeting_service_reorder_api', {'week': self.monday.isoformat(), 'ids': [second, first]}).status_code, 200)
         self.client.force_login(self.user)
         self.assertEqual(self._order(), ['가', '나'])
+
+
+class ServiceMenuApiTests(TestCase):
+    """서비스 메뉴 — 고객·의뢰처 연결, 부품, 연간 현황, 범위, 아침회의 연결, 회의 기록 이전."""
+
+    def setUp(self):
+        from reporting.api.pipeline_sheet import week_bounds
+        from reporting.models import Company, Department
+
+        self.client = Client()
+        self.user_company = UserCompany.objects.create(name='서비스메뉴회사')
+        self.user = make_user('svc_me', role='salesman', company=self.user_company)
+        self.other = make_user('svc_other', role='salesman', company=self.user_company)
+        outsider_company = UserCompany.objects.create(name='다른회사')
+        self.outsider = make_user('svc_outsider', role='salesman', company=outsider_company)
+        school = Company.objects.create(name='서비스대학교', created_by=self.user)
+        lab = Department.objects.create(name='생명과학과', company=school, created_by=self.user)
+        dealer = Company.objects.create(name='대리점상사', created_by=self.user)
+        dealer_dept = Department.objects.create(name='영업팀', company=dealer, created_by=self.user)
+        self.customer = FollowUp.objects.create(
+            user=self.user, company=school, department=lab, customer_name='김연구', phone_number='010-1111-2222',
+        )
+        self.dealer = FollowUp.objects.create(user=self.other, company=dealer, department=dealer_dept, customer_name='박대리')
+        foreign_school = Company.objects.create(name='외부대학교', created_by=self.outsider)
+        foreign_lab = Department.objects.create(name='외부학과', company=foreign_school, created_by=self.outsider)
+        self.foreign = FollowUp.objects.create(user=self.outsider, company=foreign_school, department=foreign_lab, customer_name='외부고객')
+        self.today = timezone.localdate()
+        self.last_monday = week_bounds(self.today)[0] - timedelta(days=7)
+        self.client.force_login(self.user)
+
+    def _post(self, name, body, *args):
+        return self.client.post(reverse(f'reporting:{name}', args=args), data=json.dumps(body), content_type='application/json')
+
+    def _body(self, **extra):
+        body = {
+            'customerId': self.customer.id,
+            'type': 'repair',
+            'status': 'completed',
+            'date': self.last_monday.isoformat(),
+            'title': '원심분리기 소음',
+            'symptom': '회전 시 소음',
+            'diagnosis': '베어링 마모로 판단',
+            'resolution': '베어링 교체 후 시운전',
+            'equipmentName': '원심분리기',
+            'modelName': 'CF-100',
+            'serialNumber': 'SN-001',
+            'chargeType': 'paid',
+            'chargeAmount': '150,000',
+            'parts': [
+                {'name': '베어링', 'partNumber': 'BR-1', 'quantity': 2, 'unitPrice': 30000},
+                {'name': '  ', 'quantity': 1},
+            ],
+        }
+        body.update(extra)
+        return body
+
+    def _create(self, **extra):
+        return self._post('service_create_api', self._body(**extra))
+
+    def test_create_links_customer_and_stores_parts(self):
+        response = self._create()
+        self.assertEqual(response.status_code, 201)
+        item = response.json()['item']
+        self.assertEqual(item['institution'], '서비스대학교')
+        self.assertEqual(item['customer']['phone'], '010-1111-2222')
+        self.assertEqual(item['completedDate'], self.last_monday.isoformat())
+        self.assertEqual(item['chargeAmount'], 150000)
+        self.assertEqual([part['name'] for part in item['parts']], ['베어링'])
+        self.assertEqual(item['partsAmount'], 60000)
+        self.assertEqual(item['diagnosis'], '베어링 마모로 판단')
+        self.assertIsNone(item['requester'])
+
+    def test_update_replaces_parts_and_free_clears_amount(self):
+        case_id = self._create().json()['item']['id']
+        body = self._body(chargeType='free', parts=[{'name': '퓨즈', 'quantity': 3}])
+        item = self._post('service_update_api', body, case_id).json()['item']
+        self.assertIsNone(item['chargeAmount'])
+        self.assertEqual([(part['name'], part['quantity']) for part in item['parts']], [('퓨즈', 3)])
+
+    def test_requester_is_kept_apart_from_end_user(self):
+        item = self._create(requesterId=self.dealer.id, requesterContact='박대리 02-123-4567').json()['item']
+        self.assertEqual(item['customer']['name'], '김연구')
+        self.assertEqual(item['requester']['name'], '대리점상사')
+        self.assertEqual(item['requester']['contact'], '박대리 02-123-4567')
+        typed = self._create(requesterName='직접입력상사').json()['item']
+        self.assertEqual(typed['requester']['name'], '직접입력상사')
+        self.assertEqual(self._create(requesterId=self.foreign.id).status_code, 400)
+
+    def test_validation(self):
+        self.assertEqual(self._create(customerId=None, institution='').status_code, 400)
+        self.assertEqual(self._create(title='', symptom='', diagnosis='', resolution='').status_code, 400)
+        self.assertEqual(self._create(completedDate=(self.last_monday - timedelta(days=1)).isoformat()).status_code, 400)
+        self.assertEqual(self._create(chargeAmount='-1').status_code, 400)
+        self.assertEqual(self._create(customerId=self.foreign.id).status_code, 400)
+        self.assertEqual(self._create(customerId=None, institution='직접 적은 기관').status_code, 201)
+
+    def test_list_summary_and_filters(self):
+        self._create()
+        self._create(status='in_progress', chargeType='free', title='재방문')
+        params = {'year': self.last_monday.year}
+        summary = self.client.get(reverse('reporting:services_api'), params).json()['summary']
+        self.assertEqual((summary['total'], summary['completed'], summary['open']), (2, 1, 1))
+        self.assertEqual((summary['paidCount'], summary['paidAmount'], summary['partsCount']), (1, 150000, 4))
+        self.assertEqual(summary['repeatSerials'][0]['count'], 2)
+        self.assertEqual(sum(summary['byMonth']), 2)
+        open_rows = self.client.get(reverse('reporting:services_api'), {**params, 'status': 'open'}).json()['items']
+        self.assertEqual([row['title'] for row in open_rows], ['재방문'])
+        searched = self.client.get(reverse('reporting:services_api'), {**params, 'q': '베어링'}).json()['items']
+        self.assertEqual(len(searched), 2)
+
+    def test_detail_shows_history_of_same_serial(self):
+        first = self._create().json()['item']['id']
+        second = self._create(title='두 번째').json()['item']
+        self.assertEqual(second['related']['basis'], 'serial')
+        self.assertEqual([row['id'] for row in second['related']['items']], [first])
+
+    def test_other_salesman_cannot_see_or_change(self):
+        case_id = self._create().json()['item']['id']
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.get(reverse('reporting:service_detail_api', args=[case_id])).status_code, 404)
+        self.assertEqual(self._post('service_update_api', self._body(), case_id).status_code, 404)
+        self.assertEqual(self._post('service_delete_api', {}, case_id).status_code, 404)
+        self.client.force_login(self.user)
+        self.assertEqual(self._post('service_delete_api', {}, case_id).status_code, 200)
+
+    def test_customer_search_stays_inside_company(self):
+        url = reverse('reporting:service_customer_search_api')
+        self.assertEqual([row['name'] for row in self.client.get(url, {'q': '대학교'}).json()['items']], ['김연구'])
+        self.assertEqual(self.client.get(url, {'q': '대리점'}).json()['items'][0]['name'], '박대리')
+
+    def test_customer_detail_lists_cases_for_end_user_and_requester(self):
+        self._create(requesterId=self.dealer.id)
+        for followup in (self.customer, self.dealer):
+            data = self.client.get(reverse('reporting:customer_detail_summary_api', args=[followup.id])).json()
+            rows = [row for row in data['operationalRecords']['serviceRecords'] if row['recordType'] == 'service_case']
+            self.assertEqual(rows[0]['summary'], '원심분리기 소음')
+            self.assertTrue(rows[0]['href'].startswith('/services/'))
+
+    def test_menu_case_shows_in_meeting_and_meeting_case_shows_in_menu(self):
+        self._create()
+        meeting = self.client.get(reverse('reporting:pipeline_meeting_api'), {'week': self.last_monday.isoformat()}).json()
+        self.assertEqual([row['content'] for row in meeting['services']], ['원심분리기 소음'])
+        self.assertEqual(meeting['services'][0]['customer'], '김연구')
+        body = {'institution': '회의대학교', 'content': '필터 교체', 'week': self.last_monday.isoformat()}
+        self.assertEqual(self._post('meeting_service_create_api', body).status_code, 201)
+        rows = self.client.get(reverse('reporting:services_api'), {'year': self.last_monday.year}).json()['items']
+        quick = next(row for row in rows if row['institution'] == '회의대학교')
+        self.assertEqual((quick['title'], quick['status'], quick['date']), ('필터 교체', 'completed', self.last_monday.isoformat()))
+
+    def test_meeting_records_are_copied_by_migration(self):
+        import importlib
+        from django.apps import apps as django_apps
+        from reporting.models import MeetingServiceRecord, ServiceCase
+
+        MeetingServiceRecord.objects.create(
+            week_start=self.last_monday, owner=self.user, institution='이전대학교', content='예전 회의 기록',
+            position=3, created_by=self.user,
+        )
+        importlib.import_module('reporting.migrations.0133_service_menu_backfill').forwards(django_apps, None)
+        case = ServiceCase.objects.get(institution='이전대학교')
+        self.assertEqual(
+            (case.title, case.status, case.received_date, case.assigned_to_id, case.meeting_position),
+            ('예전 회의 기록', 'completed', self.last_monday, self.user.id, 3),
+        )

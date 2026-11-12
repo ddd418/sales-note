@@ -1,0 +1,227 @@
+/* 수리완료보고서 — 보고서 화면에서만 불러온다(@page 가 다른 화면 인쇄에 섞이지 않게). */
+
+.rpt-shell {
+  min-height: 100vh;
+  padding: 24px 16px 48px;
+  background: #e7e7e5;
+  color: #111;
+}
+
+.rpt-status {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  color: #555;
+}
+
+.rpt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 210mm;
+  margin: 0 auto 12px;
+  color: #555;
+  font-size: 12px;
+}
+
+.rpt-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #111;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rpt-toolbar button + button {
+  border-color: #c9c9c7;
+  background: #fff;
+  color: #111;
+}
+
+.rpt-page {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 18mm 16mm;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  font-size: 10.5pt;
+  line-height: 1.55;
+}
+
+.rpt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #111;
+}
+
+.rpt-company {
+  margin: 0 0 4px;
+  color: #555;
+  font-size: 10pt;
+  font-weight: 600;
+}
+
+.rpt-head h1 {
+  margin: 0;
+  font-size: 22pt;
+  letter-spacing: 0.18em;
+}
+
+.rpt-meta {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 9.5pt;
+}
+
+.rpt-meta dt {
+  color: #666;
+}
+
+.rpt-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.rpt-grid,
+.rpt-parts {
+  width: 100%;
+  min-width: 0; /* 전역 table min-width(760px) 때문에 A4 여백 밖으로 밀리지 않게 */
+  margin-top: 12px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.rpt-grid th,
+.rpt-grid td,
+.rpt-parts th,
+.rpt-parts td {
+  padding: 6px 8px;
+  color: #111;
+  font-size: 10pt;
+  text-transform: none;
+  overflow-wrap: anywhere;
+  border: 1px solid #bdbdbb;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rpt-grid th,
+.rpt-parts th {
+  width: 18%;
+  background: #f2f2f0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rpt-parts th {
+  width: auto;
+}
+
+.rpt-parts th:nth-child(1) { width: 9%; }
+.rpt-parts th:nth-child(2) { width: 27%; }
+.rpt-parts th:nth-child(3) { width: 18%; }
+.rpt-parts th:nth-child(4) { width: 10%; }
+
+.rpt-parts tfoot td {
+  font-weight: 700;
+}
+
+.rpt-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.rpt-section {
+  margin-top: 14px;
+  break-inside: avoid;
+}
+
+.rpt-section h2 {
+  margin: 0 0 6px;
+  font-size: 11pt;
+}
+
+.rpt-text {
+  min-height: 22mm;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #bdbdbb;
+  white-space: pre-wrap;
+}
+
+.rpt-empty {
+  color: #888;
+}
+
+.rpt-closing {
+  margin: 18px 0 0;
+  text-align: center;
+  font-weight: 600;
+}
+
+.rpt-sign {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.rpt-sign div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #bdbdbb;
+}
+
+.rpt-sign span {
+  color: #555;
+  font-size: 9.5pt;
+}
+
+.rpt-sign strong {
+  flex: 1;
+}
+
+.rpt-sign i {
+  color: #888;
+  font-size: 9pt;
+  font-style: normal;
+}
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  .rpt-shell {
+    padding: 0;
+    background: #fff;
+  }
+
+  .rpt-toolbar {
+    display: none;
+  }
+
+  .rpt-page {
+    width: auto;
+    min-height: auto;
+    box-shadow: none;
+  }
+}

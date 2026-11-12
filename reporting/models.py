@@ -1359,16 +1359,28 @@ class CustomerAsset(models.Model):
 
 
 class ServiceCase(models.Model):
-    """고객 장비 A/S, 클레임, 수리 케이스."""
+    """서비스 기록 — A/S·수리·점검·교정 한 건. 서비스 메뉴·고객 상세·아침회의·수리완료보고서가 함께 쓴다.
+
+    장비는 `CustomerAsset` 을 등록하지 않아도 장비명·모델·시리얼을 직접 적을 수 있다(asset 은 선택).
+    고객(followup)이 없어도 기관만 적어 둘 수 있다 — 아침회의에서 빠르게 적고 나중에 채우는 경우.
+    """
 
     CASE_TYPE_CHOICES = [
         ('service', 'A/S'),
         ('repair', '수리'),
+        ('inspection', '점검'),
+        ('calibration', '교정'),
+        ('install', '설치'),
         ('claim', '클레임'),
         ('exchange', '교환'),
         ('return', '반품'),
-        ('inspection', '점검'),
         ('other', '기타'),
+    ]
+    CHARGE_FREE = 'free'
+    CHARGE_PAID = 'paid'
+    CHARGE_CHOICES = [
+        (CHARGE_FREE, '무상'),
+        (CHARGE_PAID, '유상'),
     ]
     STATUS_CHOICES = [
         ('received', '접수'),
@@ -1384,16 +1396,34 @@ class ServiceCase(models.Model):
         ('urgent', '긴급'),
     ]
 
-    asset = models.ForeignKey(CustomerAsset, on_delete=models.CASCADE, related_name='service_cases', verbose_name="장비")
+    asset = models.ForeignKey(
+        CustomerAsset, on_delete=models.SET_NULL, null=True, blank=True, related_name='service_cases', verbose_name="장비",
+    )
     followup = models.ForeignKey(FollowUp, on_delete=models.SET_NULL, null=True, blank=True, related_name='service_cases', verbose_name="관련 고객")
+    institution = models.CharField(max_length=100, blank=True, verbose_name="기관")
+    # 업체(대리점 등)가 맡기고 실제 사용자는 따로 있는 경우. followup/institution 은 사용자(엔드유저) 쪽이다.
+    requester_followup = models.ForeignKey(
+        FollowUp, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='requested_service_cases', verbose_name="의뢰처 고객",
+    )
+    requester_name = models.CharField(max_length=200, blank=True, verbose_name="의뢰 업체")
+    requester_contact = models.CharField(max_length=200, blank=True, verbose_name="의뢰처 담당자/연락처")
+    title = models.CharField(max_length=200, blank=True, verbose_name="한 줄 요약")
+    equipment_name = models.CharField(max_length=200, blank=True, verbose_name="장비명")
+    model_name = models.CharField(max_length=200, blank=True, verbose_name="모델명")
+    serial_number = models.CharField(max_length=120, blank=True, verbose_name="시리얼번호")
     case_type = models.CharField(max_length=30, choices=CASE_TYPE_CHOICES, default='service', verbose_name="케이스 유형")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='received', verbose_name="상태")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='normal', verbose_name="우선순위")
-    received_date = models.DateField(verbose_name="접수일")
+    received_date = models.DateField(verbose_name="서비스일")
     due_date = models.DateField(null=True, blank=True, verbose_name="처리 예정일")
     completed_date = models.DateField(null=True, blank=True, verbose_name="완료일")
     symptom = models.TextField(blank=True, verbose_name="증상/요청")
+    diagnosis = models.TextField(blank=True, verbose_name="판단(진단)")
     resolution = models.TextField(blank=True, verbose_name="처리 내용")
+    charge_type = models.CharField(max_length=10, choices=CHARGE_CHOICES, default=CHARGE_FREE, verbose_name="유상/무상")
+    charge_amount = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="청구 금액 (원)")
+    meeting_position = models.PositiveIntegerField(default=0, verbose_name="아침회의 표시 순서")
     service_report = models.FileField(upload_to='service_reports/%Y/%m/', null=True, blank=True, verbose_name="서비스 리포트")
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_service_cases', verbose_name="담당자")
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_service_cases', verbose_name="등록자")
@@ -1401,7 +1431,8 @@ class ServiceCase(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
 
     def __str__(self):
-        return f"{self.asset.asset_name} - {self.get_case_type_display()} ({self.get_status_display()})"
+        subject = self.title or self.equipment_name or (self.asset.asset_name if self.asset_id else '') or self.institution
+        return f"{subject} - {self.get_case_type_display()} ({self.get_status_display()})"
 
     class Meta:
         verbose_name = "서비스 케이스"
@@ -1413,7 +1444,28 @@ class ServiceCase(models.Model):
             models.Index(fields=['followup', '-received_date'], name='svc_followup_date_idx'),
             models.Index(fields=['created_by', '-received_date'], name='svc_creator_date_idx'),
             models.Index(fields=['status', 'due_date'], name='svc_status_due_idx'),
+            models.Index(fields=['assigned_to', '-received_date'], name='svc_assigned_date_idx'),
+            models.Index(fields=['serial_number'], name='svc_serial_idx'),
         ]
+
+
+class ServicePart(models.Model):
+    """서비스 한 건에서 교체·사용한 부품."""
+
+    case = models.ForeignKey(ServiceCase, on_delete=models.CASCADE, related_name='parts', verbose_name="서비스")
+    name = models.CharField(max_length=200, verbose_name="부품명")
+    part_number = models.CharField(max_length=100, blank=True, verbose_name="품번")
+    quantity = models.PositiveIntegerField(default=1, verbose_name="수량")
+    unit_price = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="단가 (원)")
+    position = models.PositiveIntegerField(default=0, verbose_name="순서")
+
+    def __str__(self):
+        return f"{self.name} x{self.quantity}"
+
+    class Meta:
+        verbose_name = "서비스 교체 부품"
+        verbose_name_plural = "서비스 교체 부품 목록"
+        ordering = ['position', 'id']
 
 
 class CalibrationRecord(models.Model):

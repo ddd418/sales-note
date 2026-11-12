@@ -12,6 +12,10 @@ export const PipelineSheetPage = lazy(() =>
   import('./pipelineSheet/PipelineSheetPage').then((module) => ({ default: module.PipelineSheetPage })),
 );
 
+export const ServicesPage = lazy(() =>
+  import('./services/ServicesPage').then((module) => ({ default: module.ServicesPage })),
+);
+
 export const RevenueDetailPage = lazy(() =>
   import('./revenueDetail/RevenueDetailPage').then((module) => ({ default: module.RevenueDetailPage })),
 );

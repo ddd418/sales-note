@@ -8,7 +8,7 @@ from django.db import transaction
 from . import vat
 from django.db.models import Sum, Count, Q, Prefetch
 from django.core.paginator import Paginator  # 페이지네이션 추가
-from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceMemory, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, FunnelTarget, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, normalize_probability_to_five
+from .models import FollowUp, Schedule, ScheduleFile, ScheduleQuoteGroupNote, History, AIWorkspaceActionFeedback, AIWorkspaceMemory, UserProfile, Company, Department, DepartmentMemo, HistoryFile, DeliveryItem, UserCompany, Prepayment, PrepaymentLedgerEntry, PrepaymentUsage, EmailLog, CustomerCategory, FunnelTarget, Quote, DocumentTemplate, DocumentGenerationLog, CustomerAsset, ServiceCase, normalize_probability_to_five
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import reverse_lazy, reverse
 from functools import wraps
@@ -460,6 +460,7 @@ def navigation_api(request):
         {'id': 'customers', 'label': '고객', 'href': '/customers/'},
         {'id': 'companies', 'label': '업체/부서', 'href': '/companies/'},
         {'id': 'demos', 'label': '데모관리', 'href': '/demos/'},
+        {'id': 'services', 'label': '서비스', 'href': '/services/'},
         {'id': 'pipeline', 'label': '파이프라인', 'href': '/pipeline/'},
         {'id': 'pipelineSheet', 'label': '파이프라인 시트', 'href': '/pipeline-sheet/'},
         {'id': 'pipelineMeeting', 'label': '아침회의', 'href': '/pipeline-meeting/'},
@@ -3373,6 +3374,40 @@ def _customer_delivery_record_payloads(followup, scope_users, limit=50):
     return [_customer_delivery_record_payload(schedule) for schedule in list(delivery_schedules_qs)]
 
 
+def _customer_service_case_record_payload(case):
+    """서비스 메뉴의 기록. 목록 칸 이름은 일정 기반 기록과 같게 맞춘다."""
+    customer_name = ''
+    if case.followup:
+        customer_name = case.followup.customer_name or case.followup.manager or ''
+    title = ''
+    for text in (case.title, case.symptom, case.resolution, case.diagnosis):
+        if (text or '').strip():
+            title = text.strip().splitlines()[0].strip()
+            break
+    return {
+        'id': case.id,
+        'recordType': 'service_case',
+        'date': _date_or_none(case.received_date),
+        'dueDate': _date_or_none(case.due_date),
+        'completedDate': _date_or_none(case.completed_date),
+        'customerName': customer_name,
+        'assetName': case.equipment_name or (case.asset.asset_name if case.asset_id else ''),
+        'assetModelName': case.model_name or (case.asset.model_name if case.asset_id else ''),
+        'ownerName': _user_display_name(case.created_by) if case.created_by_id else '',
+        'assignedTo': _user_display_name(case.assigned_to) if case.assigned_to_id else '',
+        'status': case.status,
+        'statusLabel': case.get_status_display(),
+        'priority': case.priority,
+        'priorityLabel': case.get_priority_display(),
+        'caseType': case.case_type,
+        'caseTypeLabel': case.get_case_type_display(),
+        'summary': title,
+        'detail': case.diagnosis or case.resolution or '',
+        'href': f'/services/{case.id}/',
+        'djangoHref': '',
+    }
+
+
 def _customer_service_schedule_record_payload(schedule):
     return {
         'id': schedule.id,
@@ -3417,7 +3452,15 @@ def _customer_operational_records_payload(followup, scope_users, actor):
             activity_type='service',
         ).select_related('user', 'followup').order_by('-visit_date', '-visit_time', '-id')[:50]
     )
+    service_cases = list(
+        ServiceCase.objects.filter(Q(followup__in=shared_followups) | Q(requester_followup__in=shared_followups))
+        .filter(Q(assigned_to__in=scope_users) | Q(created_by=actor))
+        .select_related('followup', 'asset', 'assigned_to', 'created_by')
+        .distinct()
+        .order_by('-received_date', '-id')[:50]
+    )
     service_records = [
+        *[_customer_service_case_record_payload(case) for case in service_cases],
         *[_customer_service_schedule_record_payload(schedule) for schedule in service_schedules],
     ]
     service_records = sorted(

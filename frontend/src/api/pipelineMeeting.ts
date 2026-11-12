@@ -50,6 +50,10 @@ export type MeetingServiceRecord = {
   id: number;
   institution: string;
   content: string;
+  customer: string;
+  statusLabel: string;
+  typeLabel: string;
+  href: string;
   createdAt: string;
   canEdit: boolean;
 };

@@ -300,6 +300,17 @@ export const routeMeta: Record<
       { label: '일정 캘린더', href: scheduleCalendarUrl },
     ],
   },
+  services: {
+    eyebrow: 'Sales CRM / Service',
+    title: '서비스',
+    summary: 'A/S·수리·점검 기록을 모아 증상·판단·교체 부품을 한눈에 보고, 수리완료보고서를 뽑습니다.',
+    primaryHref: '/services/',
+    primaryLabel: '서비스 보기',
+    actions: [
+      { label: '서비스 기록', href: '/services/new/', primary: true },
+      { label: '고객 목록', href: '/customers/' },
+    ],
+  },
   pipelineSheet: {
     eyebrow: 'Sales CRM / Pipeline Sheet',
     title: '파이프라인 시트',

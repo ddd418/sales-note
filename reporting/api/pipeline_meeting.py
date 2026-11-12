@@ -38,7 +38,8 @@ from reporting.funnel_views import (
     _select_pipeline_pricing,
     pipeline_followups_queryset,
 )
-from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, MeetingServiceRecord, PipelineStageChange, Schedule
+from reporting.api.services import can_edit_case, case_title, visible_service_cases
+from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, PipelineStageChange, Schedule, ServiceCase
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -290,23 +291,35 @@ def _next_action_promises(scope_users, today, week_start):
 
 # ---------------------------------------------------------------- 서비스
 
-def _service_payload(record, viewer, scope_user_ids):
+def _service_payload(case, viewer, scope_user_ids):
     return {
-        'id': record.id,
-        'institution': record.institution,
-        'content': record.content,
-        'createdAt': timezone.localtime(record.created_at).date().isoformat(),
-        'canEdit': record.owner_id in scope_user_ids or record.created_by_id == viewer.id,
+        'id': case.id,
+        'institution': case.institution or (_company_label(case.followup) if case.followup_id else ''),
+        'content': case_title(case),
+        'customer': _customer_label(case.followup) if case.followup_id else '',
+        'statusLabel': case.get_status_display(),
+        'typeLabel': case.get_case_type_display(),
+        'href': f'/services/{case.id}/',
+        'createdAt': timezone.localtime(case.created_at).date().isoformat(),
+        'canEdit': can_edit_case(case, viewer, scope_user_ids),
     }
 
 
+def _week_cases(request, scope_users, week_start):
+    # 서비스 메뉴와 같은 범위·같은 기록. 그 주(월~일)에 한 서비스를 보여준다.
+    return visible_service_cases(request, scope_users).filter(
+        received_date__gte=week_start, received_date__lte=week_start + timedelta(days=6),
+    )
+
+
 def _service_records(request, scope_users, week_start):
-    # 매니저 본인은 영업담당 범위에 안 들어갈 수 있으므로, 직접 적은 기록은 항상 보이게 한다
-    records = MeetingServiceRecord.objects.filter(
-        Q(owner__in=scope_users) | Q(created_by=request.user), week_start=week_start,
-    ).order_by('position', 'id').distinct()
+    cases = (
+        _week_cases(request, scope_users, week_start)
+        .select_related('followup', 'followup__company')
+        .order_by('meeting_position', 'received_date', 'id')
+    )
     ids = set(scope_users.values_list('id', flat=True))
-    return [_service_payload(record, request.user, ids) for record in records]
+    return [_service_payload(case, request.user, ids) for case in cases]
 
 
 # --------------------------------------------------------------- 5. 계획
@@ -588,6 +601,7 @@ def meeting_next_action_restore_api(request, note_id):
 
 @require_POST
 def meeting_service_create_api(request):
+    """회의 중 빠른 기록. 서비스 메뉴에 그대로 쌓이고, 고객·장비·부품은 나중에 채운다."""
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
@@ -608,30 +622,37 @@ def meeting_service_create_api(request):
 
     profile = get_user_profile(request.user)
     scope_users, selected_user = _dashboard_scope_users(request, profile)
-    week_start = _parse_week_start(str(payload['week']), timezone.localdate())
+    today = timezone.localdate()
+    week_start = _parse_week_start(str(payload['week']), today)
+    # 회의에 보고하는 서비스는 이미 한 일이다. 이번 주면 오늘, 지난 주면 그 주 월요일로 둔다.
+    service_date = today if week_start <= today <= week_start + timedelta(days=6) else week_start
     last_position = (
-        MeetingServiceRecord.objects.filter(week_start=week_start).aggregate(last=Max('position'))['last'] or 0
+        _week_cases(request, scope_users, week_start).aggregate(last=Max('meeting_position'))['last'] or 0
     )
-    record = MeetingServiceRecord.objects.create(
-        week_start=week_start,
-        owner=selected_user or request.user,
+    case = ServiceCase.objects.create(
         institution=institution,
-        content=content,
-        position=last_position + 1,
+        title=content[:200],
+        resolution=content if len(content) > 200 else '',
+        case_type='service',
+        status='completed',
+        received_date=service_date,
+        completed_date=service_date,
+        assigned_to=selected_user or request.user,
         created_by=request.user,
+        meeting_position=last_position + 1,
     )
     ids = set(scope_users.values_list('id', flat=True))
-    return JsonResponse({'success': True, 'record': _service_payload(record, request.user, ids)}, status=201)
+    return JsonResponse({'success': True, 'record': _service_payload(case, request.user, ids)}, status=201)
 
 
 def _editable_service_or_error(request, record_id):
     profile = get_user_profile(request.user)
     scope_users, _selected = _dashboard_scope_users(request, profile)
-    record = get_object_or_404(MeetingServiceRecord, pk=record_id)
+    case = get_object_or_404(visible_service_cases(request, scope_users).select_related('followup', 'followup__company'), pk=record_id)
     ids = set(scope_users.values_list('id', flat=True))
-    if record.owner_id not in ids and record.created_by_id != request.user.id:
+    if not can_edit_case(case, request.user, ids):
         return None, _error('이 기록을 변경할 권한이 없습니다.', status=403), ids
-    return record, None, ids
+    return case, None, ids
 
 
 @require_POST
@@ -639,10 +660,10 @@ def meeting_service_delete_api(request, record_id):
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
-    record, error, _ids = _editable_service_or_error(request, record_id)
+    case, error, _ids = _editable_service_or_error(request, record_id)
     if error:
         return error
-    record.delete()
+    case.delete()
     return JsonResponse({'success': True})
 
 
@@ -651,7 +672,7 @@ def meeting_service_update_api(request, record_id):
     auth_response = _api_login_required_response(request)
     if auth_response:
         return auth_response
-    record, error, ids = _editable_service_or_error(request, record_id)
+    case, error, ids = _editable_service_or_error(request, record_id)
     if error:
         return error
     payload = _parse_payload(request)
@@ -665,10 +686,10 @@ def meeting_service_update_api(request, record_id):
         return _error('기관은 100자 이내로 입력하세요.')
     if not content:
         return _error('서비스 내용을 입력하세요.')
-    record.institution = institution
-    record.content = content
-    record.save(update_fields=['institution', 'content'])
-    return JsonResponse({'success': True, 'record': _service_payload(record, request.user, ids)})
+    case.institution = institution
+    case.title = content[:200]
+    case.save(update_fields=['institution', 'title', 'updated_at'])
+    return JsonResponse({'success': True, 'record': _service_payload(case, request.user, ids)})
 
 
 @require_POST
@@ -688,18 +709,13 @@ def meeting_service_reorder_api(request):
     profile = get_user_profile(request.user)
     scope_users, _selected = _dashboard_scope_users(request, profile)
     week_start = _parse_week_start(str(payload['week']), timezone.localdate())
-    records = {
-        record.id: record
-        for record in MeetingServiceRecord.objects.filter(
-            Q(owner__in=scope_users) | Q(created_by=request.user), week_start=week_start, pk__in=ordered_ids,
-        )
-    }
+    cases = {case.id: case for case in _week_cases(request, scope_users, week_start).filter(pk__in=ordered_ids)}
     changed = []
-    for position, record_id in enumerate(ordered_ids, start=1):
-        record = records.get(record_id)
-        if record is not None:
-            record.position = position
-            changed.append(record)
+    for position, case_id in enumerate(ordered_ids, start=1):
+        case = cases.get(case_id)
+        if case is not None:
+            case.meeting_position = position
+            changed.append(case)
     with transaction.atomic():
-        MeetingServiceRecord.objects.bulk_update(changed, ['position'])
+        ServiceCase.objects.bulk_update(changed, ['meeting_position'])
     return JsonResponse({'success': True})
