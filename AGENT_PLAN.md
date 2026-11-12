@@ -16,6 +16,8 @@
 
 **DB change required**: Yes — 0136(이름 변경). 시작 시 migrate.
 
+**Deploy**: Done. `cdd69b0` → Railway `web` `480b1675-dc10-4afb-934f-fccf208c4796` SUCCESS, `post_deploy_smoke` ok. `salesnote-mcp` `c397f4ac-651f-4001-bf08-75142963286a` SUCCESS. 운영 MCP `salesnote_read services/form/` 200 확인. 운영 화면은 사용자 확인 대기.
+
 **검증**: 서비스·아침회의·MCP 토큰 테스트 통과, 전체 회귀 573개 — 실패 3건은 기존 무관 결함(점검·MCP 변경 전 실행, 그 변경은 대상 테스트 33개로 확인). tsc 0, 빌드 성공. 로컬 Playwright: 기존 모델 값이 브랜드 칸으로 옮겨진 것 확인 → 브랜드 입력 → 상세/목록 "Hanil 원심분리기 외 2대"/아침회의/보고서 머리글 "브랜드".
 
 ---
