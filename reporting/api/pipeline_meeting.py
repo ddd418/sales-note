@@ -38,8 +38,8 @@ from reporting.funnel_views import (
     _select_pipeline_pricing,
     pipeline_followups_queryset,
 )
-from reporting.api.services import can_edit_case, case_title, visible_service_cases
-from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, PipelineStageChange, Schedule, ServiceCase
+from reporting.api.services import can_edit_case, case_equipments_payload, case_title, visible_service_cases
+from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, PipelineStageChange, Schedule, ServiceCase, ServiceEquipment
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -296,6 +296,8 @@ def _service_payload(case, viewer, scope_user_ids):
         'id': case.id,
         'institution': case.institution or (_company_label(case.followup) if case.followup_id else ''),
         'content': case_title(case),
+        # 회의 화면은 한 줄 요약 대신 장비 목록을 보여준다
+        'equipments': case_equipments_payload(case),
         'customer': _customer_label(case.followup) if case.followup_id else '',
         'statusLabel': case.get_status_display(),
         'typeLabel': case.get_case_type_display(),
@@ -315,7 +317,8 @@ def _week_cases(request, scope_users, week_start):
 def _service_records(request, scope_users, week_start):
     cases = (
         _week_cases(request, scope_users, week_start)
-        .select_related('followup', 'followup__company')
+        .select_related('followup', 'followup__company', 'asset')
+        .prefetch_related(Prefetch('equipments', queryset=ServiceEquipment.objects.order_by('position', 'id')))
         .order_by('meeting_position', 'received_date', 'id')
     )
     ids = set(scope_users.values_list('id', flat=True))

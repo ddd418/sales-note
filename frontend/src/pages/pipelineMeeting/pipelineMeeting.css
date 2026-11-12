@@ -763,20 +763,6 @@
   box-shadow: 0 2px 0 var(--meeting-accent);
 }
 
-.meeting-row-actions {
-  display: inline-flex;
-  flex: 0 0 auto;
-}
-
-.meeting-service-edit {
-  display: grid;
-  flex: 1;
-  gap: 6px;
-  min-width: 0;
-}
-
-.meeting-service-edit input,
-.meeting-service-edit textarea,
 .meeting-inline-edit {
   width: 100%;
   padding: 0.5em 0.7em;
@@ -802,43 +788,6 @@
   font-size: 1.05em;
   line-height: 1.5;
   white-space: pre-wrap;
-}
-
-.meeting-service-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) auto;
-  align-items: start;
-  gap: 6px;
-  padding: 0.7em;
-  border-top: 1px solid var(--line);
-}
-
-.meeting-service-form input,
-.meeting-service-form textarea {
-  padding: 0.6em 0.7em;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.9em;
-  resize: vertical;
-}
-
-.meeting-service-form button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3em;
-  height: 2.5em;
-  padding: 0 0.9em;
-  border: 0;
-  border-radius: 8px;
-  background: var(--meeting-accent);
-  color: var(--meeting-on-accent);
-  font: inherit;
-  font-size: 0.85em;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 /* 계획 */
@@ -897,6 +846,39 @@
 }
 
 .meeting-service-text small a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 회의 서비스 장면은 한 줄 요약 대신 장비 목록 */
+.meeting-equipments {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meeting-equipments li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2em 0.7em;
+  font-size: 1.05em;
+}
+
+.meeting-equipments strong {
+  font-weight: 600;
+}
+
+.meeting-equipments span,
+.meeting-service .meeting-muted {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.meeting-service header small a {
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;

@@ -887,7 +887,7 @@ function ServiceFormView({ id }: { id?: number }) {
             <h3>내용</h3>
             <label className="svc-field">
               <span>한 줄 요약</span>
-              <input maxLength={200} onChange={(event) => set('title', event.target.value)} placeholder="목록·아침회의에 보이는 문장 (비우면 증상 첫 줄)" value={form.title} />
+              <input maxLength={200} onChange={(event) => set('title', event.target.value)} placeholder="서비스 목록에 보이는 문장 (비우면 증상 첫 줄)" value={form.title} />
             </label>
             <div className="svc-grid-3">
               <label className="svc-field"><span>증상</span><textarea onChange={(event) => set('symptom', event.target.value)} placeholder="고객이 말한 증상·요청" rows={5} value={form.symptom} /></label>

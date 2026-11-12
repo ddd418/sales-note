@@ -15364,6 +15364,10 @@ class ServiceMenuApiTests(TestCase):
         meeting = self.client.get(reverse('reporting:pipeline_meeting_api'), {'week': self.last_monday.isoformat()}).json()
         self.assertEqual([row['content'] for row in meeting['services']], ['원심분리기 소음'])
         self.assertEqual(meeting['services'][0]['customer'], '김연구')
+        self.assertEqual(
+            [(row['name'], row['modelName'], row['serialNumber']) for row in meeting['services'][0]['equipments']],
+            [('원심분리기', 'CF-100', 'SN-001')],
+        )
         body = {'institution': '회의대학교', 'content': '필터 교체', 'week': self.last_monday.isoformat()}
         self.assertEqual(self._post('meeting_service_create_api', body).status_code, 201)
         rows = self.client.get(reverse('reporting:services_api'), {'year': self.last_monday.year}).json()['items']

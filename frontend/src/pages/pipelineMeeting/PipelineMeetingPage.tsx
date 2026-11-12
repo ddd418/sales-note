@@ -18,16 +18,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import {
   createMeetingAction,
-  createMeetingService,
   deleteMeetingAction,
-  deleteMeetingService,
   dismissMeetingNextAction,
   loadPipelineMeeting,
   reorderMeetingServices,
   restoreMeetingNextAction,
   toggleMeetingAction,
   updateMeetingAction,
-  updateMeetingService,
   type MeetingActionItem,
   type MeetingMovementGroup,
   type MeetingMovementItem,
@@ -527,23 +524,14 @@ const dropsAfter = (event: DragEvent<HTMLElement>) => {
   return event.clientY > rect.top + rect.height / 2;
 };
 
-function ServiceScene({ data, onCreated, onRemoved, onUpdated, onReordered }: {
+function ServiceScene({ data, onReordered }: {
   data: PipelineMeetingData;
-  onCreated: (record: MeetingServiceRecord) => void;
-  onRemoved: (id: number) => void;
-  onUpdated: (record: MeetingServiceRecord) => void;
   onReordered: (records: MeetingServiceRecord[]) => void;
 }) {
-  const [institution, setInstitution] = useState('');
-  const [content, setContent] = useState('');
-  const [saving, setSaving] = useState(false);
+  // 회의에서는 보기만 한다(기관별 장비 목록). 입력·수정은 서비스 메뉴에서.
   const [error, setError] = useState('');
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editInstitution, setEditInstitution] = useState('');
-  const [editContent, setEditContent] = useState('');
   const [drag, setDrag] = useState<ServiceDrag | null>(null);
   const [drop, setDrop] = useState<ServiceDrop | null>(null);
-  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const groups = useMemo<ServiceGroup[]>(() => {
     const byInstitution = new Map<string, MeetingServiceRecord[]>();
@@ -552,62 +540,6 @@ function ServiceScene({ data, onCreated, onRemoved, onUpdated, onReordered }: {
     });
     return [...byInstitution.entries()];
   }, [data.services]);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!institution.trim()) {
-      setError('기관을 입력하세요.');
-      return;
-    }
-    if (!content.trim()) {
-      setError('서비스 내용을 입력하세요.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      onCreated(await createMeetingService({ institution: institution.trim(), content: content.trim(), week: data.week.start }));
-      // 같은 기관 건을 이어서 적는 경우가 많아 기관은 남겨 둔다
-      setContent('');
-      contentRef.current?.focus();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '서비스 기록을 저장하지 못했습니다.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const remove = async (id: number) => {
-    setError('');
-    try {
-      await deleteMeetingService(id);
-      onRemoved(id);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '서비스 기록을 삭제하지 못했습니다.');
-    }
-  };
-
-  const startEdit = (record: MeetingServiceRecord) => {
-    setEditingId(record.id);
-    setEditInstitution(record.institution);
-    setEditContent(record.content);
-    setError('');
-  };
-
-  const saveEdit = async () => {
-    if (editingId === null) return;
-    if (!editInstitution.trim() || !editContent.trim()) {
-      setError('기관과 내용을 모두 입력하세요.');
-      return;
-    }
-    setError('');
-    try {
-      onUpdated(await updateMeetingService(editingId, { institution: editInstitution.trim(), content: editContent.trim() }));
-      setEditingId(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '서비스 기록을 수정하지 못했습니다.');
-    }
-  };
 
   const applyOrder = async (nextGroups: ServiceGroup[]) => {
     const records = nextGroups.flatMap(([, rows]) => rows);
@@ -667,9 +599,14 @@ function ServiceScene({ data, onCreated, onRemoved, onUpdated, onReordered }: {
 
   return (
     <section className="meeting-panel meeting-service">
-      <header><h3>서비스 기록</h3><small>끌어서 순서를 바꿀 수 있습니다</small></header>
+      <header>
+        <h3>서비스 기록</h3>
+        <small>
+          끌어서 순서를 바꿀 수 있습니다 · <a href="/services/new/" rel="noreferrer" target="_blank">서비스 기록 추가</a>
+        </small>
+      </header>
       <div className="meeting-scroll">
-        {groups.length === 0 ? <p className="meeting-empty">이 주의 서비스 기록이 없습니다. 아래에 기관과 내용을 적어 주세요.</p> : null}
+        {groups.length === 0 ? <p className="meeting-empty">이 주의 서비스 기록이 없습니다. 서비스 메뉴에서 기록하면 여기에 보입니다.</p> : null}
         {groups.map(([name, records]) => (
           <section
             className={`meeting-service-group${dropClass(`group:${name}`)}${drag?.kind === 'group' && drag.institution === name ? ' dragging' : ''}`}
@@ -688,82 +625,42 @@ function ServiceScene({ data, onCreated, onRemoved, onUpdated, onReordered }: {
             >
               <GripVertical size={15} />{name}
             </h4>
-            {records.map((record) => {
-              const editing = editingId === record.id;
-              return (
-                <article
-                  className={`meeting-service-item${dropClass(`item:${record.id}`)}${drag?.kind === 'item' && drag.id === record.id ? ' dragging' : ''}`}
-                  draggable={!editing}
-                  key={record.id}
-                  onDragEnd={endDrag}
-                  onDragOver={(event) => hover(event, `item:${record.id}`, drag?.kind === 'item' && drag.id !== record.id && drag.institution === record.institution)}
-                  onDragStart={(event) => {
-                    event.stopPropagation();
-                    event.dataTransfer.effectAllowed = 'move';
-                    event.dataTransfer.setData('text/plain', String(record.id));
-                    setDrag({ kind: 'item', id: record.id, institution: record.institution });
-                  }}
-                  onDrop={(event) => dropOnItem(event, record)}
-                >
-                  {editing ? (
-                    <div className="meeting-service-edit">
-                      <input aria-label="기관 수정" list="meeting-institutions" maxLength={100} onChange={(event) => setEditInstitution(event.target.value)} value={editInstitution} />
-                      <textarea aria-label="내용 수정" autoFocus onChange={(event) => setEditContent(event.target.value)} rows={3} value={editContent} />
-                    </div>
-                  ) : (
-                    <div className="meeting-service-text">
-                      <p>{record.content}</p>
-                      <small>
-                        {record.customer ? `${record.customer} · ` : ''}
-                        <a href={record.href} rel="noreferrer" target="_blank">서비스 상세</a>
-                      </small>
-                    </div>
-                  )}
-                  {record.canEdit ? (
-                    <span className="meeting-row-actions">
-                      {editing ? (
-                        <>
-                          <button aria-label="저장" className="meeting-icon" onClick={saveEdit} type="button"><Check size={15} /></button>
-                          <button aria-label="수정 취소" className="meeting-icon" onClick={() => setEditingId(null)} type="button"><X size={15} /></button>
-                        </>
-                      ) : (
-                        <>
-                          <button aria-label="서비스 기록 수정" className="meeting-icon" onClick={() => startEdit(record)} type="button"><Pencil size={15} /></button>
-                          <button aria-label="서비스 기록 삭제" className="meeting-icon" onClick={() => remove(record.id)} type="button"><Trash2 size={15} /></button>
-                        </>
-                      )}
-                    </span>
-                  ) : null}
-                </article>
-              );
-            })}
+            {records.map((record) => (
+              <article
+                className={`meeting-service-item${dropClass(`item:${record.id}`)}${drag?.kind === 'item' && drag.id === record.id ? ' dragging' : ''}`}
+                draggable
+                key={record.id}
+                onDragEnd={endDrag}
+                onDragOver={(event) => hover(event, `item:${record.id}`, drag?.kind === 'item' && drag.id !== record.id && drag.institution === record.institution)}
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', String(record.id));
+                  setDrag({ kind: 'item', id: record.id, institution: record.institution });
+                }}
+                onDrop={(event) => dropOnItem(event, record)}
+              >
+                <div className="meeting-service-text">
+                  {record.equipments.length ? (
+                    <ul className="meeting-equipments">
+                      {record.equipments.map((equipment, index) => (
+                        <li key={equipment.id ?? index}>
+                          <strong>{[equipment.name, equipment.modelName].filter(Boolean).join(' ') || '장비'}</strong>
+                          {equipment.serialNumber ? <span>S/N {equipment.serialNumber}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="meeting-muted">장비 미입력</p>}
+                  <small>
+                    {record.customer ? `${record.customer} · ` : ''}
+                    <a href={record.href} rel="noreferrer" target="_blank">서비스 상세</a>
+                  </small>
+                </div>
+              </article>
+            ))}
           </section>
         ))}
       </div>
-      <form className="meeting-service-form" onSubmit={submit}>
-        <input
-          aria-label="기관"
-          list="meeting-institutions"
-          maxLength={100}
-          onChange={(event) => setInstitution(event.target.value)}
-          placeholder="기관"
-          value={institution}
-        />
-        <datalist id="meeting-institutions">
-          {data.form.institutions.map((name) => <option key={name} value={name} />)}
-        </datalist>
-        <textarea
-          aria-label="서비스 내용"
-          onChange={(event) => setContent(event.target.value)}
-          placeholder="내용을 자유롭게 적어 주세요"
-          ref={contentRef}
-          rows={2}
-          value={content}
-        />
-        <button disabled={saving} type="submit">
-          {saving ? <Loader2 className="spin-icon" size={16} /> : <Plus size={16} />}추가
-        </button>
-      </form>
       {error ? <p className="meeting-error">{error}</p> : null}
     </section>
   );
@@ -934,10 +831,7 @@ export function PipelineMeetingPage() {
             {scene === 1 ? (
               <ServiceScene
                 data={data}
-                onCreated={(record) => setData((current) => (current ? { ...current, services: [...current.services, record] } : current))}
-                onRemoved={(id) => setData((current) => (current ? { ...current, services: current.services.filter((row) => row.id !== id) } : current))}
                 onReordered={(records) => setData((current) => (current ? { ...current, services: records } : current))}
-                onUpdated={(record) => setData((current) => (current ? { ...current, services: current.services.map((row) => (row.id === record.id ? record : row)) } : current))}
               />
             ) : null}
             {scene === 2 ? <MovementScene data={data} /> : null}

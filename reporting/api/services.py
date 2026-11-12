@@ -177,6 +177,11 @@ def _serials(equipments):
     return seen
 
 
+def case_equipments_payload(case):
+    """아침회의처럼 장비 목록만 보여주는 곳용."""
+    return [_equipment_payload(equipment) for equipment in _equipments(case)]
+
+
 def _equipment_payload(equipment):
     return {
         'id': equipment.id,
