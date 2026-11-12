@@ -28,6 +28,12 @@ READONLY_ALLOWED_URL_NAMES = {
     "products_management_api",
     "document_templates_api",
     "personal_schedules_detail_api",
+    # 서비스 메뉴(목록·현황·상세·입력 옵션·고객/제품 검색)
+    "services_api",
+    "service_detail_api",
+    "service_form_api",
+    "service_customer_search_api",
+    "service_product_search_api",
 }
 
 

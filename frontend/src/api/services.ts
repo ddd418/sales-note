@@ -48,7 +48,7 @@ export type ServiceSummaryItem = {
 export type ServiceEquipment = {
   id?: number | null;
   name: string;
-  modelName: string;
+  brand: string;
   serialNumber: string;
   note: string;
 };
@@ -80,7 +80,7 @@ export type ServiceDetail = ServiceSummaryItem & {
   rawTitle: string;
   equipments: ServiceEquipment[];
   equipmentName: string;
-  modelName: string;
+  brand: string;
   symptom: string;
   diagnosis: string;
   resolution: string;

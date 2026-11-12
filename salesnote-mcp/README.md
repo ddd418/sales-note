@@ -8,6 +8,8 @@ Cowork / claude.ai 커스텀 커넥터로 쓰는 Streamable HTTP MCP 서버.
 - `salesnote_search(q)` — 통합 검색.
 - `salesnote_write(path, payload, confirm, form)` — CRM 쓰기(POST). 쓰기 토큰 사용.
   삭제·메일발송·금액취소 등 되돌릴 수 없는 작업은 `confirm=True` 필요(서버가 428로 강제).
+- 서비스 기록 CRUD: 읽기 `services/`·`services/<id>/`·`services/form/`·`services/customers/`·`services/products/`,
+  쓰기 `services/create/`·`services/<id>/update/`·`services/<id>/delete/`(confirm). payload 형식은 `server.py` 도구 설명 참고.
 
 ## 환경변수 (Railway 서비스에 설정)
 - `MCP_CONNECTOR_TOKEN` — 커넥터 접근 토큰. claude.ai 커넥터 헤더 `Authorization: Bearer <이 값>` 에 입력.

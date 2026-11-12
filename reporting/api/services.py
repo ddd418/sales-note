@@ -150,15 +150,16 @@ def _equipments(case):
     if rows:
         return rows
     name = case.equipment_name or (case.asset.asset_name if case.asset_id else '')
-    model = case.model_name or (case.asset.model_name if case.asset_id else '')
+    brand = case.brand
     serial = case.serial_number or (case.asset.serial_number if case.asset_id else '')
-    if name or model or serial:
-        return [ServiceEquipment(name=name, model_name=model, serial_number=serial)]
+    if name or brand or serial:
+        return [ServiceEquipment(name=name, brand=brand, serial_number=serial)]
     return []
 
 
 def _single_label(equipment):
-    return ' '.join(part for part in (equipment.name, equipment.model_name) if part)
+    # "브랜드 장비명" 순서로 읽는다(예: Eppendorf 원심분리기)
+    return ' '.join(part for part in (equipment.brand, equipment.name) if part)
 
 
 def _equipment_label(case, equipments=None):
@@ -188,7 +189,7 @@ def _equipment_payload(equipment):
     return {
         'id': equipment.id,
         'name': equipment.name,
-        'modelName': equipment.model_name,
+        'brand': equipment.brand,
         'serialNumber': equipment.serial_number,
         'note': equipment.note,
     }
@@ -273,7 +274,7 @@ def case_detail_payload(case, viewer, scope_user_ids, related):
         'rawTitle': case.title,
         'equipments': [_equipment_payload(equipment) for equipment in equipments],
         'equipmentName': equipments[0].name if equipments else '',
-        'modelName': equipments[0].model_name if equipments else '',
+        'brand': equipments[0].brand if equipments else '',
         'symptom': case.symptom,
         'diagnosis': case.diagnosis,
         'resolution': case.resolution,
@@ -375,7 +376,7 @@ def _year_summary(cases, year):
 def _matches(case, query):
     haystack = ' '.join([
         case.title, case.institution,
-        ' '.join(f'{row.name} {row.model_name} {row.serial_number} {row.note}' for row in _equipments(case)),
+        ' '.join(f'{row.brand} {row.name} {row.serial_number} {row.note}' for row in _equipments(case)),
         case.symptom, case.diagnosis, case.resolution,
         _customer_name(case.followup) if case.followup_id else '',
         case.requester_name, case.requester_contact,
@@ -571,7 +572,7 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
         'resolution': str(payload.get('resolution') or '').strip(),
     }
     if not any(texts.values()):
-        raise ValueError('요약이나 증상·판단·조치 중 하나는 입력하세요.')
+        raise ValueError('요약이나 증상·점검·조치 중 하나는 입력하세요.')
 
     case_type = str(payload.get('type') or 'service')
     if case_type not in dict(ServiceCase.CASE_TYPE_CHOICES):
@@ -631,7 +632,7 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
         # 예전 형식(장비 한 대)도 받는다
         raw_equipments = [{
             'name': payload.get('equipmentName'),
-            'modelName': payload.get('modelName'),
+            'brand': payload.get('brand'),
             'serialNumber': payload.get('serialNumber'),
         }]
     equipments = []
@@ -640,11 +641,11 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
             continue
         row = ServiceEquipment(
             name=str(raw.get('name') or '').strip()[:200],
-            model_name=str(raw.get('modelName') or '').strip()[:200],
+            brand=str(raw.get('brand') or '').strip()[:200],
             serial_number=str(raw.get('serialNumber') or '').strip()[:120],
             note=str(raw.get('note') or '').strip()[:300],
         )
-        if row.name or row.model_name or row.serial_number or row.note:
+        if row.name or row.brand or row.serial_number or row.note:
             row.position = len(equipments)
             equipments.append(row)
     if len(equipments) > MAX_EQUIPMENTS:
@@ -662,7 +663,7 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
     # 첫 장비는 케이스 칸에도 둔다(장비 하나만 보여주는 화면용)
     first = equipments[0] if equipments else None
     case.equipment_name = first.name if first else ''
-    case.model_name = first.model_name if first else ''
+    case.brand = first.brand if first else ''
     case.serial_number = first.serial_number if first else ''
     case.case_type = case_type
     case.status = status

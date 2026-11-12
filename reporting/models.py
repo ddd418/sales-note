@@ -1410,7 +1410,7 @@ class ServiceCase(models.Model):
     requester_contact = models.CharField(max_length=200, blank=True, verbose_name="의뢰처 담당자/연락처")
     title = models.CharField(max_length=200, blank=True, verbose_name="한 줄 요약")
     equipment_name = models.CharField(max_length=200, blank=True, verbose_name="장비명")
-    model_name = models.CharField(max_length=200, blank=True, verbose_name="모델명")
+    brand = models.CharField(max_length=200, blank=True, verbose_name="브랜드")
     serial_number = models.CharField(max_length=120, blank=True, verbose_name="시리얼번호")
     case_type = models.CharField(max_length=30, choices=CASE_TYPE_CHOICES, default='service', verbose_name="케이스 유형")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='received', verbose_name="상태")
@@ -1419,7 +1419,7 @@ class ServiceCase(models.Model):
     due_date = models.DateField(null=True, blank=True, verbose_name="처리 예정일")
     completed_date = models.DateField(null=True, blank=True, verbose_name="완료일")
     symptom = models.TextField(blank=True, verbose_name="증상/요청")
-    diagnosis = models.TextField(blank=True, verbose_name="판단(진단)")
+    diagnosis = models.TextField(blank=True, verbose_name="점검 결과")
     resolution = models.TextField(blank=True, verbose_name="처리 내용")
     charge_type = models.CharField(max_length=10, choices=CHARGE_CHOICES, default=CHARGE_FREE, verbose_name="유상/무상")
     charge_amount = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True, verbose_name="청구 금액 (원)")
@@ -1452,19 +1452,19 @@ class ServiceCase(models.Model):
 class ServiceEquipment(models.Model):
     """서비스 한 건에서 본 장비. 한 번 방문에 여러 대를 보는 경우가 있어 따로 둔다.
 
-    첫 번째 장비는 `ServiceCase.equipment_name/model_name/serial_number` 에도 그대로 옮겨 둔다
+    첫 번째 장비는 `ServiceCase.equipment_name/brand/serial_number` 에도 그대로 옮겨 둔다
     (고객 상세·관리자 화면처럼 장비 하나만 보여주는 곳이 그 칸을 쓴다).
     """
 
     case = models.ForeignKey(ServiceCase, on_delete=models.CASCADE, related_name='equipments', verbose_name="서비스")
     name = models.CharField(max_length=200, blank=True, verbose_name="장비명")
-    model_name = models.CharField(max_length=200, blank=True, verbose_name="모델명")
+    brand = models.CharField(max_length=200, blank=True, verbose_name="브랜드")
     serial_number = models.CharField(max_length=120, blank=True, verbose_name="시리얼번호")
     note = models.CharField(max_length=300, blank=True, verbose_name="장비별 메모")
     position = models.PositiveIntegerField(default=0, verbose_name="순서")
 
     def __str__(self):
-        return ' '.join(part for part in (self.name, self.model_name, self.serial_number) if part) or '장비'
+        return ' '.join(part for part in (self.brand, self.name, self.serial_number) if part) or '장비'
 
     class Meta:
         verbose_name = "서비스 장비"

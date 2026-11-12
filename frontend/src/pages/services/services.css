@@ -746,7 +746,7 @@
 .svc-equip-head,
 .svc-equip-row {
   display: grid;
-  grid-template-columns: 1.4fr 1.2fr 1.1fr 2fr 28px;
+  grid-template-columns: 1fr 1.4fr 1.1fr 2fr 28px;
   gap: 6px;
   align-items: center;
 }

@@ -370,7 +370,7 @@ function ServiceDetailView({ id }: { id: number }) {
 
   const flow = [
     { label: '증상', text: item.symptom },
-    { label: '판단', text: item.diagnosis },
+    { label: '점검', text: item.diagnosis },
     { label: '조치', text: item.resolution },
   ];
 
@@ -425,7 +425,7 @@ function ServiceDetailView({ id }: { id: number }) {
             <ol className="svc-equip-list">
               {item.equipments.map((equipment, index) => (
                 <li key={equipment.id ?? index}>
-                  <strong>{[equipment.name, equipment.modelName].filter(Boolean).join(' · ') || '장비'}</strong>
+                  <strong>{[equipment.brand, equipment.name].filter(Boolean).join(' ') || '장비'}</strong>
                   {equipment.serialNumber ? <span>S/N {equipment.serialNumber}</span> : null}
                   {equipment.note ? <small>{equipment.note}</small> : null}
                 </li>
@@ -475,7 +475,7 @@ function ServiceDetailView({ id }: { id: number }) {
               <li key={row.id}>
                 <span className="svc-nowrap">{formatDateLabel(row.date)}</span>
                 <a href={row.href}>{row.title}</a>
-                <small>{row.typeLabel} · {row.statusLabel}{row.diagnosis ? ` · 판단: ${row.diagnosis}` : ''}</small>
+                <small>{row.typeLabel} · {row.statusLabel}{row.diagnosis ? ` · 점검: ${row.diagnosis}` : ''}</small>
               </li>
             ))}
           </ul>
@@ -663,7 +663,7 @@ function PartNameInput({ part, onChange, onPick }: {
 }
 
 type PartRow = { key: number; productId: number | null; name: string; partNumber: string; quantity: string; unitPrice: string };
-type EquipmentRow = { key: number; name: string; modelName: string; serialNumber: string; note: string };
+type EquipmentRow = { key: number; name: string; brand: string; serialNumber: string; note: string };
 
 type FormState = {
   customer: ServiceCustomer | null;
@@ -694,7 +694,7 @@ const today = () => {
 
 let partKey = 0;
 const emptyPart = (): PartRow => ({ key: ++partKey, productId: null, name: '', partNumber: '', quantity: '1', unitPrice: '' });
-const emptyEquipment = (): EquipmentRow => ({ key: ++partKey, name: '', modelName: '', serialNumber: '', note: '' });
+const emptyEquipment = (): EquipmentRow => ({ key: ++partKey, name: '', brand: '', serialNumber: '', note: '' });
 
 const emptyForm = (): FormState => ({
   customer: null,
@@ -739,7 +739,7 @@ function formFromDetail(item: ServiceDetail): FormState {
       ? item.equipments.map((equipment) => ({
         key: ++partKey,
         name: equipment.name,
-        modelName: equipment.modelName,
+        brand: equipment.brand,
         serialNumber: equipment.serialNumber,
         note: equipment.note,
       }))
@@ -774,8 +774,8 @@ function toPayload(form: FormState): ServicePayload {
     diagnosis: form.diagnosis,
     resolution: form.resolution,
     equipments: form.equipments
-      .map((row) => ({ name: row.name.trim(), modelName: row.modelName.trim(), serialNumber: row.serialNumber.trim(), note: row.note.trim() }))
-      .filter((row) => row.name || row.modelName || row.serialNumber || row.note),
+      .map((row) => ({ name: row.name.trim(), brand: row.brand.trim(), serialNumber: row.serialNumber.trim(), note: row.note.trim() }))
+      .filter((row) => row.name || row.brand || row.serialNumber || row.note),
     chargeType: form.chargeType,
     chargeAmount: form.chargeType === 'paid' ? form.chargeAmount : '',
     parts: form.parts
@@ -961,13 +961,13 @@ function ServiceFormView({ id }: { id?: number }) {
           <section className="svc-card">
             <h3>장비{form.equipments.length > 1 ? ` ${form.equipments.length}대` : ''}</h3>
             <div className="svc-equip-head" aria-hidden="true">
-              <span>장비명</span><span>모델</span><span>시리얼</span><span>장비별 메모</span><span />
+              <span>브랜드</span><span>장비명</span><span>시리얼</span><span>장비별 메모</span><span />
             </div>
             <div className="svc-part-rows">
               {form.equipments.map((row, index) => (
                 <div className="svc-equip-row" key={row.key}>
+                  <input aria-label={`브랜드 ${index + 1}`} maxLength={200} onChange={(event) => setEquipment(row.key, 'brand', event.target.value)} placeholder="브랜드" value={row.brand} />
                   <input aria-label={`장비명 ${index + 1}`} maxLength={200} onChange={(event) => setEquipment(row.key, 'name', event.target.value)} placeholder="장비명" value={row.name} />
-                  <input aria-label={`모델 ${index + 1}`} maxLength={200} onChange={(event) => setEquipment(row.key, 'modelName', event.target.value)} placeholder="모델" value={row.modelName} />
                   <input aria-label={`시리얼 ${index + 1}`} maxLength={120} onChange={(event) => setEquipment(row.key, 'serialNumber', event.target.value)} placeholder="시리얼" value={row.serialNumber} />
                   <input aria-label={`장비별 메모 ${index + 1}`} maxLength={300} onChange={(event) => setEquipment(row.key, 'note', event.target.value)} placeholder="이 장비만 해당하는 내용(선택)" value={row.note} />
                   <button
@@ -983,7 +983,7 @@ function ServiceFormView({ id }: { id?: number }) {
             </div>
             <div className="svc-part-foot">
               <button className="svc-ghost" onClick={() => set('equipments', [...form.equipments, emptyEquipment()])} type="button"><Plus size={14} />장비 추가</button>
-              <span className="svc-muted">한 번 방문에 여러 대를 봤으면 장비를 추가하세요. 증상·판단·조치는 아래에 함께 적습니다.</span>
+              <span className="svc-muted">한 번 방문에 여러 대를 봤으면 장비를 추가하세요. 증상·점검·조치는 아래에 함께 적습니다.</span>
             </div>
           </section>
 
@@ -995,7 +995,7 @@ function ServiceFormView({ id }: { id?: number }) {
             </label>
             <div className="svc-grid-3">
               <label className="svc-field"><span>증상</span><textarea onChange={(event) => set('symptom', event.target.value)} placeholder="고객이 말한 증상·요청" rows={5} value={form.symptom} /></label>
-              <label className="svc-field"><span>판단</span><textarea onChange={(event) => set('diagnosis', event.target.value)} placeholder="점검해 보고 내린 판단·원인" rows={5} value={form.diagnosis} /></label>
+              <label className="svc-field"><span>점검</span><textarea onChange={(event) => set('diagnosis', event.target.value)} placeholder="점검 결과·원인" rows={5} value={form.diagnosis} /></label>
               <label className="svc-field"><span>조치</span><textarea onChange={(event) => set('resolution', event.target.value)} placeholder="한 일·결과·고객 안내" rows={5} value={form.resolution} /></label>
             </div>
           </section>

@@ -1,5 +1,25 @@
 # AGENT_PLAN.md
 
+## 2026-11-12 장비 "모델" → "브랜드", "판단" → "점검", 서비스 MCP CRUD
+
+**Background**: 사용자 — "모델 이 아니라 브랜드가 맞을거같아", "판단 을 점검으로 바꾸고", "서비스 여기도 mcp로 CRUD 다 할수있게하셈".
+
+**추가 Scope(점검·MCP)**:
+- "판단" 표시를 "점검"으로: 상세 흐름(증상→점검→조치), 입력 칸, 지난 이력, 보고서 "2. 점검 결과", 오류 문구. DB 칸(`diagnosis`)은 그대로, 표시 이름만(0136 에 AlterField 포함).
+- MCP: 서비스 읽기 API 5개(`services_api`, `service_detail_api`, `service_form_api`, `service_customer_search_api`, `service_product_search_api`)를 읽기 토큰 허용 목록에 추가. 쓰기(만들기·수정)는 기존 쓰기 토큰 정책으로 이미 가능, 삭제는 확인 헤더(428). `salesnote-mcp/server.py` 도구 설명에 서비스 경로·payload 예시 추가 → `railway up ./salesnote-mcp --service salesnote-mcp` 로 배포. 테스트 `test_mcp_tokens_can_read_and_write_services`.
+
+**Scope**:
+- 모델(0136): `ServiceCase.model_name`, `ServiceEquipment.model_name` 을 `brand`(브랜드)로 이름 변경(RenameField — 이미 적은 값은 그대로 브랜드 칸으로 옮겨짐).
+- API: 장비 항목 키 `modelName` → `brand`. 표시 순서는 "브랜드 장비명"(예: Hanil 원심분리기). 고객 상세 `assetModelName` 은 연결된 고객 장비의 모델만, `assetBrand` 추가.
+- React: 입력 칸 순서 브랜드 · 장비명 · 시리얼 · 메모, 상세·목록·아침회의는 "브랜드 장비명", 수리완료보고서 칸·표 머리글 "브랜드".
+- 테스트: 0134 복사 함수를 현재 모델로 부르던 테스트는 제거(그 함수는 0134 시점 모델에서만 돎, 이미 운영 적용).
+
+**DB change required**: Yes — 0136(이름 변경). 시작 시 migrate.
+
+**검증**: 서비스·아침회의·MCP 토큰 테스트 통과, 전체 회귀 573개 — 실패 3건은 기존 무관 결함(점검·MCP 변경 전 실행, 그 변경은 대상 테스트 33개로 확인). tsc 0, 빌드 성공. 로컬 Playwright: 기존 모델 값이 브랜드 칸으로 옮겨진 것 확인 → 브랜드 입력 → 상세/목록 "Hanil 원심분리기 외 2대"/아침회의/보고서 머리글 "브랜드".
+
+---
+
 ## 2026-11-12 교체 부품을 제품 목록에서 고르기
 
 **Background**: 사용자 — "교체 부품 이거는 제품에서 끌어올수 있게하자".

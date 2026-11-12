@@ -51,6 +51,12 @@ def salesnote_read(path: str, query: dict | None = None) -> str:
       dashboard/ · dashboard/search/ · customers/ · customers/<id>/ ·
       schedules/ · schedules/<id>/ · schedules/calendar/ · notes/ · notes/<id>/ ·
       pipeline/ · followups/ · prepayments/ · reports/ · products/ · ai-workspace/
+    서비스(A/S·수리·점검 기록):
+      services/            목록 + 연간 현황. query: year, status(open/completed/...), type, q, owner
+      services/<id>/       상세(사용자·의뢰처 연락처, 장비 목록, 증상/점검/조치, 교체 부품, 지난 이력)
+      services/form/       입력 선택지(유형·상태·유무상·담당자 id)
+      services/customers/  고객 검색 query: q  → 쓰기의 customerId/requesterId 로 씀
+      services/products/   교체 부품용 제품 검색 query: q  → 쓰기의 parts[].productId 로 씀
     query: 필터 dict (예: {"q":"김교수","page":1}).
     """
     r = httpx.get(
@@ -86,6 +92,18 @@ def salesnote_write(
     path 예시:
       notes/create/ · notes/<id>/update/ · schedules/create/ ·
       schedules/<id>/move/ · schedules/<id>/update/ · customers/<id>/update/
+    서비스:
+      services/create/ · services/<id>/update/ (수정은 전체 교체 — 먼저 services/<id>/ 를 읽고
+      바꿀 칸만 고쳐 전부 다시 보낼 것) · services/<id>/delete/ (confirm=True 필요)
+      payload 예:
+        {"customerId": 12, "institution": "OO대학교", "requesterId": null,
+         "requesterName": "", "requesterContact": "",
+         "type": "repair", "status": "completed", "date": "2026-11-12", "completedDate": "",
+         "ownerId": null, "title": "", "symptom": "...", "diagnosis": "점검 결과", "resolution": "...",
+         "equipments": [{"brand": "Hanil", "name": "원심분리기", "serialNumber": "SN1", "note": ""}],
+         "parts": [{"productId": 5, "name": "", "partNumber": "", "quantity": 1, "unitPrice": ""}],
+         "chargeType": "free", "chargeAmount": ""}
+      institution 또는 customerId 하나, symptom/diagnosis/resolution/title 중 하나는 필수.
     payload: 필드 dict.
     confirm: 되돌릴 수 없거나 외부로 나가는 작업(삭제·메일발송·금액취소·파괴적 대량변경)은
       True 여야 실행됨. 없으면 서버가 428(confirmation_required) 로 거부한다.

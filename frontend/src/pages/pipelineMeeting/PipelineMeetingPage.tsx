@@ -645,7 +645,7 @@ function ServiceScene({ data, onReordered }: {
                     <ul className="meeting-equipments">
                       {record.equipments.map((equipment, index) => (
                         <li key={equipment.id ?? index}>
-                          <strong>{[equipment.name, equipment.modelName].filter(Boolean).join(' ') || '장비'}</strong>
+                          <strong>{[equipment.brand, equipment.name].filter(Boolean).join(' ') || '장비'}</strong>
                           {equipment.serialNumber ? <span>S/N {equipment.serialNumber}</span> : null}
                         </li>
                       ))}
