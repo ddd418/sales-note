@@ -269,7 +269,7 @@ function ServiceListView() {
                 </td>
                 <td>
                   {item.equipment || <span className="svc-muted">-</span>}
-                  {item.serialNumber ? <small>S/N {item.serialNumber}</small> : null}
+                  {item.serialNumbers.length ? <small>S/N {item.serialNumbers.join(', ')}</small> : null}
                 </td>
                 <td className="svc-title-cell">
                   <a href={item.href} onClick={(event) => event.stopPropagation()}>{item.title}</a>
@@ -417,13 +417,19 @@ function ServiceDetailView({ id }: { id: number }) {
             icon={<FileText size={15} />}
           />
         ) : null}
-        <section className="svc-card svc-equipment">
-          <h3><Wrench size={15} />장비</h3>
-          <dl>
-            <dt>장비</dt><dd>{item.equipmentName || '-'}</dd>
-            <dt>모델</dt><dd>{item.modelName || '-'}</dd>
-            <dt>시리얼</dt><dd>{item.serialNumber || '-'}</dd>
-          </dl>
+        <section className={`svc-card svc-equipment${item.equipments.length > 2 ? ' svc-span-all' : ''}`}>
+          <h3><Wrench size={15} />장비{item.equipments.length > 1 ? ` ${item.equipments.length}대` : ''}</h3>
+          {item.equipments.length ? (
+            <ol className="svc-equip-list">
+              {item.equipments.map((equipment, index) => (
+                <li key={equipment.id ?? index}>
+                  <strong>{[equipment.name, equipment.modelName].filter(Boolean).join(' · ') || '장비'}</strong>
+                  {equipment.serialNumber ? <span>S/N {equipment.serialNumber}</span> : null}
+                  {equipment.note ? <small>{equipment.note}</small> : null}
+                </li>
+              ))}
+            </ol>
+          ) : <p className="svc-muted">장비 기록 없음</p>}
         </section>
       </div>
 
@@ -571,6 +577,7 @@ function CustomerPicker({ label, value, onChange, placeholder }: {
 }
 
 type PartRow = { key: number; name: string; partNumber: string; quantity: string; unitPrice: string };
+type EquipmentRow = { key: number; name: string; modelName: string; serialNumber: string; note: string };
 
 type FormState = {
   customer: ServiceCustomer | null;
@@ -588,9 +595,7 @@ type FormState = {
   symptom: string;
   diagnosis: string;
   resolution: string;
-  equipmentName: string;
-  modelName: string;
-  serialNumber: string;
+  equipments: EquipmentRow[];
   chargeType: string;
   chargeAmount: string;
   parts: PartRow[];
@@ -603,6 +608,7 @@ const today = () => {
 
 let partKey = 0;
 const emptyPart = (): PartRow => ({ key: ++partKey, name: '', partNumber: '', quantity: '1', unitPrice: '' });
+const emptyEquipment = (): EquipmentRow => ({ key: ++partKey, name: '', modelName: '', serialNumber: '', note: '' });
 
 const emptyForm = (): FormState => ({
   customer: null,
@@ -620,9 +626,7 @@ const emptyForm = (): FormState => ({
   symptom: '',
   diagnosis: '',
   resolution: '',
-  equipmentName: '',
-  modelName: '',
-  serialNumber: '',
+  equipments: [emptyEquipment()],
   chargeType: 'free',
   chargeAmount: '',
   parts: [],
@@ -645,9 +649,15 @@ function formFromDetail(item: ServiceDetail): FormState {
     symptom: item.symptom,
     diagnosis: item.diagnosis,
     resolution: item.resolution,
-    equipmentName: item.equipmentName,
-    modelName: item.modelName,
-    serialNumber: item.serialNumber,
+    equipments: item.equipments.length
+      ? item.equipments.map((equipment) => ({
+        key: ++partKey,
+        name: equipment.name,
+        modelName: equipment.modelName,
+        serialNumber: equipment.serialNumber,
+        note: equipment.note,
+      }))
+      : [emptyEquipment()],
     chargeType: item.chargeType,
     chargeAmount: item.chargeAmount !== null ? String(item.chargeAmount) : '',
     parts: item.parts.map((part) => ({
@@ -676,9 +686,9 @@ function toPayload(form: FormState): ServicePayload {
     symptom: form.symptom,
     diagnosis: form.diagnosis,
     resolution: form.resolution,
-    equipmentName: form.equipmentName,
-    modelName: form.modelName,
-    serialNumber: form.serialNumber,
+    equipments: form.equipments
+      .map((row) => ({ name: row.name.trim(), modelName: row.modelName.trim(), serialNumber: row.serialNumber.trim(), note: row.note.trim() }))
+      .filter((row) => row.name || row.modelName || row.serialNumber || row.note),
     chargeType: form.chargeType,
     chargeAmount: form.chargeType === 'paid' ? form.chargeAmount : '',
     parts: form.parts
@@ -723,6 +733,10 @@ function ServiceFormView({ id }: { id?: number }) {
   const set = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   }, []);
+
+  const setEquipment = (key: number, field: keyof Omit<EquipmentRow, 'key'>, value: string) => {
+    setForm((current) => ({ ...current, equipments: current.equipments.map((row) => (row.key === key ? { ...row, [field]: value } : row)) }));
+  };
 
   const setPart = (key: number, field: keyof Omit<PartRow, 'key'>, value: string) => {
     setForm((current) => ({ ...current, parts: current.parts.map((part) => (part.key === key ? { ...part, [field]: value } : part)) }));
@@ -841,11 +855,31 @@ function ServiceFormView({ id }: { id?: number }) {
           </section>
 
           <section className="svc-card">
-            <h3>장비</h3>
-            <div className="svc-grid-3">
-              <label className="svc-field"><span>장비명</span><input maxLength={200} onChange={(event) => set('equipmentName', event.target.value)} value={form.equipmentName} /></label>
-              <label className="svc-field"><span>모델</span><input maxLength={200} onChange={(event) => set('modelName', event.target.value)} value={form.modelName} /></label>
-              <label className="svc-field"><span>시리얼</span><input maxLength={120} onChange={(event) => set('serialNumber', event.target.value)} value={form.serialNumber} /></label>
+            <h3>장비{form.equipments.length > 1 ? ` ${form.equipments.length}대` : ''}</h3>
+            <div className="svc-equip-head" aria-hidden="true">
+              <span>장비명</span><span>모델</span><span>시리얼</span><span>장비별 메모</span><span />
+            </div>
+            <div className="svc-part-rows">
+              {form.equipments.map((row, index) => (
+                <div className="svc-equip-row" key={row.key}>
+                  <input aria-label={`장비명 ${index + 1}`} maxLength={200} onChange={(event) => setEquipment(row.key, 'name', event.target.value)} placeholder="장비명" value={row.name} />
+                  <input aria-label={`모델 ${index + 1}`} maxLength={200} onChange={(event) => setEquipment(row.key, 'modelName', event.target.value)} placeholder="모델" value={row.modelName} />
+                  <input aria-label={`시리얼 ${index + 1}`} maxLength={120} onChange={(event) => setEquipment(row.key, 'serialNumber', event.target.value)} placeholder="시리얼" value={row.serialNumber} />
+                  <input aria-label={`장비별 메모 ${index + 1}`} maxLength={300} onChange={(event) => setEquipment(row.key, 'note', event.target.value)} placeholder="이 장비만 해당하는 내용(선택)" value={row.note} />
+                  <button
+                    aria-label={`장비 ${index + 1} 삭제`}
+                    className="svc-icon"
+                    onClick={() => set('equipments', form.equipments.length > 1 ? form.equipments.filter((item) => item.key !== row.key) : [emptyEquipment()])}
+                    type="button"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="svc-part-foot">
+              <button className="svc-ghost" onClick={() => set('equipments', [...form.equipments, emptyEquipment()])} type="button"><Plus size={14} />장비 추가</button>
+              <span className="svc-muted">한 번 방문에 여러 대를 봤으면 장비를 추가하세요. 증상·판단·조치는 아래에 함께 적습니다.</span>
             </div>
           </section>
 

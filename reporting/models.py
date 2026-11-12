@@ -1449,6 +1449,32 @@ class ServiceCase(models.Model):
         ]
 
 
+class ServiceEquipment(models.Model):
+    """서비스 한 건에서 본 장비. 한 번 방문에 여러 대를 보는 경우가 있어 따로 둔다.
+
+    첫 번째 장비는 `ServiceCase.equipment_name/model_name/serial_number` 에도 그대로 옮겨 둔다
+    (고객 상세·관리자 화면처럼 장비 하나만 보여주는 곳이 그 칸을 쓴다).
+    """
+
+    case = models.ForeignKey(ServiceCase, on_delete=models.CASCADE, related_name='equipments', verbose_name="서비스")
+    name = models.CharField(max_length=200, blank=True, verbose_name="장비명")
+    model_name = models.CharField(max_length=200, blank=True, verbose_name="모델명")
+    serial_number = models.CharField(max_length=120, blank=True, verbose_name="시리얼번호")
+    note = models.CharField(max_length=300, blank=True, verbose_name="장비별 메모")
+    position = models.PositiveIntegerField(default=0, verbose_name="순서")
+
+    def __str__(self):
+        return ' '.join(part for part in (self.name, self.model_name, self.serial_number) if part) or '장비'
+
+    class Meta:
+        verbose_name = "서비스 장비"
+        verbose_name_plural = "서비스 장비 목록"
+        ordering = ['position', 'id']
+        indexes = [
+            models.Index(fields=['serial_number'], name='svc_equip_serial_idx'),
+        ]
+
+
 class ServicePart(models.Model):
     """서비스 한 건에서 교체·사용한 부품."""
 

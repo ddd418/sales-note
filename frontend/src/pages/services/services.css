@@ -719,3 +719,72 @@
 .svc-parts td {
   white-space: nowrap;
 }
+
+/* 장비 여러 대 */
+.svc-equip-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.svc-equip-list li {
+  display: grid;
+  gap: 2px;
+}
+
+.svc-equip-list span,
+.svc-equip-list small {
+  color: var(--muted);
+}
+
+.svc-span-all {
+  grid-column: 1 / -1;
+}
+
+.svc-equip-head,
+.svc-equip-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1.2fr 1.1fr 2fr 28px;
+  gap: 6px;
+  align-items: center;
+}
+
+.svc-equip-head {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.svc-equip-row input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.svc-equip-row input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+@media (max-width: 720px) {
+  .svc-equip-head { display: none; }
+  .svc-equip-row {
+    grid-template-columns: 1fr 1fr 28px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .svc-equip-row button { grid-column: 3; grid-row: 1; }
+}
+
+.svc-span-all .svc-equip-list {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  column-gap: 28px;
+}

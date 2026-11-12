@@ -31,7 +31,9 @@ export type ServiceSummaryItem = {
   customer: ServiceCustomer | null;
   requester: ServiceRequester | null;
   equipment: string;
+  equipmentCount: number;
   serialNumber: string;
+  serialNumbers: string[];
   ownerId: number | null;
   owner: string;
   chargeType: 'free' | 'paid';
@@ -41,6 +43,14 @@ export type ServiceSummaryItem = {
   partNames: string[];
   canEdit: boolean;
   href: string;
+};
+
+export type ServiceEquipment = {
+  id?: number | null;
+  name: string;
+  modelName: string;
+  serialNumber: string;
+  note: string;
 };
 
 export type ServicePart = {
@@ -67,6 +77,7 @@ export type ServiceRelated = {
 
 export type ServiceDetail = ServiceSummaryItem & {
   rawTitle: string;
+  equipments: ServiceEquipment[];
   equipmentName: string;
   modelName: string;
   symptom: string;
@@ -136,9 +147,7 @@ export type ServicePayload = {
   symptom: string;
   diagnosis: string;
   resolution: string;
-  equipmentName: string;
-  modelName: string;
-  serialNumber: string;
+  equipments: Omit<ServiceEquipment, 'id'>[];
   chargeType: string;
   chargeAmount: string;
   parts: { name: string; partNumber: string; quantity: number; unitPrice: string }[];

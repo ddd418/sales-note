@@ -57,6 +57,8 @@ export function ServiceReportPage() {
   const requester = item.requester;
   const year = (item.date ?? ISSUE_DATE()).slice(0, 4);
   const docNumber = `SR-${year}-${String(item.id).padStart(4, '0')}`;
+  const equipments = item.equipments;
+  const single = equipments.length <= 1 ? equipments[0] : undefined;
   const chargeText = item.chargeType === 'paid'
     ? `유상${item.chargeAmount !== null ? ` · ${formatWon(item.chargeAmount)} (청구 금액)` : ''}`
     : '무상';
@@ -101,14 +103,23 @@ export function ServiceReportPage() {
               <th>연락처</th>
               <td colSpan={3}>{[customer?.phone, customer?.email].filter(Boolean).join(' · ') || '-'}</td>
             </tr>
-            <tr>
-              <th>장비</th><td>{item.equipmentName || '-'}</td>
-              <th>모델</th><td>{item.modelName || '-'}</td>
-            </tr>
-            <tr>
-              <th>시리얼</th><td>{item.serialNumber || '-'}</td>
-              <th>구분</th><td>{item.typeLabel}</td>
-            </tr>
+            {equipments.length <= 1 ? (
+              <>
+                <tr>
+                  <th>장비</th><td>{single?.name || '-'}</td>
+                  <th>모델</th><td>{single?.modelName || '-'}</td>
+                </tr>
+                <tr>
+                  <th>시리얼</th><td>{single?.serialNumber || '-'}{single?.note ? ` (${single.note})` : ''}</td>
+                  <th>구분</th><td>{item.typeLabel}</td>
+                </tr>
+              </>
+            ) : (
+              <tr>
+                <th>장비</th><td>아래 {equipments.length}대</td>
+                <th>구분</th><td>{item.typeLabel}</td>
+              </tr>
+            )}
             <tr>
               <th>서비스일</th><td>{fullDate(item.date)}</td>
               <th>완료일</th><td>{item.completedDate ? fullDate(item.completedDate) : '진행 중'}</td>
@@ -119,6 +130,23 @@ export function ServiceReportPage() {
             </tr>
           </tbody>
         </table>
+
+        {equipments.length > 1 ? (
+          <table className="rpt-parts rpt-equip">
+            <thead><tr><th>No.</th><th>장비명</th><th>모델</th><th>시리얼</th><th>비고</th></tr></thead>
+            <tbody>
+              {equipments.map((equipment, index) => (
+                <tr key={equipment.id ?? index}>
+                  <td>{index + 1}</td>
+                  <td>{equipment.name || '-'}</td>
+                  <td>{equipment.modelName || '-'}</td>
+                  <td>{equipment.serialNumber || '-'}</td>
+                  <td>{equipment.note || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
 
         <section className="rpt-section"><h2>1. 증상 및 요청 사항</h2><Text value={item.symptom} /></section>
         <section className="rpt-section"><h2>2. 점검 결과 (판단)</h2><Text value={item.diagnosis} /></section>

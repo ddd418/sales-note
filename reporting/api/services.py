@@ -19,7 +19,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
-from reporting.models import FollowUp, ServiceCase, ServicePart
+from reporting.models import FollowUp, ServiceCase, ServiceEquipment, ServicePart
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -34,6 +34,7 @@ LIST_LIMIT = 500
 RELATED_LIMIT = 10
 CUSTOMER_SEARCH_LIMIT = 20
 MAX_PARTS = 50
+MAX_EQUIPMENTS = 30
 
 
 def _error(message, status=400):
@@ -141,10 +142,49 @@ def _requester_payload(case):
     }
 
 
-def _equipment_label(case):
+def _equipments(case):
+    """장비 목록(prefetch 그대로). 장비 목록이 없는 옛 기록은 케이스 칸·연결 장비로 한 줄을 만든다."""
+    rows = list(case.equipments.all())
+    if rows:
+        return rows
     name = case.equipment_name or (case.asset.asset_name if case.asset_id else '')
     model = case.model_name or (case.asset.model_name if case.asset_id else '')
-    return ' '.join(part for part in (name, model) if part)
+    serial = case.serial_number or (case.asset.serial_number if case.asset_id else '')
+    if name or model or serial:
+        return [ServiceEquipment(name=name, model_name=model, serial_number=serial)]
+    return []
+
+
+def _single_label(equipment):
+    return ' '.join(part for part in (equipment.name, equipment.model_name) if part)
+
+
+def _equipment_label(case, equipments=None):
+    equipments = _equipments(case) if equipments is None else equipments
+    if not equipments:
+        return ''
+    first = equipments[0]
+    label = _single_label(first) or (f'S/N {first.serial_number}' if first.serial_number else '장비')
+    return f'{label} 외 {len(equipments) - 1}대' if len(equipments) > 1 else label
+
+
+def _serials(equipments):
+    seen = []
+    for equipment in equipments:
+        serial = (equipment.serial_number or '').strip()
+        if serial and serial not in seen:
+            seen.append(serial)
+    return seen
+
+
+def _equipment_payload(equipment):
+    return {
+        'id': equipment.id,
+        'name': equipment.name,
+        'modelName': equipment.model_name,
+        'serialNumber': equipment.serial_number,
+        'note': equipment.note,
+    }
 
 
 def _parts(case):
@@ -158,6 +198,8 @@ def _parts_total(parts):
 
 def case_summary_payload(case, viewer, scope_user_ids):
     parts = _parts(case)
+    equipments = _equipments(case)
+    serials = _serials(equipments)
     return {
         'id': case.id,
         'date': case.received_date.isoformat() if case.received_date else None,
@@ -170,8 +212,10 @@ def case_summary_payload(case, viewer, scope_user_ids):
         'institution': case.institution or (case.followup.company.name if case.followup_id and case.followup.company_id else ''),
         'customer': _customer_payload(case.followup),
         'requester': _requester_payload(case),
-        'equipment': _equipment_label(case),
-        'serialNumber': case.serial_number or (case.asset.serial_number if case.asset_id else ''),
+        'equipment': _equipment_label(case, equipments),
+        'equipmentCount': len(equipments),
+        'serialNumber': serials[0] if serials else '',
+        'serialNumbers': serials,
         'ownerId': case.assigned_to_id,
         'owner': _user_display_name(case.assigned_to) if case.assigned_to_id else '',
         'chargeType': case.charge_type,
@@ -200,7 +244,10 @@ def _case_queryset(queryset):
         'followup', 'followup__company', 'followup__department',
         'requester_followup', 'requester_followup__company', 'requester_followup__department',
         'assigned_to', 'created_by', 'asset',
-    ).prefetch_related(Prefetch('parts', queryset=ServicePart.objects.order_by('position', 'id')))
+    ).prefetch_related(
+        Prefetch('parts', queryset=ServicePart.objects.order_by('position', 'id')),
+        Prefetch('equipments', queryset=ServiceEquipment.objects.order_by('position', 'id')),
+    )
 
 
 def _report_company(case):
@@ -213,10 +260,12 @@ def _report_company(case):
 def case_detail_payload(case, viewer, scope_user_ids, related):
     payload = case_summary_payload(case, viewer, scope_user_ids)
     parts = _parts(case)
+    equipments = _equipments(case)
     payload.update({
         'rawTitle': case.title,
-        'equipmentName': case.equipment_name or (case.asset.asset_name if case.asset_id else ''),
-        'modelName': case.model_name or (case.asset.model_name if case.asset_id else ''),
+        'equipments': [_equipment_payload(equipment) for equipment in equipments],
+        'equipmentName': equipments[0].name if equipments else '',
+        'modelName': equipments[0].model_name if equipments else '',
         'symptom': case.symptom,
         'diagnosis': case.diagnosis,
         'resolution': case.resolution,
@@ -233,11 +282,13 @@ def case_detail_payload(case, viewer, scope_user_ids, related):
 
 
 def _related_cases(request, scope_users, case):
-    """같은 장비(시리얼)를 먼저, 없으면 같은 고객의 다른 서비스. 연락할 때 지난 이력을 같이 보려는 용도."""
-    serial = case.serial_number or (case.asset.serial_number if case.asset_id else '')
+    """같은 장비(시리얼)를 먼저, 없으면 같은 고객의 다른 서비스. 연락할 때 지난 이력을 같이 보려는 용도.
+    장비가 여러 대면 그중 어느 시리얼이든 겹치는 기록을 모은다."""
+    serials = _serials(_equipments(case))
     base = visible_service_cases(request, scope_users).exclude(pk=case.pk)
-    if serial:
-        queryset, basis = base.filter(serial_number=serial), 'serial'
+    if serials:
+        queryset = base.filter(Q(equipments__serial_number__in=serials) | Q(serial_number__in=serials)).distinct()
+        basis = 'serial'
     elif case.followup_id:
         queryset, basis = base.filter(followup_id=case.followup_id), 'customer'
     elif case.institution:
@@ -285,12 +336,13 @@ def _year_summary(cases, year):
             paid_count += 1
             paid_amount += int(case.charge_amount or 0)
         parts_count += sum(part.quantity for part in _parts(case))
-        serial = case.serial_number or (case.asset.serial_number if case.asset_id else '')
-        if serial:
-            entry = serials.setdefault(serial, {'serialNumber': serial, 'equipment': _equipment_label(case), 'count': 0})
+        equipments = _equipments(case)
+        for serial in _serials(equipments):
+            label = next((_single_label(row) for row in equipments if (row.serial_number or '').strip() == serial), '')
+            entry = serials.setdefault(serial, {'serialNumber': serial, 'equipment': label, 'count': 0})
             entry['count'] += 1
             if not entry['equipment']:
-                entry['equipment'] = _equipment_label(case)
+                entry['equipment'] = label
     return {
         'year': year,
         'total': len(cases),
@@ -314,7 +366,8 @@ def _year_summary(cases, year):
 
 def _matches(case, query):
     haystack = ' '.join([
-        case.title, case.institution, case.equipment_name, case.model_name, case.serial_number,
+        case.title, case.institution,
+        ' '.join(f'{row.name} {row.model_name} {row.serial_number} {row.note}' for row in _equipments(case)),
         case.symptom, case.diagnosis, case.resolution,
         _customer_name(case.followup) if case.followup_id else '',
         case.requester_name, case.requester_contact,
@@ -513,6 +566,30 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
     if len(parts) > MAX_PARTS:
         raise ValueError(f'부품은 {MAX_PARTS}개까지 입력할 수 있습니다.')
 
+    raw_equipments = payload.get('equipments')
+    if raw_equipments is None:
+        # 예전 형식(장비 한 대)도 받는다
+        raw_equipments = [{
+            'name': payload.get('equipmentName'),
+            'modelName': payload.get('modelName'),
+            'serialNumber': payload.get('serialNumber'),
+        }]
+    equipments = []
+    for raw in raw_equipments if isinstance(raw_equipments, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        row = ServiceEquipment(
+            name=str(raw.get('name') or '').strip()[:200],
+            model_name=str(raw.get('modelName') or '').strip()[:200],
+            serial_number=str(raw.get('serialNumber') or '').strip()[:120],
+            note=str(raw.get('note') or '').strip()[:300],
+        )
+        if row.name or row.model_name or row.serial_number or row.note:
+            row.position = len(equipments)
+            equipments.append(row)
+    if len(equipments) > MAX_EQUIPMENTS:
+        raise ValueError(f'장비는 {MAX_EQUIPMENTS}대까지 입력할 수 있습니다.')
+
     case.followup = followup
     case.institution = institution[:100]
     case.requester_followup = requester
@@ -522,25 +599,31 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
     case.symptom = texts['symptom']
     case.diagnosis = texts['diagnosis']
     case.resolution = texts['resolution']
-    case.equipment_name = str(payload.get('equipmentName') or '').strip()[:200]
-    case.model_name = str(payload.get('modelName') or '').strip()[:200]
-    case.serial_number = str(payload.get('serialNumber') or '').strip()[:120]
+    # 첫 장비는 케이스 칸에도 둔다(장비 하나만 보여주는 화면용)
+    first = equipments[0] if equipments else None
+    case.equipment_name = first.name if first else ''
+    case.model_name = first.model_name if first else ''
+    case.serial_number = first.serial_number if first else ''
     case.case_type = case_type
     case.status = status
     case.received_date = service_date
     case.completed_date = completed_date
     case.charge_type = charge_type
     case.charge_amount = _parse_amount(payload.get('chargeAmount')) if charge_type == ServiceCase.CHARGE_PAID else None
-    return parts
+    return parts, equipments
 
 
-def _save_with_parts(case, parts):
+def _save_with_parts(case, children):
+    """케이스와 부품·장비 목록을 한 번에 저장한다(목록은 통째로 바꾼다)."""
+    parts, equipments = children
     with transaction.atomic():
         case.save()
         case.parts.all().delete()
-        for part in parts:
-            part.case = case
+        case.equipments.all().delete()
+        for row in [*parts, *equipments]:
+            row.case = case
         ServicePart.objects.bulk_create(parts)
+        ServiceEquipment.objects.bulk_create(equipments)
 
 
 def _write_guard(request):
@@ -563,10 +646,10 @@ def service_create_api(request):
     scope_users, _selected, scope_ids = _scope(request)
     case = ServiceCase(created_by=request.user)
     try:
-        parts = _apply_payload(case, payload, request, scope_ids, creating=True)
+        children = _apply_payload(case, payload, request, scope_ids, creating=True)
     except ValueError as exc:
         return _error(str(exc))
-    _save_with_parts(case, parts)
+    _save_with_parts(case, children)
     case = _visible_case_or_404(request, scope_users, case.pk)
     return JsonResponse({
         'success': True,
@@ -594,10 +677,10 @@ def service_update_api(request, case_id):
     if payload is None:
         return _error('잘못된 요청 형식입니다.')
     try:
-        parts = _apply_payload(case, payload, request, scope_ids, creating=False)
+        children = _apply_payload(case, payload, request, scope_ids, creating=False)
     except ValueError as exc:
         return _error(str(exc))
-    _save_with_parts(case, parts)
+    _save_with_parts(case, children)
     case = _visible_case_or_404(request, scope_users, case.pk)
     return JsonResponse({
         'success': True,

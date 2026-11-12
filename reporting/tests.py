@@ -15385,3 +15385,64 @@ class ServiceMenuApiTests(TestCase):
             (case.title, case.status, case.received_date, case.assigned_to_id, case.meeting_position),
             ('예전 회의 기록', 'completed', self.last_monday, self.user.id, 3),
         )
+
+    def _equipments(self):
+        return [
+            {'name': '원심분리기', 'modelName': 'CF-100', 'serialNumber': 'SN-001', 'note': '베어링 교체'},
+            {'name': '', 'modelName': '', 'serialNumber': '', 'note': ''},
+            {'name': '인큐베이터', 'modelName': 'IC-2', 'serialNumber': 'SN-777', 'note': '점검만'},
+        ]
+
+    def test_one_case_can_hold_several_equipments(self):
+        from reporting.models import ServiceCase
+
+        item = self._create(equipments=self._equipments()).json()['item']
+        self.assertEqual(
+            [(row['name'], row['serialNumber'], row['note']) for row in item['equipments']],
+            [('원심분리기', 'SN-001', '베어링 교체'), ('인큐베이터', 'SN-777', '점검만')],
+        )
+        self.assertEqual(item['equipment'], '원심분리기 CF-100 외 1대')
+        self.assertEqual(item['serialNumbers'], ['SN-001', 'SN-777'])
+        case = ServiceCase.objects.get(pk=item['id'])
+        self.assertEqual((case.equipment_name, case.serial_number), ('원심분리기', 'SN-001'))
+
+        body = self._body(equipments=[{'name': '냉각기', 'serialNumber': 'SN-900'}])
+        updated = self._post('service_update_api', body, item['id']).json()['item']
+        self.assertEqual([row['name'] for row in updated['equipments']], ['냉각기'])
+        self.assertEqual(ServiceCase.objects.get(pk=item['id']).serial_number, 'SN-900')
+        cleared = self._post('service_update_api', self._body(equipments=[]), item['id']).json()['item']
+        self.assertEqual((cleared['equipments'], cleared['equipment']), ([], ''))
+
+    def test_any_equipment_serial_links_history_search_and_repeat_count(self):
+        first = self._create(equipments=self._equipments()).json()['item']['id']
+        second = self._create(
+            title='인큐베이터 재방문', equipments=[{'name': '인큐베이터', 'modelName': 'IC-2', 'serialNumber': 'SN-777'}],
+        ).json()['item']
+        self.assertEqual(second['related']['basis'], 'serial')
+        self.assertEqual([row['id'] for row in second['related']['items']], [first])
+        params = {'year': self.last_monday.year}
+        summary = self.client.get(reverse('reporting:services_api'), params).json()['summary']
+        self.assertEqual(
+            [(row['serialNumber'], row['equipment'], row['count']) for row in summary['repeatSerials']],
+            [('SN-777', '인큐베이터 IC-2', 2)],
+        )
+        searched = self.client.get(reverse('reporting:services_api'), {**params, 'q': 'SN-777'}).json()['items']
+        self.assertEqual(len(searched), 2)
+        noted = self.client.get(reverse('reporting:services_api'), {**params, 'q': '점검만'}).json()['items']
+        self.assertEqual([row['id'] for row in noted], [first])
+
+    def test_old_cases_get_equipment_row_from_migration(self):
+        import importlib
+        from django.apps import apps as django_apps
+        from reporting.models import ServiceCase, ServiceEquipment
+
+        case = ServiceCase.objects.create(
+            institution='옛기관', title='옛 기록', received_date=self.last_monday,
+            equipment_name='분광기', model_name='SP-1', serial_number='OLD-1', assigned_to=self.user, created_by=self.user,
+        )
+        ServiceCase.objects.create(institution='장비없음', title='장비 없는 기록', received_date=self.last_monday)
+        importlib.import_module('reporting.migrations.0134_service_equipments').copy_case_equipment(django_apps, None)
+        self.assertEqual(
+            list(ServiceEquipment.objects.values_list('case_id', 'name', 'model_name', 'serial_number')),
+            [(case.id, '분광기', 'SP-1', 'OLD-1')],
+        )
