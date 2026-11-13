@@ -17,6 +17,7 @@
 **추가(같은 날)** — 사용자: "청구 금액 (원)을 입력안해도 유상이면 자동입력되게해".
 - `_apply_payload`: 유상인데 청구 금액이 비면 단가 적힌 부품의 합계(부가세 포함)를 넣는다. 단가 있는 부품이 없으면 비움. 직접 적은 금액은 그대로. 화면 placeholder·안내 문구, MCP 설명에도 적음.
 - 테스트 `test_paid_case_without_amount_uses_parts_total`. ServiceMenuApiTests 17 OK, tsc, build.
+- 배포: 커밋 dba04ec, web 9e3a8986 SUCCESS, salesnote-mcp 46d74b55 SUCCESS, smoke ok.
 
 ## 2026-11-12 장비 "모델" → "브랜드", "판단" → "점검", 서비스 MCP CRUD
 
