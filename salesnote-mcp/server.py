@@ -105,6 +105,7 @@ def salesnote_write(
          "chargeType": "free", "chargeAmount": ""}
       institution 또는 customerId 하나, symptom/diagnosis/resolution/title 중 하나는 필수.
       parts 의 unitPrice 는 부가세 포함 단가(제품 검색 price 도 정상가+부가세 10%).
+      chargeType="paid" 에 chargeAmount 를 비우면 부품 합계가 청구 금액으로 들어간다.
     payload: 필드 dict.
     confirm: 되돌릴 수 없거나 외부로 나가는 작업(삭제·메일발송·금액취소·파괴적 대량변경)은
       True 여야 실행됨. 없으면 서버가 428(confirmation_required) 로 거부한다.

@@ -15453,6 +15453,19 @@ class ServiceMenuApiTests(TestCase):
         self.assertEqual(self.client.get(url, {'q': 'br-1'}).json()['items'][0]['code'], 'BR-100')
         self.assertEqual(self.client.get(url, {'q': ''}).json()['items'], [])
 
+    def test_paid_case_without_amount_uses_parts_total(self):
+        parts = [
+            {'name': '베어링', 'quantity': 2, 'unitPrice': 33000},
+            {'name': '퓨즈', 'quantity': 1, 'unitPrice': 1100},
+            {'name': '단가 모름', 'quantity': 5},
+        ]
+        item = self._create(chargeType='paid', chargeAmount='', parts=parts).json()['item']
+        self.assertEqual(item['chargeAmount'], 67100)
+        # 직접 적으면 그 금액, 단가 있는 부품이 없으면 비워 둔다
+        self.assertEqual(self._create(chargeType='paid', chargeAmount='50000', parts=parts).json()['item']['chargeAmount'], 50000)
+        self.assertIsNone(self._create(chargeType='paid', chargeAmount='', parts=[{'name': '퓨즈'}]).json()['item']['chargeAmount'])
+        self.assertIsNone(self._create(chargeType='free', parts=parts).json()['item']['chargeAmount'])
+
     def test_part_can_be_picked_from_products(self):
         from reporting.models import ServicePart
 

@@ -1,5 +1,23 @@
 # AGENT_PLAN.md
 
+## 2026-11-13 서비스 교체 부품 단가 = 부가세 포함
+
+**Background**: 사용자 — "서비스 부품 넣을때 가격들어가는데 왜 부가세 별도라고 안내 안나옴 차라리 그럼 부가세 포함한 가격이 들어가게 하셈".
+
+**Scope**:
+- `product_part_payload` price = 제품 정상가(부가세 별도) × 1.1, 원 단위 반올림(ROUND_HALF_UP). 제품 검색을 쓰는 곳은 서비스 메뉴뿐.
+- 저장값(`ServicePart.unit_price`)은 그대로 입력한 금액 — 이제 "부가세 포함 단가"로 읽는다. 모델 변경 없음. 이미 저장된 부품 단가는 바꾸지 않음.
+- 표시: 입력 칸 "단가(부가세 포함)", 제품 목록 가격 "(부가세 포함)", 안내 문구, 부품 합계, 상세 표 머리, 보고서 "4. 교체 부품 (금액은 부가세 포함)"·"합계 (부가세 포함)".
+- MCP 도구 설명에 unitPrice 는 부가세 포함이라고 적고 salesnote-mcp 재배포.
+
+**Checks**: pyflakes, ServiceMenuApiTests 16 OK, tsc, build. 커밋 89d0244.
+
+**배포**: web e86d3333 SUCCESS, salesnote-mcp 8eec434a SUCCESS, smoke ok.
+
+**추가(같은 날)** — 사용자: "청구 금액 (원)을 입력안해도 유상이면 자동입력되게해".
+- `_apply_payload`: 유상인데 청구 금액이 비면 단가 적힌 부품의 합계(부가세 포함)를 넣는다. 단가 있는 부품이 없으면 비움. 직접 적은 금액은 그대로. 화면 placeholder·안내 문구, MCP 설명에도 적음.
+- 테스트 `test_paid_case_without_amount_uses_parts_total`. ServiceMenuApiTests 17 OK, tsc, build.
+
 ## 2026-11-12 장비 "모델" → "브랜드", "판단" → "점검", 서비스 MCP CRUD
 
 **Background**: 사용자 — "모델 이 아니라 브랜드가 맞을거같아", "판단 을 점검으로 바꾸고", "서비스 여기도 mcp로 CRUD 다 할수있게하셈".

@@ -1043,8 +1043,8 @@ function ServiceFormView({ id }: { id?: number }) {
               {form.chargeType === 'paid' ? (
                 <label className="svc-field">
                   <span>청구 금액 (원)</span>
-                  <input inputMode="numeric" onChange={(event) => set('chargeAmount', event.target.value)} placeholder={partsTotal ? String(partsTotal) : ''} value={form.chargeAmount} />
-                  <small>서비스 현황용 — 매출에는 들어가지 않습니다</small>
+                  <input inputMode="numeric" onChange={(event) => set('chargeAmount', event.target.value)} placeholder={partsTotal ? `비우면 부품 합계 ${formatWon(partsTotal)}` : '비우면 부품 합계로 자동 입력'} value={form.chargeAmount} />
+                  <small>비워 두면 부품 합계(부가세 포함)가 들어갑니다 · 서비스 현황용 — 매출에는 들어가지 않습니다</small>
                 </label>
               ) : null}
             </div>

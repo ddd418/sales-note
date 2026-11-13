@@ -674,6 +674,10 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
     case.completed_date = completed_date
     case.charge_type = charge_type
     case.charge_amount = _parse_amount(payload.get('chargeAmount')) if charge_type == ServiceCase.CHARGE_PAID else None
+    if charge_type == ServiceCase.CHARGE_PAID and case.charge_amount is None:
+        # 유상인데 청구 금액을 비우면 부품 합계(부가세 포함)를 넣는다. 단가 적힌 부품이 없으면 비워 둔다.
+        priced = [part for part in parts if part.unit_price is not None]
+        case.charge_amount = _parts_total(priced) if priced else None
     return parts, equipments
 
 
