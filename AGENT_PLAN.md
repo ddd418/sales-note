@@ -13,6 +13,8 @@
 
 **Checks**: ServiceMenuApiTests 17 OK, tsc, build.
 
+**배포**: aa2d801, web 41f181fd SUCCESS, salesnote-mcp b65d3cae SUCCESS, smoke ok. 운영 제품 검색 price 가 정상가 그대로(10,000)인 것 확인. 89d0244~aa2d801 사이 저장된 #13 부품 단가는 정상가 그대로라 고칠 데이터 없음.
+
 ## 2026-11-13 서비스 교체 부품 단가 = 부가세 포함
 
 **Background**: 사용자 — "서비스 부품 넣을때 가격들어가는데 왜 부가세 별도라고 안내 안나옴 차라리 그럼 부가세 포함한 가격이 들어가게 하셈".
