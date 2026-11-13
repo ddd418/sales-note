@@ -8,6 +8,7 @@
 - `reporting/api/services.py` `is_calibration_part`: 품번이 `..._Calibration`/`calibration`/KOLAS 포함, 또는 부품명에 "교정"·KOLAS·끝이 "Calibration" 이면 교정 작업 줄로 보고 개수에서 뺀다. "Calibration key", "calibration screw" 같은 실제 부품은 센다.
 - 연간 현황 `partsCount`, 목록 행 `partsCount` 둘 다 적용. 부품 목록·금액 합계는 그대로(교정비도 금액에는 들어감).
 - 테스트 `test_parts_count_skips_calibration_lines`. ServiceMenuApiTests 18 OK.
+- 배포: f93960b, web bdb50175 SUCCESS, smoke ok. 운영 확인: 연간 교체 부품 12개(#13 10, #12 0, #11 2).
 
 ## 2026-11-13 (정정) 부품 단가는 부가세 별도 그대로, 합계만 부가세 포함
 
