@@ -161,6 +161,12 @@
   font-size: 11pt;
 }
 
+.rpt-note {
+  font-size: 8.5pt;
+  font-weight: 400;
+  color: #555;
+}
+
 .rpt-text {
   min-height: 22mm;
   margin: 0;

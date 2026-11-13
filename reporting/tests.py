@@ -15449,7 +15449,7 @@ class ServiceMenuApiTests(TestCase):
         self._product('BR-300', '단종 베어링', 1, active=False)
         url = reverse('reporting:service_product_search_api')
         items = self.client.get(url, {'q': '베어링'}).json()['items']
-        self.assertEqual([(row['code'], row['name'], row['price']) for row in items], [('BR-100', '베어링 세트', 30000)])
+        self.assertEqual([(row['code'], row['name'], row['price']) for row in items], [('BR-100', '베어링 세트', 33000)])
         self.assertEqual(self.client.get(url, {'q': 'br-1'}).json()['items'][0]['code'], 'BR-100')
         self.assertEqual(self.client.get(url, {'q': ''}).json()['items'], [])
 

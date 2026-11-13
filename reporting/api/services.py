@@ -8,7 +8,7 @@
 import json
 from collections import Counter
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import transaction
 from django.db.models import Prefetch, Q
@@ -496,7 +496,10 @@ def service_customer_search_api(request):
 
 
 def product_part_payload(product):
-    """제품을 교체 부품 줄로 옮길 때 쓰는 값. 제품 코드가 품번, 설명 첫 줄이 부품명."""
+    """제품을 교체 부품 줄로 옮길 때 쓰는 값. 제품 코드가 품번, 설명 첫 줄이 부품명.
+
+    제품 정상가는 부가세 별도(공급가)라서, 부품 단가는 부가세 10% 를 더해 원 단위로 반올림한다.
+    """
     description = (product.description or '').strip().splitlines()[0].strip() if (product.description or '').strip() else ''
     return {
         'id': product.id,
@@ -504,7 +507,7 @@ def product_part_payload(product):
         'name': (description or product.product_code)[:200],
         'specification': product.specification or '',
         'unit': product.unit or 'EA',
-        'price': int(product.standard_price or 0),
+        'price': int((Decimal(product.standard_price or 0) * Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)),
     }
 
 
@@ -621,7 +624,7 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
             name=name[:200],
             part_number=(str(raw.get('partNumber') or '').strip() or (product.product_code if product else ''))[:100],
             quantity=quantity,
-            unit_price=_parse_amount(raw.get('unitPrice')),
+            unit_price=_parse_amount(raw.get('unitPrice')),  # 부가세 포함 단가
             position=index,
         ))
     if len(parts) > MAX_PARTS:
