@@ -201,7 +201,13 @@ def _parts(case):
 
 
 def _parts_total(parts):
+    """부품 공급가 합계(단가는 부가세 별도)."""
     return sum(int(part.unit_price) * part.quantity for part in parts if part.unit_price is not None)
+
+
+def _with_vat(amount):
+    """공급가 → 부가세 10% 포함 금액(원 단위 반올림)."""
+    return int((Decimal(amount) * Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 def case_summary_payload(case, viewer, scope_user_ids):
@@ -280,7 +286,9 @@ def case_detail_payload(case, viewer, scope_user_ids, related):
         'resolution': case.resolution,
         'dueDate': case.due_date.isoformat() if case.due_date else None,
         'parts': [_part_payload(part) for part in parts],
-        'partsAmount': _parts_total(parts),
+        'partsAmount': _parts_total(parts),  # 공급가 합계
+        'partsVat': _with_vat(_parts_total(parts)) - _parts_total(parts),
+        'partsTotal': _with_vat(_parts_total(parts)),  # 부가세 포함 합계
         'createdBy': _user_display_name(case.created_by) if case.created_by_id else '',
         'createdAt': timezone.localtime(case.created_at).date().isoformat(),
         'updatedAt': timezone.localtime(case.updated_at).isoformat(),
@@ -498,7 +506,7 @@ def service_customer_search_api(request):
 def product_part_payload(product):
     """제품을 교체 부품 줄로 옮길 때 쓰는 값. 제품 코드가 품번, 설명 첫 줄이 부품명.
 
-    제품 정상가는 부가세 별도(공급가)라서, 부품 단가는 부가세 10% 를 더해 원 단위로 반올림한다.
+    단가는 제품 정상가(부가세 별도) 그대로. 부가세는 합계에서 붙인다(`_with_vat`).
     """
     description = (product.description or '').strip().splitlines()[0].strip() if (product.description or '').strip() else ''
     return {
@@ -507,7 +515,7 @@ def product_part_payload(product):
         'name': (description or product.product_code)[:200],
         'specification': product.specification or '',
         'unit': product.unit or 'EA',
-        'price': int((Decimal(product.standard_price or 0) * Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)),
+        'price': int(product.standard_price or 0),
     }
 
 
@@ -624,7 +632,7 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
             name=name[:200],
             part_number=(str(raw.get('partNumber') or '').strip() or (product.product_code if product else ''))[:100],
             quantity=quantity,
-            unit_price=_parse_amount(raw.get('unitPrice')),  # 부가세 포함 단가
+            unit_price=_parse_amount(raw.get('unitPrice')),  # 부가세 별도 단가
             position=index,
         ))
     if len(parts) > MAX_PARTS:
@@ -675,9 +683,9 @@ def _apply_payload(case, payload, request, scope_ids, *, creating):
     case.charge_type = charge_type
     case.charge_amount = _parse_amount(payload.get('chargeAmount')) if charge_type == ServiceCase.CHARGE_PAID else None
     if charge_type == ServiceCase.CHARGE_PAID and case.charge_amount is None:
-        # 유상인데 청구 금액을 비우면 부품 합계(부가세 포함)를 넣는다. 단가 적힌 부품이 없으면 비워 둔다.
+        # 유상인데 청구 금액을 비우면 부품 합계에 부가세를 더해 넣는다. 단가 적힌 부품이 없으면 비워 둔다.
         priced = [part for part in parts if part.unit_price is not None]
-        case.charge_amount = _parts_total(priced) if priced else None
+        case.charge_amount = _with_vat(_parts_total(priced)) if priced else None
     return parts, equipments
 
 

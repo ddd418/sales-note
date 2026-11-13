@@ -153,7 +153,7 @@ export function ServiceReportPage() {
         <section className="rpt-section"><h2>3. 조치 내용</h2><Text value={item.resolution || item.rawTitle} /></section>
 
         <section className="rpt-section">
-          <h2>4. 교체 부품 <small className="rpt-note">(금액은 부가세 포함)</small></h2>
+          <h2>4. 교체 부품 <small className="rpt-note">(단가·금액은 부가세 별도)</small></h2>
           {item.parts.length ? (
             <table className="rpt-parts">
               <thead><tr><th>No.</th><th>부품명</th><th>품번</th><th>수량</th><th>단가</th><th>금액</th></tr></thead>
@@ -170,7 +170,11 @@ export function ServiceReportPage() {
                 ))}
               </tbody>
               {item.partsAmount ? (
-                <tfoot><tr><td colSpan={5}>합계 (부가세 포함)</td><td className="rpt-num">{formatWon(item.partsAmount)}</td></tr></tfoot>
+                <tfoot>
+                  <tr><td colSpan={5}>공급가 합계</td><td className="rpt-num">{formatWon(item.partsAmount)}</td></tr>
+                  <tr><td colSpan={5}>부가세 (10%)</td><td className="rpt-num">{formatWon(item.partsVat)}</td></tr>
+                  <tr><td colSpan={5}>합계 (부가세 포함)</td><td className="rpt-num"><strong>{formatWon(item.partsTotal)}</strong></td></tr>
+                </tfoot>
               ) : null}
             </table>
           ) : <p className="rpt-text rpt-empty">교체 부품 없음</p>}

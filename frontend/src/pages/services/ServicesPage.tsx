@@ -448,7 +448,7 @@ function ServiceDetailView({ id }: { id: number }) {
         <h3>교체 부품</h3>
         {item.parts.length ? (
           <table className="svc-parts">
-            <thead><tr><th>부품명</th><th>품번</th><th>수량</th><th>단가(부가세 포함)</th><th>금액(부가세 포함)</th></tr></thead>
+            <thead><tr><th>부품명</th><th>품번</th><th>수량</th><th>단가</th><th>금액</th></tr></thead>
             <tbody>
               {item.parts.map((part) => (
                 <tr key={part.id ?? part.name}>
@@ -461,7 +461,11 @@ function ServiceDetailView({ id }: { id: number }) {
               ))}
             </tbody>
             {item.partsAmount ? (
-              <tfoot><tr><td colSpan={4}>부품 합계 (부가세 포함)</td><td className="svc-num">{formatWon(item.partsAmount)}</td></tr></tfoot>
+              <tfoot>
+                <tr><td colSpan={4}>공급가 합계</td><td className="svc-num">{formatWon(item.partsAmount)}</td></tr>
+                <tr><td colSpan={4}>부가세 (10%)</td><td className="svc-num">{formatWon(item.partsVat)}</td></tr>
+                <tr><td colSpan={4}>합계 (부가세 포함)</td><td className="svc-num"><strong>{formatWon(item.partsTotal)}</strong></td></tr>
+              </tfoot>
             ) : null}
           </table>
         ) : <p className="svc-muted">교체한 부품이 없습니다.</p>}
@@ -651,7 +655,7 @@ function PartNameInput({ part, onChange, onPick }: {
                 <strong>{product.name}</strong>
                 <small>
                   {[product.code, product.specification, product.unit].filter(Boolean).join(' · ')}
-                  {product.price ? ` · ${formatWon(product.price)} (부가세 포함)` : ''}
+                  {product.price ? ` · ${formatWon(product.price)}` : ''}
                 </small>
               </button>
             </li>
@@ -846,10 +850,12 @@ function ServiceFormView({ id }: { id?: number }) {
     setForm((current) => ({ ...current, parts: current.parts.map((part) => (part.key === key ? { ...part, [field]: value } : part)) }));
   };
 
-  const partsTotal = useMemo(() => form.parts.reduce((sum, part) => {
+  // 단가는 부가세 별도 → 합계에 10% 를 붙인다(서버 _with_vat 와 같은 반올림)
+  const partsSupply = useMemo(() => form.parts.reduce((sum, part) => {
     const price = Number(part.unitPrice.replace(/,/g, ''));
     return Number.isFinite(price) && part.unitPrice ? sum + price * (Number(part.quantity) || 1) : sum;
   }, 0), [form.parts]);
+  const partsTotal = Math.round((partsSupply * 11) / 10);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -1002,7 +1008,7 @@ function ServiceFormView({ id }: { id?: number }) {
 
           <section className="svc-card">
             <h3>교체 부품</h3>
-            {form.parts.length ? <p className="svc-muted svc-hint">부품명 칸에 제품 코드나 이름을 치면 제품 목록에서 고를 수 있습니다. 목록에 없으면 그대로 적으세요. 단가는 부가세 포함 금액입니다(제품에서 고르면 정상가에 부가세 10%를 더해 넣습니다).</p> : null}
+            {form.parts.length ? <p className="svc-muted svc-hint">부품명 칸에 제품 코드나 이름을 치면 제품 목록에서 고를 수 있습니다. 목록에 없으면 그대로 적으세요. 단가는 부가세 별도 금액이고, 합계에 부가세 10%가 붙습니다.</p> : null}
             {form.parts.length ? (
               <div className="svc-part-rows">
                 {form.parts.map((part) => (
@@ -1010,7 +1016,7 @@ function ServiceFormView({ id }: { id?: number }) {
                     <PartNameInput onChange={(value) => setPart(part.key, 'name', value)} onPick={(product) => pickProduct(part.key, product)} part={part} />
                     <input aria-label="품번" onChange={(event) => setPart(part.key, 'partNumber', event.target.value)} placeholder="품번" value={part.partNumber} />
                     <input aria-label="수량" inputMode="numeric" min={1} onChange={(event) => setPart(part.key, 'quantity', event.target.value)} type="number" value={part.quantity} />
-                    <input aria-label="단가(부가세 포함)" inputMode="numeric" onChange={(event) => setPart(part.key, 'unitPrice', event.target.value)} placeholder="단가(부가세 포함)" value={part.unitPrice} />
+                    <input aria-label="단가" inputMode="numeric" onChange={(event) => setPart(part.key, 'unitPrice', event.target.value)} placeholder="단가(부가세 별도)" value={part.unitPrice} />
                     <button aria-label="부품 삭제" className="svc-icon" onClick={() => set('parts', form.parts.filter((row) => row.key !== part.key))} type="button"><X size={14} /></button>
                   </div>
                 ))}
@@ -1018,7 +1024,7 @@ function ServiceFormView({ id }: { id?: number }) {
             ) : null}
             <div className="svc-part-foot">
               <button className="svc-ghost" onClick={() => set('parts', [...form.parts, emptyPart()])} type="button"><Plus size={14} />부품 추가</button>
-              {partsTotal ? <span className="svc-muted">부품 합계 {formatWon(partsTotal)} (부가세 포함)</span> : null}
+              {partsTotal ? <span className="svc-muted">공급가 {formatWon(partsSupply)} · 합계 {formatWon(partsTotal)} (부가세 포함)</span> : null}
             </div>
           </section>
 

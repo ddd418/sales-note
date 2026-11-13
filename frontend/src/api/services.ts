@@ -87,6 +87,8 @@ export type ServiceDetail = ServiceSummaryItem & {
   dueDate: string | null;
   parts: ServicePart[];
   partsAmount: number;
+  partsVat: number;
+  partsTotal: number;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

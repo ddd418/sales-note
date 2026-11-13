@@ -15449,18 +15449,21 @@ class ServiceMenuApiTests(TestCase):
         self._product('BR-300', '단종 베어링', 1, active=False)
         url = reverse('reporting:service_product_search_api')
         items = self.client.get(url, {'q': '베어링'}).json()['items']
-        self.assertEqual([(row['code'], row['name'], row['price']) for row in items], [('BR-100', '베어링 세트', 33000)])
+        self.assertEqual([(row['code'], row['name'], row['price']) for row in items], [('BR-100', '베어링 세트', 30000)])
         self.assertEqual(self.client.get(url, {'q': 'br-1'}).json()['items'][0]['code'], 'BR-100')
         self.assertEqual(self.client.get(url, {'q': ''}).json()['items'], [])
 
     def test_paid_case_without_amount_uses_parts_total(self):
         parts = [
-            {'name': '베어링', 'quantity': 2, 'unitPrice': 33000},
-            {'name': '퓨즈', 'quantity': 1, 'unitPrice': 1100},
+            {'name': '베어링', 'quantity': 2, 'unitPrice': 30000},
+            {'name': '퓨즈', 'quantity': 1, 'unitPrice': 1005},
             {'name': '단가 모름', 'quantity': 5},
         ]
         item = self._create(chargeType='paid', chargeAmount='', parts=parts).json()['item']
-        self.assertEqual(item['chargeAmount'], 67100)
+        # 단가는 부가세 별도 그대로, 합계·청구 금액은 부가세 포함(61,005 × 1.1 = 67,105.5 → 67,106)
+        self.assertEqual([row['unitPrice'] for row in item['parts']], [30000, 1005, None])
+        self.assertEqual((item['partsAmount'], item['partsVat'], item['partsTotal']), (61005, 6101, 67106))
+        self.assertEqual(item['chargeAmount'], 67106)
         # 직접 적으면 그 금액, 단가 있는 부품이 없으면 비워 둔다
         self.assertEqual(self._create(chargeType='paid', chargeAmount='50000', parts=parts).json()['item']['chargeAmount'], 50000)
         self.assertIsNone(self._create(chargeType='paid', chargeAmount='', parts=[{'name': '퓨즈'}]).json()['item']['chargeAmount'])
