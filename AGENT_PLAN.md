@@ -1,5 +1,14 @@
 # AGENT_PLAN.md
 
+## 2026-11-13 서비스 현황 "교체 부품" 개수에서 교정(calibration) 제외
+
+**Background**: 사용자 — "교체 부품 개수 세는거 서비스 대시보드에서 calibration 도 같이 세고있거든? 그럼 안돼".
+
+**Scope**:
+- `reporting/api/services.py` `is_calibration_part`: 품번이 `..._Calibration`/`calibration`/KOLAS 포함, 또는 부품명에 "교정"·KOLAS·끝이 "Calibration" 이면 교정 작업 줄로 보고 개수에서 뺀다. "Calibration key", "calibration screw" 같은 실제 부품은 센다.
+- 연간 현황 `partsCount`, 목록 행 `partsCount` 둘 다 적용. 부품 목록·금액 합계는 그대로(교정비도 금액에는 들어감).
+- 테스트 `test_parts_count_skips_calibration_lines`. ServiceMenuApiTests 18 OK.
+
 ## 2026-11-13 (정정) 부품 단가는 부가세 별도 그대로, 합계만 부가세 포함
 
 **Background**: 사용자 — "입력을 부품 가 그대로 입력하면 합계는 부가세 포함으로 나오게 하라고". 앞 작업(89d0244)에서 단가에 ×1.1 을 한 것은 요청을 잘못 읽은 것.

@@ -6,6 +6,7 @@
 """
 
 import json
+import re
 from collections import Counter
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -36,6 +37,24 @@ RELATED_LIMIT = 10
 CUSTOMER_SEARCH_LIMIT = 20
 PRODUCT_SEARCH_LIMIT = 20
 MAX_PARTS = 50
+
+# 교정(calibration)은 작업비라 "교체 부품" 개수에서 뺀다.
+# 예: Socorex_Calibration / Gilson_Calibration / calibration / KOLAS 교정 성적서 / "Standard service ... Calibration".
+# "Calibration key", "calibration screw" 같은 진짜 부품은 센다.
+_CALIBRATION_CODE = re.compile(r'(^|[_\-\s])calibration$|kolas', re.IGNORECASE)
+_CALIBRATION_NAME = re.compile(r'교정|kolas|calibration$', re.IGNORECASE)
+
+
+def is_calibration_part(part):
+    return bool(
+        _CALIBRATION_CODE.search((part.part_number or '').strip())
+        or _CALIBRATION_NAME.search((part.name or '').strip())
+    )
+
+
+def _counted_parts_quantity(parts):
+    """교체 부품 개수(교정 작업 줄은 빼고 수량 합)."""
+    return sum(part.quantity for part in parts if not is_calibration_part(part))
 MAX_EQUIPMENTS = 30
 
 
@@ -235,7 +254,7 @@ def case_summary_payload(case, viewer, scope_user_ids):
         'chargeType': case.charge_type,
         'chargeLabel': case.get_charge_type_display(),
         'chargeAmount': _money(case.charge_amount),
-        'partsCount': sum(part.quantity for part in parts),
+        'partsCount': _counted_parts_quantity(parts),
         'partNames': [part.name for part in parts],
         'canEdit': can_edit_case(case, viewer, scope_user_ids),
         'href': f'/services/{case.id}/',
@@ -352,7 +371,7 @@ def _year_summary(cases, year):
         if case.charge_type == ServiceCase.CHARGE_PAID:
             paid_count += 1
             paid_amount += int(case.charge_amount or 0)
-        parts_count += sum(part.quantity for part in _parts(case))
+        parts_count += _counted_parts_quantity(_parts(case))
         equipments = _equipments(case)
         for serial in _serials(equipments):
             label = next((_single_label(row) for row in equipments if (row.serial_number or '').strip() == serial), '')

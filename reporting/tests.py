@@ -15453,6 +15453,35 @@ class ServiceMenuApiTests(TestCase):
         self.assertEqual(self.client.get(url, {'q': 'br-1'}).json()['items'][0]['code'], 'BR-100')
         self.assertEqual(self.client.get(url, {'q': ''}).json()['items'], [])
 
+    def test_parts_count_skips_calibration_lines(self):
+        from reporting.api.services import is_calibration_part
+        from reporting.models import ServicePart
+
+        calibration = [
+            ('Cleaning, repair and volume adjustment (제조사 교정 성적서)', 'Socorex_Calibration'),
+            ('calibration', 'calibration'),
+            ('KOLAS 교정 성적서 (Single channel Pipette)', 'DOKOLAS'),
+            ('AND-KOLAS', 'AND-KOLAS'),
+            ('Standard service, control 2 x 4 measurements Calibration', '897.08.920'),
+        ]
+        real = [
+            ('Spare-Parts.Calibration key, Calibrex 525 model', 'SO525.708'),
+            ('Spare-Part.Plunger(Incl. calibration screw).520 model', 'SO520.965'),
+            ('O-ring', 'EP-1'),
+        ]
+        for name, code in calibration:
+            self.assertTrue(is_calibration_part(ServicePart(name=name, part_number=code)), name)
+        for name, code in real:
+            self.assertFalse(is_calibration_part(ServicePart(name=name, part_number=code)), name)
+
+        item = self._create(parts=[
+            {'name': 'O-ring', 'quantity': 8},
+            {'name': 'Cleaning, repair and volume adjustment (제조사 교정 성적서)', 'partNumber': 'Socorex_Calibration', 'quantity': 3},
+        ]).json()['item']
+        rows = self.client.get(reverse('reporting:services_api'), {'year': self.last_monday.year}).json()
+        self.assertEqual(next(row for row in rows['items'] if row['id'] == item['id'])['partsCount'], 8)
+        self.assertEqual(rows['summary']['partsCount'], 8)
+
     def test_paid_case_without_amount_uses_parts_total(self):
         parts = [
             {'name': '베어링', 'quantity': 2, 'unitPrice': 30000},
