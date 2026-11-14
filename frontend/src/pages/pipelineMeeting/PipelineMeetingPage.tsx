@@ -23,11 +23,13 @@ import {
   loadPipelineMeeting,
   reorderMeetingServices,
   restoreMeetingNextAction,
+  setMeetingMovement,
   toggleMeetingAction,
   updateMeetingAction,
   type MeetingActionItem,
   type MeetingMovementGroup,
   type MeetingMovementItem,
+  type MeetingMovementKey,
   type MeetingNextAction,
   type MeetingServiceRecord,
   type PipelineMeetingData,
@@ -145,40 +147,163 @@ function SummaryScene({ data }: { data: PipelineMeetingData }) {
   );
 }
 
-function MovementColumn({ title, tone, group, startIndex }: {
+const MOVE_LABELS: Record<MeetingMovementKey, string> = {
+  won: '수주', advanced: '전진', regressed: '후퇴', lost: '실주', created: '신규',
+};
+const MOVE_KEYS = Object.keys(MOVE_LABELS) as MeetingMovementKey[];
+type MoveChange = (followupId: number, group: MeetingMovementKey | 'hidden' | '') => void;
+
+function MovementCard({ item, index, busy, onChange }: {
+  item: MeetingMovementItem;
+  index: number;
+  busy: boolean;
+  onChange: MoveChange;
+}) {
+  return (
+    <div
+      className={`meeting-move-card${item.adjusted ? ' adjusted' : ''}`}
+      draggable={!busy}
+      onDragStart={(event) => {
+        event.dataTransfer.setData('text/meeting-move', String(item.followupId));
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+      style={{ animationDelay: `${index * 70}ms` }}
+    >
+      <a href={item.href}>
+        <b>{item.company || item.customer}</b>
+        <small>{item.company ? item.customer : ''} · {item.owner}</small>
+      </a>
+      <span className="meeting-move-flow">
+        <em>{item.fromLabel}</em><ArrowRight size={14} /><em className="to">{item.toLabel}</em>
+        {item.amount > 0 ? <strong>{formatWon(item.amount)}</strong> : null}
+      </span>
+      <div className="meeting-move-tools">
+        <select
+          aria-label={`${item.company || item.customer} 칸 옮기기`}
+          disabled={busy}
+          onChange={(event) => onChange(item.followupId, event.target.value as MeetingMovementKey)}
+          value={item.group}
+        >
+          {MOVE_KEYS.map((key) => <option key={key} value={key}>{MOVE_LABELS[key]}</option>)}
+        </select>
+        {item.adjusted && !item.manual ? (
+          <button disabled={busy} onClick={() => onChange(item.followupId, '')} title="자동 분류로 되돌리기" type="button">원래대로</button>
+        ) : null}
+        {item.manual ? <span className="meeting-move-tag">직접 추가</span> : null}
+        <button
+          aria-label={`${item.company || item.customer} 지우기`}
+          className="meeting-move-delete"
+          disabled={busy}
+          onClick={() => onChange(item.followupId, 'hidden')}
+          title="이 회의 화면에서 지우기(고객 단계는 그대로)"
+          type="button"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MovementColumn({ title, tone, group, groups, startIndex, busy, customers, onChange }: {
   title: string;
   tone: string;
   group: MeetingMovementGroup;
+  /** 이 칸에 넣을 수 있는 분류(후퇴·실주 칸은 둘) */
+  groups: MeetingMovementKey[];
   startIndex: number;
+  busy: boolean;
+  customers: { value: string; label: string }[];
+  onChange: MoveChange;
 }) {
+  const [adding, setAdding] = useState(false);
+  const [customer, setCustomer] = useState('');
+  const [target, setTarget] = useState<MeetingMovementKey>(groups[0]);
+  const [over, setOver] = useState(false);
+
+  const onDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setOver(false);
+    const id = Number(event.dataTransfer.getData('text/meeting-move'));
+    if (!id) return;
+    const current = group.items.find((item) => item.followupId === id);
+    if (!current) onChange(id, groups[0]);
+  };
+
   return (
-    <section className={`meeting-column ${tone}`}>
-      <header><h3>{title}</h3><strong>{group.count}</strong></header>
+    <section
+      className={`meeting-column ${tone}${over ? ' drop-over' : ''}`}
+      onDragLeave={() => setOver(false)}
+      onDragOver={(event) => {
+        if (busy) return;
+        event.preventDefault();
+        setOver(true);
+      }}
+      onDrop={onDrop}
+    >
+      <header>
+        <h3>{title}</h3>
+        <span className="meeting-column-head-tools">
+          <button aria-label={`${title}에 직접 추가`} disabled={busy} onClick={() => setAdding((value) => !value)} title="직접 추가" type="button">
+            {adding ? <X size={15} /> : <Plus size={15} />}
+          </button>
+          <strong>{group.count}</strong>
+        </span>
+      </header>
       <div className="meeting-column-body">
-        {group.items.length === 0 ? <p className="meeting-empty">없음</p> : null}
-        {group.items.map((item: MeetingMovementItem, index) => (
-          <a
-            className="meeting-move-card"
-            href={item.href}
-            key={item.followupId}
-            style={{ animationDelay: `${(startIndex + index) * 70}ms` }}
+        {adding ? (
+          <form
+            className="meeting-move-add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!customer) return;
+              onChange(Number(customer), target);
+              setCustomer('');
+              setAdding(false);
+            }}
           >
-            <b>{item.company || item.customer}</b>
-            <small>{item.company ? item.customer : ''} · {item.owner}</small>
-            <span className="meeting-move-flow">
-              <em>{item.fromLabel}</em><ArrowRight size={14} /><em className="to">{item.toLabel}</em>
-              {item.amount > 0 ? <strong>{formatWon(item.amount)}</strong> : null}
-            </span>
-          </a>
+            <SearchableSelect ariaLabel={`${title}에 넣을 고객`} onChange={setCustomer} options={customers} placeholder="고객 검색" value={customer} />
+            {groups.length > 1 ? (
+              <select aria-label="분류" onChange={(event) => setTarget(event.target.value as MeetingMovementKey)} value={target}>
+                {groups.map((key) => <option key={key} value={key}>{MOVE_LABELS[key]}</option>)}
+              </select>
+            ) : null}
+            <button disabled={busy || !customer} type="submit">추가</button>
+          </form>
+        ) : null}
+        {group.items.length === 0 && !adding ? <p className="meeting-empty">없음</p> : null}
+        {group.items.map((item: MeetingMovementItem, index) => (
+          <MovementCard busy={busy} index={startIndex + index} item={item} key={item.followupId} onChange={onChange} />
         ))}
       </div>
     </section>
   );
 }
 
-function MovementScene({ data }: { data: PipelineMeetingData }) {
+function MovementScene({ data, onChanged }: {
+  data: PipelineMeetingData;
+  onChanged: (movement: PipelineMeetingData['movement'], lostAmount: number | null) => void;
+}) {
   const { movement } = data;
-  if (!movement.tracked) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [manual, setManual] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const customers = useMemo(
+    () => (data.form.movementCustomers ?? data.form.customers).map((row) => ({ value: String(row.id), label: row.label })),
+    [data.form.movementCustomers, data.form.customers],
+  );
+
+  const change: MoveChange = (followupId, group) => {
+    setBusy(true);
+    setError('');
+    setMeetingMovement({ week: data.week.start, followupId, group })
+      .then((result) => onChanged(result.movement, result.lostAmount))
+      .catch((caught) => setError(humanizeApiError(caught instanceof Error ? caught.message : '') || '활동을 고치지 못했습니다.'))
+      .finally(() => setBusy(false));
+  };
+
+  if (!movement.tracked && !manual) {
     return (
       <div className="meeting-notice">
         <h2>이 주의 단계 변경 기록이 없습니다</h2>
@@ -186,25 +311,49 @@ function MovementScene({ data }: { data: PipelineMeetingData }) {
           단계 변경은 {movement.trackingSince ? `${shortDate(movement.trackingSince)}부터` : '이번 배포부터'} 기록하고 있습니다.
           기록이 시작된 다음 회의부터 이 장면이 채워집니다.
         </p>
+        <p><button className="meeting-move-manual" onClick={() => setManual(true)} type="button"><Plus size={14} />직접 채우기</button></p>
       </div>
     );
   }
+  const common = { busy, customers, onChange: change };
   return (
-    <div className="meeting-movement">
-      {movement.won.count > 0 ? <WinBurst /> : null}
-      <MovementColumn group={movement.won} startIndex={0} title="수주" tone="won" />
-      <MovementColumn group={movement.advanced} startIndex={2} title="전진" tone="advanced" />
-      <MovementColumn
-        group={{
-          count: movement.regressed.count + movement.lost.count,
-          amount: movement.regressed.amount + movement.lost.amount,
-          items: [...movement.regressed.items, ...movement.lost.items],
-        }}
-        startIndex={4}
-        title="후퇴 · 실주"
-        tone="regressed"
-      />
-      <MovementColumn group={movement.created} startIndex={6} title="신규" tone="created" />
+    <div className="meeting-movement-wrap">
+      <div className="meeting-movement">
+        {movement.won.count > 0 ? <WinBurst /> : null}
+        <MovementColumn {...common} group={movement.won} groups={['won']} startIndex={0} title="수주" tone="won" />
+        <MovementColumn {...common} group={movement.advanced} groups={['advanced']} startIndex={2} title="전진" tone="advanced" />
+        <MovementColumn
+          {...common}
+          group={{
+            count: movement.regressed.count + movement.lost.count,
+            amount: movement.regressed.amount + movement.lost.amount,
+            items: [...movement.regressed.items, ...movement.lost.items],
+          }}
+          groups={['regressed', 'lost']}
+          startIndex={4}
+          title="후퇴 · 실주"
+          tone="regressed"
+        />
+        <MovementColumn {...common} group={movement.created} groups={['created']} startIndex={6} title="신규" tone="created" />
+      </div>
+      <footer className="meeting-move-foot">
+        {busy ? <span><Loader2 className="spin-icon" size={14} /> 저장 중</span> : null}
+        {error ? <span className="meeting-move-error">{error}</span> : null}
+        <span className="meeting-move-hint">카드를 다른 칸으로 끌거나 카드의 칸 선택으로 옮깁니다 · + 로 직접 추가, 휴지통으로 지우기 · 여기서 고친 것은 회의 화면에만 적용되고 고객 단계는 바뀌지 않습니다</span>
+        {(movement.hidden ?? []).length ? (
+          <button onClick={() => setShowHidden((value) => !value)} type="button">지운 건 {movement.hidden.length}</button>
+        ) : null}
+      </footer>
+      {showHidden && (movement.hidden ?? []).length ? (
+        <ul className="meeting-move-hidden">
+          {movement.hidden.map((item) => (
+            <li key={item.followupId}>
+              <span>{item.company || item.customer} · {item.fromLabel} → {item.toLabel}</span>
+              <button disabled={busy} onClick={() => change(item.followupId, '')} type="button">되살리기</button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -834,7 +983,14 @@ export function PipelineMeetingPage() {
                 onReordered={(records) => setData((current) => (current ? { ...current, services: records } : current))}
               />
             ) : null}
-            {scene === 2 ? <MovementScene data={data} /> : null}
+            {scene === 2 ? (
+              <MovementScene
+                data={data}
+                onChanged={(movement, lostAmount) => setData((current) => (current
+                  ? { ...current, movement, summary: { ...current.summary, lostAmount } }
+                  : current))}
+              />
+            ) : null}
             {scene === 3 ? (
               <PromisesScene
                 data={data}

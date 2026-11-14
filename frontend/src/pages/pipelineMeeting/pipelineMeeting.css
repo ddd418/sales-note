@@ -883,3 +883,148 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* 활동: 손으로 옮기기·지우기·넣기 */
+.meeting-movement-wrap {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 0.5em;
+  min-height: 0;
+  height: 100%;
+}
+
+.meeting-column.drop-over {
+  outline: 2px dashed var(--meeting-up, #3b82f6);
+  outline-offset: -2px;
+}
+
+.meeting-column-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.meeting-column-head-tools button,
+.meeting-move-tools button,
+.meeting-move-foot button,
+.meeting-move-hidden button,
+.meeting-move-add button,
+.meeting-move-manual {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.2em 0.5em;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.meeting-column-head-tools button:hover,
+.meeting-move-tools button:hover,
+.meeting-move-foot button:hover,
+.meeting-move-hidden button:hover,
+.meeting-move-manual:hover {
+  color: var(--text);
+}
+
+.meeting-move-card {
+  cursor: grab;
+}
+
+.meeting-move-card a {
+  display: grid;
+  gap: 0.25em;
+  color: inherit;
+  text-decoration: none;
+}
+
+.meeting-move-card.adjusted {
+  box-shadow: inset 3px 0 0 var(--meeting-up, #3b82f6);
+}
+
+.meeting-move-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  margin-top: 0.2em;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.meeting-move-card:hover .meeting-move-tools,
+.meeting-move-card:focus-within .meeting-move-tools,
+.meeting-move-card.adjusted .meeting-move-tools {
+  opacity: 1;
+}
+
+.meeting-move-tools select,
+.meeting-move-add select {
+  padding: 0.15em 0.3em;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.8em;
+}
+
+.meeting-move-delete {
+  margin-left: auto;
+}
+
+.meeting-move-tag {
+  color: var(--muted);
+  font-size: 0.75em;
+}
+
+.meeting-move-add {
+  display: grid;
+  gap: 0.4em;
+  padding: 0.6em;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
+.meeting-move-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em;
+  color: var(--muted);
+  font-size: 0.8em;
+}
+
+.meeting-move-hint {
+  flex: 1;
+}
+
+.meeting-move-error {
+  color: var(--meeting-down, #dc2626);
+}
+
+.meeting-move-hidden {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 1em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.meeting-move-hidden li {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+@media print {
+  .meeting-move-tools,
+  .meeting-move-foot,
+  .meeting-column-head-tools button {
+    display: none;
+  }
+}

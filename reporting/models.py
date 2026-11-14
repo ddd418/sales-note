@@ -2148,6 +2148,46 @@ class MeetingServiceRecord(models.Model):
         indexes = [models.Index(fields=['week_start', 'owner'], name='meeting_service_week_idx')]
 
 
+class MeetingMovementOverride(models.Model):
+    """아침회의 "활동" 장면을 손으로 고친 것(주마다). 고객의 실제 파이프라인 단계는 건드리지 않는다.
+
+    자동 분류(단계 변경 기록)가 틀린 건을 다른 칸으로 옮기거나(group), 숨기거나(hidden),
+    기록에 없는 건을 직접 넣는다(자동 목록에 없던 고객 + group).
+    """
+
+    GROUP_WON = 'won'
+    GROUP_ADVANCED = 'advanced'
+    GROUP_REGRESSED = 'regressed'
+    GROUP_LOST = 'lost'
+    GROUP_CREATED = 'created'
+    GROUP_HIDDEN = 'hidden'
+    GROUP_CHOICES = [
+        (GROUP_WON, '수주'), (GROUP_ADVANCED, '전진'), (GROUP_REGRESSED, '후퇴'),
+        (GROUP_LOST, '실주'), (GROUP_CREATED, '신규'), (GROUP_HIDDEN, '숨김'),
+    ]
+
+    week_start = models.DateField(verbose_name="기준 주(월요일)")
+    followup = models.ForeignKey(
+        FollowUp, on_delete=models.CASCADE, related_name='meeting_movement_overrides', verbose_name="고객",
+    )
+    group = models.CharField(max_length=12, choices=GROUP_CHOICES, verbose_name="칸")
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='meeting_movement_overrides', verbose_name="고친 사람",
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f'{self.week_start} {self.followup_id} → {self.group}'
+
+    class Meta:
+        verbose_name = "회의 활동 수정"
+        verbose_name_plural = "회의 활동 수정"
+        constraints = [
+            models.UniqueConstraint(fields=['week_start', 'followup'], name='meeting_movement_override_unique'),
+        ]
+
+
 # 영업 기회 추적 (OpportunityTracking) 모델
 class OpportunityTracking(models.Model):
     followup = models.ForeignKey(FollowUp, on_delete=models.CASCADE, related_name='opportunities', verbose_name="관련 고객")

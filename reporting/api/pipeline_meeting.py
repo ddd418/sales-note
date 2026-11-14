@@ -39,7 +39,10 @@ from reporting.funnel_views import (
     pipeline_followups_queryset,
 )
 from reporting.api.services import can_edit_case, case_equipments_payload, case_title, visible_service_cases
-from reporting.models import DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, PipelineStageChange, Schedule, ServiceCase, ServiceEquipment
+from reporting.models import (
+    DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, MeetingMovementOverride,
+    PipelineStageChange, Schedule, ServiceCase, ServiceEquipment,
+)
 from reporting.views import (
     _api_login_required_response,
     _dashboard_scope_users,
@@ -139,10 +142,13 @@ def _classify_movement(from_stage, to_stage):
     return 'advanced' if STAGE_RANK.get(to_stage, 0) > STAGE_RANK.get(from_stage, 0) else 'regressed'
 
 
-def _movement(scope_users, week_start, cards):
-    start, end = _local_day_range(week_start, 7)
-    amounts = {followup.id: amount for followup, _stage, amount in cards}
+MOVEMENT_GROUPS = ('won', 'advanced', 'regressed', 'lost', 'created')
+_GROUP_TO_LABEL = {'won': '수주', 'lost': '실주'}
 
+
+def _auto_movement(scope_users, week_start):
+    """단계 변경 기록으로 분류한 그 주의 움직임: {followup_id: (group, from_stage, to_stage, followup)}."""
+    start, end = _local_day_range(week_start, 7)
     first_last = {}
     restored = False
     changes = (
@@ -156,26 +162,75 @@ def _movement(scope_users, week_start, cards):
         entry = first_last.setdefault(change.followup_id, {'first': change, 'last': change})
         entry['last'] = change
 
-    groups = {'won': [], 'advanced': [], 'regressed': [], 'lost': [], 'created': []}
-    for entry in first_last.values():
+    auto = {}
+    for followup_id, entry in first_last.items():
         from_stage = entry['first'].from_stage
         to_stage = entry['last'].to_stage
         if from_stage == to_stage:
             continue  # 한 주 안에 갔다가 돌아온 건은 변화가 아니다
-        followup = entry['first'].followup
-        groups[_classify_movement(from_stage, to_stage)].append({
-            'followupId': followup.id,
-            'customer': _customer_label(followup),
-            'company': _company_label(followup),
-            'owner': _user_display_name(followup.user),
-            'ownerId': followup.user_id,
-            'fromStage': from_stage,
-            'fromLabel': STAGE_LABELS.get(from_stage, '신규') if from_stage else '신규',
-            'toStage': to_stage,
-            'toLabel': STAGE_LABELS.get(to_stage, to_stage),
-            'amount': amounts.get(followup.id, 0),
-            'href': f'/customers/{followup.id}/',
-        })
+        auto[followup_id] = (_classify_movement(from_stage, to_stage), from_stage, to_stage, entry['first'].followup)
+    return auto, restored
+
+
+def _movement_item(followup, from_stage, to_stage, amount, *, group, manual=False, adjusted=False):
+    if from_stage:
+        from_label = STAGE_LABELS.get(from_stage, '신규')
+    else:
+        from_label = '직접 추가' if manual else '신규'
+    if adjusted and group in _GROUP_TO_LABEL:
+        to_label = _GROUP_TO_LABEL[group]
+    else:
+        to_label = STAGE_LABELS.get(to_stage, to_stage or '')
+    return {
+        'followupId': followup.id,
+        'customer': _customer_label(followup),
+        'company': _company_label(followup),
+        'owner': _user_display_name(followup.user),
+        'ownerId': followup.user_id,
+        'fromStage': from_stage or '',
+        'fromLabel': from_label,
+        'toStage': to_stage or '',
+        'toLabel': to_label,
+        'amount': amount,
+        'href': f'/customers/{followup.id}/',
+        'group': group,
+        # 손으로 넣은 건(manual), 자동 분류에서 칸을 옮긴 건(adjusted) — 화면이 표시하고 "원래대로"를 보여준다
+        'manual': manual,
+        'adjusted': adjusted,
+    }
+
+
+def _movement(scope_users, week_start, cards):
+    amounts = {followup.id: amount for followup, _stage, amount in cards}
+    stages = {followup.id: stage for followup, stage, _amount in cards}
+    auto, restored = _auto_movement(scope_users, week_start)
+    overrides = {
+        row.followup_id: row
+        for row in MeetingMovementOverride.objects
+        .filter(week_start=week_start, followup__user__in=scope_users)
+        .select_related('followup', 'followup__company', 'followup__department', 'followup__user')
+    }
+
+    groups = {key: [] for key in MOVEMENT_GROUPS}
+    hidden = []
+    for followup_id, (group, from_stage, to_stage, followup) in auto.items():
+        override = overrides.get(followup_id)
+        amount = amounts.get(followup_id, 0)
+        if override and override.group == MeetingMovementOverride.GROUP_HIDDEN:
+            hidden.append(_movement_item(followup, from_stage, to_stage, amount, group=group))
+            continue
+        target = override.group if override and override.group in groups else group
+        groups[target].append(_movement_item(
+            followup, from_stage, to_stage, amount, group=target, adjusted=target != group,
+        ))
+    for followup_id, override in overrides.items():
+        if followup_id in auto or override.group not in groups:
+            continue
+        followup = override.followup
+        groups[override.group].append(_movement_item(
+            followup, None, stages.get(followup_id, followup.pipeline_stage), amounts.get(followup_id, 0),
+            group=override.group, manual=True, adjusted=True,
+        ))
 
     payload = {}
     for key, rows in groups.items():
@@ -188,11 +243,13 @@ def _movement(scope_users, week_start, cards):
 
     first_record = PipelineStageChange.objects.order_by('changed_at').values_list('changed_at', flat=True).first()
     tracking_since = timezone.localtime(first_record).date() if first_record else None
+    tracked = bool(tracking_since and tracking_since <= week_start + timedelta(days=6))
     return {
         **payload,
+        'hidden': hidden,
         'trackingSince': tracking_since.isoformat() if tracking_since else None,
-        # 기록을 켜기 전 주는 "변화 없음"이 아니라 "알 수 없음"이다. 화면이 구분해서 말해야 한다.
-        'tracked': bool(tracking_since and tracking_since <= week_start + timedelta(days=6)),
+        # 기록을 켜기 전 주는 "변화 없음"이 아니라 "알 수 없음"이다. 손으로 고친 건이 있으면 그 주는 보여준다.
+        'tracked': tracked or bool(overrides),
         # 일정 근거로 채운 주는 직접 옮긴 건이 빠졌을 수 있다. 화면이 그렇게 밝혀야 한다.
         'restored': restored,
     }
@@ -410,6 +467,14 @@ def _meeting_payload(request):
                 {'id': user.id, 'name': _user_display_name(user)}
                 for user in scope_users.order_by('username')
             ],
+            # 활동 장면에 직접 넣을 고객(실주 포함)
+            'movementCustomers': sorted(
+                (
+                    {'id': followup.id, 'label': f'{_company_label(followup)} · {_customer_label(followup)}'.strip(' ·')}
+                    for followup, _stage, _amount in cards
+                ),
+                key=lambda option: option['label'],
+            ),
             'customers': sorted(
                 (
                     {'id': followup.id, 'label': f'{_company_label(followup)} · {_customer_label(followup)}'.strip(' ·')}
@@ -598,6 +663,56 @@ def meeting_next_action_restore_api(request, note_id):
         return error
     MeetingDismissedNote.objects.filter(history=note).delete()
     return JsonResponse({'success': True})
+
+
+# ------------------------------------------------------ 활동(움직임) 손으로 고치기
+
+@require_POST
+def meeting_movement_set_api(request):
+    """활동 장면의 한 건을 다른 칸으로 옮기거나(group), 지우거나(hidden), 새로 넣는다.
+
+    group 이 빈 값이면 손댄 것을 없애고 자동 분류로 되돌린다. 고객의 실제 단계는 바꾸지 않는다.
+    """
+    auth_response = _api_login_required_response(request)
+    if auth_response:
+        return auth_response
+    payload = _parse_payload(request)
+    if payload is None:
+        return _error('잘못된 요청 형식입니다.')
+    week_start = _parse_week_start(payload.get('week'), timezone.localdate())
+    group = str(payload.get('group') or '').strip()
+    if group and group not in dict(MeetingMovementOverride.GROUP_CHOICES):
+        return _error('칸을 다시 고르세요.')
+    try:
+        followup_id = int(payload.get('followupId'))
+    except (TypeError, ValueError):
+        return _error('고객을 고르세요.')
+
+    profile = get_user_profile(request.user)
+    scope_users, _selected = _dashboard_scope_users(request, profile)
+    followup = FollowUp.objects.filter(pk=followup_id, user__in=scope_users).first()
+    if not followup:
+        return _error('이 고객의 활동은 고칠 수 없습니다.', status=403)
+
+    auto, _restored = _auto_movement(scope_users.filter(pk=followup.user_id), week_start)
+    auto_group = auto[followup.id][0] if followup.id in auto else None
+    # 자동 분류와 같아지면(또는 직접 넣었던 건을 지우면) 손댄 기록이 필요 없다
+    hidden = MeetingMovementOverride.GROUP_HIDDEN
+    if not group or group == auto_group or (group == hidden and auto_group is None):
+        MeetingMovementOverride.objects.filter(week_start=week_start, followup=followup).delete()
+    else:
+        MeetingMovementOverride.objects.update_or_create(
+            week_start=week_start, followup=followup,
+            defaults={'group': group, 'created_by': request.user},
+        )
+
+    cards = _card_rows(request, timezone.localdate(), scope_users)
+    movement = _movement(scope_users, week_start, cards)
+    return JsonResponse({
+        'success': True,
+        'movement': movement,
+        'lostAmount': movement['lost']['amount'] if movement['tracked'] else None,
+    })
 
 
 # -------------------------------------------------------- 서비스 입력·삭제

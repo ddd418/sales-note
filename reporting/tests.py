@@ -14896,6 +14896,79 @@ class PipelineMeetingApiTests(TestCase):
         PipelineStageChange.objects.all().delete()
         self.assertFalse(self._get()['movement']['tracked'])
 
+    def _set_movement(self, followup, group, user=None):
+        response = self.client.post(
+            reverse('reporting:meeting_movement_set_api'),
+            data=json.dumps({'week': self.review_monday.isoformat(), 'followupId': followup.id, 'group': group}),
+            content_type='application/json',
+        )
+        return response
+
+    def test_movement_can_be_moved_hidden_added_and_reset_by_hand(self):
+        """활동 장면은 손으로 옮기기·지우기·넣기가 된다. 고객 단계는 그대로."""
+        from reporting.models import MeetingMovementOverride
+
+        wrong = self.make_followup('잘못분류')
+        noise = self.make_followup('지울건')
+        missing = self.make_followup('빠진수주', stage='quote')
+        day = self.review_monday
+        self._stage_change(wrong, 'contact', 'quote', day)
+        self._stage_change(noise, 'quote', 'contact', day)
+
+        def ids(movement, key):
+            return [row['followupId'] for row in movement[key]['items']]
+
+        # 옮기기: 전진 → 수주
+        moved = self._set_movement(wrong, 'won').json()['movement']
+        self.assertEqual(ids(moved, 'won'), [wrong.id])
+        self.assertNotIn(wrong.id, ids(moved, 'advanced'))
+        row = moved['won']['items'][0]
+        self.assertEqual((row['adjusted'], row['manual'], row['toLabel']), (True, False, '수주'))
+
+        # 지우기: 자동 분류 건은 숨김으로 남아 되살릴 수 있다
+        hidden = self._set_movement(noise, 'hidden').json()['movement']
+        self.assertNotIn(noise.id, ids(hidden, 'regressed'))
+        self.assertEqual([row['followupId'] for row in hidden['hidden']], [noise.id])
+
+        # 넣기: 기록에 없는 고객을 수주로
+        added = self._set_movement(missing, 'won').json()
+        self.assertEqual(set(ids(added['movement'], 'won')), {wrong.id, missing.id})
+        manual = next(row for row in added['movement']['won']['items'] if row['followupId'] == missing.id)
+        self.assertEqual((manual['manual'], manual['fromLabel']), (True, '직접 추가'))
+
+        # 회의 화면을 다시 열어도 그대로
+        movement = self._get()['movement']
+        self.assertEqual(set(ids(movement, 'won')), {wrong.id, missing.id})
+
+        # 직접 넣은 건을 지우면 기록 자체가 없어지고, 옮긴 건은 원래대로 돌릴 수 있다
+        self._set_movement(missing, 'hidden')
+        self._set_movement(wrong, '')
+        self._set_movement(noise, '')
+        movement = self._get()['movement']
+        self.assertEqual(ids(movement, 'won'), [])
+        self.assertEqual(ids(movement, 'advanced'), [wrong.id])
+        self.assertEqual(ids(movement, 'regressed'), [noise.id])
+        self.assertFalse(MeetingMovementOverride.objects.exists())
+
+        # 고객 단계는 바뀌지 않았다
+        wrong.refresh_from_db()
+        missing.refresh_from_db()
+        self.assertEqual((wrong.pipeline_stage, missing.pipeline_stage), ('quote', 'quote'))
+
+    def test_movement_edit_rejects_out_of_scope_and_bad_group(self):
+        coworker_card = self.make_followup('동료카드', owner=self.other)
+        self.assertEqual(self._set_movement(coworker_card, 'won').status_code, 403)
+        self.assertEqual(self._set_movement(self.followup, 'nope').status_code, 400)
+
+    def test_untracked_week_shows_hand_added_movement(self):
+        from reporting.models import PipelineStageChange
+
+        PipelineStageChange.objects.all().delete()
+        self.assertFalse(self._get()['movement']['tracked'])
+        movement = self._set_movement(self.followup, 'created').json()['movement']
+        self.assertTrue(movement['tracked'])
+        self.assertEqual([row['followupId'] for row in movement['created']['items']], [self.followup.id])
+
     def test_next_action_promise_detects_later_note(self):
         from datetime import timedelta
         from reporting.models import History

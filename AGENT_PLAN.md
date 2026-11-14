@@ -1,5 +1,16 @@
 # AGENT_PLAN.md
 
+## 2026-11-15 아침회의 "활동" 장면을 손으로 옮기기·지우기·넣기
+
+**Background**: 사용자 — "아침회의에서 활동쪽 매커니즘이 잘못되어있는데 이걸 바로잡긴 어려우니까 이거 내가 직접 옮기고 삭제하고 추가할 수 있게해줘".
+
+**Scope**:
+- 모델 `MeetingMovementOverride`(0138): 주(week_start)+고객 하나당 한 줄, group = won/advanced/regressed/lost/created/hidden. 고객 실제 파이프라인 단계는 건드리지 않음(회의 화면 보정용).
+- `_movement`: 자동 분류(`_auto_movement`, 단계 변경 기록) 위에 보정을 덮는다 — 옮긴 건(adjusted), 지운 건(hidden 목록으로 되살리기 가능), 직접 넣은 건(manual, "직접 추가 → 현재 단계"). 보정이 있는 주는 기록 전이라도 보여줌.
+- API `POST /reporting/api/pipeline-meeting/movement/set/` {week, followupId, group}; group 빈 값 = 자동 분류로 되돌리기. 자동과 같아지면 보정 줄 삭제. 범위 밖 고객 403.
+- 화면: 카드 드래그로 칸 이동, 카드의 칸 선택·휴지통·"원래대로", 칸 머리 + 로 고객 검색 추가(후퇴·실주 칸은 분류 선택), "지운 건 N" 되살리기, 기록 없는 주는 "직접 채우기".
+- 테스트 3개(PipelineMeetingApiTests). 회의 테스트 30 OK, tsc, build, 로컬 Playwright(추가→옮기기→지우기) 확인.
+
 ## 2026-11-13 위임: 김도엽 과장님 고객·일정·기록을 안재현이 보고 수정
 
 **Background**: 사용자 — "김도엽과장님이 추가한 고객이어도 나도 모두 열람 가능하고 수정까지 가능하게 해줘 지금 어차피 김도엽 과장님 이 시스템 안씀". 선택지 중 "위임"(주인은 그대로, 보기·수정만) 선택.
@@ -11,6 +22,7 @@
 - 0137 RunPython: username `dkswogus95` 에게 이름 "김도엽"(성+이름, 공백 무시) 사용자를 위임. 정확히 1명일 때만, 배포 로그에 `delegation 0137: granted owner_id=..` / `skipped` 출력.
 - 남은 한계: 본인 것만 지우게 한 일부 경로(예: 일정 삭제 API `schedule.user_id != request.user.id`)는 그대로.
 - 테스트 `test_delegated_coworker_customers_are_visible_and_editable`, `test_delegation_migration_matches_by_name`. 전체 578, 기존 3개만 실패.
+- 배포: f5d37d9, web b4091ee8 SUCCESS, smoke ok. 배포 로그 `delegation 0137: granted owner_id=2`.
 
 ## 2026-11-13 서비스 현황 "교체 부품" 개수에서 교정(calibration) 제외
 

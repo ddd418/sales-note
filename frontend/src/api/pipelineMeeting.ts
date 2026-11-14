@@ -12,7 +12,14 @@ export type MeetingMovementItem = {
   toLabel: string;
   amount: number;
   href: string;
+  group: MeetingMovementKey;
+  /** 직접 넣은 건 */
+  manual: boolean;
+  /** 자동 분류에서 칸을 옮긴 건(직접 넣은 건 포함) */
+  adjusted: boolean;
 };
+
+export type MeetingMovementKey = 'won' | 'advanced' | 'regressed' | 'lost' | 'created';
 
 export type MeetingMovementGroup = { count: number; amount: number; items: MeetingMovementItem[] };
 
@@ -101,6 +108,8 @@ export type PipelineMeetingData = {
     regressed: MeetingMovementGroup;
     lost: MeetingMovementGroup;
     created: MeetingMovementGroup;
+    /** 회의 화면에서 지운 자동 분류 건(되돌리기용) */
+    hidden: MeetingMovementItem[];
     tracked: boolean;
     restored: boolean;
     trackingSince: string | null;
@@ -117,6 +126,7 @@ export type PipelineMeetingData = {
     institutions: string[];
     owners: { id: number; name: string }[];
     customers: { id: number; label: string }[];
+    movementCustomers: { id: number; label: string }[];
   };
 };
 
@@ -200,6 +210,15 @@ export async function reorderMeetingServices(week: string, ids: number[]): Promi
 export async function updateMeetingAction(id: number, title: string): Promise<MeetingActionItem> {
   const result = await postJson<{ item: MeetingActionItem }>(`${API}actions/${id}/update/`, { title }, '내용을 수정하지 못했습니다.');
   return result.item;
+}
+
+/** 활동 장면 한 건을 옮기기(group)·지우기('hidden')·넣기. group 이 빈 값이면 자동 분류로 되돌린다. */
+export async function setMeetingMovement(body: {
+  week: string;
+  followupId: number;
+  group: MeetingMovementKey | 'hidden' | '';
+}): Promise<{ movement: PipelineMeetingData['movement']; lostAmount: number | null }> {
+  return postJson(`${API}movement/set/`, body, '활동을 고치지 못했습니다.');
 }
 
 export async function deleteMeetingService(id: number): Promise<void> {
