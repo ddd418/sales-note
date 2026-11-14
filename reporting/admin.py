@@ -90,6 +90,7 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'role', 'created_by', 'created_at')
     list_filter = ('role', 'created_by')
     search_fields = ('user__username', 'user__first_name', 'user__last_name')
+    filter_horizontal = ('delegated_users',)
     date_hierarchy = 'created_at'
     list_per_page = 20
 

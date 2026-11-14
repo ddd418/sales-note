@@ -1,5 +1,17 @@
 # AGENT_PLAN.md
 
+## 2026-11-13 위임: 김도엽 과장님 고객·일정·기록을 안재현이 보고 수정
+
+**Background**: 사용자 — "김도엽과장님이 추가한 고객이어도 나도 모두 열람 가능하고 수정까지 가능하게 해줘 지금 어차피 김도엽 과장님 이 시스템 안씀". 선택지 중 "위임"(주인은 그대로, 보기·수정만) 선택.
+
+**Scope**:
+- `UserProfile.delegated_users`(M2M, 0137) + `delegated_user_ids()` 캐시. 관리자 화면 사용자 프로필에서 바꿀 수 있음(filter_horizontal).
+- `can_modify_user_data` / `can_access_user_data` / `can_access_followup`: 위임받은 사용자의 데이터 허용. 매니저는 그대로 읽기 전용.
+- `_dashboard_scope_users` 영업사원 범위 = 자기 + 위임받은 사용자 → React 고객 목록·상세·대시보드·서비스 범위에 같이 보임(담당은 김도엽 그대로).
+- 0137 RunPython: username `dkswogus95` 에게 이름 "김도엽"(성+이름, 공백 무시) 사용자를 위임. 정확히 1명일 때만, 배포 로그에 `delegation 0137: granted owner_id=..` / `skipped` 출력.
+- 남은 한계: 본인 것만 지우게 한 일부 경로(예: 일정 삭제 API `schedule.user_id != request.user.id`)는 그대로.
+- 테스트 `test_delegated_coworker_customers_are_visible_and_editable`, `test_delegation_migration_matches_by_name`. 전체 578, 기존 3개만 실패.
+
 ## 2026-11-13 서비스 현황 "교체 부품" 개수에서 교정(calibration) 제외
 
 **Background**: 사용자 — "교체 부품 개수 세는거 서비스 대시보드에서 calibration 도 같이 세고있거든? 그럼 안돼".

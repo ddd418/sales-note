@@ -3548,6 +3548,53 @@ class CustomersSummaryApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(response.json()['success'])
 
+    def test_delegated_coworker_customers_are_visible_and_editable(self):
+        """위임: 시스템을 안 쓰는 동료의 고객을 대신 보고 고친다. 고객 주인은 그대로."""
+        from reporting.models import FollowUp
+
+        target = self._create_customer(self.coworker, '위임대상')
+        self.client.force_login(self.user)
+        body = {
+            'customer_name': '위임 수정', 'company': str(target.company_id), 'department': str(target.department_id),
+            'status': 'active', 'pipeline_stage': 'quote',
+        }
+        update_url = reverse('reporting:customer_update_api', args=[target.id])
+
+        ids = {item['id'] for item in self.client.get(self.url).json()['customers']}
+        self.assertNotIn(target.id, ids)
+        self.assertEqual(self.client.post(update_url, body).status_code, 403)
+
+        self.user.userprofile.delegated_users.add(self.coworker)
+        ids = {item['id'] for item in self.client.get(self.url).json()['customers']}
+        self.assertIn(target.id, ids)
+        self.assertEqual(self.client.post(update_url, body).status_code, 200)
+        target.refresh_from_db()
+        self.assertEqual((target.customer_name, target.user_id), ('위임 수정', self.coworker.id))
+
+        # 위임은 한쪽 방향이고, 다른 동료(위임받지 않은 사람)는 여전히 못 고친다
+        self.client.force_login(self.coworker)
+        own = self._create_customer(self.user, '내고객')
+        self.assertEqual(
+            self.client.post(reverse('reporting:customer_update_api', args=[own.id]), {**body, 'company': str(own.company_id), 'department': str(own.department_id)}).status_code,
+            403,
+        )
+        self.assertTrue(FollowUp.objects.filter(pk=own.pk, user=self.user).exists())
+
+    def test_delegation_migration_matches_by_name(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        migration = importlib.import_module('reporting.migrations.0137_userprofile_delegated_users')
+        me = make_user(migration.DELEGATE_USERNAME, role='salesman', company=self.company)
+        kim = make_user('kim_doyeop', role='salesman', company=self.company)
+        kim.last_name, kim.first_name = '김', '도엽'
+        kim.save()
+        migration.grant(django_apps, None)
+        self.assertEqual(set(me.userprofile.delegated_users.values_list('id', flat=True)), {kim.id})
+        migration.revoke(django_apps, None)
+        self.assertFalse(me.userprofile.delegated_users.exists())
+
     def test_customer_update_api_updates_customer_for_owner(self):
         from reporting.models import Company, Department, FollowUp
 

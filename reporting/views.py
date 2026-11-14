@@ -241,6 +241,10 @@ def can_access_user_data(request_user, target_user):
     # Admin은 모든 데이터 접근 가능
     if user_profile.is_admin():
         return True
+
+    # 대신 관리하는 동료의 데이터
+    if target_user is not None and target_user.id in user_profile.delegated_user_ids():
+        return True
     
     # 같은 회사 소속이면 조회 가능 (Salesman, Manager 모두)
     if user_profile.company and target_profile.company:
@@ -321,8 +325,10 @@ def can_modify_user_data(request_user, target_user):
     if user_profile.is_manager():
         return False
     
-    # Salesman은 자신의 데이터만 수정 가능
-    return request_user == target_user
+    # Salesman은 자신의 데이터 + 대신 관리하는 동료의 데이터만 수정 가능
+    if request_user == target_user:
+        return True
+    return target_user is not None and target_user.id in user_profile.delegated_user_ids()
 
 
 def manager_core_readonly_message(noun='데이터'):
@@ -347,6 +353,10 @@ def can_access_followup(request_user, followup):
         if target_profile.company and user_profile.company == target_profile.company:
             return True
     
+    # 대신 관리하는 동료의 고객
+    if followup.user_id and followup.user_id in user_profile.delegated_user_ids():
+        return True
+
     # 자신이 추가한 고객은 당연히 접근 가능
     return request_user == followup.user
 
@@ -958,7 +968,8 @@ def _dashboard_scope_users(request, user_profile):
             if selected_user:
                 users = users.filter(id=selected_user.id)
     else:
-        users = User.objects.filter(id=request.user.id)
+        # 영업사원: 자기 자신 + 대신 관리하는 동료
+        users = User.objects.filter(id__in={request.user.id, *user_profile.delegated_user_ids()})
 
     return users.select_related('userprofile'), selected_user
 

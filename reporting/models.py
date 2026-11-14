@@ -332,11 +332,24 @@ class UserProfile(models.Model):
     
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, 
                                    related_name='created_users', verbose_name="계정 생성자")
+    # 위임: 시스템을 쓰지 않는 동료의 고객·일정·기록을 이 사용자가 대신 보고 고친다(주인은 그대로).
+    delegated_users = models.ManyToManyField(
+        User, blank=True, related_name='delegate_profiles', verbose_name="대신 관리하는 사용자",
+        help_text="여기 고른 사용자의 데이터를 이 사용자가 보고 수정할 수 있습니다(데이터 주인은 바뀌지 않음).",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
     
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
+
+    def delegated_user_ids(self):
+        """대신 관리하는 사용자 id 집합(요청 한 번 안에서는 캐시)."""
+        cached = getattr(self, '_delegated_ids_cache', None)
+        if cached is None:
+            cached = set(self.delegated_users.values_list('id', flat=True)) if self.pk else set()
+            self._delegated_ids_cache = cached
+        return cached
     
     def is_admin(self):
         return self.role == 'admin'
