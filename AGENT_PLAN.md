@@ -9,6 +9,7 @@
 - 회의 서비스 payload 에 `date`(접수일), `open` 추가. 화면은 안 끝난 건에 "대기 · 11/3 접수" 표시.
 - 순서 바꾸기·추가 위치 계산도 같은 범위를 쓴다.
 - 테스트 `test_unfinished_services_show_in_last_and_this_week_regardless_of_date`. 회의·서비스 테스트 49 OK, tsc, build.
+- 배포: 41adbd5 web SUCCESS, smoke ok.
 
 ## 2026-11-15 (정정) 위임은 고객 화면만 — 매출·대시보드·회의는 본인 것만
 
