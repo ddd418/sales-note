@@ -3580,6 +3580,31 @@ class CustomersSummaryApiTests(TestCase):
         )
         self.assertTrue(FollowUp.objects.filter(pk=own.pk, user=self.user).exists())
 
+    def test_delegated_coworker_revenue_is_not_counted_as_mine(self):
+        """위임은 고객 보기·수정만. 매출·대시보드·회의 숫자는 본인 것만 잡는다."""
+        from datetime import time
+        from reporting.models import DeliveryItem, Schedule
+
+        target = self._create_customer(self.coworker, '위임매출')
+        schedule = Schedule.objects.create(
+            user=self.coworker, company=self.company, followup=target, visit_date=timezone.localdate(),
+            visit_time=time(10, 0), activity_type='delivery', status='completed',
+        )
+        DeliveryItem.objects.create(schedule=schedule, item_name='분석기', quantity=1, unit_price=1000000)
+        self.user.userprofile.delegated_users.add(self.coworker)
+        self.client.force_login(self.user)
+
+        dashboard = self.client.get(reverse('reporting:dashboard_summary_api')).json()
+        self.assertEqual(dashboard['metrics']['yearRevenue'], 0)
+        meeting = self.client.get(reverse('reporting:pipeline_meeting_api')).json()
+        self.assertEqual(meeting['summary']['yearRevenue'], 0)
+        self.assertEqual([user['id'] for user in meeting['form']['owners']], [self.user.id])
+        # 고객 화면에는 보인다
+        ids = {item['id'] for item in self.client.get(self.url).json()['customers']}
+        self.assertIn(target.id, ids)
+        detail = self.client.get(reverse('reporting:customer_detail_summary_api', args=[target.id]))
+        self.assertEqual(detail.status_code, 200)
+
     def test_delegation_migration_matches_by_name(self):
         import importlib
 

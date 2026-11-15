@@ -937,8 +937,12 @@ def employees_toggle_active_api(request, user_id):
     })
 
 
-def _dashboard_scope_users(request, user_profile):
-    """React dashboard API에서 사용할 사용자 범위를 기존 대시보드 규칙으로 계산."""
+def _dashboard_scope_users(request, user_profile, include_delegated=False):
+    """React dashboard API에서 사용할 사용자 범위를 기존 대시보드 규칙으로 계산.
+
+    include_delegated: 영업사원이 대신 관리하는 동료(위임)까지 넣는다. 고객 목록·상세에서만 켠다 —
+    매출·대시보드·회의·서비스 숫자는 본인 것만 잡아야 한다.
+    """
     user_filter = request.GET.get('user') or request.session.get('selected_user_id')
     view_all = request.GET.get('view_all') == 'true'
     selected_user = None
@@ -968,8 +972,9 @@ def _dashboard_scope_users(request, user_profile):
             if selected_user:
                 users = users.filter(id=selected_user.id)
     else:
-        # 영업사원: 자기 자신 + 대신 관리하는 동료
-        users = User.objects.filter(id__in={request.user.id, *user_profile.delegated_user_ids()})
+        # 영업사원: 자기 자신(고객 화면에서는 대신 관리하는 동료까지)
+        ids = {request.user.id, *user_profile.delegated_user_ids()} if include_delegated else {request.user.id}
+        users = User.objects.filter(id__in=ids)
 
     return users.select_related('userprofile'), selected_user
 
@@ -2841,7 +2846,7 @@ def customers_summary_api(request):
         return auth_response
 
     user_profile = get_user_profile(request.user)
-    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile, include_delegated=True)
     today = timezone.localdate()
 
     filters = _customer_request_filters(request)
@@ -3627,7 +3632,7 @@ def customer_detail_summary_api(request, followup_id):
             'error': '접근 권한이 없습니다.',
         }, status=403)
 
-    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile, include_delegated=True)
     today = timezone.localdate()
     shared_followups = _customer_shared_followups_queryset(followup)
 
@@ -3947,7 +3952,7 @@ def account_detail_summary_api(request, department_id):
         return auth_response
 
     user_profile = get_user_profile(request.user)
-    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile, include_delegated=True)
     department = get_object_or_404(
         Department.objects.select_related('company', 'created_by', 'company__created_by'),
         pk=department_id,
@@ -3972,7 +3977,7 @@ def account_update_api(request, department_id):
         return auth_response
 
     user_profile = get_user_profile(request.user)
-    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile, include_delegated=True)
     department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
     representative = account_representative_followup(department, scope_users)
     if representative is None:
@@ -4027,7 +4032,7 @@ def account_contact_save_api(request, department_id, followup_id=None):
         return auth_response
 
     user_profile = get_user_profile(request.user)
-    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile, include_delegated=True)
     department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
     representative = account_representative_followup(department, scope_users)
     if representative is None:
@@ -4141,7 +4146,7 @@ def customer_delivery_records_xlsx_export_api(request, followup_id):
     if not can_access_followup(request.user, followup):
         return HttpResponseForbidden('접근 권한이 없습니다.')
 
-    scope_users, selected_user = _dashboard_scope_users(request, user_profile)
+    scope_users, selected_user = _dashboard_scope_users(request, user_profile, include_delegated=True)
     delivery_records = _customer_delivery_record_payloads(followup, scope_users, limit=None)
 
     wb = Workbook()
@@ -4245,7 +4250,7 @@ def customer_delivery_records_xlsx_export_api(request, followup_id):
 @require_http_methods(["GET"])
 def account_delivery_records_xlsx_export_api(request, department_id):
     user_profile = get_user_profile(request.user)
-    scope_users, _selected_user = _dashboard_scope_users(request, user_profile)
+    scope_users, _selected_user = _dashboard_scope_users(request, user_profile, include_delegated=True)
     department = get_object_or_404(Department.objects.select_related('company'), pk=department_id)
     representative = account_representative_followup(department, scope_users)
     if representative is None:
