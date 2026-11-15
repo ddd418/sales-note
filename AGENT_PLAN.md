@@ -10,6 +10,7 @@
 - API `POST /reporting/api/pipeline-meeting/movement/set/` {week, followupId, group}; group 빈 값 = 자동 분류로 되돌리기. 자동과 같아지면 보정 줄 삭제. 범위 밖 고객 403.
 - 화면: 카드 드래그로 칸 이동, 카드의 칸 선택·휴지통·"원래대로", 칸 머리 + 로 고객 검색 추가(후퇴·실주 칸은 분류 선택), "지운 건 N" 되살리기, 기록 없는 주는 "직접 채우기".
 - 테스트 3개(PipelineMeetingApiTests). 회의 테스트 30 OK, tsc, build, 로컬 Playwright(추가→옮기기→지우기) 확인.
+- 배포: 41556fe, web d7dceb46 SUCCESS, 0138 적용, smoke ok.
 
 ## 2026-11-13 위임: 김도엽 과장님 고객·일정·기록을 안재현이 보고 수정
 
