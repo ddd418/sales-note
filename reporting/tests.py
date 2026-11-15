@@ -15240,6 +15240,30 @@ class PipelineMeetingServiceTests(TestCase):
         self.assertEqual(len(self._services(self.monday)), 1)
         self.assertEqual(self._services(self.previous), [])
 
+    def test_unfinished_services_show_in_last_and_this_week_regardless_of_date(self):
+        """아직 안 끝난 서비스(접수·진행중·대기)는 언제 접수됐어도 지난주·이번주 회의에 보인다."""
+        from datetime import timedelta
+        from reporting.models import ServiceCase
+
+        old = self.previous - timedelta(days=60)
+        waiting = ServiceCase.objects.create(
+            title='부품 대기', received_date=old, status='waiting', assigned_to=self.user, created_by=self.user,
+        )
+        ServiceCase.objects.create(
+            title='끝난 옛 건', received_date=old, status='completed', assigned_to=self.user, created_by=self.user,
+        )
+        this_monday = self.monday + timedelta(days=7)
+        for week in (self.monday, this_monday):
+            rows = self._services(week)
+            self.assertEqual([row['id'] for row in rows], [waiting.id], week)
+            self.assertEqual((rows[0]['open'], rows[0]['statusLabel'], rows[0]['date']), (True, '대기', old.isoformat()))
+        # 더 지난 회의(2주 전)는 그 주에 한 것만
+        self.assertEqual(self._services(self.previous), [])
+
+        waiting.status = 'completed'
+        waiting.save(update_fields=['status'])
+        self.assertEqual(self._services(this_monday), [])
+
     def test_institution_and_content_are_required(self):
         self.assertEqual(self._create(institution='  ').status_code, 400)
         self.assertEqual(self._create(content='  ').status_code, 400)

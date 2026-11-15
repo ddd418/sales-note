@@ -64,6 +64,10 @@ export type MeetingServiceRecord = {
   href: string;
   createdAt: string;
   canEdit: boolean;
+  /** 접수일 */
+  date: string | null;
+  /** 아직 안 끝난 건(접수·진행중·대기) */
+  open: boolean;
 };
 
 export type MeetingPlanItem = {

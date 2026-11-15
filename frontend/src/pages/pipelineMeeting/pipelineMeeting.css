@@ -1028,3 +1028,14 @@
     display: none;
   }
 }
+
+/* 서비스: 아직 안 끝난 건 표시 */
+.meeting-service-open {
+  display: inline-block;
+  margin-right: 0.5em;
+  padding: 0.05em 0.45em;
+  border-radius: 999px;
+  background: var(--meeting-down-soft, rgba(234, 179, 8, 0.18));
+  color: var(--text);
+  font-weight: 600;
+}

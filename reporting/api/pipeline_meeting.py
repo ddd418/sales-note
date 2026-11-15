@@ -38,7 +38,7 @@ from reporting.funnel_views import (
     _select_pipeline_pricing,
     pipeline_followups_queryset,
 )
-from reporting.api.services import can_edit_case, case_equipments_payload, case_title, visible_service_cases
+from reporting.api.services import OPEN_STATUSES, can_edit_case, case_equipments_payload, case_title, visible_service_cases
 from reporting.models import (
     DeliveryItem, FollowUp, History, MeetingActionItem, MeetingDismissedNote, MeetingMovementOverride,
     PipelineStageChange, Schedule, ServiceCase, ServiceEquipment,
@@ -361,14 +361,23 @@ def _service_payload(case, viewer, scope_user_ids):
         'href': f'/services/{case.id}/',
         'createdAt': timezone.localtime(case.created_at).date().isoformat(),
         'canEdit': can_edit_case(case, viewer, scope_user_ids),
+        'date': case.received_date.isoformat() if case.received_date else None,
+        # 아직 안 끝난 건(접수·진행중·대기) — 회의 화면이 상태와 접수일을 같이 보여준다
+        'open': case.status in OPEN_STATUSES,
     }
 
 
+def _carries_open_services(week_start):
+    """지난주·이번주(와 그 뒤) 회의는 끝나지 않은 서비스를 접수일과 상관없이 모두 보여준다."""
+    return week_start >= week_bounds(timezone.localdate())[0] - timedelta(days=7)
+
+
 def _week_cases(request, scope_users, week_start):
-    # 서비스 메뉴와 같은 범위·같은 기록. 그 주(월~일)에 한 서비스를 보여준다.
-    return visible_service_cases(request, scope_users).filter(
-        received_date__gte=week_start, received_date__lte=week_start + timedelta(days=6),
-    )
+    # 서비스 메뉴와 같은 범위·같은 기록. 그 주(월~일)에 한 서비스 + (최근 주면) 아직 안 끝난 서비스.
+    in_week = Q(received_date__gte=week_start, received_date__lte=week_start + timedelta(days=6))
+    if _carries_open_services(week_start):
+        in_week |= Q(status__in=OPEN_STATUSES)
+    return visible_service_cases(request, scope_users).filter(in_week)
 
 
 def _service_records(request, scope_users, week_start):

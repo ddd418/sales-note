@@ -801,6 +801,11 @@ function ServiceScene({ data, onReordered }: {
                     </ul>
                   ) : <p className="meeting-muted">장비 미입력</p>}
                   <small>
+                    {record.open ? (
+                      <span className="meeting-service-open">
+                        {record.statusLabel}{record.date ? ` · ${shortDate(record.date)} 접수` : ''}
+                      </span>
+                    ) : null}
                     {record.customer ? `${record.customer} · ` : ''}
                     <a href={record.href} rel="noreferrer" target="_blank">서비스 상세</a>
                   </small>
