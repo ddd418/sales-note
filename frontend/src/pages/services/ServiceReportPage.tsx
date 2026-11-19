@@ -59,8 +59,10 @@ export function ServiceReportPage() {
   const docNumber = `SR-${year}-${String(item.id).padStart(4, '0')}`;
   const equipments = item.equipments;
   const single = equipments.length <= 1 ? equipments[0] : undefined;
+  // 의뢰처(대리점 등)를 거친 건은 사용처에 가는 보고서라 가격을 싣지 않는다
+  const showPrices = !requester;
   const chargeText = item.chargeType === 'paid'
-    ? `유상${item.chargeAmount !== null ? ` · ${formatWon(item.chargeAmount)} (청구 금액)` : ''}`
+    ? `유상${showPrices && item.chargeAmount !== null ? ` · ${formatWon(item.chargeAmount)} (청구 금액)` : ''}`
     : '무상';
 
   return (
@@ -153,10 +155,15 @@ export function ServiceReportPage() {
         <section className="rpt-section"><h2>3. 조치 내용</h2><Text value={item.resolution || item.rawTitle} /></section>
 
         <section className="rpt-section">
-          <h2>4. 교체 부품 <small className="rpt-note">(단가·금액은 부가세 별도)</small></h2>
+          <h2>4. 교체 부품{showPrices ? <> <small className="rpt-note">(단가·금액은 부가세 별도)</small></> : null}</h2>
           {item.parts.length ? (
             <table className="rpt-parts">
-              <thead><tr><th>No.</th><th>부품명</th><th>품번</th><th>수량</th><th>단가</th><th>금액</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>No.</th><th>부품명</th><th>품번</th><th>수량</th>
+                  {showPrices ? <><th>단가</th><th>금액</th></> : null}
+                </tr>
+              </thead>
               <tbody>
                 {item.parts.map((part, index) => (
                   <tr key={part.id ?? index}>
@@ -164,12 +171,16 @@ export function ServiceReportPage() {
                     <td>{part.name}</td>
                     <td>{part.partNumber || '-'}</td>
                     <td className="rpt-num">{part.quantity}</td>
-                    <td className="rpt-num">{part.unitPrice !== null ? formatWon(part.unitPrice) : '-'}</td>
-                    <td className="rpt-num">{part.amount !== null && part.amount !== undefined ? formatWon(part.amount) : '-'}</td>
+                    {showPrices ? (
+                      <>
+                        <td className="rpt-num">{part.unitPrice !== null ? formatWon(part.unitPrice) : '-'}</td>
+                        <td className="rpt-num">{part.amount !== null && part.amount !== undefined ? formatWon(part.amount) : '-'}</td>
+                      </>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
-              {item.partsAmount ? (
+              {showPrices && item.partsAmount ? (
                 <tfoot>
                   <tr><td colSpan={5}>공급가 합계</td><td className="rpt-num">{formatWon(item.partsAmount)}</td></tr>
                   <tr><td colSpan={5}>부가세 (10%)</td><td className="rpt-num">{formatWon(item.partsVat)}</td></tr>
