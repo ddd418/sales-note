@@ -225,7 +225,12 @@ def _auto_movement(scope_users, week_start):
         auto[followup_id] = (_classify_movement(from_stage, to_stage), from_stage, to_stage, entry['first'].followup, None)
     for followup_id, order in _week_orders(scope_users, start, end).items():
         if followup_id in auto:
-            continue  # 단계 변경으로 이미 잡힌 고객
+            # 단계 변경으로 이미 잡힌 고객. 다만 새 납품(발주)이 들어왔으면 단계가 어떻게 움직였든 수주다
+            # (예: 납품하면서 단계가 '견적'으로 돌아가 후퇴로 잡히던 건). 실주로 바뀐 건은 그대로 둔다.
+            group, from_stage, to_stage, followup, _order = auto[followup_id]
+            if order['kind'] == 'delivery' and group not in ('won', 'lost'):
+                auto[followup_id] = ('won', from_stage, to_stage, followup, order)
+            continue
         followup = order['followup']
         auto[followup_id] = (order['group'], followup.pipeline_stage, followup.pipeline_stage, followup, order)
     return auto, restored

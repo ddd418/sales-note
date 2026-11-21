@@ -14982,6 +14982,20 @@ class PipelineMeetingApiTests(TestCase):
         self.assertEqual((advanced[quoted.id]['fromLabel'], advanced[quoted.id]['toLabel']), ('접촉/미팅', f'{quote_day.month}/{quote_day.day} 견적'))
         self.assertEqual(movement['won']['items'][0]['toLabel'] if movement['won']['items'][0]['followupId'] == repeat.id else movement['won']['items'][1]['toLabel'], f'{delivery_day.month}/{delivery_day.day} 납품')
 
+        # 납품이 들어왔는데 단계가 '견적'으로 돌아간 고객(후퇴로 잡히던 건)도 수주로
+        backward = self.make_followup('납품후견적', stage='won')
+        PipelineStageChange.objects.filter(followup=backward).update(changed_at=timezone.make_aware(datetime(2025, 1, 6, 10, 0)))
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=backward, visit_date=delivery_day,
+            visit_time=time(13, 0), activity_type='delivery', status='completed',
+        )
+        self._stage_change(backward, 'won', 'quote', self.this_monday)
+        movement = self.client.get(self.url, {'week': self.this_monday.isoformat()}).json()['movement']
+        self.assertIn(backward.id, {row['followupId'] for row in movement['won']['items']})
+        self.assertNotIn(backward.id, {row['followupId'] for row in movement['regressed']['items']})
+        backward_row = next(row for row in movement['won']['items'] if row['followupId'] == backward.id)
+        self.assertEqual(backward_row['fromLabel'], '발주')
+
         # 손으로 지울 수 있다
         hidden = self._set_movement_week(repeat, 'hidden', self.this_monday).json()['movement']
         self.assertNotIn(repeat.id, {row['followupId'] for row in hidden['won']['items']})
