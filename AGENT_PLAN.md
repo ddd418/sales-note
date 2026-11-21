@@ -9,6 +9,7 @@
 - `MeetingMovementOverride.card` 추가(0139), 유일 조건 (주, 고객, 카드). 보정 API 에 `card`.
 - 화면: 카드 키 `key`(고객 id / "id:quote"), 옮기기·지우기·되살리기가 카드별로.
 - 테스트 확장(견적 카드만 지우면 수주 카드는 남음). 회의 테스트 32 OK, tsc, build.
+- 배포: 891265f web SUCCESS, 0139 적용, smoke ok.
 
 ## 2026-11-21 아침회의: 그 주 새 납품이 있으면 단계가 뒤로 갔어도 수주
 
