@@ -147,10 +147,31 @@ _GROUP_TO_LABEL = {'won': '수주', 'lost': '실주'}
 
 
 _ACTIVITY_NOUN = {'delivery': '납품', 'quote': '견적'}
+# 카드 종류: 고객당 기본 카드('') 하나 + 그 주 견적이 다른 칸 카드에 묻히면 견적 카드('quote')를 따로 둔다
+CARD_MAIN = ''
+CARD_QUOTE = 'quote'
+
+
+def _orders_entry(followup, kind, rows):
+    noun = _ACTIVITY_NOUN[kind]
+    dates = [row.visit_date for row in rows if row.visit_date]
+    if len(rows) > 1:
+        label = f'{noun} {len(rows)}건'
+    elif dates:
+        label = f'{dates[0].month}/{dates[0].day} {noun}'
+    else:
+        label = noun
+    return {
+        'followup': followup,
+        'kind': kind,
+        'group': 'won' if kind == 'delivery' else 'advanced',
+        'label': label,
+        'amount': sum(_schedule_amount(row) for row in rows),
+    }
 
 
 def _week_orders(scope_users, start, end):
-    """그 주에 새로 잡힌 납품·견적 일정 — 고객별로 묶는다(납품이 있으면 납품이 우선).
+    """그 주에 새로 잡힌 납품·견적 일정 — {followup_id: {'delivery': entry|None, 'quote': entry|None}}.
 
     이미 그 단계에 있는 고객은 재주문·재견적이 들어와도 단계가 바뀌지 않아 단계 변경 기록에 안 잡힌다.
     납품 = 발주 접수(수주 칸), 견적 = 견적 진행(전진 칸).
@@ -173,34 +194,20 @@ def _week_orders(scope_users, start, end):
     for schedule in schedules:
         entry = by_followup.setdefault(schedule.followup_id, {'followup': schedule.followup, 'delivery': [], 'quote': []})
         entry[schedule.activity_type].append(schedule)
-
-    orders = {}
-    for followup_id, entry in by_followup.items():
-        kind = 'delivery' if entry['delivery'] else 'quote'
-        rows = entry[kind]
-        noun = _ACTIVITY_NOUN[kind]
-        dates = [row.visit_date for row in rows if row.visit_date]
-        if len(rows) > 1:
-            label = f'{noun} {len(rows)}건'
-        elif dates:
-            label = f'{dates[0].month}/{dates[0].day} {noun}'
-        else:
-            label = noun
-        orders[followup_id] = {
-            'followup': entry['followup'],
-            'kind': kind,
-            'group': 'won' if kind == 'delivery' else 'advanced',
-            'label': label,
-            'amount': sum(_schedule_amount(row) for row in rows),
+    return {
+        followup_id: {
+            kind: _orders_entry(entry['followup'], kind, entry[kind]) if entry[kind] else None
+            for kind in ('delivery', 'quote')
         }
-    return orders
+        for followup_id, entry in by_followup.items()
+    }
 
 
 def _auto_movement(scope_users, week_start):
-    """그 주의 움직임: {followup_id: (group, from_stage, to_stage, followup, order)}.
+    """그 주의 움직임: {(followup_id, card): (group, from_stage, to_stage, followup, order)}.
 
-    단계 변경 기록으로 분류하고, 단계 변화 없이 새 납품 일정(발주)이 잡힌 고객은 수주로,
-    새 견적 일정만 잡힌 고객은 전진으로 넣는다(order).
+    단계 변경 기록으로 분류하고, 그 주에 새 납품 일정(발주)이 잡힌 고객은 수주로,
+    새 견적 일정이 잡힌 고객은 전진으로 넣는다(order). 한 고객이 납품과 견적을 같이 하면 카드가 둘이다.
     """
     start, end = _local_day_range(week_start, 7)
     first_last = {}
@@ -222,25 +229,41 @@ def _auto_movement(scope_users, week_start):
         to_stage = entry['last'].to_stage
         if from_stage == to_stage:
             continue  # 한 주 안에 갔다가 돌아온 건은 변화가 아니다
-        auto[followup_id] = (_classify_movement(from_stage, to_stage), from_stage, to_stage, entry['first'].followup, None)
-    for followup_id, order in _week_orders(scope_users, start, end).items():
-        if followup_id in auto:
-            # 단계 변경으로 이미 잡힌 고객. 다만 새 납품(발주)이 들어왔으면 단계가 어떻게 움직였든 수주다
-            # (예: 납품하면서 단계가 '견적'으로 돌아가 후퇴로 잡히던 건). 실주로 바뀐 건은 그대로 둔다.
-            group, from_stage, to_stage, followup, _order = auto[followup_id]
-            if order['kind'] == 'delivery' and group not in ('won', 'lost'):
-                auto[followup_id] = ('won', from_stage, to_stage, followup, order)
-            continue
-        followup = order['followup']
-        auto[followup_id] = (order['group'], followup.pipeline_stage, followup.pipeline_stage, followup, order)
+        auto[(followup_id, CARD_MAIN)] = (
+            _classify_movement(from_stage, to_stage), from_stage, to_stage, entry['first'].followup, None,
+        )
+
+    for followup_id, orders in _week_orders(scope_users, start, end).items():
+        main_key = (followup_id, CARD_MAIN)
+        delivery, quote = orders['delivery'], orders['quote']
+        if delivery:
+            followup = delivery['followup']
+            if main_key in auto:
+                # 단계 변경으로 잡힌 고객이라도 새 납품(발주)이 들어왔으면 수주다
+                # (예: 납품하면서 단계가 '견적'으로 돌아가 후퇴로 잡히던 건). 수주·실주로 바뀐 건은 그대로.
+                group, from_stage, to_stage, followup, _order = auto[main_key]
+                if group not in ('won', 'lost'):
+                    auto[main_key] = ('won', from_stage, to_stage, followup, delivery)
+            else:
+                auto[main_key] = ('won', followup.pipeline_stage, followup.pipeline_stage, followup, delivery)
+        if quote:
+            followup = quote['followup']
+            if main_key not in auto:
+                auto[main_key] = ('advanced', followup.pipeline_stage, followup.pipeline_stage, followup, quote)
+            elif auto[main_key][0] != 'advanced':
+                # 기본 카드가 다른 칸(수주 등)에 있으면 견적은 전진 칸에 따로 보여준다
+                auto[(followup_id, CARD_QUOTE)] = ('advanced', followup.pipeline_stage, followup.pipeline_stage, followup, quote)
     return auto, restored
 
 
-def _movement_item(followup, from_stage, to_stage, amount, *, group, manual=False, adjusted=False, order=None):
+def _movement_item(followup, from_stage, to_stage, amount, *, group, manual=False, adjusted=False, order=None, card=CARD_MAIN):
     if order is not None:
-        # 단계 변화 없이 잡힌 일정: "발주 → 11/20 납품" / "컨택 → 11/19 견적", 금액은 그 일정들 합계
-        item = _movement_item(followup, from_stage, to_stage, order['amount'] or amount, group=group, adjusted=adjusted)
-        from_label = '발주' if order['kind'] == 'delivery' else STAGE_LABELS.get(from_stage, '신규') if from_stage else '신규'
+        # 일정으로 잡힌 카드: "발주 → 11/20 납품" / "접촉/미팅 → 11/19 견적", 금액은 그 일정들 합계
+        item = _movement_item(followup, from_stage, to_stage, order['amount'] or amount, group=group, adjusted=adjusted, card=card)
+        if order['kind'] == 'delivery':
+            from_label = '발주'
+        else:
+            from_label = STAGE_LABELS.get(from_stage, '신규') if from_stage else '신규'
         item.update({'fromLabel': from_label, 'toLabel': order['label'], 'order': True})
         if adjusted and group in _GROUP_TO_LABEL:
             item['toLabel'] = _GROUP_TO_LABEL[group]
@@ -254,6 +277,8 @@ def _movement_item(followup, from_stage, to_stage, amount, *, group, manual=Fals
     else:
         to_label = STAGE_LABELS.get(to_stage, to_stage or '')
     return {
+        'key': f'{followup.id}:{card}' if card else str(followup.id),
+        'card': card,
         'followupId': followup.id,
         'customer': _customer_label(followup),
         'company': _company_label(followup),
@@ -277,7 +302,7 @@ def _movement(scope_users, week_start, cards):
     stages = {followup.id: stage for followup, stage, _amount in cards}
     auto, restored = _auto_movement(scope_users, week_start)
     overrides = {
-        row.followup_id: row
+        (row.followup_id, row.card): row
         for row in MeetingMovementOverride.objects
         .filter(week_start=week_start, followup__user__in=scope_users)
         .select_related('followup', 'followup__company', 'followup__department', 'followup__user')
@@ -285,23 +310,25 @@ def _movement(scope_users, week_start, cards):
 
     groups = {key: [] for key in MOVEMENT_GROUPS}
     hidden = []
-    for followup_id, (group, from_stage, to_stage, followup, order) in auto.items():
-        override = overrides.get(followup_id)
+    for key, (group, from_stage, to_stage, followup, order) in auto.items():
+        followup_id, card = key
+        override = overrides.get(key)
         amount = amounts.get(followup_id, 0)
         if override and override.group == MeetingMovementOverride.GROUP_HIDDEN:
-            hidden.append(_movement_item(followup, from_stage, to_stage, amount, group=group, order=order))
+            hidden.append(_movement_item(followup, from_stage, to_stage, amount, group=group, order=order, card=card))
             continue
         target = override.group if override and override.group in groups else group
         groups[target].append(_movement_item(
-            followup, from_stage, to_stage, amount, group=target, adjusted=target != group, order=order,
+            followup, from_stage, to_stage, amount, group=target, adjusted=target != group, order=order, card=card,
         ))
-    for followup_id, override in overrides.items():
-        if followup_id in auto or override.group not in groups:
+    for key, override in overrides.items():
+        if key in auto or override.group not in groups:
             continue
+        followup_id, card = key
         followup = override.followup
         groups[override.group].append(_movement_item(
             followup, None, stages.get(followup_id, followup.pipeline_stage), amounts.get(followup_id, 0),
-            group=override.group, manual=True, adjusted=True,
+            group=override.group, manual=True, adjusted=True, card=card,
         ))
 
     payload = {}
@@ -769,6 +796,10 @@ def meeting_movement_set_api(request):
     except (TypeError, ValueError):
         return _error('고객을 고르세요.')
 
+    card = str(payload.get('card') or '').strip()
+    if card not in (CARD_MAIN, CARD_QUOTE):
+        return _error('잘못된 요청 형식입니다.')
+
     profile = get_user_profile(request.user)
     scope_users, _selected = _dashboard_scope_users(request, profile)
     followup = FollowUp.objects.filter(pk=followup_id, user__in=scope_users).first()
@@ -776,14 +807,15 @@ def meeting_movement_set_api(request):
         return _error('이 고객의 활동은 고칠 수 없습니다.', status=403)
 
     auto, _restored = _auto_movement(scope_users.filter(pk=followup.user_id), week_start)
-    auto_group = auto[followup.id][0] if followup.id in auto else None
+    auto_entry = auto.get((followup.id, card))
+    auto_group = auto_entry[0] if auto_entry else None
     # 자동 분류와 같아지면(또는 직접 넣었던 건을 지우면) 손댄 기록이 필요 없다
     hidden = MeetingMovementOverride.GROUP_HIDDEN
     if not group or group == auto_group or (group == hidden and auto_group is None):
-        MeetingMovementOverride.objects.filter(week_start=week_start, followup=followup).delete()
+        MeetingMovementOverride.objects.filter(week_start=week_start, followup=followup, card=card).delete()
     else:
         MeetingMovementOverride.objects.update_or_create(
-            week_start=week_start, followup=followup,
+            week_start=week_start, followup=followup, card=card,
             defaults={'group': group, 'created_by': request.user},
         )
 

@@ -2171,6 +2171,8 @@ class MeetingMovementOverride(models.Model):
         FollowUp, on_delete=models.CASCADE, related_name='meeting_movement_overrides', verbose_name="고객",
     )
     group = models.CharField(max_length=12, choices=GROUP_CHOICES, verbose_name="칸")
+    # 고객당 기본 카드('') + 견적이 따로 나올 때의 견적 카드('quote')
+    card = models.CharField(max_length=10, blank=True, default='', verbose_name="카드")
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='meeting_movement_overrides', verbose_name="고친 사람",
@@ -2184,7 +2186,7 @@ class MeetingMovementOverride(models.Model):
         verbose_name = "회의 활동 수정"
         verbose_name_plural = "회의 활동 수정"
         constraints = [
-            models.UniqueConstraint(fields=['week_start', 'followup'], name='meeting_movement_override_unique'),
+            models.UniqueConstraint(fields=['week_start', 'followup', 'card'], name='meeting_movement_override_card_unique'),
         ]
 
 

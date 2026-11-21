@@ -1,6 +1,10 @@
 import { assertSuccessfulJsonPayload, csrfHeaders, fetchJson } from './shared';
 
 export type MeetingMovementItem = {
+  /** 카드 키(고객 id, 견적 카드는 "id:quote") */
+  key: string;
+  /** '' 기본 카드, 'quote' 따로 나온 견적 카드 */
+  card: '' | 'quote';
   followupId: number;
   customer: string;
   company: string;
@@ -222,6 +226,7 @@ export async function updateMeetingAction(id: number, title: string): Promise<Me
 export async function setMeetingMovement(body: {
   week: string;
   followupId: number;
+  card?: '' | 'quote';
   group: MeetingMovementKey | 'hidden' | '';
 }): Promise<{ movement: PipelineMeetingData['movement']; lostAmount: number | null }> {
   return postJson(`${API}movement/set/`, body, '활동을 고치지 못했습니다.');

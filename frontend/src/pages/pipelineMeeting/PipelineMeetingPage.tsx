@@ -156,7 +156,7 @@ const MOVE_LABELS: Record<MeetingMovementKey, string> = {
   won: '수주', advanced: '전진', regressed: '후퇴', lost: '실주', created: '신규',
 };
 const MOVE_KEYS = Object.keys(MOVE_LABELS) as MeetingMovementKey[];
-type MoveChange = (followupId: number, group: MeetingMovementKey | 'hidden' | '') => void;
+type MoveChange = (followupId: number, group: MeetingMovementKey | 'hidden' | '', card?: '' | 'quote') => void;
 
 function MovementCard({ item, index, busy, onChange }: {
   item: MeetingMovementItem;
@@ -169,7 +169,7 @@ function MovementCard({ item, index, busy, onChange }: {
       className={`meeting-move-card${item.adjusted ? ' adjusted' : ''}`}
       draggable={!busy}
       onDragStart={(event) => {
-        event.dataTransfer.setData('text/meeting-move', String(item.followupId));
+        event.dataTransfer.setData('text/meeting-move', item.key);
         event.dataTransfer.effectAllowed = 'move';
       }}
       style={{ animationDelay: `${index * 70}ms` }}
@@ -186,20 +186,20 @@ function MovementCard({ item, index, busy, onChange }: {
         <select
           aria-label={`${item.company || item.customer} 칸 옮기기`}
           disabled={busy}
-          onChange={(event) => onChange(item.followupId, event.target.value as MeetingMovementKey)}
+          onChange={(event) => onChange(item.followupId, event.target.value as MeetingMovementKey, item.card)}
           value={item.group}
         >
           {MOVE_KEYS.map((key) => <option key={key} value={key}>{MOVE_LABELS[key]}</option>)}
         </select>
         {item.adjusted && !item.manual ? (
-          <button disabled={busy} onClick={() => onChange(item.followupId, '')} title="자동 분류로 되돌리기" type="button">원래대로</button>
+          <button disabled={busy} onClick={() => onChange(item.followupId, '', item.card)} title="자동 분류로 되돌리기" type="button">원래대로</button>
         ) : null}
         {item.manual ? <span className="meeting-move-tag">직접 추가</span> : null}
         <button
           aria-label={`${item.company || item.customer} 지우기`}
           className="meeting-move-delete"
           disabled={busy}
-          onClick={() => onChange(item.followupId, 'hidden')}
+          onClick={() => onChange(item.followupId, 'hidden', item.card)}
           title="이 회의 화면에서 지우기(고객 단계는 그대로)"
           type="button"
         >
@@ -229,10 +229,12 @@ function MovementColumn({ title, tone, group, groups, startIndex, busy, customer
   const onDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     setOver(false);
-    const id = Number(event.dataTransfer.getData('text/meeting-move'));
+    const key = event.dataTransfer.getData('text/meeting-move');
+    const [rawId, card = ''] = key.split(':');
+    const id = Number(rawId);
     if (!id) return;
-    const current = group.items.find((item) => item.followupId === id);
-    if (!current) onChange(id, groups[0]);
+    const current = group.items.find((item) => item.key === key);
+    if (!current) onChange(id, groups[0], card === 'quote' ? 'quote' : '');
   };
 
   return (
@@ -278,7 +280,7 @@ function MovementColumn({ title, tone, group, groups, startIndex, busy, customer
         ) : null}
         {group.items.length === 0 && !adding ? <p className="meeting-empty">없음</p> : null}
         {group.items.map((item: MeetingMovementItem, index) => (
-          <MovementCard busy={busy} index={startIndex + index} item={item} key={item.followupId} onChange={onChange} />
+          <MovementCard busy={busy} index={startIndex + index} item={item} key={item.key ?? item.followupId} onChange={onChange} />
         ))}
       </div>
     </section>
@@ -299,10 +301,10 @@ function MovementScene({ data, onChanged }: {
     [data.form.movementCustomers, data.form.customers],
   );
 
-  const change: MoveChange = (followupId, group) => {
+  const change: MoveChange = (followupId, group, card = '') => {
     setBusy(true);
     setError('');
-    setMeetingMovement({ week: data.week.start, followupId, group })
+    setMeetingMovement({ week: data.week.start, followupId, group, card })
       .then((result) => onChanged(result.movement, result.lostAmount))
       .catch((caught) => setError(humanizeApiError(caught instanceof Error ? caught.message : '') || '활동을 고치지 못했습니다.'))
       .finally(() => setBusy(false));
@@ -352,9 +354,9 @@ function MovementScene({ data, onChanged }: {
       {showHidden && (movement.hidden ?? []).length ? (
         <ul className="meeting-move-hidden">
           {movement.hidden.map((item) => (
-            <li key={item.followupId}>
+            <li key={item.key ?? item.followupId}>
               <span>{item.company || item.customer} · {item.fromLabel} → {item.toLabel}</span>
-              <button disabled={busy} onClick={() => change(item.followupId, '')} type="button">되살리기</button>
+              <button disabled={busy} onClick={() => change(item.followupId, '', item.card)} type="button">되살리기</button>
             </li>
           ))}
         </ul>

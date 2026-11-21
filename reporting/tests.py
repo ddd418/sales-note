@@ -14971,16 +14971,28 @@ class PipelineMeetingApiTests(TestCase):
             user=self.user, company=self.company, followup=quoted, visit_date=quote_day,
             visit_time=time(14, 0), activity_type='quote', status='scheduled',
         )
-        # 납품과 견적이 같이 잡힌 고객은 납품(수주) 하나로
-        Schedule.objects.create(
+        # 납품과 견적이 같이 잡힌 고객은 수주 카드 + 전진 칸 견적 카드(따로)
+        quote_schedule = Schedule.objects.create(
             user=self.user, company=self.company, followup=repeat, visit_date=quote_day,
             visit_time=time(9, 0), activity_type='quote', status='scheduled',
         )
+        DeliveryItem.objects.create(schedule=quote_schedule, item_name='분석기', quantity=1, unit_price=1000000)
         movement = self.client.get(self.url, {'week': self.this_monday.isoformat()}).json()['movement']
-        advanced = {row['followupId']: row for row in movement['advanced']['items']}
-        self.assertEqual(set(advanced), {quoted.id})
-        self.assertEqual((advanced[quoted.id]['fromLabel'], advanced[quoted.id]['toLabel']), ('접촉/미팅', f'{quote_day.month}/{quote_day.day} 견적'))
-        self.assertEqual(movement['won']['items'][0]['toLabel'] if movement['won']['items'][0]['followupId'] == repeat.id else movement['won']['items'][1]['toLabel'], f'{delivery_day.month}/{delivery_day.day} 납품')
+        advanced = {row['key']: row for row in movement['advanced']['items']}
+        self.assertEqual(set(advanced), {str(quoted.id), f'{repeat.id}:quote'})
+        self.assertEqual((advanced[str(quoted.id)]['fromLabel'], advanced[str(quoted.id)]['toLabel']), ('접촉/미팅', f'{quote_day.month}/{quote_day.day} 견적'))
+        self.assertEqual((advanced[f'{repeat.id}:quote']['card'], advanced[f'{repeat.id}:quote']['amount']), ('quote', 1100000))
+        won_row = next(row for row in movement['won']['items'] if row['followupId'] == repeat.id)
+        self.assertEqual((won_row['card'], won_row['toLabel']), ('', f'{delivery_day.month}/{delivery_day.day} 납품'))
+        # 견적 카드만 지우면 수주 카드는 남는다
+        only_quote = self.client.post(
+            reverse('reporting:meeting_movement_set_api'),
+            data=json.dumps({'week': self.this_monday.isoformat(), 'followupId': repeat.id, 'group': 'hidden', 'card': 'quote'}),
+            content_type='application/json',
+        ).json()['movement']
+        self.assertNotIn(f'{repeat.id}:quote', {row['key'] for row in only_quote['advanced']['items']})
+        self.assertIn(repeat.id, {row['followupId'] for row in only_quote['won']['items']})
+        self.assertEqual([row['key'] for row in only_quote['hidden']], [f'{repeat.id}:quote'])
 
         # 납품이 들어왔는데 단계가 '견적'으로 돌아간 고객(후퇴로 잡히던 건)도 수주로
         backward = self.make_followup('납품후견적', stage='won')
@@ -14999,7 +15011,7 @@ class PipelineMeetingApiTests(TestCase):
         # 손으로 지울 수 있다
         hidden = self._set_movement_week(repeat, 'hidden', self.this_monday).json()['movement']
         self.assertNotIn(repeat.id, {row['followupId'] for row in hidden['won']['items']})
-        self.assertEqual([row['followupId'] for row in hidden['hidden']], [repeat.id])
+        self.assertEqual(sorted(row['key'] for row in hidden['hidden']), sorted([str(repeat.id), f'{repeat.id}:quote']))
 
     def _set_movement_week(self, followup, group, week):
         return self.client.post(
