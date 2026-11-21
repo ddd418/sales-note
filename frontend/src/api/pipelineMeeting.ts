@@ -17,6 +17,8 @@ export type MeetingMovementItem = {
   manual: boolean;
   /** 자동 분류에서 칸을 옮긴 건(직접 넣은 건 포함) */
   adjusted: boolean;
+  /** 단계 변화 없이 그 주에 발주(새 납품 일정)가 들어온 건 */
+  order?: boolean;
 };
 
 export type MeetingMovementKey = 'won' | 'advanced' | 'regressed' | 'lost' | 'created';

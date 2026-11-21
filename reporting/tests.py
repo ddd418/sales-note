@@ -14921,6 +14921,60 @@ class PipelineMeetingApiTests(TestCase):
         PipelineStageChange.objects.all().delete()
         self.assertFalse(self._get()['movement']['tracked'])
 
+    def test_new_delivery_order_for_won_customer_shows_as_won(self):
+        """이미 수주 단계인 단골 고객의 재주문(이번 주에 새로 잡은 납품 일정)도 활동의 수주 칸에 나온다."""
+        from datetime import time, timedelta
+        from reporting.models import DeliveryItem, Schedule
+
+        repeat = self.make_followup('단골', stage='won')
+        cancelled = self.make_followup('취소건', stage='won')
+        moved = self.make_followup('단계도바뀜', stage='won')
+        delivery_day = self.this_monday + timedelta(days=4)
+        schedule = Schedule.objects.create(
+            user=self.user, company=self.company, followup=repeat, visit_date=delivery_day,
+            visit_time=time(10, 0), activity_type='delivery', status='scheduled',
+        )
+        DeliveryItem.objects.create(schedule=schedule, item_name='코니컬튜브', quantity=1, unit_price=98000)
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=cancelled, visit_date=delivery_day,
+            visit_time=time(10, 0), activity_type='delivery', status='cancelled',
+        )
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=moved, visit_date=delivery_day,
+            visit_time=time(11, 0), activity_type='delivery', status='scheduled',
+        )
+        # 고객을 만들 때 생기는 단계 기록은 옛날 일로 돌린다(이번 주에는 단계 변화가 없던 단골)
+        from datetime import datetime
+        from django.utils import timezone
+        from reporting.models import PipelineStageChange
+        PipelineStageChange.objects.filter(followup__in=[repeat, cancelled, moved]).update(
+            changed_at=timezone.make_aware(datetime(2025, 1, 6, 10, 0)),
+        )
+        self._stage_change(moved, 'negotiation', 'won', self.this_monday)
+
+        movement = self.client.get(self.url, {'week': self.this_monday.isoformat()}).json()['movement']
+        self.assertTrue(movement['tracked'])
+        won = {row['followupId']: row for row in movement['won']['items']}
+        self.assertEqual(set(won), {repeat.id, moved.id})
+        self.assertEqual(
+            (won[repeat.id]['fromLabel'], won[repeat.id]['toLabel'], won[repeat.id]['amount']),
+            ('발주', f'{delivery_day.month}/{delivery_day.day} 납품', 107800),
+        )
+        self.assertEqual(won[moved.id]['fromLabel'], '협상')  # 단계 변경으로 잡힌 건은 그대로
+        # 지난주 회의에는 안 나온다(일정을 만든 주 기준)
+        self.assertNotIn(repeat.id, {row['followupId'] for row in self._get()['movement']['won']['items']})
+        # 손으로 지울 수 있다
+        hidden = self._set_movement_week(repeat, 'hidden', self.this_monday).json()['movement']
+        self.assertNotIn(repeat.id, {row['followupId'] for row in hidden['won']['items']})
+        self.assertEqual([row['followupId'] for row in hidden['hidden']], [repeat.id])
+
+    def _set_movement_week(self, followup, group, week):
+        return self.client.post(
+            reverse('reporting:meeting_movement_set_api'),
+            data=json.dumps({'week': week.isoformat(), 'followupId': followup.id, 'group': group}),
+            content_type='application/json',
+        )
+
     def _set_movement(self, followup, group, user=None):
         response = self.client.post(
             reverse('reporting:meeting_movement_set_api'),

@@ -146,8 +146,46 @@ MOVEMENT_GROUPS = ('won', 'advanced', 'regressed', 'lost', 'created')
 _GROUP_TO_LABEL = {'won': '수주', 'lost': '실주'}
 
 
+def _week_orders(scope_users, start, end):
+    """그 주에 새로 잡힌 납품 일정(= 발주 접수) — 고객별로 묶는다.
+
+    이미 "수주" 단계인 단골 고객은 재주문이 들어와도 단계가 바뀌지 않아 단계 변경 기록에 안 잡힌다.
+    """
+    schedules = (
+        Schedule.objects
+        .filter(
+            user__in=scope_users, activity_type='delivery', followup__isnull=False,
+            followup__pipeline_hidden=False, created_at__gte=start, created_at__lt=end,
+        )
+        .exclude(status='cancelled')
+        .select_related('followup', 'followup__company', 'followup__department', 'followup__user')
+        .prefetch_related(
+            Prefetch('delivery_items_set', queryset=DeliveryItem.objects.order_by('id'), to_attr='linked_delivery_items'),
+            Prefetch('histories', queryset=History.objects.filter(parent_history__isnull=True), to_attr='linked_histories'),
+        )
+        .order_by('visit_date', 'id')
+    )
+    orders = {}
+    for schedule in schedules:
+        entry = orders.setdefault(schedule.followup_id, {'followup': schedule.followup, 'dates': [], 'amount': 0})
+        entry['dates'].append(schedule.visit_date)
+        entry['amount'] += _schedule_amount(schedule)
+    for entry in orders.values():
+        dates = [day for day in entry['dates'] if day]
+        if len(entry['dates']) > 1:
+            entry['label'] = f"납품 {len(entry['dates'])}건"
+        elif dates:
+            entry['label'] = f"{dates[0].month}/{dates[0].day} 납품"
+        else:
+            entry['label'] = '납품'
+    return orders
+
+
 def _auto_movement(scope_users, week_start):
-    """단계 변경 기록으로 분류한 그 주의 움직임: {followup_id: (group, from_stage, to_stage, followup)}."""
+    """그 주의 움직임: {followup_id: (group, from_stage, to_stage, followup, order)}.
+
+    단계 변경 기록으로 분류하고, 단계 변화 없이 발주(새 납품 일정)만 들어온 고객은 수주로 넣는다(order).
+    """
     start, end = _local_day_range(week_start, 7)
     first_last = {}
     restored = False
@@ -168,11 +206,23 @@ def _auto_movement(scope_users, week_start):
         to_stage = entry['last'].to_stage
         if from_stage == to_stage:
             continue  # 한 주 안에 갔다가 돌아온 건은 변화가 아니다
-        auto[followup_id] = (_classify_movement(from_stage, to_stage), from_stage, to_stage, entry['first'].followup)
+        auto[followup_id] = (_classify_movement(from_stage, to_stage), from_stage, to_stage, entry['first'].followup, None)
+    for followup_id, order in _week_orders(scope_users, start, end).items():
+        if followup_id in auto:
+            continue  # 단계 변경으로 이미 잡힌 고객
+        followup = order['followup']
+        auto[followup_id] = ('won', followup.pipeline_stage, followup.pipeline_stage, followup, order)
     return auto, restored
 
 
-def _movement_item(followup, from_stage, to_stage, amount, *, group, manual=False, adjusted=False):
+def _movement_item(followup, from_stage, to_stage, amount, *, group, manual=False, adjusted=False, order=None):
+    if order is not None:
+        # 단계 변화 없이 들어온 발주: "발주 → 11/20 납품", 금액은 그 납품 일정들 합계
+        item = _movement_item(followup, from_stage, to_stage, order['amount'] or amount, group=group, adjusted=adjusted)
+        item.update({'fromLabel': '발주', 'toLabel': order['label'], 'order': True})
+        if adjusted and group in _GROUP_TO_LABEL:
+            item['toLabel'] = _GROUP_TO_LABEL[group]
+        return item
     if from_stage:
         from_label = STAGE_LABELS.get(from_stage, '신규')
     else:
@@ -213,15 +263,15 @@ def _movement(scope_users, week_start, cards):
 
     groups = {key: [] for key in MOVEMENT_GROUPS}
     hidden = []
-    for followup_id, (group, from_stage, to_stage, followup) in auto.items():
+    for followup_id, (group, from_stage, to_stage, followup, order) in auto.items():
         override = overrides.get(followup_id)
         amount = amounts.get(followup_id, 0)
         if override and override.group == MeetingMovementOverride.GROUP_HIDDEN:
-            hidden.append(_movement_item(followup, from_stage, to_stage, amount, group=group))
+            hidden.append(_movement_item(followup, from_stage, to_stage, amount, group=group, order=order))
             continue
         target = override.group if override and override.group in groups else group
         groups[target].append(_movement_item(
-            followup, from_stage, to_stage, amount, group=target, adjusted=target != group,
+            followup, from_stage, to_stage, amount, group=target, adjusted=target != group, order=order,
         ))
     for followup_id, override in overrides.items():
         if followup_id in auto or override.group not in groups:
@@ -249,7 +299,7 @@ def _movement(scope_users, week_start, cards):
         'hidden': hidden,
         'trackingSince': tracking_since.isoformat() if tracking_since else None,
         # 기록을 켜기 전 주는 "변화 없음"이 아니라 "알 수 없음"이다. 손으로 고친 건이 있으면 그 주는 보여준다.
-        'tracked': tracked or bool(overrides),
+        'tracked': tracked or bool(overrides) or any(value[4] for value in auto.values()),
         # 일정 근거로 채운 주는 직접 옮긴 건이 빠졌을 수 있다. 화면이 그렇게 밝혀야 한다.
         'restored': restored,
     }
