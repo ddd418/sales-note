@@ -137,6 +137,11 @@ function SummaryScene({ data }: { data: PipelineMeetingData }) {
         ) : null}
       </section>
       <section className="meeting-stats">
+        {/* 활동 장면 "수주" 칸과 같은 숫자(발주 접수 + 수주로 바뀐 건, 손 보정 포함). 매출은 납품 완료 기준 */}
+        <div>
+          <span>수주</span>
+          <strong>{formatNumber(data.movement.won.count)}건{data.movement.won.amount > 0 ? ` · ${formatWon(data.movement.won.amount)}` : ''}</strong>
+        </div>
         <div><span>납품 완료</span><strong>{formatNumber(summary.deliveryCount)}건</strong></div>
         <div><span>견적 금액</span><strong>{formatWon(summary.quoteAmount)}</strong></div>
         <div><span>실주 금액</span><strong>{summary.lostAmount === null ? '기록 없음' : formatWon(summary.lostAmount)}</strong></div>

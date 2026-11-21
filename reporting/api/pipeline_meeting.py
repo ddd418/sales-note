@@ -146,15 +146,19 @@ MOVEMENT_GROUPS = ('won', 'advanced', 'regressed', 'lost', 'created')
 _GROUP_TO_LABEL = {'won': '수주', 'lost': '실주'}
 
 
-def _week_orders(scope_users, start, end):
-    """그 주에 새로 잡힌 납품 일정(= 발주 접수) — 고객별로 묶는다.
+_ACTIVITY_NOUN = {'delivery': '납품', 'quote': '견적'}
 
-    이미 "수주" 단계인 단골 고객은 재주문이 들어와도 단계가 바뀌지 않아 단계 변경 기록에 안 잡힌다.
+
+def _week_orders(scope_users, start, end):
+    """그 주에 새로 잡힌 납품·견적 일정 — 고객별로 묶는다(납품이 있으면 납품이 우선).
+
+    이미 그 단계에 있는 고객은 재주문·재견적이 들어와도 단계가 바뀌지 않아 단계 변경 기록에 안 잡힌다.
+    납품 = 발주 접수(수주 칸), 견적 = 견적 진행(전진 칸).
     """
     schedules = (
         Schedule.objects
         .filter(
-            user__in=scope_users, activity_type='delivery', followup__isnull=False,
+            user__in=scope_users, activity_type__in=tuple(_ACTIVITY_NOUN), followup__isnull=False,
             followup__pipeline_hidden=False, created_at__gte=start, created_at__lt=end,
         )
         .exclude(status='cancelled')
@@ -165,26 +169,38 @@ def _week_orders(scope_users, start, end):
         )
         .order_by('visit_date', 'id')
     )
-    orders = {}
+    by_followup = {}
     for schedule in schedules:
-        entry = orders.setdefault(schedule.followup_id, {'followup': schedule.followup, 'dates': [], 'amount': 0})
-        entry['dates'].append(schedule.visit_date)
-        entry['amount'] += _schedule_amount(schedule)
-    for entry in orders.values():
-        dates = [day for day in entry['dates'] if day]
-        if len(entry['dates']) > 1:
-            entry['label'] = f"납품 {len(entry['dates'])}건"
+        entry = by_followup.setdefault(schedule.followup_id, {'followup': schedule.followup, 'delivery': [], 'quote': []})
+        entry[schedule.activity_type].append(schedule)
+
+    orders = {}
+    for followup_id, entry in by_followup.items():
+        kind = 'delivery' if entry['delivery'] else 'quote'
+        rows = entry[kind]
+        noun = _ACTIVITY_NOUN[kind]
+        dates = [row.visit_date for row in rows if row.visit_date]
+        if len(rows) > 1:
+            label = f'{noun} {len(rows)}건'
         elif dates:
-            entry['label'] = f"{dates[0].month}/{dates[0].day} 납품"
+            label = f'{dates[0].month}/{dates[0].day} {noun}'
         else:
-            entry['label'] = '납품'
+            label = noun
+        orders[followup_id] = {
+            'followup': entry['followup'],
+            'kind': kind,
+            'group': 'won' if kind == 'delivery' else 'advanced',
+            'label': label,
+            'amount': sum(_schedule_amount(row) for row in rows),
+        }
     return orders
 
 
 def _auto_movement(scope_users, week_start):
     """그 주의 움직임: {followup_id: (group, from_stage, to_stage, followup, order)}.
 
-    단계 변경 기록으로 분류하고, 단계 변화 없이 발주(새 납품 일정)만 들어온 고객은 수주로 넣는다(order).
+    단계 변경 기록으로 분류하고, 단계 변화 없이 새 납품 일정(발주)이 잡힌 고객은 수주로,
+    새 견적 일정만 잡힌 고객은 전진으로 넣는다(order).
     """
     start, end = _local_day_range(week_start, 7)
     first_last = {}
@@ -211,15 +227,16 @@ def _auto_movement(scope_users, week_start):
         if followup_id in auto:
             continue  # 단계 변경으로 이미 잡힌 고객
         followup = order['followup']
-        auto[followup_id] = ('won', followup.pipeline_stage, followup.pipeline_stage, followup, order)
+        auto[followup_id] = (order['group'], followup.pipeline_stage, followup.pipeline_stage, followup, order)
     return auto, restored
 
 
 def _movement_item(followup, from_stage, to_stage, amount, *, group, manual=False, adjusted=False, order=None):
     if order is not None:
-        # 단계 변화 없이 들어온 발주: "발주 → 11/20 납품", 금액은 그 납품 일정들 합계
+        # 단계 변화 없이 잡힌 일정: "발주 → 11/20 납품" / "컨택 → 11/19 견적", 금액은 그 일정들 합계
         item = _movement_item(followup, from_stage, to_stage, order['amount'] or amount, group=group, adjusted=adjusted)
-        item.update({'fromLabel': '발주', 'toLabel': order['label'], 'order': True})
+        from_label = '발주' if order['kind'] == 'delivery' else STAGE_LABELS.get(from_stage, '신규') if from_stage else '신규'
+        item.update({'fromLabel': from_label, 'toLabel': order['label'], 'order': True})
         if adjusted and group in _GROUP_TO_LABEL:
             item['toLabel'] = _GROUP_TO_LABEL[group]
         return item

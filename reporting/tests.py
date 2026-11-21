@@ -14963,6 +14963,25 @@ class PipelineMeetingApiTests(TestCase):
         self.assertEqual(won[moved.id]['fromLabel'], '협상')  # 단계 변경으로 잡힌 건은 그대로
         # 지난주 회의에는 안 나온다(일정을 만든 주 기준)
         self.assertNotIn(repeat.id, {row['followupId'] for row in self._get()['movement']['won']['items']})
+        # 견적 일정만 새로 잡힌 고객은 전진 칸에("현재 단계 → 날짜 견적")
+        quoted = self.make_followup('견적만', stage='contact')
+        PipelineStageChange.objects.filter(followup=quoted).update(changed_at=timezone.make_aware(datetime(2025, 1, 6, 10, 0)))
+        quote_day = self.this_monday + timedelta(days=3)
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=quoted, visit_date=quote_day,
+            visit_time=time(14, 0), activity_type='quote', status='scheduled',
+        )
+        # 납품과 견적이 같이 잡힌 고객은 납품(수주) 하나로
+        Schedule.objects.create(
+            user=self.user, company=self.company, followup=repeat, visit_date=quote_day,
+            visit_time=time(9, 0), activity_type='quote', status='scheduled',
+        )
+        movement = self.client.get(self.url, {'week': self.this_monday.isoformat()}).json()['movement']
+        advanced = {row['followupId']: row for row in movement['advanced']['items']}
+        self.assertEqual(set(advanced), {quoted.id})
+        self.assertEqual((advanced[quoted.id]['fromLabel'], advanced[quoted.id]['toLabel']), ('접촉/미팅', f'{quote_day.month}/{quote_day.day} 견적'))
+        self.assertEqual(movement['won']['items'][0]['toLabel'] if movement['won']['items'][0]['followupId'] == repeat.id else movement['won']['items'][1]['toLabel'], f'{delivery_day.month}/{delivery_day.day} 납품')
+
         # 손으로 지울 수 있다
         hidden = self._set_movement_week(repeat, 'hidden', self.this_monday).json()['movement']
         self.assertNotIn(repeat.id, {row['followupId'] for row in hidden['won']['items']})
